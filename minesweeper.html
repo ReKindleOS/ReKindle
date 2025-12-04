@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Minesweeper</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -43,7 +49,6 @@
             overflow: hidden;
             background-color: #e5e5e5;
             /* Default Background (Overridden by JS) */
-            /* Background managed by settings */
             
             display: flex;
             flex-direction: column;
@@ -250,6 +255,59 @@
             fill: currentColor;
         }
 
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-btns {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .modal-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            flex: 1;
+            min-width: 80px;
+        }
+
+        .modal-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+        
+        #auth-status {
+            margin-top: 10px;
+            font-size: 0.7rem;
+            color: #666;
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
@@ -262,7 +320,7 @@
             <span class="title-text">Mines</span>
             
             <div class="header-controls">
-                <button class="sys-btn" onclick="initGame()">Reset</button>
+                <button class="sys-btn" onclick="openNewGameModal()">New</button>
             </div>
         </div>
 
@@ -285,16 +343,55 @@
                     <span id="mode-text">DIG</span>
                 </button>
             </div>
+            
+            <div id="auth-status">Local Mode</div>
+        </div>
+    </div>
+
+    <!-- NEW GAME MODAL -->
+    <div id="new-game-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>New Game</h3>
+            <p>Select Difficulty</p>
+            <div class="modal-btns">
+                <button class="modal-btn" onclick="startNewGame('easy')">Easy<br><span style="font-size:0.7rem; font-weight:normal;">10x10</span></button>
+                <button class="modal-btn" onclick="startNewGame('medium')">Medium<br><span style="font-size:0.7rem; font-weight:normal;">18x14</span></button>
+                <button class="modal-btn" onclick="startNewGame('hard')">Hard<br><span style="font-size:0.7rem; font-weight:normal;">24x20</span></button>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="modal-btn" style="width:100%" onclick="closeModal()">Cancel</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
         // --- CONFIG ---
-        const ROWS = 18; // Increased rows
-        const COLS = 14; // Increased cols
-        const MINES = 40; // Increased mines
+        const DIFFICULTY = {
+            'easy': { rows: 10, cols: 10, mines: 10 },
+            'medium': { rows: 18, cols: 14, mines: 40 },
+            'hard': { rows: 24, cols: 20, mines: 99 }
+        };
 
         // --- STATE ---
+        let currentDiff = 'medium';
+        let ROWS = 18;
+        let COLS = 14; 
+        let MINES = 40;
+
         let grid = []; 
         let gameOver = false;
         let flagsUsed = 0;
@@ -302,11 +399,13 @@
         let timerId = null;
         let isFirstClick = true;
         let mode = 'dig'; 
+        let currentUser = null;
+        let saveTimer = null;
 
         // --- ICONS (SVG Strings) ---
         const ICON_DIG = `<svg viewBox="0 0 24 24"><path d="M14.7 13.3L10.7 9.3L3 17V21H7L14.7 13.3ZM19.6 3C19.2 3 18.8 3.1 18.5 3.4L16.9 5L12 6.1L10.9 5L9.5 6.4L11.6 8.5L4 16.1V22H9.9L17.5 14.4L19.6 16.5L21 15.1L19.9 14L21 9.1L22.6 7.5C23.1 7 23.1 6.1 22.6 5.6L20.4 3.4C20.2 3.2 19.9 3 19.6 3Z"/></svg>`;
         const ICON_FLAG = `<svg viewBox="0 0 24 24"><path d="M14.4 6L14 4H5V21H7V14H12L12.4 16H19V6H14.4Z"/></svg>`;
-        const ICON_BOMB = `<svg viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="9"/><path d="M12 2V5 M12 19V22 M2 12H5 M19 12H22" stroke="white" stroke-width="2"/></svg>`; // Simplified bomb
+        const ICON_BOMB = `<svg viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="9"/><path d="M12 2V5 M12 19V22 M2 12H5 M19 12H22" stroke="white" stroke-width="2"/></svg>`;
 
         // --- DOM ---
         const container = document.getElementById('grid-container');
@@ -317,7 +416,18 @@
         // --- INIT ---
         window.onload = () => {
             loadWallpaper();
-            initGame();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('auth-status').innerText = "Synced: " + user.email;
+                    loadGame(true); // Load Cloud
+                } else {
+                    document.getElementById('auth-status').innerText = "Guest Mode (Local)";
+                    loadGame(false); // Load Local
+                }
+            });
+
             window.addEventListener('resize', resizeGrid);
         };
 
@@ -332,7 +442,6 @@
             }
         }
 
-        // Kindle Browser Fix: Force Square Cells via JS
         function resizeGrid() {
             const cells = document.querySelectorAll('.cell');
             if(cells.length > 0) {
@@ -341,6 +450,106 @@
                     cells.forEach(c => c.style.height = width + 'px');
                 }
             }
+        }
+
+        // --- SAVE/LOAD ---
+        function saveGame() {
+            if (gameOver) {
+                clearSave();
+                return;
+            }
+
+            const state = {
+                rows: ROWS,
+                cols: COLS,
+                mines: MINES,
+                time: time,
+                flagsUsed: flagsUsed,
+                isFirstClick: isFirstClick,
+                difficulty: currentDiff,
+                grid: grid // Serializes nicely
+            };
+
+            const json = JSON.stringify(state);
+            localStorage.setItem('rekindle_mines_save', json);
+
+            if (currentUser) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    db.collection('users').doc(currentUser.uid).collection('apps').doc('minesweeper').set(state);
+                }, 2000); // Debounce cloud save
+            }
+        }
+
+        async function loadGame(isCloud) {
+            let data = null;
+
+            if (isCloud) {
+                try {
+                    const doc = await db.collection('users').doc(currentUser.uid).collection('apps').doc('minesweeper').get();
+                    if (doc.exists) data = doc.data();
+                } catch(e) { console.error("Cloud load fail", e); }
+            }
+
+            if (!data) {
+                const local = localStorage.getItem('rekindle_mines_save');
+                if (local) data = JSON.parse(local);
+            }
+
+            if (data && data.grid && !data.gameOver) {
+                restoreGame(data);
+            } else {
+                startNewGame('medium'); // Default
+            }
+        }
+
+        function restoreGame(data) {
+            ROWS = data.rows;
+            COLS = data.cols;
+            MINES = data.mines;
+            time = data.time;
+            flagsUsed = data.flagsUsed;
+            isFirstClick = data.isFirstClick;
+            currentDiff = data.difficulty || 'medium';
+            grid = data.grid;
+            gameOver = false;
+
+            renderGridStructure(false); // Build DOM from grid data
+            
+            // Restore UI state
+            timeDisplay.innerText = String(time).padStart(3, '0');
+            mineDisplay.innerText = String(MINES - flagsUsed).padStart(3, '0');
+            
+            // Resume Timer
+            if (!isFirstClick && !gameOver) startTimer();
+        }
+
+        function clearSave() {
+            localStorage.removeItem('rekindle_mines_save');
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('minesweeper').delete();
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function openNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('new-game-modal').style.display = 'none';
+        }
+
+        function startNewGame(diff) {
+            closeModal();
+            currentDiff = diff;
+            const settings = DIFFICULTY[diff];
+            ROWS = settings.rows;
+            COLS = settings.cols;
+            MINES = settings.mines;
+
+            initGame();
         }
 
         function initGame() {
@@ -356,38 +565,59 @@
             timeDisplay.innerText = "000";
             mineDisplay.innerText = String(MINES).padStart(3, '0');
             
-            renderGridStructure();
-        }
-
-        function renderGridStructure() {
-            container.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
-            container.innerHTML = '';
-
+            // Build fresh grid array
             for (let r = 0; r < ROWS; r++) {
                 const row = [];
                 for (let c = 0; c < COLS; c++) {
-                    // State Object
                     row.push({
                         isMine: false,
                         isRevealed: false,
                         isFlagged: false,
                         neighborCount: 0
                     });
+                }
+                grid.push(row);
+            }
 
-                    // DOM Element
+            renderGridStructure(true); // Create DOM
+            saveGame(); // Initial Save
+        }
+
+        function renderGridStructure(isNew) {
+            container.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+            container.innerHTML = '';
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     cell.id = `cell-${r}-${c}`;
                     cell.onclick = () => handleInput(r, c);
+                    
+                    // If restoring, apply classes
+                    if (!isNew) {
+                        const state = grid[r][c];
+                        if (state.isRevealed) {
+                            cell.classList.add('revealed');
+                            if (state.isMine) {
+                                cell.classList.add('exploded');
+                                cell.innerHTML = ICON_BOMB;
+                            } else if (state.neighborCount > 0) {
+                                cell.innerText = state.neighborCount;
+                            }
+                        } else if (state.isFlagged) {
+                            cell.innerHTML = ICON_FLAG;
+                            // Post-render style adjustment
+                            setTimeout(() => { if(cell.querySelector('svg')) cell.querySelector('svg').style.width = "60%"; }, 0);
+                        }
+                    }
+
                     container.appendChild(cell);
                 }
-                grid.push(row);
             }
-            // Trigger resize to fix heights
             resizeGrid();
         }
 
-        // --- LOGIC ---
         function placeMines(safeR, safeC) {
             let placed = 0;
             while (placed < MINES) {
@@ -422,7 +652,6 @@
             }
         }
 
-        // --- INTERACTION ---
         function toggleMode() {
             if (mode === 'dig') {
                 mode = 'flag';
@@ -447,6 +676,7 @@
             } else {
                 revealCell(r, c);
             }
+            saveGame();
         }
 
         function toggleFlag(r, c) {
@@ -457,7 +687,6 @@
             
             const el = document.getElementById(`cell-${r}-${c}`);
             el.innerHTML = cell.isFlagged ? ICON_FLAG : '';
-            // Make sure flag icon fits
             if(cell.isFlagged) el.querySelector('svg').style.width = "60%";
 
             flagsUsed += cell.isFlagged ? 1 : -1;
@@ -507,9 +736,11 @@
         }
 
         function startTimer() {
+            if (timerId) return;
             timerId = setInterval(() => {
                 time++;
                 timeDisplay.innerText = String(time).padStart(3, '0');
+                if (time % 5 === 0) saveGame(); // Periodic save
             }, 1000);
         }
 
@@ -529,6 +760,7 @@
         function endGame(win) {
             gameOver = true;
             clearInterval(timerId);
+            clearSave(); // Clear partial progress
             
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
