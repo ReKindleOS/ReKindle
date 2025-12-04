@@ -450,6 +450,12 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+        // --- PROXY CONFIG ---
+        const PROXIES = [
+            "https://corsproxy.io/?",
+            "https://api.codetabs.com/v1/proxy?quest="
+        ];
+
         // --- STATE ---
         let currentSub = 'all';
         let viewState = 'list'; // 'list' or 'thread'
@@ -522,16 +528,27 @@
             updateSaveBtn();
         }
 
+        // --- PROXY FETCH HELPER ---
+        async function fetchDataWithFallback(targetUrl) {
+            for (let proxy of PROXIES) {
+                try {
+                    const res = await fetch(proxy + encodeURIComponent(targetUrl));
+                    if (res.ok) {
+                        return await res.json();
+                    }
+                } catch (e) {
+                    console.warn("Proxy failed: " + proxy, e);
+                }
+            }
+            throw new Error("All proxies failed to load data.");
+        }
+
         // --- SIDEBAR LOGIC ---
         function toggleSave() {
-            // Store using the display casing for better UX in sidebar, 
-            // though searching is case insensitive.
-            // If already saved (case-insensitive check), remove it.
             const subLower = currentSub.toLowerCase();
             const idx = savedSubs.findIndex(s => s.toLowerCase() === subLower);
             
             if (idx === -1) {
-                // Add currentSub as typed/displayed
                 savedSubs.push(currentSub);
             } else {
                 savedSubs.splice(idx, 1);
@@ -577,7 +594,6 @@
             const list = document.getElementById('saved-list');
             list.innerHTML = '';
             
-            // Sort case-insensitively for display
             const sortedSubs = [...savedSubs].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
             sortedSubs.forEach(sub => {
@@ -617,10 +633,11 @@
             content.innerHTML = '<div class="loading">Fetching r/' + sub + '...</div>';
 
             try {
-                const res = await fetch(`https://www.reddit.com/r/${sub}/.json?limit=25`);
-                const data = await res.json();
+                // Fetch via Proxy Fallback
+                const targetUrl = `https://www.reddit.com/r/${sub}/.json?limit=25`;
+                const data = await fetchDataWithFallback(targetUrl);
                 
-                if (!data.data || !data.data.children) throw new Error("No data");
+                if (!data.data || !data.data.children) throw new Error("No data found");
                 
                 const posts = data.data.children;
 
@@ -663,8 +680,10 @@
 
             try {
                 const cleanLink = permalink.replace(/\/$/, "");
-                const res = await fetch(`https://www.reddit.com${cleanLink}.json`);
-                const data = await res.json();
+                const targetUrl = `https://www.reddit.com${cleanLink}.json`;
+                
+                // Fetch via Proxy Fallback
+                const data = await fetchDataWithFallback(targetUrl);
 
                 const originalPost = data[0].data.children[0].data;
                 const comments = data[1].data.children;
