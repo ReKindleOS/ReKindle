@@ -139,6 +139,14 @@ const APPS = [
 
     // --- LIFESTYLE ---
     { 
+        id: 'libby', 
+        name: 'Libby', 
+        cat: 'lifestyle',
+        beta: true,          
+        desc: 'Library books',
+        icon: '<path d="M6 6 C6 6, 12 4, 16 6 C 20 4, 26 6, 26 6 V 26 C 26 26, 20 24, 16 26 C 12 24, 6 26, 6 26 Z M16 6 V 26" fill="none" stroke="black" stroke-width="2"/>' 
+    },
+    { 
         id: 'kindlechat', 
         name: 'KindleChat', 
         cat: 'lifestyle',
