@@ -98,8 +98,6 @@ You are free to share and adapt the work for non-commercial purposes, provided y
 
 Based on the code files provided, the ReKindle project relies on three distinct cloud services: **Firebase** (for general data sync and authentication), **Google Cloud APIs** (for Tasks, Calendar, and Contacts integration), and **Cloudflare Workers** (for AI chat and OCR features).
 
-Here is a draft of the **Cloud Setup & Configuration** section you can add to your `README.md` or documentation.
-
 ***
 
 ## ☁️ Cloud & API Configuration (For Developers)
