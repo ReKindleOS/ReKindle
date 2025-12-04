@@ -1,4 +1,7 @@
-const CACHE_NAME = 'rekindle-os-v1';
+// 1. Version Bump
+const CACHE_NAME = 'rekindle-os-v4';
+
+// 2. Clean URLs in Cache List (Removed .html from apps)
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -7,72 +10,84 @@ const ASSETS_TO_CACHE = [
     './logo.svg',
     './LICENSE.md',
     // Core System Apps
-    './settings.html',
-    './browser.html',
-    './privacy.html',
+    './settings',
+    './browser',
+    './privacy',
     // Productivity
-    './tasks.html',
-    './calendar.html',
-    './contacts.html',
-    './notes.html',
-    './quicktodo.html',
-    './pomodoro.html',
-    './streak.html',
+    './tasks',
+    './calendar',
+    './contacts',
+    './notes',
+    './quicktodo',
+    './pomodoro',
+    './streak',
     // Tools
-    './calculator.html',
-    './converter.html',
-    './clocks.html',
-    './weather.html',
-    './stocks.html',
-    './countdown.html',
-    './translate.html',
-    './dictionary.html',
-    './maps.html',
-    './chat.html',
+    './calculator',
+    './converter',
+    './clocks',
+    './weather',
+    './stocks',
+    './countdown',
+    './translate',
+    './dictionary',
+    './maps',
+    './chat',
     // Lifestyle & Reading
-    './reader.html',
-    './books.html',
-    './rssreader.html',
-    './newspaper.html',
-    './reading.html',
-    './cookbook.html',
-    './reddit.html',
-    './wikipedia.html',
-    './history.html',
-    './einksites.html',
-    './napkin.html',
-    './kindlechat.html',
-    './standardebooks.html',
+    './reader',
+    './books',
+    './rssreader',
+    './newspaper',
+    './reading',
+    './cookbook',
+    './reddit',
+    './wikipedia',
+    './history',
+    './einksites',
+    './napkin',
+    './kindlechat',
+    './standardebooks',
     // Games
-    './wordle.html',
-    './crossword.html',
-    './sudoku.html',
-    './solitaire.html',
-    './minesweeper.html',
-    './2048.html',
-    './tetris.html',
-    './snake.html',
-    './chess.html',
-    './blackjack.html',
-    './memory.html',
-    './hangman.html',
-    './anagrams.html',
-    './wordsearch.html',
-    './jigsaw.html',
-    './bindings.html',
-    './spellbound.html',
-    './nerdle.html',
-    './words.html',
-    './breathing.html',
+    './wordle',
+    './crossword',
+    './sudoku',
+    './solitaire',
+    './minesweeper',
+    './2048',
+    './tetris',
+    './snake',
+    './chess',
+    './blackjack',
+    './memory',
+    './hangman',
+    './anagrams',
+    './wordsearch',
+    './jigsaw',
+    './bindings',
+    './spellbound',
+    './nerdle',
+    './words',
+    './breathing',
     // Multiplayer
-    './2pchess.html',
-    './2pbattleships.html',
-    './2pconnect4.html',
-    './2ptictactoe.html'
+    './2pchess',
+    './2pbattleships',
+    './2pconnect4',
+    './2ptictactoe'
 ];
 
-// Install Event: Cache all files
+// Helper to clean redirected responses (Fixes Safari/Chrome errors)
+function cleanResponse(response) {
+    if (!response || !response.redirected) return response;
+
+    const body = response.body;
+    return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+    });
+}
+
 self.addEventListener('install', (event) => {
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
@@ -82,22 +97,8 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// Fetch Event: Serve from cache, fall back to network
-self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                // Cache hit - return response
-                if (response) {
-                    return response;
-                }
-                return fetch(event.request);
-            })
-    );
-});
-
-// Activate Event: Clean up old caches
 self.addEventListener('activate', (event) => {
+    event.waitUntil(clients.claim());
     const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
         caches.keys().then((cacheNames) => {
@@ -109,5 +110,19 @@ self.addEventListener('activate', (event) => {
                 })
             );
         })
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request)
+            .then((response) => {
+                if (response) {
+                    return cleanResponse(response);
+                }
+                return fetch(event.request).then(networkResponse => {
+                    return cleanResponse(networkResponse);
+                });
+            })
     );
 });
