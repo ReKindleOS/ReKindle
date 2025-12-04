@@ -4,6 +4,31 @@
 
 ReKindle is a free, web-based dashboard and operating system designed specifically for E-ink devices (Kindle Scribe, Paperwhite, Boox, etc.). It transforms your simple e-reader into a powerful productivity tool, gaming console, and news hub—all running directly in the browser.
 
+## Gallery
+
+<p align="center">
+  <img src="screenshots/rekindle-1.png" width="30%" />
+  <img src="screenshots/rekindle-2.png" width="30%" />
+  <img src="screenshots/rekindle-3.png" width="30%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/rekindle-4.png" width="30%" />
+  <img src="screenshots/rekindle-5.png" width="30%" />
+  <img src="screenshots/rekindle-6.png" width="30%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/rekindle-7.png" width="30%" />
+  <img src="screenshots/rekindle-8.png" width="30%" />
+  <img src="screenshots/rekindle-9.png" width="30%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/rekindle-10.png" width="30%" />
+  <img src="screenshots/rekindle-11.png" width="30%" />
+</p>
+
 ## Features
 
 ReKindle operates in two modes: **Guest Mode** (all data stored locally on your device) and **Cloud Mode** (create an account to sync data across devices).
