@@ -70,6 +70,47 @@ ReKindle is designed with privacy as a priority.
 
 You are free to share and adapt the work for non-commercial purposes, provided you give appropriate credit and distribute your contributions under the same license.
 
+
+Based on the code files provided, the ReKindle project relies on three distinct cloud services: **Firebase** (for general data sync and authentication), **Google Cloud APIs** (for Tasks, Calendar, and Contacts integration), and **Cloudflare Workers** (for AI chat and OCR features).
+
+Here is a draft of the **Cloud Setup & Configuration** section you can add to your `README.md` or documentation.
+
+***
+
+## ☁️ Cloud & API Configuration (For Developers)
+
+To enable full functionality (cloud sync, Google integrations, and AI features), you will need to set up your own backend services.
+
+### 1. Firebase Setup (Required for Sync & Auth)
+ReKindle uses Google Firebase for user authentication and storing app data (like notes, game stats, and settings) across devices.
+
+1.  Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project.
+2.  **Authentication:** Go to **Build > Authentication** and enable the **Email/Password** sign-in method.
+3.  **Database:** Go to **Build > Firestore Database** and create a database. Set the security rules to allow authenticated users to read/write their own data.
+4.  **Web App:** In Project Overview, click the Web icon (`</>`) to register an app. Copy the `firebaseConfig` object provided.
+5.  **Update Code:** Replace the `const firebaseConfig = { ... }` block in **all** app HTML files (e.g., `index.html`, `notes.html`, `todo.html`, etc.) with your own configuration.
+
+### 2. Google API Setup (Optional for Google Sync)
+To sync with Google Tasks, Calendar, and Contacts, you need a Google Cloud Project with the appropriate APIs enabled.
+
+1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2.  **Enable APIs:** Search for and enable the following APIs:
+    * Google Tasks API
+    * Google Calendar API
+    * Google People API (for Contacts)
+3.  **Credentials:** Create an **OAuth 2.0 Client ID** for a Web Application.
+    * Add your hosting URL (e.g., `https://your-app.com`) to **Authorized JavaScript origins**.
+    * Add your URL to **Authorized redirect URIs**.
+4.  **Update Code:** Copy your **Client ID**. Open `tasks.html`, `calendar.html`, and `contacts.html` and replace the `CLIENT_ID` constant with your new ID.
+
+### 3. Cloudflare Workers (Optional for AI & OCR)
+The **Oracle AI** (Chat) and **Quick ToDo** (Handwriting OCR) apps use serverless functions to proxy requests to AI providers securely.
+
+* **Oracle AI:** Requires a worker to proxy requests to the Google Gemini API. Update `WORKER_URL` in `chat.html`.
+* **Quick ToDo:** Requires a worker to handle image processing for OCR. Update `WORKER_URL` in `quicktodo.html`.
+
+*> **Note:** If you do not configure these, the app will default to **Guest Mode** (local storage only), and AI/Google features will be disabled.*
+
 ---
 
 *Created by Ukiyo*
