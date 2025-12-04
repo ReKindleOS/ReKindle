@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rolodex</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --highlight: #000000;
+            --highlight-text: #ffffff;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px black;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            text-transform: uppercase;
+            font-size: 1rem;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white;
+            z-index: 2; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem; line-height: 1; box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        /* ADD BTN */
+        .add-btn {
+            position: absolute; right: 10px; z-index: 2; background: white;
+            border: 2px solid black; font-weight: bold; padding: 2px 10px;
+            cursor: pointer; font-size: 0.8rem; box-shadow: 2px 2px 0 black;
+            display: none;
+        }
+        .add-btn:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        .content-area {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .contact-list-pane {
+            width: 40%;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .search-box {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            border: 2px solid black;
+            box-sizing: border-box;
+        }
+
+        #list-container {
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .contact-item {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            font-size: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .contact-item.selected {
+            background-color: var(--highlight);
+            color: var(--highlight-text);
+        }
+
+        .details-pane {
+            width: 60%;
+            padding: 20px;
+            overflow-y: auto;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header {
+            border-bottom: 4px double black;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .contact-name { font-size: 1.8rem; font-weight: 900; margin: 0; }
+        .contact-org { font-size: 1rem; font-style: italic; color: #555; margin-top: 5px; }
+        .field-group { margin-bottom: 20px; }
+        .field-label { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #ccc; display: block; }
+        .field-value { font-size: 1.2rem; font-family: "Courier New", monospace; margin-bottom: 5px; display: block; }
+
+        .del-btn { color: red; font-weight: bold; cursor: pointer; display: none; } /* Only native */
+
+        #auth-overlay {
+            position: absolute; top: 35px; left: 0; width: 100%; height: calc(100% - 35px);
+            background: rgba(255,255,255,0.95); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100; text-align: center;
+        }
+
+        .sys-btn { padding: 15px 30px; font-size: 1.2rem; font-weight: bold; background: white; color: black; border: 2px solid black; cursor: pointer; box-shadow: 4px 4px 0 black; }
+        .sys-btn:active { background: black; color: white; transform: translate(2px, 2px); box-shadow: none; }
+
+        /* MODAL */
+        #modal-overlay, #sync-choice-modal {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9); z-index: 200; align-items: center; justify-content: center;
+        }
+        .modal-box {
+            background: white; border: 2px solid black; box-shadow: 8px 8px 0 black; padding: 20px; width: 300px; text-align: center;
+        }
+        .modal-box input { width: 90%; margin: 5px 0; }
+        .modal-btns { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+        
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text" id="app-title">Rolodex</span>
+            <button class="add-btn" id="add-btn" onclick="openModal()">+ New</button>
+        </div>
+        
+        <div class="content-area">
+            <div class="contact-list-pane">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Search..." onkeyup="filterContacts()">
+                </div>
+                <div id="list-container"></div>
+            </div>
+            <div class="details-pane" id="details-pane">
+                <div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Select a contact.</div>
+            </div>
+        </div>
+        
+        <div id="status-bar">Local Mode</div>
+
+        <div id="auth-overlay">
+            <h2 style="margin-bottom:10px;">Google Contacts</h2>
+            <p style="margin-bottom:20px;">Connect to access address book.</p>
+            <button class="sys-btn" onclick="oauthSignIn()">Connect</button>
+        </div>
+    </div>
+
+    <!-- ADD MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3>New Contact</h3>
+            <input type="text" id="c-name" placeholder="Name">
+            <input type="text" id="c-phone" placeholder="Phone">
+            <input type="text" id="c-email" placeholder="Email">
+            <input type="text" id="c-org" placeholder="Organization">
+            <div style="margin-top:15px; display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" style="padding:5px 15px; font-size:1rem; box-shadow:2px 2px 0 black;" onclick="saveNativeContact()">Save</button>
+                <button class="sys-btn" style="padding:5px 15px; font-size:1rem; box-shadow:2px 2px 0 black;" onclick="document.getElementById('modal-overlay').style.display='none'">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SYNC CHOICE MODAL -->
+    <div id="sync-choice-modal">
+        <div class="modal-box">
+            <h3>Google Contacts Integration</h3>
+            <p style="margin:15px 0;">Enable Google Contacts sync or continue with Local Storage?</p>
+            <div class="modal-btns">
+                <button class="sys-btn" style="padding:10px 20px; font-size:1rem;" onclick="setSyncPreference(true)">Use Google</button>
+                <button class="sys-btn" style="padding:10px 20px; font-size:1rem;" onclick="setSyncPreference(false)">Use Local</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+
+    <script>
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // Google Config
+        const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/contacts.readonly';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/people/v1/rest';
+
+        let contacts = [];
+        let currentUser = null;
+        let db = null;
+        let auth = null;
+        let googleEnabled = false;
+        let cardDavUrl = localStorage.getItem('rekindle_carddav_url');
+
+        window.onload = function() {
+            loadWallpaper();
+            
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    checkSyncSettings();
+                } else {
+                    initNativeMode();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            if(img) document.body.style.backgroundImage = img;
+        }
+
+        function checkSyncSettings() {
+            const setting = localStorage.getItem('rekindle_google_contacts_enabled');
+            
+            if (setting === 'true') {
+                googleEnabled = true;
+                initGoogleMode();
+            } else if (setting === 'false') {
+                googleEnabled = false;
+                document.getElementById('status-bar').innerText = "Synced: " + currentUser.email;
+                initNativeMode();
+            } else {
+                // Not set
+                document.getElementById('sync-choice-modal').style.display = 'flex';
+            }
+        }
+
+        function setSyncPreference(enableGoogle) {
+            document.getElementById('sync-choice-modal').style.display = 'none';
+            localStorage.setItem('rekindle_google_contacts_enabled', enableGoogle);
+            
+            // Save preference to cloud
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set({
+                google_contacts: enableGoogle
+            }, { merge: true });
+
+            if (enableGoogle) {
+                googleEnabled = true;
+                initGoogleMode();
+            } else {
+                googleEnabled = false;
+                document.getElementById('status-bar').innerText = "Synced: " + currentUser.email;
+                initNativeMode();
+            }
+        }
+
+        // --- RENDER ---
+        function renderList(list) {
+            const container = document.getElementById('list-container');
+            container.innerHTML = '';
+            
+            // Sort by name
+            if(list && list.length > 0) {
+                list.sort((a,b) => {
+                    const nameA = a.name || (a.names ? a.names[0].displayName : "");
+                    const nameB = b.name || (b.names ? b.names[0].displayName : "");
+                    return nameA.localeCompare(nameB);
+                });
+            }
+
+            if(!list || list.length === 0) {
+                container.innerHTML = '<div style="padding:20px;text-align:center;">No contacts.</div>';
+                return;
+            }
+            list.forEach(person => {
+                const name = person.name || (person.names ? person.names[0].displayName : "No Name");
+                const div = document.createElement('div');
+                div.className = 'contact-item';
+                div.innerText = name;
+                div.onclick = () => showDetails(person, div);
+                container.appendChild(div);
+            });
+        }
+
+        function showDetails(person, el) {
+            document.querySelectorAll('.contact-item').forEach(e => e.classList.remove('selected'));
+            el.classList.add('selected');
+            
+            const pane = document.getElementById('details-pane');
+            const name = person.name || (person.names ? person.names[0].displayName : "No Name");
+            const org = person.org || (person.organizations ? person.organizations[0].name : "");
+            const phone = person.phone || (person.phoneNumbers ? person.phoneNumbers[0].value : "");
+            const email = person.email || (person.emailAddresses ? person.emailAddresses[0].value : "");
+
+            // Only show delete button if editing is allowed (native/cloud)
+            const isReadOnly = googleEnabled || cardDavUrl;
+            
+            let html = `
+                <div class="card-header">
+                    <div>
+                        <h2 class="contact-name">${name}</h2>
+                        <div class="contact-org">${org}</div>
+                    </div>
+                    ${ !isReadOnly ? `<span class="del-btn" style="display:block;" onclick="deleteContact('${person.id}')">Delete</span>` : '' }
+                </div>
+            `;
+            if(phone) html += `<div class="field-group"><span class="field-label">Phone</span><span class="field-value">${phone}</span></div>`;
+            if(email) html += `<div class="field-group"><span class="field-label">Email</span><span class="field-value">${email}</span></div>`;
+            
+            pane.innerHTML = html;
+        }
+
+        function filterContacts() {
+            const q = document.getElementById('search-input').value.toLowerCase();
+            const filtered = contacts.filter(p => {
+                const n = p.name || (p.names ? p.names[0].displayName : "");
+                return n.toLowerCase().includes(q);
+            });
+            renderList(filtered);
+        }
+
+        // --- GOOGLE ---
+        function initGoogleMode() {
+            document.getElementById('app-title').innerText = "Rolodex (Google)";
+            gapi.load('client', async () => {
+                await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                
+                const fragmentString = location.hash.substring(1);
+                const params = new URLSearchParams(fragmentString);
+                const newAccessToken = params.get('access_token');
+
+                if (newAccessToken) {
+                    localStorage.setItem('google_contacts_token', newAccessToken);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    gapi.client.setToken({ access_token: newAccessToken });
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    loadGoogleContacts();
+                } else {
+                    const token = localStorage.getItem('google_contacts_token');
+                    if (token) {
+                        gapi.client.setToken({ access_token: token });
+                        document.getElementById('auth-overlay').style.display = 'none';
+                        loadGoogleContacts();
+                    } else {
+                        // Auto-login logic: check for error to avoid loops, else redirect
+                        if (!location.hash.includes('error=')) {
+                            // Show connecting state in overlay briefly before redirect
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                            document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
+                            document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
+                            oauthSignIn();
+                        } else {
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                        }
+                    }
+                }
+            });
+        }
+
+        function oauthSignIn() {
+            const endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            const form = document.createElement('form');
+            form.setAttribute('method', 'GET');
+            form.setAttribute('action', endpoint);
+            const params = { 'client_id': CLIENT_ID, 'redirect_uri': window.location.href.split('#')[0], 'response_type': 'token', 'scope': SCOPES };
+            for (var p in params) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'hidden');
+                input.setAttribute('name', p);
+                input.setAttribute('value', params[p]);
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        async function loadGoogleContacts() {
+            try {
+                const res = await gapi.client.people.people.connections.list({
+                    'resourceName': 'people/me', 'pageSize': 300, 'personFields': 'names,phoneNumbers,emailAddresses,organizations', 'sortOrder': 'FIRST_NAME_ASCENDING'
+                });
+                contacts = res.result.connections || [];
+                renderList(contacts);
+            } catch(e) { 
+                if(e.status === 401) {
+                    // Token expired during use, re-auth
+                    oauthSignIn();
+                }
+            }
+        }
+
+        // --- NATIVE / CARDDAV ---
+        function initNativeMode() {
+            document.getElementById('app-title').innerText = "Rolodex";
+            
+            if (cardDavUrl) {
+                document.getElementById('add-btn').style.display = 'none';
+                loadCardDAVContacts();
+            } else {
+                document.getElementById('add-btn').style.display = 'block';
+                if (currentUser) loadCloudContacts();
+                else loadLocalContacts();
+            }
+        }
+
+        function loadLocalContacts() {
+            contacts = JSON.parse(localStorage.getItem('rekindle_contacts_local')) || [];
+            renderList(contacts);
+        }
+
+        function loadCloudContacts() {
+            db.collection('users').doc(currentUser.uid).collection('contacts').onSnapshot(snap => {
+                contacts = [];
+                snap.forEach(doc => contacts.push({ id: doc.id, ...doc.data() }));
+                renderList(contacts);
+            });
+        }
+        
+        async function loadCardDAVContacts() {
+            document.getElementById('status-bar').innerText = "Fetching CardDAV...";
+            // Use proxy to fetch VCF file
+            const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(cardDavUrl)}`;
+            
+            try {
+                const res = await fetch(proxyUrl);
+                const text = await res.text();
+                
+                if (!text || text.trim() === "") throw new Error("Empty VCF");
+                
+                contacts = parseVCF(text);
+                document.getElementById('status-bar').innerText = "Synced (CardDAV)";
+                renderList(contacts);
+            } catch(e) {
+                console.error(e);
+                document.getElementById('status-bar').innerText = "CardDAV Error";
+                // Fallback
+                if (!contacts.length && currentUser) loadCloudContacts();
+                else if (!contacts.length) loadLocalContacts();
+            }
+        }
+        
+        function parseVCF(vcfData) {
+            // Simple VCF Parser (Version 3.0 mostly)
+            const cards = [];
+            const lines = vcfData.split('\n');
+            let currentCard = {};
+            
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('BEGIN:VCARD')) {
+                    currentCard = {};
+                } else if (line.startsWith('END:VCARD')) {
+                    if (currentCard.name) {
+                        currentCard.id = 'dav_' + Math.random();
+                        cards.push(currentCard);
+                    }
+                } else if (line.startsWith('FN:')) {
+                    currentCard.name = line.substring(3);
+                } else if (line.startsWith('TEL')) {
+                    // Extract number from TEL;TYPE=CELL:555-5555
+                    const colonIdx = line.indexOf(':');
+                    if (colonIdx > -1) currentCard.phone = line.substring(colonIdx + 1);
+                } else if (line.startsWith('EMAIL')) {
+                    const colonIdx = line.indexOf(':');
+                    if (colonIdx > -1) currentCard.email = line.substring(colonIdx + 1);
+                } else if (line.startsWith('ORG:')) {
+                    currentCard.org = line.substring(4);
+                }
+            });
+            return cards;
+        }
+
+        function openModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('c-name').value = '';
+            document.getElementById('c-phone').value = '';
+            document.getElementById('c-email').value = '';
+            document.getElementById('c-org').value = '';
+        }
+
+        function saveNativeContact() {
+            const name = document.getElementById('c-name').value;
+            if(!name) return;
+            
+            const newC = {
+                name: name,
+                phone: document.getElementById('c-phone').value,
+                email: document.getElementById('c-email').value,
+                org: document.getElementById('c-org').value
+            };
+
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('contacts').add(newC);
+            } else {
+                newC.id = Date.now().toString();
+                contacts.push(newC);
+                localStorage.setItem('rekindle_contacts_local', JSON.stringify(contacts));
+                renderList(contacts);
+            }
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        function deleteContact(id) {
+            if(!confirm("Delete contact?")) return;
+            
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('contacts').doc(id).delete();
+                document.getElementById('details-pane').innerHTML = '<div style="text-align:center; margin-top:50px;">Deleted.</div>';
+            } else {
+                contacts = contacts.filter(c => c.id !== id);
+                localStorage.setItem('rekindle_contacts_local', JSON.stringify(contacts));
+                renderList(contacts);
+                document.getElementById('details-pane').innerHTML = '<div style="text-align:center; margin-top:50px;">Deleted.</div>';
+            }
+        }
+
+    </script>
+</body>
+</html>

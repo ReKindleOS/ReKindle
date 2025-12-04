@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Napkin</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Default Background (Overridden by JS) */
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* FIX: Centers Vertically */
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none; /* Prevent pull-to-refresh/scrolling globally */
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT / CANVAS CONTAINER */
+        .window-content {
+            flex-grow: 1;
+            position: relative;
+            background-color: #ffffff;
+            /* Faint Grid for guidance */
+            background-image: linear-gradient(#eee 1px, transparent 1px), linear-gradient(90deg, #eee 1px, transparent 1px);
+            background-size: 40px 40px;
+            overflow: hidden; /* Prevent canvas from stretching window */
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* Critical for stylus */
+            cursor: crosshair;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Napkin</span>
+            
+            <div class="controls">
+                <button class="sys-btn active" id="pen-btn" onclick="setTool('pen')">Pen</button>
+                <button class="sys-btn" id="marker-btn" onclick="setTool('marker')">Bold</button>
+                <button class="sys-btn" onclick="clearCanvas()">Clear</button>
+            </div>
+        </div>
+
+        <div class="window-content" id="canvas-container">
+            <canvas id="drawing-board"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const TOOLS = {
+            pen: { width: 2, color: '#000000' },
+            marker: { width: 8, color: '#000000' }
+        };
+        
+        let isDrawing = false;
+        let currentTool = 'pen';
+        
+        const canvas = document.getElementById('drawing-board');
+        const container = document.getElementById('canvas-container');
+        
+        // Optimized context for performance
+        // alpha: false improves performance as browser doesn't handle transparency
+        // desynchronized: true reduces latency for stylus input
+        const ctx = canvas.getContext('2d');
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            resizeCanvas();
+        };
+
+        // --- WALLPAPER LOADER ---
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- CANVAS SETUP ---
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            
+            // PERFORMANCE OPTIMIZATION:
+            // Kindle Scribe has high DPI. Rendering full resolution (dpr ~3) is slow.
+            // Capping DPR at 1.5 gives crisp enough lines but significantly faster performance.
+            const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            // Scale context to match custom DPR
+            ctx.scale(dpr, dpr);
+            
+            // Fill white background (since alpha is false)
+            clearCanvas(false);
+            
+            setContextStyles();
+        }
+
+        function setContextStyles() {
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            const settings = TOOLS[currentTool];
+            ctx.lineWidth = settings.width;
+            ctx.strokeStyle = settings.color;
+        }
+
+        // Handle window resize (e.g. rotation)
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(resizeCanvas, 100);
+        });
+
+        // --- DRAWING LOGIC ---
+
+        function startDrawing(e) {
+            // Only accept primary pointer (stylus/finger)
+            if (!e.isPrimary) return;
+            
+            e.preventDefault(); // Stop scrolling
+            isDrawing = true;
+            
+            ctx.beginPath();
+            // Draw a single dot in case it's just a tap
+            ctx.moveTo(e.offsetX, e.offsetY);
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+            
+            // Reset path to start valid stroke
+            ctx.beginPath();
+            ctx.moveTo(e.offsetX, e.offsetY);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault(); // Stop scrolling
+
+            // Coalesced events help catch points between frames for smoother curves
+            // Essential for high-frequency stylus input
+            if (e.getCoalescedEvents) {
+                const events = e.getCoalescedEvents();
+                for (const event of events) {
+                    ctx.lineTo(event.offsetX, event.offsetY);
+                }
+            } else {
+                ctx.lineTo(e.offsetX, e.offsetY);
+            }
+            
+            ctx.stroke();
+            
+            // PERFORMANCE: Breaking the path periodically can help some renderers
+            // but keeping one path usually ensures smoother joints.
+            // We keep the path open during the stroke.
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            isDrawing = false;
+            ctx.closePath();
+        }
+
+        // Attach Pointer Events (Modern standard, handles Mouse + Touch + Pen)
+        canvas.addEventListener('pointerdown', startDrawing);
+        canvas.addEventListener('pointermove', draw);
+        canvas.addEventListener('pointerup', stopDrawing);
+        canvas.addEventListener('pointerout', stopDrawing);
+        canvas.addEventListener('pointercancel', stopDrawing);
+
+        // --- CONTROLS ---
+        function setTool(tool) {
+            currentTool = tool;
+            setContextStyles();
+
+            document.querySelectorAll('.sys-btn').forEach(b => b.classList.remove('active'));
+            
+            // Visual Toggle
+            if (tool === 'pen') document.getElementById('pen-btn').classList.add('active');
+            if (tool === 'marker') document.getElementById('marker-btn').classList.add('active');
+        }
+
+        function clearCanvas(confirmAction = true) {
+            if (!confirmAction || confirm("Clear canvas?")) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                setContextStyles(); // Restore styles after fill
+            }
+        }
+
+    </script>
+</body>
+</html>

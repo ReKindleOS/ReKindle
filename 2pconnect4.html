@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Connect</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --chip-p1: #000000;
+            --chip-p2: #ffffff;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTENT */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 8px 0;
+            margin-bottom: 15px;
+            background: #eee;
+            font-family: "Courier New", monospace;
+        }
+
+        /* GAME BOARD */
+        .board-wrapper {
+            background: black;
+            padding: 6px;
+            border: 2px solid black;
+            border-bottom-width: 8px; 
+            width: 100%;
+            max-width: 100%; /* Changed to fill width */
+            box-sizing: border-box;
+        }
+
+        .board {
+            display: grid;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            flex-grow: 1;
+        }
+
+        .column:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* Responsive Slots - Height controlled by JS */
+        .slot {
+            width: 100%;
+            /* Height set dynamically via resizeSlots() */
+            border: 2px solid #999;
+            border-radius: 50%;
+            background: white;
+            position: relative; /* For absolute centering of chip */
+            box-sizing: border-box;
+        }
+
+        /* PIECES */
+        .chip {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            border: 2px solid black;
+            box-sizing: border-box;
+            
+            /* Absolute centering prevents container stretching */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .chip.p1 {
+            background-color: var(--chip-p1);
+        }
+
+        .chip.p2 {
+            background-color: var(--chip-p2);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, #999 2px, #999 3px);
+        }
+
+        /* Win Animation */
+        .slot.winner {
+            background-color: black;
+            border-color: black;
+        }
+        .slot.winner .chip {
+            filter: invert(1);
+        }
+
+        /* CONTROLS */
+        .controls {
+            margin-top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            text-transform: uppercase;
+            flex: 1;
+            max-width: 150px;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Connect</span>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">Player 1's Turn (Black)</div>
+
+            <div class="board-wrapper">
+                <div class="board" id="game-board">
+                    </div>
+            </div>
+
+            <div class="controls">
+                <button class="sys-btn" onclick="toggleMode()" id="mode-btn">Mode: 4</button>
+                <button class="sys-btn" onclick="resetGame()">Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const P1 = 1; // Black
+        const P2 = 2; // White/Pattern
+        
+        let ROWS = 6;
+        let COLS = 7;
+        let WIN_LENGTH = 4;
+
+        // --- STATE ---
+        let board = [];
+        let currentPlayer = P1;
+        let gameActive = true;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            initGame();
+            
+            // Listen for window resize to keep circles square
+            window.addEventListener('resize', resizeSlots);
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function initGame() {
+            board = Array(COLS).fill(null).map(() => Array(ROWS).fill(0));
+            currentPlayer = P1;
+            gameActive = true;
+            updateStatus();
+            renderBoard();
+        }
+
+        function toggleMode() {
+            if (WIN_LENGTH === 4) {
+                setMode(5);
+            } else {
+                setMode(4);
+            }
+        }
+
+        function setMode(num) {
+            WIN_LENGTH = num;
+            if (num === 4) {
+                ROWS = 6; 
+                COLS = 7;
+                document.querySelector('.title-text').innerText = "4 in a Row";
+            } else {
+                ROWS = 7; 
+                COLS = 9;
+                document.querySelector('.title-text').innerText = "5 in a Row";
+            }
+            document.getElementById('mode-btn').innerText = `Mode: ${num}`;
+            initGame();
+        }
+
+        // --- RENDER ---
+        function renderBoard() {
+            const container = document.getElementById('game-board');
+            container.innerHTML = '';
+            
+            container.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+
+            for (let c = 0; c < COLS; c++) {
+                const colDiv = document.createElement('div');
+                colDiv.className = 'column';
+                colDiv.onclick = () => dropPiece(c);
+
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    slot.id = `slot-${c}-${r}`;
+                    
+                    const cellVal = board[c][r];
+                    if (cellVal !== 0) {
+                        const chip = document.createElement('div');
+                        chip.className = `chip ${cellVal === P1 ? 'p1' : 'p2'}`;
+                        slot.appendChild(chip);
+                    }
+                    
+                    colDiv.appendChild(slot);
+                }
+                container.appendChild(colDiv);
+            }
+            
+            // Force square aspect ratio using JS immediately after render
+            setTimeout(resizeSlots, 0);
+        }
+        
+        // --- JS RESIZE LOGIC ---
+        function resizeSlots() {
+            const columns = document.querySelectorAll('.column');
+            if (columns.length === 0) return;
+            
+            // Get the width of a single column (all should be equal)
+            const width = columns[0].clientWidth;
+            
+            // Apply that width as height to all slots to ensure 1:1 ratio
+            const slots = document.querySelectorAll('.slot');
+            slots.forEach(s => {
+                s.style.height = width + 'px';
+            });
+        }
+
+        // --- LOGIC ---
+        function dropPiece(colIdx) {
+            if (!gameActive) return;
+
+            const colArr = board[colIdx];
+            const rowIdx = colArr.indexOf(0);
+
+            if (rowIdx === -1) return;
+
+            board[colIdx][rowIdx] = currentPlayer;
+            
+            const slot = document.getElementById(`slot-${colIdx}-${rowIdx}`);
+            const chip = document.createElement('div');
+            chip.className = `chip ${currentPlayer === P1 ? 'p1' : 'p2'}`;
+            slot.appendChild(chip);
+
+            const winCoords = checkWin(colIdx, rowIdx);
+            if (winCoords) {
+                gameActive = false;
+                highlightWin(winCoords);
+                const pName = currentPlayer === P1 ? "Player 1" : "Player 2";
+                document.getElementById('status-bar').innerText = `${pName} Wins!`;
+                flashScreen();
+            } else if (checkDraw()) {
+                gameActive = false;
+                document.getElementById('status-bar').innerText = "Draw!";
+            } else {
+                currentPlayer = currentPlayer === P1 ? P2 : P1;
+                updateStatus();
+            }
+        }
+
+        function updateStatus() {
+            const pName = currentPlayer === P1 ? "Player 1 (Black)" : "Player 2 (White)";
+            document.getElementById('status-bar').innerText = `${pName}'s Turn`;
+        }
+
+        function checkDraw() {
+            return board.every(col => col.every(cell => cell !== 0));
+        }
+
+        function checkWin(c, r) {
+            const player = board[c][r];
+            const directions = [
+                [[0, 1], [0, -1]], // Vertical
+                [[1, 0], [-1, 0]], // Horizontal
+                [[1, 1], [-1, -1]], // Diagonal /
+                [[1, -1], [-1, 1]]  // Diagonal \
+            ];
+
+            for (let axis of directions) {
+                let count = 1;
+                let winningSlots = [{c, r}];
+
+                for (let dir of axis) {
+                    let dc = dir[0];
+                    let dr = dir[1];
+                    let nextC = c + dc;
+                    let nextR = r + dr;
+
+                    while (
+                        nextC >= 0 && nextC < COLS &&
+                        nextR >= 0 && nextR < ROWS &&
+                        board[nextC][nextR] === player
+                    ) {
+                        count++;
+                        winningSlots.push({c: nextC, r: nextR});
+                        nextC += dc;
+                        nextR += dr;
+                    }
+                }
+
+                if (count >= WIN_LENGTH) return winningSlots;
+            }
+            return null;
+        }
+
+        function highlightWin(coords) {
+            coords.forEach(pos => {
+                const el = document.getElementById(`slot-${pos.c}-${pos.r}`);
+                if (el) el.classList.add('winner');
+            });
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        function flashScreen() {
+            const content = document.querySelector('.window-content');
+            content.style.filter = "invert(1)";
+            setTimeout(() => {
+                content.style.filter = "invert(0)";
+            }, 300);
+        }
+
+    </script>
+</body>
+</html>

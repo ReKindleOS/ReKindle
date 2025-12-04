@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Snake</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* LEADERBOARD BUTTON */
+        .leaderboard-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* GAME CONTENT */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+        }
+
+        /* SCORE BOARD */
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 300px;
+            margin-bottom: 10px;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-bottom: 2px solid black;
+            padding-bottom: 5px;
+        }
+
+        canvas {
+            border: 4px solid black;
+            background-color: #fff;
+            display: block;
+            image-rendering: pixelated;
+            max-width: 100%;
+            max-height: 50vh;
+        }
+
+        /* D-PAD CONTROLS */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 200px;
+        }
+
+        .ctrl-btn {
+            aspect-ratio: 1/1;
+            background: white;
+            border: 2px solid black;
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        .ctrl-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .btn-up { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-down { grid-column: 2; grid-row: 2; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+
+        /* MODALS */
+        #game-over, #leaderboard-modal {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+        
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+        
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Snake</span>
+            <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+        </div>
+
+        <div class="window-content">
+            <div class="score-board">
+                <span>Score: <span id="score">0</span></span>
+                <span>High: <span id="high-score">0</span></span>
+            </div>
+
+            <canvas id="gameCanvas" width="300" height="300"></canvas>
+
+            <div class="controls">
+                <div class="ctrl-btn btn-up" onpointerdown="handleInput('ArrowUp', event)">▲</div>
+                <div class="ctrl-btn btn-left" onpointerdown="handleInput('ArrowLeft', event)">◀</div>
+                <div class="ctrl-btn btn-down" onpointerdown="handleInput('ArrowDown', event)">▼</div>
+                <div class="ctrl-btn btn-right" onpointerdown="handleInput('ArrowRight', event)">▶</div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h2>GAME OVER</h2>
+            <p>Score: <span id="final-score">0</span></p>
+            <button class="sys-btn" onclick="resetGame()">Retry</button>
+        </div>
+
+        <div id="leaderboard-modal">
+            <h3>Top Snakes</h3>
+            <div class="lb-list" id="lb-content">
+                Loading...
+            </div>
+            <button class="sys-btn" onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- USER STATE ---
+        let uid = null;
+        let username = "Guest";
+        let personalHighScore = 0;
+
+        // --- GAME CONFIG ---
+        const CANVAS_SIZE = 300;
+        const GRID_SIZE = 15; // 20x20 grid
+        const TILE_COUNT = CANVAS_SIZE / GRID_SIZE;
+        const SPEED = 300; // Slower speed (300ms per frame)
+
+        // --- GAME STATE ---
+        let canvas, ctx;
+        let snake = [];
+        let velocity = { x: 0, y: 0 };
+        let food = { x: 5, y: 5 };
+        let score = 0;
+        let gameLoop;
+        let isGameOver = false;
+        let inputQueue = [];
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Fix: Wait for auth before setting username
+            auth.onAuthStateChanged(user => {
+                if(user) {
+                    uid = user.uid;
+                    // FIX: Ensure we get correct username from Auth or LocalStorage updated by index
+                    let storedName = localStorage.getItem('rekindle_username');
+                    if (!storedName && user.email) {
+                        storedName = user.email.split('@')[0];
+                    }
+                    username = storedName || "Guest";
+                }
+                loadPersonalHighScore();
+            });
+            
+            // Keyboard listener
+            document.addEventListener('keydown', (e) => handleInput(e.key));
+            
+            resetGame();
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- HIGHSCORE LOGIC ---
+        async function loadPersonalHighScore() {
+            // 1. Try LocalStorage first
+            const localHigh = localStorage.getItem('snake_highscore');
+            if (localHigh) personalHighScore = parseInt(localHigh);
+            
+            // 2. Try Firebase if logged in
+            if (uid) {
+                try {
+                    const doc = await db.collection('leaderboard_snake').doc(uid).get();
+                    if (doc.exists) {
+                        const cloudHigh = doc.data().score;
+                        if (cloudHigh > personalHighScore) {
+                            personalHighScore = cloudHigh;
+                            localStorage.setItem('snake_highscore', cloudHigh);
+                        }
+                    }
+                } catch(e) { console.error(e); }
+            }
+            document.getElementById('high-score').innerText = personalHighScore;
+        }
+
+        async function saveHighScore(newScore) {
+            if (newScore > personalHighScore) {
+                personalHighScore = newScore;
+                document.getElementById('high-score').innerText = personalHighScore;
+                localStorage.setItem('snake_highscore', personalHighScore);
+                
+                // Save to Cloud
+                if (uid) {
+                    db.collection('leaderboard_snake').doc(uid).set({
+                        username: username,
+                        score: newScore,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+        }
+
+        // --- LEADERBOARD UI ---
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            const list = document.getElementById('lb-content');
+            modal.style.display = 'block';
+            
+            if (uid) {
+                try {
+                    const snapshot = await db.collection('leaderboard_snake')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+                    
+                    list.innerHTML = '';
+                    let rank = 1;
+                    
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+                        div.innerHTML = `<span>${rank}. ${data.username}</span> <span>${data.score}</span>`;
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch(e) {
+                    list.innerHTML = "Error loading scores.";
+                }
+            } else {
+                list.innerHTML = "Log in to see global scores.";
+            }
+        }
+
+        function resetGame() {
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            score = 0;
+            document.getElementById('score').innerText = score;
+            
+            // Start position
+            snake = [
+                { x: 10, y: 10 },
+                { x: 9, y: 10 },
+                { x: 8, y: 10 }
+            ];
+            velocity = { x: 1, y: 0 }; // Start moving right
+            inputQueue = [];
+            
+            placeFood();
+            
+            if (gameLoop) clearInterval(gameLoop);
+            gameLoop = setInterval(update, SPEED);
+        }
+
+        // --- GAME LOOP ---
+        function update() {
+            // Process Input
+            if (inputQueue.length > 0) {
+                const move = inputQueue.shift();
+                applyDirection(move);
+            }
+
+            // Move Snake
+            const head = { x: snake[0].x + velocity.x, y: snake[0].y + velocity.y };
+
+            // Wall Collision
+            if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) {
+                endGame();
+                return;
+            }
+
+            // Self Collision
+            for (let part of snake) {
+                if (head.x === part.x && head.y === part.y) {
+                    endGame();
+                    return;
+                }
+            }
+
+            snake.unshift(head);
+
+            // Eat Food
+            if (head.x === food.x && head.y === food.y) {
+                score += 10;
+                document.getElementById('score').innerText = score;
+                placeFood();
+                // Don't pop tail, snake grows
+            } else {
+                snake.pop();
+            }
+
+            draw();
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Draw Snake
+            ctx.fillStyle = "black";
+            snake.forEach(part => {
+                ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 1, GRID_SIZE - 1);
+            });
+
+            // Draw Food (Circle)
+            ctx.beginPath();
+            const centerX = food.x * GRID_SIZE + GRID_SIZE / 2;
+            const centerY = food.y * GRID_SIZE + GRID_SIZE / 2;
+            ctx.arc(centerX, centerY, GRID_SIZE / 2 - 2, 0, 2 * Math.PI);
+            ctx.stroke(); // Hollow circle for E-ink style contrast
+            
+            // Inner dot
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        function placeFood() {
+            food = {
+                x: Math.floor(Math.random() * TILE_COUNT),
+                y: Math.floor(Math.random() * TILE_COUNT)
+            };
+            // Ensure food doesn't spawn on snake
+            for (let part of snake) {
+                if (food.x === part.x && food.y === part.y) {
+                    placeFood();
+                    return;
+                }
+            }
+        }
+
+        function handleInput(key, event) {
+            if(event) event.preventDefault(); // Stop scroll on touch
+            if (inputQueue.length > 2) return;
+            inputQueue.push(key);
+        }
+
+        function applyDirection(key) {
+            if ((key === 'ArrowUp' || key === 'w') && velocity.y === 0) {
+                velocity = { x: 0, y: -1 };
+            } else if ((key === 'ArrowDown' || key === 's') && velocity.y === 0) {
+                velocity = { x: 0, y: 1 };
+            } else if ((key === 'ArrowLeft' || key === 'a') && velocity.x === 0) {
+                velocity = { x: -1, y: 0 };
+            } else if ((key === 'ArrowRight' || key === 'd') && velocity.x === 0) {
+                velocity = { x: 1, y: 0 };
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(gameLoop);
+            
+            const content = document.querySelector('.window-content');
+            content.style.filter = "invert(1)";
+            setTimeout(() => { content.style.filter = "invert(0)"; }, 200);
+
+            saveHighScore(score);
+
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'block';
+        }
+
+    </script>
+</body>
+</html>

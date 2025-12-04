@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chess</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --board-light: #ffffff;
+            --board-dark: #a0a0a0; 
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME - Smaller to show wallpaper */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            /* Reduced height/width to ensure wallpaper visibility */
+            height: 90vh; 
+            width: 90vw;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        /* STATS BUTTON */
+        .stats-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active, .stats-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            padding: 5px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            flex-shrink: 0;
+        }
+
+        /* BOARD CONTAINER */
+        #board-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 0;
+            overflow: hidden; /* Prevent spillover */
+        }
+
+        /* CHESS BOARD */
+        #board {
+            /* Size set by JS */
+            border: 4px solid black;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            box-sizing: border-box;
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .square.light { background-color: var(--board-light); }
+        .square.dark { background-color: var(--board-dark); }
+
+        /* Selection & Moves */
+        .square.selected {
+            box-shadow: inset 0 0 0 4px black;
+        }
+
+        .square.last-move {
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.1) 5px, rgba(0,0,0,0.1) 10px);
+        }
+
+        /* UNICODE PIECES */
+        .piece {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            line-height: 1;
+            padding-bottom: 5%; 
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 500px;
+            margin-top: 10px;
+            flex-shrink: 0;
+            padding-bottom: 5px;
+        }
+
+        button.game-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px;
+            flex: 1;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+        }
+
+        button.game-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 250px;
+            text-align: center;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #ccc;
+        }
+
+        /* New Game Form */
+        .modal-form label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .modal-form select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 20px;
+            font-size: 1rem;
+            border: 2px solid black;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Chess</span>
+            <button class="stats-btn" onclick="showStats()">Stats</button>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">White to move</div>
+            
+            <div id="board-container">
+                <div id="board">
+                    </div>
+            </div>
+
+            <div class="controls">
+                <button class="game-btn" onclick="undoMove()">Undo</button>
+                <button class="game-btn" onclick="openNewGameModal()">New Game</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="new-game-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>New Game</h2>
+            <div class="modal-form">
+                <label>AI Lookahead (Depth)</label>
+                <select id="difficulty-select">
+                    <option value="1">1 (Easy/Fast)</option>
+                    <option value="2" selected>2 (Normal)</option>
+                    <option value="3">3 (Hard/Slow)</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="game-btn" onclick="startGame()">Start</button>
+                <button class="game-btn" onclick="closeNewGameModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="stats-modal" class="modal-overlay" onclick="closeStats()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <h2>Record</h2>
+            <div class="stat-row">
+                <span>Wins:</span> <span id="stat-wins">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Losses:</span> <span id="stat-losses">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Draws:</span> <span id="stat-draws">0</span>
+            </div>
+            <button class="game-btn" style="margin-top:15px;" onclick="closeStats()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- CONFIG ---
+        let game = new Chess();
+        let selectedSquare = null;
+        let isThinking = false;
+        let gameActive = true;
+        let currentUser = null;
+        let aiDepth = 2; // Default
+
+        // Stats
+        let stats = { wins: 0, losses: 0, draws: 0 };
+
+        // UNICODE PIECES
+        const PIECES = {
+            'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+            'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+        };
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    loadStats();
+                } else {
+                    loadLocalStats();
+                }
+                // Auto open new game modal on first load if board is empty/fresh
+                openNewGameModal();
+            });
+            
+            // Initial render
+            resizeBoard();
+        };
+
+        window.addEventListener('resize', resizeBoard);
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function resizeBoard() {
+            const container = document.getElementById('board-container');
+            const board = document.getElementById('board');
+            
+            if (container && board) {
+                const availWidth = container.clientWidth;
+                const availHeight = container.clientHeight;
+                const size = Math.min(availWidth, availHeight) * 0.95; 
+                
+                board.style.width = size + 'px';
+                board.style.height = size + 'px';
+                
+                const fontSize = size / 9;
+                const squares = document.querySelectorAll('.square');
+                squares.forEach(sq => sq.style.fontSize = fontSize + 'px');
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function openNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function closeNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'none';
+        }
+
+        function startGame() {
+            const depthSel = document.getElementById('difficulty-select');
+            aiDepth = parseInt(depthSel.value);
+            
+            game = new Chess();
+            selectedSquare = null;
+            isThinking = false;
+            gameActive = true;
+            document.getElementById('status-bar').innerText = "White to move";
+            
+            closeNewGameModal();
+            renderBoard();
+        }
+
+        // --- STATS LOGIC ---
+        function loadLocalStats() {
+            stats = JSON.parse(localStorage.getItem('chess_stats')) || { wins: 0, losses: 0, draws: 0 };
+        }
+
+        function loadStats() {
+            db.collection('users').doc(currentUser.uid).collection('apps').doc('chess')
+            .get().then((doc) => {
+                if (doc.exists) {
+                    stats = doc.data();
+                } else {
+                    loadLocalStats();
+                }
+            });
+        }
+
+        function saveStats() {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('chess').set(stats);
+            }
+            localStorage.setItem('chess_stats', JSON.stringify(stats));
+        }
+
+        function recordGameEnd(result) {
+            if (!gameActive) return;
+            gameActive = false;
+
+            if (result === 'win') stats.wins++;
+            else if (result === 'loss') stats.losses++;
+            else if (result === 'draw') stats.draws++;
+
+            saveStats();
+        }
+
+        function showStats() {
+            document.getElementById('stat-wins').innerText = stats.wins;
+            document.getElementById('stat-losses').innerText = stats.losses;
+            document.getElementById('stat-draws').innerText = stats.draws;
+            document.getElementById('stats-modal').style.display = 'flex';
+        }
+
+        function closeStats() {
+            document.getElementById('stats-modal').style.display = 'none';
+        }
+
+        // --- RENDERER ---
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+            const position = game.board();
+
+            // Always render White at bottom for single player
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const squareName = String.fromCharCode(97 + c) + (8 - r);
+                    const squareData = position[r][c];
+                    
+                    const div = document.createElement('div');
+                    const isLight = (r + c) % 2 === 0;
+                    div.className = `square ${isLight ? 'light' : 'dark'}`;
+                    
+                    if (selectedSquare === squareName) div.classList.add('selected');
+                    
+                    // History highlight
+                    const history = game.history({ verbose: true });
+                    if (history.length > 0) {
+                        const last = history[history.length - 1];
+                        if (last.to === squareName || last.from === squareName) {
+                            div.classList.add('last-move');
+                        }
+                    }
+
+                    div.onclick = () => handleSquareClick(squareName);
+
+                    if (squareData) {
+                        let pKey = squareData.type;
+                        if (squareData.color === 'w') pKey = pKey.toUpperCase();
+                        div.innerHTML = `<div class="piece">${PIECES[pKey]}</div>`;
+                    }
+
+                    board.appendChild(div);
+                }
+            }
+            resizeBoard();
+        }
+
+        // --- INTERACTION ---
+        function handleSquareClick(square) {
+            if (!gameActive || isThinking) return;
+
+            // Player can only select White pieces
+            const piece = game.get(square);
+            if (piece && piece.color === 'w') {
+                selectedSquare = square;
+                renderBoard();
+                return;
+            }
+
+            // Move
+            if (selectedSquare) {
+                try {
+                    const move = game.move({
+                        from: selectedSquare,
+                        to: square,
+                        promotion: 'q'
+                    });
+
+                    if (move) {
+                        selectedSquare = null;
+                        renderBoard();
+                        checkStatus();
+                        
+                        if (!game.game_over()) {
+                            isThinking = true;
+                            document.getElementById('status-bar').innerText = "Thinking...";
+                            // Delay to allow UI to update before blocking with calculation
+                            setTimeout(makeComputerMove, 100);
+                        }
+                    } else {
+                        // Invalid move, deselect if clicked empty square or enemy
+                        selectedSquare = null;
+                        renderBoard();
+                    }
+                } catch (e) {
+                    selectedSquare = null;
+                    renderBoard();
+                }
+            }
+        }
+
+        // --- AI (Minimax) ---
+        
+        // Simple Material Evaluation
+        // Black (AI) maximizes score. White (Player) minimizes score.
+        // Black pieces positive, White pieces negative.
+        const pieceValues = {
+            'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 900,
+            'P': -10, 'N': -30, 'B': -30, 'R': -50, 'Q': -90, 'K': -900
+        };
+
+        function evaluateBoard(gameObj) {
+            let total = 0;
+            gameObj.board().forEach(row => {
+                row.forEach(piece => {
+                    if (piece) {
+                        let val = pieceValues[piece.type] || 0;
+                        if (piece.color === 'w') val = -val; // White pieces are negative
+                        total += val;
+                    }
+                });
+            });
+            return total;
+        }
+
+        function makeComputerMove() {
+            // Use Minimax to find best move
+            const bestMove = getBestMove(game, aiDepth);
+            if (bestMove) {
+                game.move(bestMove);
+            }
+            
+            isThinking = false;
+            renderBoard();
+            checkStatus();
+        }
+
+        function getBestMove(gameObj, depth) {
+            const moves = gameObj.moves();
+            let bestMove = null;
+            let bestValue = -99999; // AI is Black, trying to maximize
+
+            // Randomize moves to avoid predictable play on equal evaluations
+            moves.sort(() => Math.random() - 0.5);
+
+            for (let i = 0; i < moves.length; i++) {
+                gameObj.move(moves[i]);
+                // Minimax call: IsMaximizing = false (Next turn is White/Player)
+                let boardValue = minimax(gameObj, depth - 1, -100000, 100000, false);
+                gameObj.undo();
+
+                if (boardValue > bestValue) {
+                    bestValue = boardValue;
+                    bestMove = moves[i];
+                }
+            }
+            return bestMove;
+        }
+
+        function minimax(gameObj, depth, alpha, beta, isMaximizingPlayer) {
+            if (depth === 0 || gameObj.game_over()) {
+                return evaluateBoard(gameObj);
+            }
+
+            const moves = gameObj.moves();
+
+            if (isMaximizingPlayer) { // Black (AI)
+                let maxEval = -100000;
+                for (let i = 0; i < moves.length; i++) {
+                    gameObj.move(moves[i]);
+                    let eval = minimax(gameObj, depth - 1, alpha, beta, false);
+                    gameObj.undo();
+                    maxEval = Math.max(maxEval, eval);
+                    alpha = Math.max(alpha, eval);
+                    if (beta <= alpha) break;
+                }
+                return maxEval;
+            } else { // White (Player)
+                let minEval = 100000;
+                for (let i = 0; i < moves.length; i++) {
+                    gameObj.move(moves[i]);
+                    let eval = minimax(gameObj, depth - 1, alpha, beta, true);
+                    gameObj.undo();
+                    minEval = Math.min(minEval, eval);
+                    beta = Math.min(beta, eval);
+                    if (beta <= alpha) break;
+                }
+                return minEval;
+            }
+        }
+
+        function checkStatus() {
+            if (game.in_checkmate()) {
+                const winner = game.turn() === 'w' ? "Black" : "White";
+                document.getElementById('status-bar').innerText = `Checkmate! ${winner} wins.`;
+                recordGameEnd(winner === "White" ? 'win' : 'loss');
+            } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
+                document.getElementById('status-bar').innerText = "Draw!";
+                recordGameEnd('draw');
+            } else {
+                document.getElementById('status-bar').innerText = game.turn() === 'w' ? "White to move" : "Black to move";
+                if (game.in_check()) document.getElementById('status-bar').innerText += " (Check)";
+            }
+        }
+
+        function undoMove() {
+            if(!gameActive && !game.game_over()) return;
+            
+            // Undo AI
+            game.undo();
+            // Undo Player
+            game.undo();
+            
+            gameActive = true; 
+            isThinking = false;
+            selectedSquare = null;
+            
+            renderBoard();
+            document.getElementById('status-bar').innerText = "White to move";
+        }
+
+    </script>
+</body>
+</html>

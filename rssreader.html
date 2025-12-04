@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RSS Reader</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TABS */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-right: 1px solid black;
+            background: #eee;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:last-child { border-right: none; }
+        
+        .tab-btn.active {
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+            z-index: 10;
+        }
+
+        /* CONTENT AREA */
+        .window-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        /* VIEW: HEADLINES */
+        #view-headlines {
+            overflow-y: auto;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .article {
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            flex-direction: row; /* Image on right */
+            gap: 15px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .article:last-child { border-bottom: none; }
+        .article:active { background: #f0f0f0; }
+
+        .article-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .article-source {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .article-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: black;
+            text-decoration: none;
+            line-height: 1.3;
+        }
+
+        .article-snippet {
+            font-family: "Georgia", serif;
+            font-size: 0.95rem;
+            color: #333;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .article-meta {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .article-img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border: 2px solid black;
+            flex-shrink: 0;
+            background: #eee;
+            /* E-ink optimization */
+            filter: grayscale(100%) contrast(120%);
+        }
+
+        /* VIEW: SOURCES (MANAGE) */
+        #view-sources {
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .add-feed-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid black;
+            padding-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.9rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .sys-btn.small {
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            box-shadow: 1px 1px 0 black;
+        }
+
+        .source-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            background: #fafafa;
+        }
+
+        .source-name { font-weight: bold; }
+        .source-url { font-size: 0.8rem; color: #666; display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .delete-btn {
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background: white;
+        }
+        
+        .delete-btn:hover { background: #eee; }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* LOADING */
+        .loading-msg {
+            text-align: center;
+            padding: 40px;
+            font-style: italic;
+            color: #666;
+        }
+
+        .refresh-float {
+            position: absolute;
+            bottom: 40px;
+            right: 20px;
+            background: white;
+            border: 2px solid black;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 4px 4px 0 black;
+            cursor: pointer;
+            z-index: 10;
+        }
+        
+        .refresh-float:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 black;
+            background: black;
+            color: white;
+        }
+
+        /* MODAL (IFRAME READER) */
+        #article-modal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .article-view-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            width: 95%;
+            height: 95%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+
+        .modal-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .close-btn {
+            border: 2px solid black;
+            background: white;
+            font-weight: bold;
+            width: 24px; height: 24px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+        .close-btn:active { background:black; color:white; }
+
+        iframe {
+            flex-grow: 1;
+            border: none;
+            background: white;
+        }
+
+        /* GENERAL MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">RSS Reader</span>
+        </div>
+
+        <div class="tabs">
+            <div class="tab-btn active" id="tab-headlines" onclick="switchView('headlines')">Headlines</div>
+            <div class="tab-btn" id="tab-sources" onclick="switchView('sources')">Sources</div>
+        </div>
+
+        <div class="window-content">
+            
+            <!-- HEADLINES -->
+            <div id="view-headlines">
+                <div class="loading-msg">Welcome. Add sources to begin.</div>
+            </div>
+            
+            <div class="refresh-float" onclick="fetchAllFeeds()" title="Refresh">↻</div>
+
+            <!-- SOURCES -->
+            <div id="view-sources">
+                <div class="add-feed-bar">
+                    <input type="text" id="feed-url" placeholder="RSS Feed URL">
+                    <button class="sys-btn" onclick="addFeed()">Add</button>
+                </div>
+                <div id="sources-list">
+                    <!-- Injected via JS -->
+                </div>
+                
+                <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:20px;">
+                    <strong>Preset Feeds:</strong>
+                    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                        <button class="sys-btn" onclick="addPreset('BBC World', 'http://feeds.bbci.co.uk/news/world/rss.xml')">BBC</button>
+                        <button class="sys-btn" onclick="addPreset('NPR', 'https://feeds.npr.org/1001/rss.xml')">NPR</button>
+                        <button class="sys-btn" onclick="addPreset('TechCrunch', 'https://techcrunch.com/feed/')">Tech</button>
+                        <button class="sys-btn" onclick="addPreset('HackerNews', 'https://news.ycombinator.com/rss')">HackerNews</button>
+                        <button class="sys-btn" onclick="addPreset('The Verge', 'https://www.theverge.com/rss/index.xml')">Verge</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <div id="status-bar">Local Mode</div>
+
+        <!-- READER MODAL -->
+        <div id="article-modal">
+            <div class="article-view-box">
+                <div class="modal-header">
+                    <span class="modal-title">Reader</span>
+                    <div style="display:flex; gap:10px;">
+                        <button class="sys-btn small" onclick="openExternal()">Open Externally</button>
+                        <button class="close-btn" onclick="closeArticleModal()">X</button>
+                    </div>
+                </div>
+                <iframe id="article-frame" src=""></iframe>
+            </div>
+        </div>
+
+        <!-- DELETE CONFIRMATION MODAL -->
+        <div id="delete-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Unsubscribe?</h3>
+                <p>Remove this feed from your list?</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="confirmDelete()">Remove</button>
+                    <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let feeds = []; // { id, name, url }
+        let currentUser = null;
+        let articlesCache = [];
+        let currentArticleUrl = "";
+        let feedToDeleteId = null;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudFeeds();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalFeeds();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- NAVIGATION ---
+        function switchView(viewName) {
+            document.getElementById('view-headlines').style.display = viewName === 'headlines' ? 'flex' : 'none';
+            document.getElementById('view-sources').style.display = viewName === 'sources' ? 'flex' : 'none';
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${viewName}`).classList.add('active');
+            
+            const refreshBtn = document.querySelector('.refresh-float');
+            refreshBtn.style.display = viewName === 'headlines' ? 'flex' : 'none';
+
+            if (viewName === 'headlines' && articlesCache.length === 0) {
+                fetchAllFeeds();
+            }
+        }
+
+        // --- DATA MGMT ---
+        function loadLocalFeeds() {
+            feeds = JSON.parse(localStorage.getItem('rss_feeds')) || [];
+            renderSources();
+            if (feeds.length > 0) fetchAllFeeds();
+        }
+
+        function loadCloudFeeds() {
+            db.collection('users').doc(currentUser.uid).collection('rss_feeds')
+                .onSnapshot(snap => {
+                    feeds = [];
+                    snap.forEach(doc => {
+                        feeds.push({ id: doc.id, ...doc.data() });
+                    });
+                    renderSources();
+                    if (feeds.length > 0) fetchAllFeeds();
+                    else {
+                        document.getElementById('view-headlines').innerHTML = '<div class="loading-msg">No feeds subscribed. Go to Sources to add some.</div>';
+                    }
+                });
+        }
+
+        function saveFeed(name, url) {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('rss_feeds').add({
+                    name: name,
+                    url: url,
+                    added: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                feeds.push({ id: Date.now().toString(), name: name, url: url });
+                localStorage.setItem('rss_feeds', JSON.stringify(feeds));
+                renderSources();
+                fetchAllFeeds();
+            }
+        }
+
+        function removeFeed(id) {
+            feedToDeleteId = id;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function confirmDelete() {
+            if (!feedToDeleteId) return;
+            const id = feedToDeleteId;
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('rss_feeds').doc(id).delete();
+            } else {
+                feeds = feeds.filter(f => f.id !== id);
+                localStorage.setItem('rss_feeds', JSON.stringify(feeds));
+                renderSources();
+                fetchAllFeeds();
+            }
+            closeModal('delete-modal');
+            feedToDeleteId = null;
+        }
+
+        function closeModal(id) {
+             document.getElementById(id).style.display = 'none';
+        }
+
+        // --- SOURCES UI ---
+        function renderSources() {
+            const list = document.getElementById('sources-list');
+            list.innerHTML = '';
+
+            if (feeds.length === 0) {
+                list.innerHTML = '<div style="padding:10px; color:#666; font-style:italic;">No subscriptions yet.</div>';
+                return;
+            }
+
+            feeds.forEach(feed => {
+                const div = document.createElement('div');
+                div.className = 'source-item';
+                div.innerHTML = `
+                    <div>
+                        <div class="source-name">${feed.name}</div>
+                        <div class="source-url">${feed.url}</div>
+                    </div>
+                    <button class="delete-btn" onclick="removeFeed('${feed.id}')">Remove</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function addFeed() {
+            const url = document.getElementById('feed-url').value.trim();
+            if (!url) return;
+
+            // Simple validation / Name guessing
+            let name = "New Feed";
+            try {
+                const urlObj = new URL(url);
+                name = urlObj.hostname.replace('www.', '');
+            } catch(e) {
+                alert("Invalid URL");
+                return;
+            }
+
+            saveFeed(name, url);
+            document.getElementById('feed-url').value = '';
+            alert("Feed added! It may take a moment to fetch.");
+        }
+
+        function addPreset(name, url) {
+            const exists = feeds.some(f => f.url === url);
+            if(exists) {
+                alert("Already subscribed.");
+                return;
+            }
+            saveFeed(name, url);
+        }
+
+        // --- FETCHING & RENDERING NEWS ---
+        async function fetchAllFeeds() {
+            const container = document.getElementById('view-headlines');
+            if(feeds.length === 0) {
+                container.innerHTML = '<div class="loading-msg">No feeds subscribed.</div>';
+                return;
+            }
+
+            container.innerHTML = '<div class="loading-msg">Fetching updates...</div>';
+            articlesCache = [];
+
+            // Fetch in parallel
+            const promises = feeds.map(feed => fetchFeed(feed));
+            await Promise.all(promises);
+
+            // Sort by date desc
+            articlesCache.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+
+            renderArticles();
+        }
+
+        async function fetchFeed(feed) {
+            const api = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url);
+            
+            try {
+                const res = await fetch(api);
+                const data = await res.json();
+                
+                if (data.status === 'ok') {
+                    // Update Name if generic
+                    if(feed.name === "New Feed" && data.feed.title) {
+                        feed.name = data.feed.title; 
+                    }
+
+                    data.items.forEach(item => {
+                        // Image Extraction Logic
+                        let imgUrl = item.thumbnail;
+                        
+                        // Check enclosure if no thumbnail
+                        if (!imgUrl && item.enclosure && item.enclosure.link) {
+                            if (item.enclosure.type.startsWith('image/') || item.enclosure.link.match(/\.(jpeg|jpg|gif|png)$/)) {
+                                imgUrl = item.enclosure.link;
+                            }
+                        }
+
+                        // Last resort: Parse description for <img src>
+                        if (!imgUrl && (item.description || item.content)) {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = item.description || item.content;
+                            const foundImg = tempDiv.querySelector('img');
+                            if (foundImg) {
+                                imgUrl = foundImg.src;
+                            }
+                        }
+
+                        articlesCache.push({
+                            source: feed.name,
+                            title: item.title,
+                            link: item.link,
+                            pubDate: item.pubDate,
+                            image: imgUrl,
+                            snippet: stripHtml(item.description || item.content || "")
+                        });
+                    });
+                }
+            } catch (e) {
+                console.error("Error fetching " + feed.name, e);
+            }
+        }
+
+        function renderArticles() {
+            const container = document.getElementById('view-headlines');
+            container.innerHTML = '';
+
+            if (articlesCache.length === 0) {
+                container.innerHTML = '<div class="loading-msg">No articles found. Check your feed URLs.</div>';
+                return;
+            }
+
+            articlesCache.forEach(article => {
+                const date = new Date(article.pubDate);
+                const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                const div = document.createElement('div');
+                div.className = 'article';
+                div.onclick = () => openArticle(article.link);
+                
+                let imgHtml = '';
+                if (article.image) {
+                    imgHtml = `<img src="${article.image}" class="article-img" alt="Thumbnail" onerror="this.style.display='none'">`;
+                }
+
+                div.innerHTML = `
+                    <div class="article-content">
+                        <div class="article-source">${article.source}</div>
+                        <div class="article-title">${article.title}</div>
+                        <div class="article-snippet">${article.snippet}</div>
+                        <div class="article-meta">${dateStr}</div>
+                    </div>
+                    ${imgHtml}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function stripHtml(html) {
+            let tmp = document.createElement("DIV");
+            tmp.innerHTML = html;
+            let text = tmp.textContent || tmp.innerText || "";
+            return text.length > 200 ? text.substring(0, 200) + "..." : text;
+        }
+
+        // --- MODAL READER ---
+        async function openArticle(url) {
+            currentArticleUrl = url;
+            const modal = document.getElementById('article-modal');
+            const frame = document.getElementById('article-frame');
+            
+            modal.style.display = 'flex';
+            // Show loading state
+            frame.srcdoc = `
+                <html>
+                <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:white;">
+                    <h2>Loading...</h2>
+                    <p style="color:#666;">Cleaning up article for E-ink display...</p>
+                </body>
+                </html>`;
+
+            try {
+                // 1. Get clean text version via FrogFind (Readability)
+                const frogUrl = `https://frogfind.com/read.php?a=${encodeURIComponent(url)}`;
+                // 2. Proxy it to bypass CORS and load into iframe
+                const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(frogUrl)}`;
+                
+                const res = await fetch(proxyUrl);
+                let html = await res.text();
+                
+                // Inject into iframe
+                frame.srcdoc = html;
+            } catch (e) {
+                frame.srcdoc = `
+                    <html>
+                    <body style="font-family:sans-serif; text-align:center; padding-top:50px;">
+                        <h3>Could not load article directly.</h3>
+                        <p>Website security prevented embedding.</p>
+                        <p>Please use the <b>Open Externally</b> button above.</p>
+                    </body>
+                    </html>`;
+            }
+        }
+
+        function closeArticleModal() {
+            const modal = document.getElementById('article-modal');
+            const frame = document.getElementById('article-frame');
+            
+            modal.style.display = 'none';
+            frame.srcdoc = ''; 
+            currentArticleUrl = "";
+        }
+
+        function openExternal() {
+            if(currentArticleUrl) {
+                window.open(currentArticleUrl, '_blank');
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Control Panel</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+        }
+
+        body {
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        h2 {
+            font-size: 1rem;
+            border-bottom: 2px solid black;
+            padding-bottom: 5px;
+            margin-top: 25px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        h2:first-child { margin-top: 0; }
+
+        /* PIXEL EDITOR */
+        .editor-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .pixel-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            width: 200px;
+            height: 200px;
+            border: 2px solid black;
+            background: white;
+            margin-bottom: 10px;
+            touch-action: none;
+        }
+
+        .pixel {
+            border: 1px solid #eee;
+            background: white;
+            cursor: pointer;
+        }
+
+        .pixel.active {
+            background: black;
+            border-color: black;
+        }
+        
+        /* NAV ARROWS */
+        .nav-arrow {
+            width: 40px;
+            height: 60px;
+            background: white;
+            border: 2px solid black;
+            font-family: monospace;
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #ccc;
+            user-select: none;
+        }
+        
+        .nav-arrow:active {
+            box-shadow: none;
+            transform: translate(2px, 2px);
+            background: black;
+            color: white;
+        }
+
+        .editor-controls {
+            display: flex;
+            gap: 10px;
+            width: 200px; /* Match grid width */
+            justify-content: space-between;
+        }
+
+        .editor-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 0;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            flex-grow: 1;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .editor-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+        
+        .preset-name {
+            font-size: 0.8rem;
+            font-style: italic;
+            height: 1.2rem;
+            margin-bottom: 5px;
+            text-align: center;
+            color: #555;
+        }
+
+        /* SETTING ROW */
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+            min-height: 40px;
+        }
+
+        .setting-text {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex-grow: 1;
+            padding-right: 15px;
+        }
+
+        .setting-desc {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 3px;
+        }
+
+        /* CONTROLS */
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #fff;
+            border: 2px solid black;
+            border-radius: 13px;
+            cursor: pointer;
+            outline: none;
+            flex-shrink: 0;
+            margin: 0;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            background: black;
+            border-radius: 50%;
+        }
+
+        .toggle-switch:checked {
+            background: black;
+        }
+
+        .toggle-switch:checked::after {
+            transform: translateX(24px);
+            background: white;
+        }
+
+        select {
+            border: 2px solid black;
+            background: white;
+            padding: 5px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 0.9rem;
+            min-width: 120px;
+            border-radius: 0;
+        }
+
+        /* DAV INPUTS */
+        .dav-input-container {
+            display: none; /* Hidden by default */
+            padding: 10px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #ccc;
+            border-left: 2px solid black;
+            margin-bottom: 10px;
+        }
+
+        .dav-input {
+            width: 100%;
+            padding: 8px;
+            border: 2px solid black;
+            font-family: inherit;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        
+        .dav-label {
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .save-dav-btn {
+            margin-top: 5px;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+        }
+
+        #auth-status {
+            font-size: 0.75rem;
+            text-align: center;
+            margin-top: 30px;
+            color: #555;
+            font-style: italic;
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
+        }
+
+        /* MODAL STYLES */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 280px;
+            text-align: center;
+        }
+
+        .modal-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 20px;
+            font-weight: bold;
+            font-family: inherit;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .modal-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Control Panel</span>
+        </div>
+        <div class="window-content">
+            
+            <h2>Desktop Pattern</h2>
+            
+            <div class="editor-wrapper">
+                <div class="nav-arrow" onclick="prevPreset()">&lt;</div>
+                
+                <div class="editor-container">
+                    <div class="preset-name" id="preset-label">Custom</div>
+                    <div class="pixel-grid" id="pixel-grid">
+                        <!-- 64 pixels generated by JS -->
+                    </div>
+                    <div class="editor-controls">
+                        <button class="editor-btn" onclick="clearGrid()">Clear</button>
+                        <button class="editor-btn" onclick="invertGrid()">Invert</button>
+                        <button class="editor-btn" onclick="randomGrid()">Rand</button>
+                    </div>
+                </div>
+
+                <div class="nav-arrow" onclick="nextPreset()">&gt;</div>
+            </div>
+
+            <h2>Preferences</h2>
+            
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Disable Games</strong>
+                    <div class="setting-desc">Hides all Games apps from the main menu.</div>
+                </div>
+                <input type="checkbox" id="toggle-games" class="toggle-switch" onchange="toggleService('games')">
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Temperature Unit</strong>
+                    <div class="setting-desc">Override automatic detection.</div>
+                </div>
+                <select id="temp-unit" onchange="saveTempUnit()">
+                    <option value="auto">Auto (Location)</option>
+                    <option value="celsius">Celsius (°C)</option>
+                    <option value="fahrenheit">Fahrenheit (°F)</option>
+                </select>
+            </div>
+
+            <h2>Integrations</h2>
+            
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Google Tasks</strong>
+                    <div class="setting-desc">Sync tasks via Google API.</div>
+                </div>
+                <input type="checkbox" id="toggle-tasks" class="toggle-switch" onchange="toggleService('tasks')">
+            </div>
+
+            <!-- CALENDAR SETTINGS -->
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Google Calendar</strong>
+                    <div class="setting-desc">View and manage your Google Calendar.</div>
+                </div>
+                <input type="checkbox" id="toggle-calendar" class="toggle-switch" onchange="toggleService('calendar')">
+            </div>
+            
+            <div id="dav-cal-container" class="dav-input-container">
+                <span class="dav-label">CalDAV / iCalendar URL (.ics)</span>
+                <input type="text" id="caldav-url" class="dav-input" placeholder="https://example.com/calendar.ics">
+                <button class="save-dav-btn" onclick="saveDavSetting('calendar')">Save URL</button>
+            </div>
+
+            <!-- CONTACTS SETTINGS -->
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Google Contacts</strong>
+                    <div class="setting-desc">Access your Google Contacts.</div>
+                </div>
+                <input type="checkbox" id="toggle-contacts" class="toggle-switch" onchange="toggleService('contacts')">
+            </div>
+            
+            <div id="dav-card-container" class="dav-input-container">
+                <span class="dav-label">CardDAV / vCard URL (.vcf)</span>
+                <input type="text" id="carddav-url" class="dav-input" placeholder="https://example.com/contacts.vcf">
+                <button class="save-dav-btn" onclick="saveDavSetting('contacts')">Save URL</button>
+            </div>
+            
+            <div id="auth-status">Guest Mode</div>
+
+        </div>
+    </div>
+
+    <!-- MODAL POPUP -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-title" style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:10px;">Message</h3>
+            <p id="modal-msg" style="margin: 20px 0; font-size: 0.95rem;"></p>
+            <button class="modal-btn" onclick="closeModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for generating Pattern (32x32px) -->
+    <canvas id="tile-gen" width="32" height="32" style="display:none;"></canvas>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null;
+
+        // --- PRESETS ---
+        // 0=White, 1=Black. 8x8 Grid flattened.
+        const PRESETS = [
+            {
+                name: "Classic Dither",
+                data: [
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1
+                ]
+            },
+            {
+                name: "Masonry",
+                data: [
+                    1,1,1,0,1,1,1,1,
+                    1,1,1,0,1,1,1,1,
+                    0,0,0,0,0,0,0,0,
+                    1,1,1,1,1,1,0,1,
+                    1,1,1,1,1,1,0,1,
+                    0,0,0,0,0,0,0,0,
+                    1,0,1,1,1,1,1,1,
+                    1,0,1,1,1,1,1,1
+                ]
+            },
+            {
+                name: "Basket Weave",
+                data: [
+                    1,1,1,1,0,0,1,1,
+                    1,1,1,1,0,0,1,1,
+                    0,0,1,1,1,1,1,1,
+                    0,0,1,1,1,1,1,1,
+                    1,1,0,0,1,1,1,1,
+                    1,1,0,0,1,1,1,1,
+                    1,1,1,1,1,1,0,0,
+                    1,1,1,1,1,1,0,0
+                ]
+            },
+            {
+                name: "Herringbone",
+                data: [
+                    1,1,0,0,1,1,0,0,
+                    0,1,1,0,0,1,1,0,
+                    0,0,1,1,0,0,1,1,
+                    1,0,0,1,1,0,0,1,
+                    1,1,0,0,1,1,0,0,
+                    0,1,1,0,0,1,1,0,
+                    0,0,1,1,0,0,1,1,
+                    1,0,0,1,1,0,0,1
+                ]
+            },
+            {
+                name: "Circuit",
+                data: [
+                    0,0,1,1,0,0,0,0,
+                    0,1,1,0,0,1,0,0,
+                    1,1,0,0,1,1,1,1,
+                    0,0,0,1,1,0,0,1,
+                    0,0,0,1,0,0,0,1,
+                    1,1,1,1,0,1,1,0,
+                    0,0,1,0,0,1,0,0,
+                    0,0,1,1,1,0,0,0
+                ]
+            },
+            {
+                name: "Space Invader",
+                data: [
+                    0,0,0,1,1,0,0,0,
+                    0,0,1,1,1,1,0,0,
+                    0,1,1,1,1,1,1,0,
+                    1,1,0,1,1,0,1,1,
+                    1,1,1,1,1,1,1,1,
+                    0,0,1,0,0,1,0,0,
+                    0,1,0,1,1,0,1,0,
+                    1,0,1,0,0,1,0,1
+                ]
+            },
+            {
+                name: "Houndstooth",
+                data: [
+                    1,1,0,0,0,0,1,1,
+                    1,1,1,0,0,1,1,0,
+                    0,1,1,1,1,1,0,0,
+                    0,0,1,1,1,0,0,0,
+                    0,0,1,1,1,1,0,0,
+                    0,1,1,0,0,1,1,1,
+                    1,1,0,0,0,0,1,1,
+                    1,0,0,0,0,0,0,1
+                ]
+            },
+            {
+                name: "Waves",
+                data: [
+                    0,0,0,0,0,0,0,0,
+                    0,0,1,1,1,1,0,0,
+                    0,1,0,0,0,0,1,0,
+                    1,0,0,0,0,0,0,1,
+                    1,0,0,0,0,0,0,1,
+                    0,1,0,0,0,0,1,0,
+                    0,0,1,1,1,1,0,0,
+                    0,0,0,0,0,0,0,0
+                ]
+            },
+            {
+                name: "Grid",
+                data: [
+                    1,1,1,1,1,1,1,1,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0,
+                    1,0,0,0,0,0,0,0
+                ]
+            },
+            {
+                name: "Blank",
+                data: new Array(64).fill(0)
+            }
+        ];
+
+        // --- PIXEL EDITOR LOGIC ---
+        let pixelData = [...PRESETS[0].data];
+        let currentPresetIndex = 0;
+        let isDrawing = false;
+        let drawMode = 1;
+
+        const canvas = document.getElementById('tile-gen');
+        const ctx = canvas.getContext('2d');
+        const gridEl = document.getElementById('pixel-grid');
+        const labelEl = document.getElementById('preset-label');
+
+        window.onload = () => {
+            initGrid();
+            
+            const savedPixels = localStorage.getItem('rekindle_pixel_data');
+            
+            if (savedPixels) {
+                try {
+                    pixelData = JSON.parse(savedPixels);
+                    labelEl.innerText = "Saved Pattern";
+                } catch(e) { pixelData = [...PRESETS[0].data]; }
+            } else {
+                pixelData = [...PRESETS[0].data];
+                labelEl.innerText = PRESETS[0].name;
+            }
+
+            renderGridUI();
+            updateWallpaper(); 
+
+            // Load Other Settings
+            document.getElementById('toggle-games').checked = localStorage.getItem('rekindle_disable_games') === 'true';
+            document.getElementById('toggle-tasks').checked = localStorage.getItem('rekindle_google_tasks_enabled') === 'true';
+            document.getElementById('toggle-calendar').checked = localStorage.getItem('rekindle_google_calendar_enabled') === 'true';
+            document.getElementById('toggle-contacts').checked = localStorage.getItem('rekindle_google_contacts_enabled') === 'true';
+            
+            toggleDavVisibility('calendar', !document.getElementById('toggle-calendar').checked);
+            toggleDavVisibility('contacts', !document.getElementById('toggle-contacts').checked);
+
+            document.getElementById('caldav-url').value = localStorage.getItem('rekindle_caldav_url') || '';
+            document.getElementById('carddav-url').value = localStorage.getItem('rekindle_carddav_url') || '';
+            document.getElementById('temp-unit').value = localStorage.getItem('rekindle_weather_unit_preference') || 'auto';
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('auth-status').innerText = "Synced: " + user.email;
+                    loadCloudSettings();
+                } else {
+                    document.getElementById('auth-status').innerText = "Guest Mode";
+                }
+            });
+        };
+
+        function prevPreset() {
+            currentPresetIndex--;
+            if (currentPresetIndex < 0) currentPresetIndex = PRESETS.length - 1;
+            loadPreset(currentPresetIndex);
+        }
+
+        function nextPreset() {
+            currentPresetIndex++;
+            if (currentPresetIndex >= PRESETS.length) currentPresetIndex = 0;
+            loadPreset(currentPresetIndex);
+        }
+
+        function loadPreset(index) {
+            pixelData = [...PRESETS[index].data];
+            labelEl.innerText = PRESETS[index].name;
+            renderGridUI();
+            updateWallpaper();
+            savePixelData();
+        }
+
+        function initGrid() {
+            gridEl.innerHTML = '';
+            gridEl.addEventListener('mousedown', startDraw);
+            window.addEventListener('mouseup', endDraw);
+            gridEl.addEventListener('touchstart', startDraw, {passive: false});
+            window.addEventListener('touchend', endDraw);
+            window.addEventListener('touchcancel', endDraw);
+
+            for(let i=0; i<64; i++) {
+                const div = document.createElement('div');
+                div.className = 'pixel';
+                div.dataset.index = i;
+                div.addEventListener('mouseenter', (e) => {
+                    if(isDrawing) updatePixel(i, drawMode);
+                });
+                gridEl.appendChild(div);
+            }
+            gridEl.addEventListener('touchmove', handleTouchMove, {passive: false});
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if(!isDrawing) return;
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.classList.contains('pixel')) {
+                const idx = parseInt(target.dataset.index);
+                updatePixel(idx, drawMode);
+            }
+        }
+
+        function startDraw(e) {
+            if(e.type === 'touchstart') e.preventDefault();
+            isDrawing = true;
+            let target = e.target;
+            if (e.type === 'touchstart') {
+                const touch = e.touches[0];
+                target = document.elementFromPoint(touch.clientX, touch.clientY);
+            }
+            if(target && target.classList.contains('pixel')) {
+                const idx = parseInt(target.dataset.index);
+                drawMode = pixelData[idx] === 1 ? 0 : 1;
+                updatePixel(idx, drawMode);
+                // Switch to "Custom" label when editing
+                labelEl.innerText = "Custom";
+            }
+        }
+
+        function endDraw() {
+            if(isDrawing) {
+                isDrawing = false;
+                savePixelData();
+            }
+        }
+
+        function updatePixel(index, val) {
+            if(pixelData[index] !== val) {
+                pixelData[index] = val;
+                renderGridUI();
+                updateWallpaper();
+            }
+        }
+
+        function renderGridUI() {
+            const pixels = document.querySelectorAll('.pixel');
+            pixels.forEach((p, i) => {
+                if(pixelData[i] === 1) p.classList.add('active');
+                else p.classList.remove('active');
+            });
+        }
+
+        function clearGrid() {
+            pixelData.fill(0);
+            labelEl.innerText = "Custom";
+            renderGridUI();
+            updateWallpaper();
+            savePixelData();
+        }
+
+        function invertGrid() {
+            pixelData = pixelData.map(p => p === 1 ? 0 : 1);
+            labelEl.innerText = "Custom";
+            renderGridUI();
+            updateWallpaper();
+            savePixelData();
+        }
+
+        function randomGrid() {
+            pixelData = pixelData.map(() => Math.random() > 0.5 ? 1 : 0);
+            labelEl.innerText = "Custom";
+            renderGridUI();
+            updateWallpaper();
+            savePixelData();
+        }
+
+        // --- RENDER LOGIC (32x32px PNG, displayed at 16x16px) ---
+        function updateWallpaper() {
+            // Canvas is 32x32
+            ctx.clearRect(0,0,32,32);
+            
+            // Fill Background White
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0,0,32,32);
+            
+            // Draw Black Pixels (4x4 physical pixels per logical grid dot)
+            // This creates a 32px wide image.
+            ctx.fillStyle = '#000000';
+            for(let i=0; i<64; i++) {
+                if(pixelData[i] === 1) {
+                    const col = i % 8;
+                    const row = Math.floor(i / 8);
+                    ctx.fillRect(col * 4, row * 4, 4, 4);
+                }
+            }
+
+            const base64 = canvas.toDataURL('image/png');
+            const dataUrl = `url(${base64})`;
+            
+            localStorage.setItem('rekindle_bg_image', dataUrl);
+            localStorage.setItem('rekindle_wallpaper_id', 'custom'); 
+            
+            // Display size: 16px (50% scale of the 32px image)
+            const size = '16px 16px'; 
+            localStorage.setItem('rekindle_bg_size', size);
+            
+            document.body.style.backgroundImage = dataUrl;
+            document.body.style.backgroundSize = size;
+        }
+
+        function savePixelData() {
+            const json = JSON.stringify(pixelData);
+            localStorage.setItem('rekindle_pixel_data', json);
+            
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({
+                    customPattern: pixelData,
+                    wallpaperSize: '16px 16px'
+                }, { merge: true });
+            }
+        }
+
+        // --- GENERAL SETTINGS LOGIC ---
+
+        function toggleService(serviceName) {
+            let key = '';
+            let isEnabled = false;
+
+            if (serviceName === 'games') {
+                key = 'rekindle_disable_games';
+                isEnabled = document.getElementById('toggle-games').checked;
+                localStorage.setItem(key, isEnabled);
+                if(currentUser) {
+                    db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ disableGames: isEnabled }, { merge: true });
+                }
+                alert(`Games ${isEnabled ? 'disabled' : 'enabled'}. Reload home screen.`);
+                return;
+            }
+
+            const elId = `toggle-${serviceName}`;
+            key = `rekindle_google_${serviceName}_enabled`;
+            isEnabled = document.getElementById(elId).checked;
+            localStorage.setItem(key, isEnabled);
+            
+            if (serviceName === 'calendar' || serviceName === 'contacts') {
+                toggleDavVisibility(serviceName, !isEnabled);
+            }
+            
+            if(currentUser) {
+                const update = {};
+                update[`google_${serviceName}`] = isEnabled;
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set(update, { merge: true });
+            }
+        }
+        
+        function toggleDavVisibility(service, show) {
+            const el = document.getElementById(service === 'calendar' ? 'dav-cal-container' : 'dav-card-container');
+            if (el) el.style.display = show ? 'block' : 'none';
+        }
+        
+        function saveDavSetting(service) {
+            const id = service === 'calendar' ? 'caldav-url' : 'carddav-url';
+            const key = service === 'calendar' ? 'rekindle_caldav_url' : 'rekindle_carddav_url';
+            const url = document.getElementById(id).value.trim();
+            
+            localStorage.setItem(key, url);
+            
+            if (currentUser) {
+                const update = {};
+                update[service === 'calendar' ? 'caldav_url' : 'carddav_url'] = url;
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set(update, { merge: true });
+            }
+            showModal("Success", "URL saved.");
+        }
+
+        function showModal(title, msg) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-msg').innerText = msg;
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        function saveTempUnit() {
+            const val = document.getElementById('temp-unit').value;
+            localStorage.setItem('rekindle_weather_unit_preference', val);
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ weatherUnit: val }, { merge: true });
+            }
+        }
+        
+        function loadCloudSettings() {
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('general').get().then(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    
+                    if (data.customPattern && Array.isArray(data.customPattern)) {
+                        pixelData = data.customPattern;
+                        labelEl.innerText = "Synced Pattern";
+                        renderGridUI();
+                        updateWallpaper();
+                        localStorage.setItem('rekindle_pixel_data', JSON.stringify(pixelData));
+                    }
+                    
+                    if (data.weatherUnit) {
+                        localStorage.setItem('rekindle_weather_unit_preference', data.weatherUnit);
+                        document.getElementById('temp-unit').value = data.weatherUnit;
+                    }
+                    if (data.disableGames !== undefined) {
+                        localStorage.setItem('rekindle_disable_games', data.disableGames);
+                        document.getElementById('toggle-games').checked = data.disableGames;
+                    }
+                }
+            });
+
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').get().then(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.google_tasks !== undefined) {
+                        localStorage.setItem('rekindle_google_tasks_enabled', data.google_tasks);
+                        document.getElementById('toggle-tasks').checked = data.google_tasks;
+                    }
+                    if (data.google_calendar !== undefined) {
+                        localStorage.setItem('rekindle_google_calendar_enabled', data.google_calendar);
+                        document.getElementById('toggle-calendar').checked = data.google_calendar;
+                        toggleDavVisibility('calendar', !data.google_calendar);
+                    }
+                    if (data.caldav_url) {
+                        localStorage.setItem('rekindle_caldav_url', data.caldav_url);
+                        document.getElementById('caldav-url').value = data.caldav_url;
+                    }
+                    if (data.google_contacts !== undefined) {
+                        localStorage.setItem('rekindle_google_contacts_enabled', data.google_contacts);
+                        document.getElementById('toggle-contacts').checked = data.google_contacts;
+                        toggleDavVisibility('contacts', !data.google_contacts);
+                    }
+                    if (data.carddav_url) {
+                        localStorage.setItem('rekindle_carddav_url', data.carddav_url);
+                        document.getElementById('carddav-url').value = data.carddav_url;
+                    }
+                }
+            });
+        }
+    </script>
+
+</body>
+</html>

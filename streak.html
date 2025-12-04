@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streak</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Default Background */
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* Centers vertically */
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .period-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+
+        .period-display {
+            font-weight: bold;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+
+        .nav-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .nav-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        /* CONTENT GRID */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HABIT ROWS */
+        .habit-row {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            height: 60px;
+        }
+
+        .habit-name-col {
+            width: 130px;
+            min-width: 130px;
+            border-right: 2px solid black;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background: #fafafa;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        .delete-btn {
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 5px;
+            color: #888;
+        }
+        
+        .delete-btn:hover { color: red; }
+
+        /* DAYS CONTAINER (Fixed Width, No Scroll) */
+        .days-container {
+            display: flex;
+            flex-grow: 1;
+            width: 100%;
+        }
+
+        .day-cell {
+            flex: 1; /* Distribute evenly */
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+            position: relative;
+        }
+        
+        .day-cell:last-child {
+            border-right: none;
+        }
+
+        .day-num { font-weight: bold; }
+        .day-name { font-size: 0.6rem; color: #666; }
+
+        /* STATES */
+        .day-cell.header {
+            background: #eee;
+            cursor: default;
+            border-bottom: 2px solid black;
+        }
+
+        .day-cell.today {
+            background-color: #ddd; /* Highlight today column */
+        }
+
+        .day-cell.completed {
+            background: black;
+            color: white;
+        }
+        
+        .day-cell.completed .day-name { color: #ccc; }
+
+        /* FOOTER INPUT */
+        .footer-input {
+            border-top: 2px solid black;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            background: #eee;
+        }
+
+        #new-habit-input {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 4px;
+            background: #ccc;
+            border-top: 1px solid black;
+        }
+
+        /* MODAL OVERLAY */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Habit Tracker</span>
+        </div>
+
+        <div class="period-controls">
+            <button class="nav-btn" onclick="changeWeek(-1)">&lt;</button>
+            <span class="period-display" id="current-period-label">...</span>
+            <button class="nav-btn" onclick="changeWeek(1)">&gt;</button>
+        </div>
+
+        <div class="window-content" id="tracker-grid">
+            </div>
+
+        <div class="footer-input">
+            <input type="text" id="new-habit-input" placeholder="New Habit (e.g. Read)" onkeypress="handleEnter(event)">
+            <button class="nav-btn" onclick="addHabit()">Add</button>
+        </div>
+        
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Delete Habit?</h3>
+            <p>Remove this habit and its history?</p>
+            <div class="modal-buttons">
+                <button class="nav-btn" onclick="confirmDelete()">Delete</button>
+                <button class="nav-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let habits = []; // Array of objects {id, name}
+        let history = {}; // Object keys "habitId_YYYY-MM-DD" : true
+        
+        let currentStart = new Date(); // Start of the current view
+        let today = new Date(); // Actual today
+        
+        let currentUser = null;
+        let habitToDeleteId = null;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            initCurrentWeek();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudData();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalData();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+        
+        function initCurrentWeek() {
+            // Align currentStart to the beginning of the week (Monday)
+            const day = currentStart.getDay();
+            // Calculate difference to get to Monday (1)
+            const diff = currentStart.getDate() - day + (day === 0 ? -6 : 1);
+            currentStart.setDate(diff);
+        }
+
+        // --- DATA LOADING ---
+        function loadLocalData() {
+            habits = JSON.parse(localStorage.getItem('streak_habits')) || [];
+            history = JSON.parse(localStorage.getItem('streak_history')) || {};
+            renderView();
+        }
+
+        function loadCloudData() {
+            // Load Habits
+            db.collection('users').doc(currentUser.uid).collection('habits')
+                .onSnapshot(snap => {
+                    habits = [];
+                    snap.forEach(doc => {
+                        habits.push({ id: doc.id, ...doc.data() });
+                    });
+                    renderView();
+                });
+
+            // Load History (Simplification: Loading entire history)
+            db.collection('users').doc(currentUser.uid).collection('habit_history')
+                .onSnapshot(snap => {
+                    history = {};
+                    snap.forEach(doc => {
+                        history[doc.id] = true;
+                    });
+                    renderView();
+                });
+        }
+
+        function saveData() {
+            if (currentUser) {
+                // Cloud save handled by individual actions
+            } else {
+                localStorage.setItem('streak_habits', JSON.stringify(habits));
+                localStorage.setItem('streak_history', JSON.stringify(history));
+                renderView();
+            }
+        }
+
+        // --- VIEW LOGIC ---
+        function changeWeek(delta) {
+            // Add/Subtract 7 days
+            currentStart.setDate(currentStart.getDate() + (delta * 7));
+            renderView();
+        }
+
+        function renderView() {
+            const container = document.getElementById('tracker-grid');
+            container.innerHTML = '';
+
+            // Determine Week Range for Header
+            const weekEnd = new Date(currentStart);
+            weekEnd.setDate(currentStart.getDate() + 6);
+            
+            const startStr = currentStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            document.getElementById('current-period-label').innerText = `${startStr} - ${endStr}`;
+
+            // 1. HEADER ROW
+            const headerRow = document.createElement('div');
+            headerRow.className = 'habit-row';
+            
+            const headerName = document.createElement('div');
+            headerName.className = 'habit-name-col';
+            headerName.innerText = "HABIT";
+            headerRow.appendChild(headerName);
+
+            const headerDays = document.createElement('div');
+            headerDays.className = 'days-container';
+            
+            for(let i=0; i<7; i++) {
+                const dayDate = new Date(currentStart);
+                dayDate.setDate(currentStart.getDate() + i);
+                
+                const dayNum = dayDate.getDate();
+                const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'narrow' }); 
+                
+                const cell = document.createElement('div');
+                cell.className = 'day-cell header';
+                if(isToday(dayDate)) cell.classList.add('today');
+                
+                cell.innerHTML = `<span class="day-num">${dayNum}</span><span class="day-name">${dayName}</span>`;
+                headerDays.appendChild(cell);
+            }
+            headerRow.appendChild(headerDays);
+            container.appendChild(headerRow);
+
+            // 2. HABIT ROWS
+            if (habits.length === 0) {
+                 const empty = document.createElement('div');
+                 empty.style.padding = "20px";
+                 empty.style.textAlign = "center";
+                 empty.style.fontStyle = "italic";
+                 empty.innerText = "No habits yet. Add one below.";
+                 container.appendChild(empty);
+                 return;
+            }
+
+            habits.forEach(habit => {
+                const row = document.createElement('div');
+                row.className = 'habit-row';
+
+                // Name
+                const nameCol = document.createElement('div');
+                nameCol.className = 'habit-name-col';
+                nameCol.innerHTML = `
+                    <span>${habit.name}</span>
+                    <span class="delete-btn" onclick="deleteHabit('${habit.id}')">×</span>
+                `;
+
+                // Days
+                const daysRow = document.createElement('div');
+                daysRow.className = 'days-container';
+
+                for(let i=0; i<7; i++) {
+                    const dayDate = new Date(currentStart);
+                    dayDate.setDate(currentStart.getDate() + i);
+                    
+                    const y = dayDate.getFullYear();
+                    const m = String(dayDate.getMonth() + 1).padStart(2, '0');
+                    const d = String(dayDate.getDate()).padStart(2, '0');
+                    const dateKey = `${y}-${m}-${d}`;
+                    
+                    const recordKey = `${habit.id}_${dateKey}`;
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'day-cell';
+                    
+                    if(history[recordKey]) cell.classList.add('completed');
+                    if(isToday(dayDate)) cell.classList.add('today');
+
+                    cell.onclick = () => toggleHabit(habit.id, dateKey);
+                    daysRow.appendChild(cell);
+                }
+
+                row.appendChild(nameCol);
+                row.appendChild(daysRow);
+                container.appendChild(row);
+            });
+        }
+
+        function isToday(date) {
+            return date.getDate() === today.getDate() &&
+                   date.getMonth() === today.getMonth() &&
+                   date.getFullYear() === today.getFullYear();
+        }
+
+        // --- ACTIONS ---
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') addHabit();
+        }
+
+        function addHabit() {
+            const input = document.getElementById('new-habit-input');
+            const name = input.value.trim();
+            if(!name) return;
+
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('habits').add({
+                    name: name,
+                    created: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                habits.push({ id: Date.now().toString(), name: name });
+                saveData();
+            }
+            input.value = "";
+        }
+
+        // --- MODAL LOGIC ---
+        function deleteHabit(id) {
+            habitToDeleteId = id;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function confirmDelete() {
+            if (!habitToDeleteId) return;
+            const id = habitToDeleteId;
+
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('habits').doc(id).delete();
+            } else {
+                habits = habits.filter(h => h.id !== id);
+                Object.keys(history).forEach(k => {
+                    if(k.startsWith(id)) delete history[k];
+                });
+                saveData();
+            }
+            closeModal();
+        }
+
+        function closeModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+            habitToDeleteId = null;
+        }
+
+        function toggleHabit(habitId, dateKey) {
+            const recordKey = `${habitId}_${dateKey}`;
+            
+            if(currentUser) {
+                const docRef = db.collection('users').doc(currentUser.uid).collection('habit_history').doc(recordKey);
+                if (history[recordKey]) {
+                    docRef.delete(); 
+                    delete history[recordKey]; 
+                } else {
+                    docRef.set({ completed: true });
+                    history[recordKey] = true;
+                }
+                renderView(); 
+            } else {
+                if (history[recordKey]) delete history[recordKey];
+                else history[recordKey] = true;
+                saveData();
+            }
+        }
+
+    </script>
+</body>
+</html>

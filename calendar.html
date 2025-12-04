@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        /* ADD BTN */
+        .add-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            padding: 2px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            box-shadow: 2px 2px 0 black;
+            display: none; /* Only show in Native Mode */
+        }
+        .add-btn:active { background: black; color: white; box-shadow: none; transform: translate(1px, 1px); }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            border-right: 1px solid black;
+            background: #eee;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:last-child { border-right: none; }
+        .tab-btn.active { background: white; border-bottom: 2px solid white; margin-bottom: -2px; z-index: 10; }
+
+        #content-area {
+            flex-grow: 1;
+            overflow-y: auto;
+            position: relative;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- VIEW STYLES --- */
+        
+        /* AGENDA */
+        .agenda-container { padding: 20px; }
+        .day-group { margin-bottom: 25px; }
+        .day-header { font-size: 1.1rem; font-weight: 900; border-bottom: 4px double black; padding-bottom: 5px; margin-bottom: 10px; text-transform: uppercase; }
+        .event { display: flex; padding: 12px 0; border-bottom: 1px solid #ccc; font-size: 1rem; align-items: baseline; position: relative;}
+        .event:last-child { border-bottom: none; }
+        .event-time { font-weight: bold; width: 85px; flex-shrink: 0; font-size: 0.9rem; }
+        .event-title { flex-grow: 1; font-weight: normal; }
+        .del-event-btn { color: #999; cursor: pointer; padding: 0 10px; font-weight: bold; }
+        .del-event-btn:hover { color: red; }
+
+        /* NAV HEADER (For Month/Day) */
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #eee;
+            border-bottom: 2px solid black;
+            flex-shrink: 0;
+        }
+        
+        .nav-title { font-weight: bold; font-size: 1rem; text-transform: uppercase; }
+        
+        .nav-arrow {
+            background: white; border: 2px solid black; padding: 4px 10px; cursor: pointer; font-weight: bold; box-shadow: 2px 2px 0 black;
+        }
+        .nav-arrow:active { transform: translate(1px, 1px); box-shadow: none; }
+
+        /* MONTH GRID */
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            flex-grow: 1;
+            border-bottom: 2px solid black; /* Fix bottom border visual */
+        }
+        
+        .weekday-label {
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            padding: 5px 0;
+            border-bottom: 2px solid black;
+            background: #f0f0f0;
+        }
+
+        .calendar-day {
+            border-right: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            min-height: 60px;
+            position: relative;
+            padding: 4px;
+            cursor: pointer;
+            background: white;
+        }
+        
+        .calendar-day:nth-child(7n) { border-right: none; } /* Remove right border on last col */
+        .calendar-day:active { background: #000; color: white; }
+        .calendar-day.empty { background: #f9f9f9; cursor: default; }
+        .calendar-day.today { background: #ddd; }
+
+        .day-number { font-size: 0.9rem; font-weight: bold; }
+        
+        .day-dots {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-top: 4px;
+        }
+        
+        .event-dot {
+            width: 6px;
+            height: 6px;
+            background: black;
+            border-radius: 50%;
+        }
+        
+        .calendar-day:active .event-dot { background: white; }
+
+        /* DAY VIEW */
+        .day-schedule {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+        
+        .hour-slot {
+            display: flex;
+            border-bottom: 1px dotted #ccc;
+            min-height: 40px;
+        }
+        
+        .slot-time {
+            width: 60px;
+            border-right: 2px solid #ccc;
+            padding: 10px 5px;
+            font-size: 0.8rem;
+            color: #666;
+            text-align: right;
+            margin-right: 10px;
+        }
+        
+        .slot-events {
+            flex-grow: 1;
+            padding: 5px;
+        }
+        
+        .day-event-chip {
+            background: black;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            font-size: 0.9rem;
+        }
+
+        #status-bar {
+            background: #eee;
+            border-top: 2px solid black;
+            padding: 5px;
+            font-size: 0.8rem;
+            text-align: center;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 15px;
+        }
+
+        #auth-overlay {
+            position: absolute;
+            top: 35px; left: 0; width: 100%; height: calc(100% - 35px);
+            background: rgba(255,255,255,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+        .sys-btn:active { background: black; color: white; transform: translate(2px, 2px); box-shadow: none; }
+
+        /* MODAL */
+        #modal-overlay, #sync-choice-modal {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+        .modal-box input { width: 90%; padding: 8px; margin: 5px 0; border: 2px solid black; font-family: inherit; }
+        .modal-btns { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text" id="app-title">Calendar</span>
+            <button class="add-btn" id="add-btn" onclick="openAddModal()">+ Add</button>
+        </div>
+
+        <div class="tabs">
+            <div class="tab-btn active" onclick="switchView('agenda')">Agenda</div>
+            <div class="tab-btn" onclick="switchView('day')">Day</div>
+            <div class="tab-btn" onclick="switchView('month')">Month</div>
+        </div>
+
+        <div id="content-area"></div>
+
+        <div id="status-bar">
+            <span id="status-msg">Ready.</span>
+            <button class="sys-btn" onclick="refreshData()">Sync</button>
+        </div>
+
+        <!-- AUTH OVERLAY -->
+        <div id="auth-overlay">
+            <h2 style="margin-bottom:10px;">Google Calendar</h2>
+            <p style="margin-bottom:20px; font-size:0.9rem;">Log in to sync.</p>
+            <button class="sys-btn" onclick="oauthSignIn()">Log In</button>
+        </div>
+    </div>
+
+    <!-- ADD MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3>New Event</h3>
+            <input type="text" id="evt-title" placeholder="Title">
+            <input type="date" id="evt-date">
+            <input type="time" id="evt-time">
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="saveNativeEvent()">Save</button>
+                <button class="sys-btn" onclick="document.getElementById('modal-overlay').style.display='none'">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SYNC CHOICE MODAL -->
+    <div id="sync-choice-modal">
+        <div class="modal-box">
+            <h3>Google Calendar Integration</h3>
+            <p style="margin:15px 0;">Enable Google Calendar sync or continue with Local Storage?</p>
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="setSyncPreference(true)">Use Google</button>
+                <button class="sys-btn" onclick="setSyncPreference(false)">Use Local</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // --- GOOGLE CONFIG ---
+        const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+
+        // --- STATE ---
+        let events = []; // Unified structure: { id, title, start: Date }
+        let currentView = 'agenda';
+        let viewDate = new Date(); // Tracks currently viewed month/day
+        let currentUser = null;
+        let db = null;
+        let auth = null;
+        let googleEnabled = false;
+        let calDavUrl = localStorage.getItem('rekindle_caldav_url');
+
+        // --- INIT ---
+        window.onload = function() {
+            loadWallpaper();
+            
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    checkSyncSettings();
+                } else {
+                    document.getElementById('status-msg').innerText = "Guest Mode";
+                    initNativeMode();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            const size = localStorage.getItem('rekindle_bg_size');
+            if(img) document.body.style.backgroundImage = img;
+            if(size) document.body.style.backgroundSize = size;
+        }
+
+        function checkSyncSettings() {
+            const setting = localStorage.getItem('rekindle_google_calendar_enabled');
+            
+            if (setting === 'true') {
+                googleEnabled = true;
+                initGoogleMode();
+            } else if (setting === 'false') {
+                googleEnabled = false;
+                document.getElementById('status-msg').innerText = "Synced: " + currentUser.email;
+                initNativeMode();
+            } else {
+                // Not set
+                document.getElementById('sync-choice-modal').style.display = 'flex';
+            }
+        }
+
+        function setSyncPreference(enableGoogle) {
+            document.getElementById('sync-choice-modal').style.display = 'none';
+            localStorage.setItem('rekindle_google_calendar_enabled', enableGoogle);
+            
+            // Save preference to cloud
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set({
+                google_calendar: enableGoogle
+            }, { merge: true });
+
+            if (enableGoogle) {
+                googleEnabled = true;
+                initGoogleMode();
+            } else {
+                googleEnabled = false;
+                document.getElementById('status-msg').innerText = "Synced: " + currentUser.email;
+                initNativeMode();
+            }
+        }
+
+        function refreshData() {
+            if (googleEnabled) loadGoogleEvents();
+            else if (calDavUrl) loadCalDAVEvents();
+            else if (currentUser) loadCloudEvents();
+            else loadLocalEvents();
+        }
+
+        function switchView(view) {
+            currentView = view;
+            
+            // Reset viewDate to today on switching unless already in day/month flow
+            if (view === 'agenda') {
+                // Agenda doesn't use viewDate in the same way, usually shows list starting now
+                viewDate = new Date(); 
+            }
+            
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('active');
+                if(b.innerText.toLowerCase() === view) b.classList.add('active');
+            });
+            renderView();
+        }
+
+        function renderView() {
+            const container = document.getElementById('content-area');
+            container.innerHTML = '';
+            
+            // Sort events by date
+            events.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+            if (currentView === 'agenda') {
+                renderAgenda(container);
+            } else if (currentView === 'month') {
+                renderMonthView(container);
+            } else if (currentView === 'day') {
+                renderDayView(container);
+            }
+        }
+
+        // --- AGENDA RENDERER ---
+        function renderAgenda(container) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'agenda-container';
+            
+            // Filter events: Today onwards only
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+
+            const filteredEvents = events.filter(e => new Date(e.start) >= todayStart);
+
+            if (filteredEvents.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px;">No upcoming events.</div>';
+                return;
+            }
+
+            const grouped = {};
+            filteredEvents.forEach(e => {
+                const dateKey = new Date(e.start).toDateString();
+                if (!grouped[dateKey]) grouped[dateKey] = [];
+                grouped[dateKey].push(e);
+            });
+
+            // Iterate over grouped events
+            for (const [date, list] of Object.entries(grouped)) {
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'day-group';
+                const dayLabel = new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                
+                let html = `<div class="day-header">${dayLabel}</div>`;
+                list.forEach(e => {
+                    const timeStr = new Date(e.start).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+                    // Add delete button only for Native mode (not google, not caldav)
+                    const isReadOnly = googleEnabled || calDavUrl;
+                    const delBtn = (!isReadOnly) ? `<span class="del-event-btn" onclick="deleteEvent('${e.id}')">×</span>` : '';
+                    html += `
+                        <div class="event">
+                            <div class="event-time">${timeStr}</div>
+                            <div class="event-title">${e.title}</div>
+                            ${delBtn}
+                        </div>
+                    `;
+                });
+                dayDiv.innerHTML = html;
+                wrapper.appendChild(dayDiv);
+            }
+            container.appendChild(wrapper);
+        }
+
+        // --- MONTH RENDERER ---
+        function renderMonthView(container) {
+            // Header Controls
+            const header = document.createElement('div');
+            header.className = 'nav-header';
+            const monthLabel = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            header.innerHTML = `
+                <button class="nav-arrow" onclick="changeMonth(-1)">&lt;</button>
+                <div class="nav-title">${monthLabel}</div>
+                <button class="nav-arrow" onclick="changeMonth(1)">&gt;</button>
+            `;
+            container.appendChild(header);
+
+            // Weekday Headers
+            const grid = document.createElement('div');
+            grid.className = 'month-grid';
+            
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            days.forEach(d => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'weekday-label';
+                dayHeader.innerText = d;
+                grid.appendChild(dayHeader);
+            });
+
+            // Calculate Grid
+            const year = viewDate.getFullYear();
+            const month = viewDate.getMonth();
+            
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            
+            const startDayIndex = firstDay.getDay(); // 0-6
+            const totalDays = lastDay.getDate();
+
+            // Empty slots before first day
+            for (let i = 0; i < startDayIndex; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'calendar-day empty';
+                grid.appendChild(empty);
+            }
+
+            // Days
+            for (let i = 1; i <= totalDays; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day';
+                
+                // Check for Today
+                const today = new Date();
+                if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    cell.classList.add('today');
+                }
+
+                // Find Events
+                const checkDate = new Date(year, month, i);
+                const dayEvents = events.filter(e => {
+                    const eDate = new Date(e.start);
+                    return eDate.getDate() === i && eDate.getMonth() === month && eDate.getFullYear() === year;
+                });
+
+                let dotsHtml = '';
+                if (dayEvents.length > 0) {
+                    dotsHtml = '<div class="day-dots">';
+                    // Max 5 dots to fit
+                    for(let j=0; j<Math.min(dayEvents.length, 5); j++) {
+                        dotsHtml += '<div class="event-dot"></div>';
+                    }
+                    dotsHtml += '</div>';
+                }
+
+                cell.innerHTML = `<div class="day-number">${i}</div>${dotsHtml}`;
+                cell.onclick = () => jumpToDay(i);
+                grid.appendChild(cell);
+            }
+
+            container.appendChild(grid);
+        }
+
+        // --- DAY RENDERER ---
+        function renderDayView(container) {
+            // Header
+            const header = document.createElement('div');
+            header.className = 'nav-header';
+            const dateLabel = viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            header.innerHTML = `
+                <button class="nav-arrow" onclick="changeDay(-1)">&lt;</button>
+                <div class="nav-title">${dateLabel}</div>
+                <button class="nav-arrow" onclick="changeDay(1)">&gt;</button>
+            `;
+            container.appendChild(header);
+
+            // Filter Events
+            const dayStart = new Date(viewDate); dayStart.setHours(0,0,0,0);
+            const dayEnd = new Date(viewDate); dayEnd.setHours(23,59,59,999);
+            
+            const dayEvents = events.filter(e => {
+                const d = new Date(e.start);
+                return d >= dayStart && d <= dayEnd;
+            });
+
+            // Content List (Hourly blocks or just a list)
+            // A scrollable list of time slots is cleaner for E-ink than a complex grid
+            const list = document.createElement('div');
+            list.className = 'day-schedule';
+
+            // Create slots for hours 6 AM to 10 PM (simplified view)
+            // Or just list the events sorted
+            if (dayEvents.length === 0) {
+                list.innerHTML = '<div style="padding:40px; text-align:center; color:#666;">No events scheduled.</div>';
+            } else {
+                // Group by hour for a structured look
+                for (let hour = 0; hour < 24; hour++) {
+                    const hourEvents = dayEvents.filter(e => new Date(e.start).getHours() === hour);
+                    
+                    if (hourEvents.length > 0) {
+                        const slot = document.createElement('div');
+                        slot.className = 'hour-slot';
+                        
+                        const displayHour = hour === 0 ? '12 AM' : (hour > 12 ? (hour - 12) + ' PM' : hour + ' AM');
+                        
+                        let eventHtml = '';
+                        hourEvents.forEach(e => {
+                            const min = new Date(e.start).getMinutes().toString().padStart(2, '0');
+                            eventHtml += `<div class="day-event-chip">${min} - ${e.title}</div>`;
+                        });
+
+                        slot.innerHTML = `
+                            <div class="slot-time">${displayHour}</div>
+                            <div class="slot-events">${eventHtml}</div>
+                        `;
+                        list.appendChild(slot);
+                    }
+                }
+            }
+            container.appendChild(list);
+        }
+
+        // --- NAVIGATION LOGIC ---
+        function changeMonth(delta) {
+            viewDate.setMonth(viewDate.getMonth() + delta);
+            renderView();
+        }
+
+        function changeDay(delta) {
+            viewDate.setDate(viewDate.getDate() + delta);
+            renderView();
+        }
+
+        function jumpToDay(dayNum) {
+            viewDate.setDate(dayNum);
+            switchView('day');
+        }
+
+        // ==========================================
+        //  GOOGLE MODE
+        // ==========================================
+        function initGoogleMode() {
+            document.getElementById('app-title').innerText = "Calendar (Google)";
+            gapi.load('client', async () => {
+                await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                
+                const fragmentString = location.hash.substring(1);
+                const params = new URLSearchParams(fragmentString);
+                const newAccessToken = params.get('access_token');
+
+                if (newAccessToken) {
+                    localStorage.setItem('google_calendar_token', newAccessToken);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    gapi.client.setToken({ access_token: newAccessToken });
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    loadGoogleEvents();
+                } else {
+                    const token = localStorage.getItem('google_calendar_token');
+                    if (token) {
+                        gapi.client.setToken({ access_token: token });
+                        document.getElementById('auth-overlay').style.display = 'none';
+                        loadGoogleEvents();
+                    } else {
+                        // Auto-login logic
+                        if (!location.hash.includes('error=')) {
+                            // Show connecting state
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                            document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
+                            document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
+                            oauthSignIn();
+                        } else {
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                        }
+                    }
+                }
+            });
+        }
+
+        function oauthSignIn() {
+            const endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            const form = document.createElement('form');
+            form.setAttribute('method', 'GET');
+            form.setAttribute('action', endpoint);
+            const params = { 'client_id': CLIENT_ID, 'redirect_uri': window.location.href.split('#')[0], 'response_type': 'token', 'scope': SCOPES };
+            for (var p in params) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'hidden');
+                input.setAttribute('name', p);
+                input.setAttribute('value', params[p]);
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        async function loadGoogleEvents() {
+            document.getElementById('status-msg').innerText = "Syncing...";
+            try {
+                // Fetch a broader range for month view (e.g., current month +/- 1)
+                // For simplicity, we just fetch a bunch of events starting from "now"
+                // Ideally, this should refetch when changing months, but static load is safer for rate limits
+                const res = await gapi.client.calendar.events.list({
+                    'calendarId': 'primary',
+                    'timeMin': (new Date(new Date().setMonth(new Date().getMonth() - 1))).toISOString(), // 1 month ago
+                    'showDeleted': false,
+                    'singleEvents': true,
+                    'maxResults': 200,
+                    'orderBy': 'startTime'
+                });
+                
+                events = (res.result.items || []).map(i => ({
+                    id: i.id,
+                    title: i.summary,
+                    start: i.start.dateTime || i.start.date
+                }));
+                renderView();
+                document.getElementById('status-msg').innerText = "Synced.";
+            } catch(e) {
+                document.getElementById('status-msg').innerText = "Error.";
+                if(e.status === 401) {
+                    // Token expired during use -> Re-auth
+                    oauthSignIn();
+                }
+            }
+        }
+
+        // ==========================================
+        //  NATIVE / CALDAV MODE
+        // ==========================================
+        function initNativeMode() {
+            document.getElementById('app-title').innerText = "Calendar";
+            
+            // If CalDAV is set, hide Add button (read-only)
+            if (calDavUrl) {
+                document.getElementById('add-btn').style.display = 'none';
+                loadCalDAVEvents();
+            } else {
+                document.getElementById('add-btn').style.display = 'block';
+                if (currentUser) loadCloudEvents();
+                else loadLocalEvents();
+            }
+        }
+
+        function loadLocalEvents() {
+            events = JSON.parse(localStorage.getItem('rekindle_events_local')) || [];
+            renderView();
+        }
+
+        function loadCloudEvents() {
+            db.collection('users').doc(currentUser.uid).collection('events')
+                .onSnapshot(snap => {
+                    events = [];
+                    snap.forEach(doc => {
+                        const d = doc.data();
+                        events.push({ id: doc.id, title: d.title, start: d.start });
+                    });
+                    renderView();
+                });
+        }
+        
+        async function loadCalDAVEvents() {
+            document.getElementById('status-msg').innerText = "Fetching CalDAV...";
+            // We use the same proxy pattern as other apps to bypass CORS
+            const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(calDavUrl)}`;
+            
+            try {
+                const res = await fetch(proxyUrl);
+                const text = await res.text();
+                
+                if (!text || text.trim() === "") throw new Error("Empty response");
+                
+                events = parseICS(text);
+                document.getElementById('status-msg').innerText = "Synced (CalDAV)";
+                renderView();
+            } catch(e) {
+                console.error(e);
+                document.getElementById('status-msg').innerText = "CalDAV Error";
+                // Fallback to local
+                if (!events.length && currentUser) loadCloudEvents();
+                else if (!events.length) loadLocalEvents();
+            }
+        }
+        
+        function parseICS(icsData) {
+            // Simple regex parser for basic event data
+            // VEVENT ... SUMMARY: ... DTSTART: ... END:VEVENT
+            const eventsFound = [];
+            const veventRegex = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/g;
+            
+            let match;
+            while ((match = veventRegex.exec(icsData)) !== null) {
+                const block = match[1];
+                
+                const summaryMatch = /SUMMARY:(.*)/.exec(block);
+                const dtStartMatch = /DTSTART(?:;.*)?:(\w+)/.exec(block);
+                
+                if (summaryMatch && dtStartMatch) {
+                    const title = summaryMatch[1].trim();
+                    const rawDate = dtStartMatch[1].trim();
+                    
+                    // Basic date parsing (YYYYMMDDTHHMMSS or YYYYMMDD)
+                    let isoDate = null;
+                    if (rawDate.length === 8) {
+                        // Date only
+                        isoDate = `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}`;
+                    } else if (rawDate.length >= 15) {
+                        // DateTime
+                        isoDate = `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}T${rawDate.slice(9,11)}:${rawDate.slice(11,13)}:${rawDate.slice(13,15)}`;
+                    }
+                    
+                    if (isoDate) {
+                        eventsFound.push({
+                            id: 'caldav_' + Math.random(), // generate temp id
+                            title: title,
+                            start: isoDate
+                        });
+                    }
+                }
+            }
+            return eventsFound;
+        }
+
+        function openAddModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('evt-title').value = '';
+            // Default to currently viewed date if in month/day view
+            const defaultDate = viewDate.toISOString().split('T')[0];
+            document.getElementById('evt-date').value = defaultDate;
+            document.getElementById('evt-time').value = '';
+        }
+
+        function saveNativeEvent() {
+            const title = document.getElementById('evt-title').value;
+            const date = document.getElementById('evt-date').value;
+            const time = document.getElementById('evt-time').value || "00:00";
+            
+            if(!title || !date) return alert("Title and Date required");
+            
+            const dateTime = new Date(`${date}T${time}`).toISOString();
+            const newEvt = { title: title, start: dateTime };
+
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('events').add(newEvt);
+            } else {
+                newEvt.id = Date.now().toString();
+                events.push(newEvt);
+                localStorage.setItem('rekindle_events_local', JSON.stringify(events));
+                renderView();
+            }
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        function deleteEvent(id) {
+            if(!confirm("Delete event?")) return;
+            if(currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('events').doc(id).delete();
+            } else {
+                events = events.filter(e => e.id !== id);
+                localStorage.setItem('rekindle_events_local', JSON.stringify(events));
+                renderView();
+            }
+        }
+
+    </script>
+</body>
+</html>

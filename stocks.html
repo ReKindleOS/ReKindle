@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stocks</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Default Background (Overridden by JS) */
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* FIX: Centers vertically */
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTENT AREA */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 0;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* INPUT AREA */
+        .toolbar {
+            padding: 10px;
+            /* border-bottom: 2px solid black; Removed to merge with selector */
+            display: flex;
+            gap: 10px;
+            background: #eee;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 0 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.9rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* RANGE SELECTOR */
+        .range-selector {
+            display: flex;
+            background: #eee;
+            border-bottom: 2px solid black;
+            padding: 0;
+        }
+        
+        .range-btn {
+            flex: 1;
+            border: none;
+            border-top: 1px solid #ccc;
+            border-right: 1px solid #ccc;
+            border-bottom: 2px solid transparent; 
+            background: #eee;
+            padding: 8px 0;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            color: #666;
+            font-family: inherit;
+        }
+        
+        .range-btn:last-child {
+            border-right: none;
+        }
+        
+        .range-btn:active {
+            background: #ddd;
+        }
+
+        .range-btn.active {
+            background: white;
+            color: black;
+            border-bottom: 2px solid black;
+            margin-bottom: -2px; /* Overlap border */
+            z-index: 1;
+            border-top: 1px solid white; /* Blend with top */
+        }
+
+        /* STOCK LIST */
+        .stock-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stock-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-bottom: 1px solid #ccc;
+            height: 60px; /* Fixed height for consistency */
+        }
+
+        .stock-symbol {
+            font-size: 1.2rem;
+            font-weight: 900;
+            width: 70px;
+            flex-shrink: 0;
+        }
+
+        /* Graph Area */
+        .stock-graph {
+            flex-grow: 1;
+            height: 40px;
+            margin: 0 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .stock-graph svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        .stock-data-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            width: 90px;
+            flex-shrink: 0;
+        }
+
+        .stock-price {
+            font-family: "Courier New", monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .stock-change {
+            font-size: 0.85rem;
+            display: flex;
+            gap: 5px;
+        }
+
+        .up { color: black; }
+        .down { color: black; text-decoration: underline; } /* E-ink cue for negative */
+
+        .delete-stock {
+            margin-left: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 5px;
+            font-size: 1.2rem;
+            color: #999;
+        }
+        
+        .delete-stock:hover { color: red; }
+
+        /* AUTH STATUS */
+        #auth-status {
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 5px;
+            background: #f0f0f0;
+            border-top: 1px solid #ccc;
+        }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Market</span>
+        </div>
+
+        <!-- MAIN VIEW -->
+        <div class="window-content" id="main-view">
+            <div class="toolbar">
+                <input type="text" id="symbol-input" placeholder="SYMBOL" onkeypress="handleEnter(event)">
+                <button class="sys-btn" onclick="addSymbol()">Add</button>
+                <button class="sys-btn" onclick="refreshData()">↻</button>
+            </div>
+            
+            <div class="range-selector">
+                <button class="range-btn" id="range-1d" onclick="setRange('1d')">1 Day</button>
+                <button class="range-btn active" id="range-5d" onclick="setRange('5d')">1 Week</button>
+                <button class="range-btn" id="range-1mo" onclick="setRange('1mo')">1 Month</button>
+            </div>
+
+            <div class="stock-list" id="stock-container">
+                <div style="padding:20px; text-align:center; font-style:italic;">Loading...</div>
+            </div>
+            
+            <div id="auth-status">Guest Mode</div>
+        </div>
+
+        <!-- DELETE MODAL -->
+        <div id="delete-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Remove Stock?</h3>
+                <p>Remove <span id="delete-symbol-text" style="font-weight:bold;"></span> from watchlist?</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="confirmDelete()">Remove</button>
+                    <button class="sys-btn" onclick="closeModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let symbols = JSON.parse(localStorage.getItem('rekindle_stocks')) || ['AAPL', 'MSFT', 'BTC-USD'];
+        let currentUser = null;
+        let deleteTarget = null;
+        let currentRange = '5d'; // Default 1 Week
+        
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            // Setup Auth Listener
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('auth-status').innerText = "Synced: " + user.email;
+                    loadCloudStocks();
+                } else {
+                    document.getElementById('auth-status').innerText = "Guest Mode (Local Only)";
+                    refreshData(); // Load local
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function handleEnter(e) {
+            if(e.key === 'Enter') addSymbol();
+        }
+
+        // --- RANGE LOGIC ---
+        function setRange(range) {
+            if(currentRange === range) return;
+            currentRange = range;
+            
+            // UI Toggle
+            document.querySelectorAll('.range-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`range-${range}`).classList.add('active');
+            
+            // Show loading and fetch
+            document.getElementById('stock-container').innerHTML = '<div style="padding:20px; text-align:center;">Updating range...</div>';
+            refreshData();
+        }
+
+        // --- DATA SYNC ---
+        function loadCloudStocks() {
+            db.collection('users').doc(currentUser.uid).collection('apps').doc('stocks')
+                .get().then((doc) => {
+                    if (doc.exists) {
+                        symbols = doc.data().symbols || [];
+                        localStorage.setItem('rekindle_stocks', JSON.stringify(symbols)); // Update local cache
+                        refreshData();
+                    } else {
+                        // First time cloud sync: save current local to cloud
+                        saveStocks();
+                        refreshData();
+                    }
+                }).catch((error) => {
+                    console.log("Error getting document:", error);
+                    refreshData(); // Fallback to local
+                });
+        }
+
+        function saveStocks() {
+            // Save locally
+            localStorage.setItem('rekindle_stocks', JSON.stringify(symbols));
+
+            // Save to cloud if logged in
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('stocks').set({
+                    symbols: symbols
+                });
+            }
+        }
+
+        // --- DATA FETCHING & RENDERING ---
+        
+        async function refreshData() {
+            const container = document.getElementById('stock-container');
+            container.innerHTML = ''; 
+
+            if (symbols.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center;">No stocks added.</div>';
+                return;
+            }
+
+            // 1. Render all placeholders immediately (Instant UI response)
+            symbols.forEach(symbol => {
+                renderStock(symbol, null);
+            });
+
+            // 2. Fetch data in parallel (Non-blocking updates)
+            symbols.forEach(async (symbol) => {
+                const data = await fetchStockDataWithRetry(symbol, 3);
+                updateStockUI(symbol, data);
+            });
+        }
+
+        // Creates a stock row (either blank placeholder or full)
+        function renderStock(symbol, data) {
+            const container = document.getElementById('stock-container');
+            
+            // Create container div
+            const div = document.createElement('div');
+            div.className = 'stock-item';
+            div.id = `stock-item-${symbol}`;
+
+            // Populate content (uses helper to generate inner HTML)
+            div.innerHTML = getStockHTML(symbol, data);
+            
+            container.appendChild(div);
+        }
+
+        // Updates an existing stock row by ID
+        function updateStockUI(symbol, data) {
+            const div = document.getElementById(`stock-item-${symbol}`);
+            if (div) {
+                div.innerHTML = getStockHTML(symbol, data);
+            }
+        }
+
+        // Helper to generate the inner HTML for a stock row
+        function getStockHTML(symbol, data) {
+            if (!data) {
+                // Placeholder / Loading State
+                return `
+                    <span class="stock-symbol">${symbol}</span>
+                    <div class="stock-graph" style="opacity:0.3; border-bottom:1px dashed #ccc;"></div>
+                    <div class="stock-data-group">
+                        <span class="stock-price" style="color:#888;">--</span>
+                        <div class="stock-change">
+                            <span style="color:#888;">Loading</span>
+                        </div>
+                    </div>
+                    <span class="delete-stock" onclick="promptDelete('${symbol}')">×</span>
+                `;
+            } else {
+                // Populated State
+                const isUp = data.change >= 0;
+                const sign = isUp ? '+' : '';
+                const styleClass = isUp ? 'up' : 'down';
+                
+                const graphSvg = generateSparkline(data.history);
+
+                return `
+                    <span class="stock-symbol">${symbol}</span>
+                    <div class="stock-graph">${graphSvg}</div>
+                    <div class="stock-data-group">
+                        <span class="stock-price">${data.price.toFixed(2)}</span>
+                        <div class="stock-change ${styleClass}">
+                            <span>${sign}${data.change.toFixed(2)}</span>
+                            <span>(${data.percent.toFixed(1)}%)</span>
+                        </div>
+                    </div>
+                    <span class="delete-stock" onclick="promptDelete('${symbol}')">×</span>
+                `;
+            }
+        }
+
+        async function fetchStockDataWithRetry(symbol, retries) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const data = await fetchStockData(symbol);
+                    if (data) return data;
+                } catch (e) {
+                    // Exponential backoff or simple delay could go here
+                    await new Promise(r => setTimeout(r, 500)); 
+                }
+            }
+            return getDemoData(symbol); // Fallback if all retries fail
+        }
+
+        async function fetchStockData(symbol) {
+            try {
+                // Choose optimal interval based on range to keep payload small
+                let interval = '60m';
+                if (currentRange === '1d') interval = '15m'; // ~26 points
+                else if (currentRange === '5d') interval = '60m'; // ~35 points
+                else if (currentRange === '1mo') interval = '1d'; // ~22 points
+
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${currentRange}`;
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
+                
+                const res = await fetch(proxyUrl);
+                if (!res.ok) throw new Error("Network response was not ok");
+                
+                const json = await res.json();
+                
+                const result = json.chart.result[0];
+                const meta = result.meta;
+                const quote = result.indicators.quote[0];
+                
+                const price = meta.regularMarketPrice;
+                const prevClose = meta.chartPreviousClose;
+                const change = price - prevClose;
+                const percent = (change / prevClose) * 100;
+                
+                // Extract History
+                const history = quote.close ? quote.close.filter(p => p !== null) : [];
+
+                return {
+                    price: price,
+                    change: change,
+                    percent: percent,
+                    history: history
+                };
+
+            } catch (e) {
+                console.error("Fetch failed for " + symbol, e);
+                throw e; 
+            }
+        }
+
+        function getDemoData(symbol) {
+            // Simulate data if API fails to prevent empty UI
+            const base = Math.random() * 200 + 50;
+            const change = (Math.random() * 10) - 5;
+            const percent = (change / base) * 100;
+            
+            const history = [];
+            let curr = base - change;
+            const points = currentRange === '1d' ? 26 : 30;
+            
+            for(let i=0; i<points; i++) {
+                curr += (Math.random() * 5 - 2.5);
+                history.push(curr);
+            }
+            history.push(base);
+
+            return {
+                price: base,
+                change: change,
+                percent: percent,
+                history: history,
+                isDemo: true
+            };
+        }
+
+        function generateSparkline(history) {
+            if (!history || history.length < 2) return "";
+
+            const width = 100;
+            const height = 40;
+            const min = Math.min(...history);
+            const max = Math.max(...history);
+            const range = max - min || 1;
+
+            const points = history.map((val, index) => {
+                const x = (index / (history.length - 1)) * width;
+                const y = height - ((val - min) / range) * height;
+                return `${x},${y}`;
+            }).join(" ");
+
+            return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <polyline points="${points}" fill="none" stroke="black" stroke-width="2" vector-effect="non-scaling-stroke" />
+            </svg>`;
+        }
+
+        // --- ACTIONS ---
+        function addSymbol() {
+            const input = document.getElementById('symbol-input');
+            const val = input.value.toUpperCase().trim();
+            
+            if (val && !symbols.includes(val)) {
+                symbols.push(val);
+                saveStocks();
+                input.value = '';
+                
+                // Show loading state for new item immediately
+                refreshData();
+            }
+        }
+
+        function promptDelete(symbol) {
+            deleteTarget = symbol;
+            document.getElementById('delete-symbol-text').innerText = symbol;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function confirmDelete() {
+            if (deleteTarget) {
+                symbols = symbols.filter(s => s !== deleteTarget);
+                saveStocks();
+                // Remove element directly from DOM
+                const div = document.getElementById(`stock-item-${deleteTarget}`);
+                if (div) div.remove();
+            }
+            closeModal();
+        }
+
+        function closeModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+            deleteTarget = null;
+        }
+
+    </script>
+</body>
+</html>

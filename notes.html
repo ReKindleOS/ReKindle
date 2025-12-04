@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            height: 90vh;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        /* VIEWS */
+        .view {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        /* LIST VIEW */
+        #list-view {
+            padding: 0;
+            overflow-y: auto;
+        }
+
+        .note-item {
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .note-item:hover {
+            background-color: #eee;
+        }
+
+        .note-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .note-date {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* EDITOR VIEW */
+        #editor-view {
+            display: none;
+            flex-direction: column;
+        }
+
+        .editor-toolbar {
+            padding: 8px;
+            border-bottom: 2px solid black;
+            display: flex;
+            gap: 10px;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        #note-title-input {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 5px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        textarea {
+            flex-grow: 1;
+            width: 100%;
+            border: none;
+            padding: 20px;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 1.2rem;
+            line-height: 1.5;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            overflow-y: auto;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* MODAL OVERLAY */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <!-- PERSISTENT WINDOW HEADER -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            
+            <span class="title-text">Note Pad</span>
+            
+            <div class="controls" id="list-controls">
+                <button class="sys-btn" onclick="createNote()">+ New</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <!-- LIST VIEW -->
+            <div id="list-view" class="view">
+                <div style="padding:20px; text-align:center; color:#666;">Loading notes...</div>
+            </div>
+
+            <!-- EDITOR VIEW -->
+            <div id="editor-view" class="view">
+                <div class="editor-toolbar">
+                    <button class="sys-btn" onclick="showList()">Back</button>
+                    <input type="text" id="note-title-input" placeholder="Untitled Note" oninput="saveCurrentNote()">
+                    <button class="sys-btn" onclick="promptDelete()">Delete</button>
+                </div>
+                <textarea id="note-content" placeholder="Type here..." oninput="saveCurrentNote()"></textarea>
+            </div>
+        </div>
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <!-- DELETE MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3>Delete Note?</h3>
+            <p>Are you sure you want to delete this note?</p>
+            <div class="modal-buttons">
+                <button class="sys-btn" onclick="confirmDelete()">Delete</button>
+                <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let notes = [];
+        let currentNoteId = null;
+        let currentUser = null;
+        let saveTimer = null; 
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudNotes();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalNotes();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- DATA MANAGEMENT ---
+
+        function loadLocalNotes() {
+            notes = JSON.parse(localStorage.getItem('rekindle_notes')) || [];
+            renderList();
+        }
+
+        function loadCloudNotes() {
+            db.collection('users').doc(currentUser.uid).collection('notes')
+                .orderBy('updated', 'desc')
+                .onSnapshot((snapshot) => {
+                    notes = [];
+                    snapshot.forEach(doc => {
+                        let data = doc.data();
+                        data.id = doc.id;
+                        notes.push(data);
+                    });
+                    renderList();
+                }, (error) => {
+                    console.error("Error getting notes: ", error);
+                    document.getElementById('status-bar').innerText = "Sync Error. Using Local.";
+                    loadLocalNotes();
+                });
+        }
+
+        function saveNoteData(note) {
+            if (!currentUser) {
+                localStorage.setItem('rekindle_notes', JSON.stringify(notes));
+            } else {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    document.getElementById('status-bar').innerText = "Saving...";
+                    db.collection('users').doc(currentUser.uid).collection('notes').doc(note.id).set({
+                        title: note.title,
+                        content: note.content,
+                        updated: note.updated
+                    }).then(() => {
+                        document.getElementById('status-bar').innerText = "Saved.";
+                        setTimeout(() => { document.getElementById('status-bar').innerText = "Synced: " + currentUser.email; }, 2000);
+                    }).catch((e) => {
+                        document.getElementById('status-bar').innerText = "Save Failed.";
+                    });
+                }, 1000);
+            }
+        }
+
+        function deleteNoteData(id) {
+            if (!currentUser) {
+                notes = notes.filter(n => n.id !== id);
+                localStorage.setItem('rekindle_notes', JSON.stringify(notes));
+                renderList();
+            } else {
+                db.collection('users').doc(currentUser.uid).collection('notes').doc(id).delete();
+            }
+        }
+
+        // --- UI LOGIC ---
+
+        function renderList() {
+            const container = document.getElementById('list-view');
+            container.innerHTML = '';
+
+            if (notes.length === 0) {
+                container.innerHTML = '<div style="padding:40px; text-align:center; font-style:italic;">No notes. Tap "+ New" to write.</div>';
+                return;
+            }
+
+            notes.sort((a, b) => b.updated - a.updated);
+
+            notes.forEach(note => {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+                div.onclick = () => openNote(note.id);
+                
+                const date = new Date(note.updated).toLocaleDateString();
+                const title = note.title || 'Untitled';
+                
+                div.innerHTML = `
+                    <span class="note-title">${title}</span>
+                    <span class="note-date">${date}</span>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function createNote() {
+            const newNote = {
+                id: currentUser ? db.collection('users').doc().id : Date.now().toString(),
+                title: '',
+                content: '',
+                updated: Date.now()
+            };
+            
+            if (!currentUser) {
+                notes.push(newNote);
+            }
+            
+            saveNoteData(newNote); 
+            openNote(newNote.id, newNote);
+        }
+
+        function openNote(id, noteObj = null) {
+            currentNoteId = id;
+            const note = noteObj || notes.find(n => n.id === id);
+            
+            if (!note) return;
+
+            document.getElementById('note-title-input').value = note.title;
+            document.getElementById('note-content').value = note.content;
+
+            document.getElementById('list-view').style.display = 'none';
+            document.getElementById('list-controls').style.display = 'none';
+            document.getElementById('editor-view').style.display = 'flex';
+        }
+
+        function saveCurrentNote() {
+            if (!currentNoteId) return;
+
+            let note = notes.find(n => n.id === currentNoteId);
+            
+            if (!note) {
+                note = { id: currentNoteId };
+            }
+
+            note.title = document.getElementById('note-title-input').value;
+            note.content = document.getElementById('note-content').value;
+            note.updated = Date.now();
+
+            saveNoteData(note);
+        }
+
+        // --- MODAL LOGIC ---
+        function promptDelete() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        function confirmDelete() {
+            deleteNoteData(currentNoteId);
+            closeModal();
+            showList();
+        }
+
+        function showList() {
+            currentNoteId = null;
+            document.getElementById('editor-view').style.display = 'none';
+            document.getElementById('list-controls').style.display = 'flex';
+            document.getElementById('list-view').style.display = 'block';
+            renderList();
+        }
+
+    </script>
+</body>
+</html>

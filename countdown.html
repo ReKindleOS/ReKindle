@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Countdown</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* ADD BUTTON */
+        .add-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            padding: 2px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .add-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            /* gap: 15px; Removed for Kindle compat */
+        }
+
+        /* EVENT CARD */
+        .event-card {
+            border: 2px solid black;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 3px 3px 0 #ccc;
+            position: relative;
+            background: white;
+            margin-bottom: 15px; /* Use margin instead of gap */
+        }
+        
+        .event-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 5px;
+        }
+
+        .event-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+
+        .event-date {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* Standard Counter */
+        .event-main-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        /* Recurring Layout */
+        .recurring-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .recurring-col {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .recurring-label {
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #555;
+            margin-bottom: 2px;
+        }
+
+        .count-number {
+            font-family: "Courier New", monospace;
+            font-size: 1.8rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+        
+        .count-number.small {
+            font-size: 1.4rem;
+        }
+
+        .count-unit {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .count-detail {
+            font-size: 0.8rem;
+            color: #555;
+            margin-top: 5px;
+            font-family: "Courier New", monospace;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 5px;
+            line-height: 1;
+            color: #999;
+        }
+        
+        .delete-btn:hover { color: red; }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .modal-box input, .modal-box select {
+            width: 90%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 2px solid black;
+            font-family: inherit;
+            font-size: 1rem;
+            background: white;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .checkbox-group input {
+            width: auto;
+            margin: 0;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+        }
+        
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 5px;
+            font-size: 0.8rem;
+            background: #eee;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Timers</span>
+            <button class="add-btn" onclick="openModal()">+ Add</button>
+        </div>
+
+        <div class="window-content" id="events-container">
+            <div style="text-align:center; margin-top:20px; font-style:italic; color:#888;">Loading events...</div>
+        </div>
+
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <!-- ADD MODAL -->
+    <div id="add-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>New Timer</h3>
+            <input type="text" id="event-name" placeholder="Title (e.g. Birthday, Anniversary)">
+            
+            <label style="display:block; text-align:left; font-size:0.8rem; margin-left:5%; font-weight:bold;">Start / Date</label>
+            <input type="datetime-local" id="event-date">
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="event-recurring" onchange="toggleRecurringOptions()">
+                <label for="event-recurring">Recurring</label>
+            </div>
+            
+            <div id="recurring-options" style="display:none;">
+                <select id="event-frequency">
+                    <option value="yearly">Every Year</option>
+                    <option value="monthly">Every Month</option>
+                    <option value="weekly">Every Week</option>
+                    <option value="daily">Every Day</option>
+                </select>
+            </div>
+            
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="addEvent()">Save</button>
+                <button class="sys-btn" onclick="closeModal('add-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE MODAL -->
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Delete Timer?</h3>
+            <p>This action cannot be undone.</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="confirmDelete()">Delete</button>
+                <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let events = [];
+        let currentUser = null;
+        let updateInterval = null;
+        let deleteTargetId = null;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudEvents();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalEvents();
+                }
+            });
+
+            // Auto-refresh counters every minute
+            updateInterval = setInterval(renderEvents, 60000);
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- DATA HANDLING ---
+        function loadLocalEvents() {
+            let rawData = JSON.parse(localStorage.getItem('rekindle_countdown_events')) || [];
+            
+            // Normalize and Migrate
+            events = rawData.map(e => ({
+                id: e.id || Date.now().toString() + Math.random(),
+                name: e.name,
+                date: new Date(e.date).getTime(),
+                recurring: e.recurring || false,
+                frequency: e.frequency || 'yearly'
+            }));
+            
+            renderEvents();
+        }
+
+        function loadCloudEvents() {
+            db.collection('users').doc(currentUser.uid).collection('countdown_events')
+                .onSnapshot((snapshot) => {
+                    events = [];
+                    snapshot.forEach(doc => {
+                        let data = doc.data();
+                        data.id = doc.id;
+                        events.push(data);
+                    });
+                    renderEvents();
+                });
+        }
+
+        function saveEventsLocal() {
+            localStorage.setItem('rekindle_countdown_events', JSON.stringify(events));
+            renderEvents();
+        }
+
+        function addEvent() {
+            const name = document.getElementById('event-name').value;
+            const dateStr = document.getElementById('event-date').value;
+            const isRecurring = document.getElementById('event-recurring').checked;
+            const frequency = document.getElementById('event-frequency').value;
+
+            if (!name || !dateStr) {
+                alert("Please fill in Title and Date.");
+                return;
+            }
+
+            const timestamp = new Date(dateStr).getTime();
+
+            const newEvent = {
+                name: name,
+                date: timestamp,
+                recurring: isRecurring,
+                frequency: isRecurring ? frequency : null
+            };
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('countdown_events').add(newEvent);
+            } else {
+                newEvent.id = Date.now().toString();
+                events.push(newEvent);
+                saveEventsLocal();
+            }
+
+            closeModal('add-modal');
+        }
+
+        function promptDelete(id) {
+            deleteTargetId = id;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function confirmDelete() {
+            if (!deleteTargetId) return;
+            
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('countdown_events').doc(deleteTargetId).delete();
+            } else {
+                events = events.filter(e => e.id !== deleteTargetId);
+                saveEventsLocal();
+            }
+            closeModal('delete-modal');
+        }
+
+        // --- TIME LOGIC ---
+        function calculateRecurringDates(baseDate, frequency) {
+            const now = new Date();
+            let next = new Date(baseDate);
+            let prev = new Date(baseDate);
+            
+            // If base date is in future, that is the next occurence. Prev doesn't exist yet.
+            if (next > now) {
+                return { next: next, prev: null };
+            }
+
+            // Function to add interval
+            const addInterval = (d, freq) => {
+                const result = new Date(d);
+                if (freq === 'daily') result.setDate(result.getDate() + 1);
+                else if (freq === 'weekly') result.setDate(result.getDate() + 7);
+                else if (freq === 'monthly') result.setMonth(result.getMonth() + 1);
+                else if (freq === 'yearly') result.setFullYear(result.getFullYear() + 1);
+                return result;
+            };
+
+            // Loop until we find the next date in future
+            while (next <= now) {
+                prev = new Date(next); // Store current as prev before advancing
+                next = addInterval(next, frequency);
+            }
+
+            return { next, prev };
+        }
+
+        function getDuration(target) {
+            if (!target) return { mainValue: "-", mainUnit: "", detail: "" };
+
+            const now = new Date().getTime();
+            const diff = target - now;
+            const absDiff = Math.abs(diff);
+
+            const minutes = Math.floor(absDiff / 1000 / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            const years = Math.floor(days / 365);
+            
+            let mainValue = "";
+            let mainUnit = "";
+            let detail = "";
+
+            if (years > 0) {
+                const remDays = days % 365;
+                mainValue = years;
+                mainUnit = years === 1 ? "Year" : "Years";
+                detail = `${remDays} days`;
+            } else if (days > 0) {
+                mainValue = days;
+                mainUnit = days === 1 ? "Day" : "Days";
+                const remHours = hours % 24;
+                if (remHours > 0) detail = `${remHours}h`;
+            } else if (hours > 0) {
+                mainValue = hours;
+                mainUnit = hours === 1 ? "Hour" : "Hours";
+                const remMins = minutes % 60;
+                detail = `${remMins}m`;
+            } else {
+                mainValue = minutes;
+                mainUnit = minutes === 1 ? "Minute" : "Minutes";
+            }
+
+            if (minutes === 0) {
+                mainValue = "< 1";
+                mainUnit = "Min";
+            }
+
+            return { mainValue, mainUnit, detail };
+        }
+
+        // --- RENDER UI ---
+        function renderEvents() {
+            const list = document.getElementById('events-container');
+            list.innerHTML = '';
+
+            if (events.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:40px; font-style:italic; color:#888;">No timers. Tap "+ Add" to begin.</div>';
+                return;
+            }
+
+            // Sort logic
+            const now = Date.now();
+            
+            const processedEvents = events.map(e => {
+                if (e.recurring) {
+                    const { next, prev } = calculateRecurringDates(e.date, e.frequency);
+                    return { ...e, targetSort: next.getTime(), nextDate: next, prevDate: prev };
+                } else {
+                    return { ...e, targetSort: e.date, nextDate: new Date(e.date), prevDate: null };
+                }
+            });
+
+            // Sort: Future events (soonest first) -> Past events (most recent first)
+            processedEvents.sort((a, b) => {
+                if (a.targetSort > now && b.targetSort > now) return a.targetSort - b.targetSort;
+                if (a.targetSort <= now && b.targetSort <= now) return b.targetSort - a.targetSort;
+                return b.targetSort - a.targetSort; 
+            });
+
+            processedEvents.forEach(e => {
+                const div = document.createElement('div');
+                div.className = 'event-card';
+
+                const deleteBtn = `<button class="delete-btn" onclick="promptDelete('${e.id}')">×</button>`;
+
+                if (e.recurring) {
+                    // Recurring View
+                    const nextCalc = getDuration(e.nextDate);
+                    const prevCalc = getDuration(e.prevDate);
+                    
+                    const nextDateStr = e.nextDate.toLocaleDateString();
+                    
+                    div.innerHTML = `
+                        <div class="card-header">
+                            <div>
+                                <div class="event-title">${e.name}</div>
+                                <div class="event-date">Repeats ${e.frequency} • Next: ${nextDateStr}</div>
+                            </div>
+                            ${deleteBtn}
+                        </div>
+                        <div class="recurring-grid">
+                            <div class="recurring-col">
+                                <span class="recurring-label">Until Next</span>
+                                <div style="display:flex; align-items:baseline;">
+                                    <span class="count-number small" style="margin-right:5px;">${nextCalc.mainValue}</span>
+                                    <span class="count-unit">${nextCalc.mainUnit}</span>
+                                </div>
+                                <div class="count-detail">${nextCalc.detail}</div>
+                            </div>
+                            <div class="recurring-col" style="border-left:1px solid #ccc; padding-left:10px;">
+                                <span class="recurring-label">Since Last</span>
+                                ${ e.prevDate ? `
+                                    <div style="display:flex; align-items:baseline;">
+                                        <span class="count-number small" style="margin-right:5px;">${prevCalc.mainValue}</span>
+                                        <span class="count-unit">${prevCalc.mainUnit}</span>
+                                    </div>
+                                    <div class="count-detail">${prevCalc.detail}</div>
+                                ` : `<div style="font-size:0.9rem; margin-top:5px; color:#888;">First time</div>` }
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // One-time View
+                    const calc = getDuration(e.nextDate);
+                    const dateStr = e.nextDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+                    const isPast = e.nextDate < now;
+                    const label = isPast ? "AGO" : "LEFT";
+                    
+                    div.innerHTML = `
+                        <div class="card-header">
+                            <div>
+                                <div class="event-title">${e.name}</div>
+                                <div class="event-date">${dateStr}</div>
+                            </div>
+                            ${deleteBtn}
+                        </div>
+                        <div class="event-main-display">
+                            <div>
+                                <div class="count-number">${calc.mainValue}</div>
+                                <div class="count-unit">${calc.mainUnit}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="count-unit" style="color:#888;">${label}</div>
+                                <div class="count-detail">${calc.detail}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                list.appendChild(div);
+            });
+        }
+
+        // --- MODAL LOGIC ---
+        function openModal() {
+            document.getElementById('add-modal').style.display = 'flex';
+            document.getElementById('event-name').value = "";
+            document.getElementById('event-date').value = "";
+            document.getElementById('event-recurring').checked = false;
+            toggleRecurringOptions();
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+            if (id === 'delete-modal') deleteTargetId = null;
+        }
+        
+        function toggleRecurringOptions() {
+            const isChecked = document.getElementById('event-recurring').checked;
+            document.getElementById('recurring-options').style.display = isChecked ? 'block' : 'none';
+        }
+
+    </script>
+</body>
+</html>

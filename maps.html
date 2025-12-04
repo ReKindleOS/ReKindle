@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Atlas</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --overlay-bg: rgba(255, 255, 255, 0.95);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* MAIN WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 900px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+            z-index: 1000;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* MAP CONTAINER */
+        #map {
+            flex-grow: 1;
+            width: 100%;
+            height: 100%;
+            background: #ffffff; /* Critical: Background must be white */
+            z-index: 1;
+        }
+
+        /* E-INK FILTER APPLICATION */
+        .leaflet-layer {
+            /* Filters removed for performance on E-ink devices */
+            /* filter: grayscale(100%) contrast(130%) brightness(0.9); */
+        }
+        
+        .leaflet-marker-icon {
+            filter: none; 
+        }
+
+        /* OVERLAYS */
+        .overlay-panel {
+            position: absolute;
+            background: var(--overlay-bg);
+            border: 2px solid black;
+            padding: 10px;
+            z-index: 500;
+            box-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+        }
+
+        /* TOP LEFT: SEARCH & ROUTE */
+        .panel-top-left {
+            top: 50px;
+            left: 10px;
+            width: 260px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .tab-row {
+            display: flex;
+            border-bottom: 2px solid black;
+            margin-bottom: 5px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 5px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: #eee;
+            border: none;
+        }
+
+        .tab-btn.active {
+            background: black;
+            color: white;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 6px;
+            border: 2px solid black;
+            font-family: inherit;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 5px;
+        }
+
+        button.sys-btn {
+            flex: 1;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            padding: 5px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            box-shadow: 1px 1px 0 black;
+        }
+
+        button.sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* BOTTOM RIGHT: CONTROLS */
+        .panel-bottom-right {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+            z-index: 500;
+        }
+
+        .d-pad {
+            display: grid;
+            grid-template-columns: 35px 35px 35px;
+            grid-template-rows: 35px 35px 35px;
+            gap: 4px;
+            background: white;
+            border: 2px solid black;
+            padding: 4px;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .d-btn {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .d-btn:active {
+            background: black;
+            color: white;
+        }
+
+        .d-btn.center {
+            font-size: 0.7rem;
+            background: #eee;
+        }
+
+        .zoom-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: white;
+            border: 2px solid black;
+            padding: 4px;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .zoom-btn {
+            width: 35px;
+            height: 35px;
+            background: white;
+            border: 2px solid black;
+            font-weight: 900;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+
+        .zoom-btn:active {
+            background: black;
+            color: white;
+        }
+
+        /* LOADER */
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #000;
+            border-radius: 50%;
+            width: 12px;
+            height: 12px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 5px;
+            display: none;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .leaflet-control-attribution { font-size: 8px !important; background: rgba(255,255,255,0.7) !important; }
+        .leaflet-bar { display: none !important; }
+        
+        /* MODAL STYLES (NEW) */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            width: 80%;
+            max-width: 300px;
+            text-align: center;
+            box-shadow: 6px 6px 0 rgba(0,0,0,0.5);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .result-item {
+            padding: 8px;
+            border: 2px solid #ccc;
+            width: 100%;
+            box-sizing: border-box;
+            cursor: pointer;
+            font-size: 0.9rem;
+            text-align: left;
+            font-weight: bold;
+        }
+        
+        .result-item:active {
+            background: black;
+            color: white;
+            border-color: black;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Atlas</span>
+        </div>
+
+        <div class="overlay-panel panel-top-left">
+            <div class="tab-row">
+                <button class="tab-btn active" id="tab-find" onclick="setMode('find')">Find</button>
+                <button class="tab-btn" id="tab-route" onclick="setMode('route')">Route</button>
+            </div>
+
+            <div id="mode-find-content">
+                <div class="input-group">
+                    <input type="text" id="search-input" placeholder="Search location..." onkeypress="if(event.key==='Enter') searchLocation()">
+                </div>
+                <div class="action-row" style="margin-top:5px;">
+                    <button class="sys-btn" onclick="searchLocation()">Go <div class="loader" id="search-loader"></div></button>
+                    <button class="sys-btn" onclick="clearMap()">Clear</button>
+                </div>
+            </div>
+
+            <div id="mode-route-content" style="display:none;">
+                <div class="input-group">
+                    <input type="text" id="route-start" placeholder="Start (or leave empty)">
+                    <input type="text" id="route-end" placeholder="Destination">
+                </div>
+                <div class="action-row" style="margin-top:5px;">
+                    <button class="sys-btn" onclick="calcRoute()">Get Route <div class="loader" id="route-loader"></div></button>
+                </div>
+                <div id="route-stats" style="font-size:0.8rem; margin-top:5px; text-align:center;"></div>
+            </div>
+
+            </div>
+
+        <div class="panel-bottom-right">
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="map.zoomIn()">+</button>
+                <button class="zoom-btn" onclick="map.zoomOut()">-</button>
+            </div>
+            
+            <div class="d-pad">
+                <div></div>
+                <button class="d-btn" onclick="panMap(0, -1)">▲</button>
+                <div></div>
+                
+                <button class="d-btn" onclick="panMap(-1, 0)">◀</button>
+                <button class="d-btn center" onclick="resetView()">●</button>
+                <button class="d-btn" onclick="panMap(1, 0)">▶</button>
+                
+                <div></div>
+                <button class="d-btn" onclick="panMap(0, 1)">▼</button>
+                <div></div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+        
+        <div id="selection-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="selection-title">Select Location</h3>
+                <div id="selection-content" class="modal-content">
+                    </div>
+                <button class="sys-btn" onclick="closeModal('selection-modal')">Cancel</button>
+            </div>
+        </div>
+
+        <div id="status-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="status-title">Status</h3>
+                <p id="status-message" style="font-size:0.9rem; margin-top:10px;"></p>
+                <button class="sys-btn" onclick="closeModal('status-modal')">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // --- PROXY CONFIGURATION ---
+        // List of proxies that support URL appending (e.g., ?quest= or ?{target_url})
+        const PROXY_URLS = [
+            "https://api.codetabs.com/v1/proxy/?quest=", // Primary (Original)
+            "https://corsproxy.io/?"                     // Backup 1
+        ];
+
+        // --- UTILITY FUNCTIONS ---
+        
+        // Function to shuffle array and make a copy
+        function shuffleAndCopy(arr) {
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        // Function to fetch with proxy fallback, using a random order first.
+        async function fetchWithProxyFallback(targetUrl, options = {}) {
+            const shuffledProxies = shuffleAndCopy(PROXY_URLS);
+
+            for (const proxyBase of shuffledProxies) {
+                const proxiedUrl = proxyBase + encodeURIComponent(targetUrl);
+                try {
+                    const response = await fetch(proxiedUrl, options);
+                    if (response.ok) {
+                        return response;
+                    }
+                    // If response is not ok (e.g., 404, 500 from the target site or proxy error)
+                    // continue to the next proxy.
+                    console.warn(`Proxy ${proxyBase} failed with status: ${response.status}. Trying next...`);
+                } catch (error) {
+                    // Network error (CORS fail, DNS fail, etc.) - proceed to next proxy
+                    console.error(`Proxy ${proxyBase} failed to connect:`, error);
+                }
+            }
+
+            // If all proxies fail, try fetching directly as a last resort
+            try {
+                const response = await fetch(targetUrl, options);
+                if (response.ok) {
+                     return response;
+                }
+            } catch (directError) {
+                console.error("Direct fetch failed:", directError);
+            }
+
+
+            // If all proxies and direct fetch fail, throw a comprehensive error.
+            throw new Error("All configured proxies failed to fetch the data.");
+        }
+
+
+        let map;
+        let markers = [];
+        let routeLayer = null;
+        let currentMode = 'find';
+        
+        window.onload = () => {
+            loadWallpaper();
+            initMap();
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            if(img) document.body.style.backgroundImage = img;
+        }
+
+        function initMap() {
+            // Using Standard OSM tiles for better contrast on E-ink when combined with CSS filters
+            const tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+            const attribution = '&copy; OpenStreetMap contributors';
+
+            map = L.map('map', {
+                zoomControl: false, 
+                attributionControl: true,
+                center: [40.7128, -74.0060], // Default NYC
+                zoom: 13,
+                zoomAnimation: false, 
+                fadeAnimation: false,
+                markerZoomAnimation: false,
+                inertia: false
+            });
+
+            L.tileLayer(tileUrl, {
+                attribution: attribution,
+                maxZoom: 19,
+                updateWhenIdle: true,
+                keepBuffer: 2
+            }).addTo(map);
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${mode}`).classList.add('active');
+            document.getElementById('mode-find-content').style.display = mode === 'find' ? 'block' : 'none';
+            document.getElementById('mode-route-content').style.display = mode === 'route' ? 'block' : 'none';
+        }
+
+        function clearMap() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+                routeLayer = null;
+            }
+            document.getElementById('search-input').value = '';
+            document.getElementById('route-stats').innerText = '';
+        }
+        
+        // --- MODAL FUNCTIONS ---
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function openStatusModal(title, msg) {
+            document.getElementById('status-title').innerText = title;
+            document.getElementById('status-message').innerText = msg;
+            document.getElementById('status-modal').style.display = 'flex';
+        }
+
+        function openSelectionModal(results) {
+            const content = document.getElementById('selection-content');
+            content.innerHTML = '';
+            document.getElementById('selection-title').innerText = "Select Location";
+
+            results.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.innerText = item.display_name;
+                div.onclick = () => {
+                    // Pass the item object (stringified) to keep the data clean
+                    jumpTo(JSON.parse(div.dataset.item)); 
+                    closeModal('selection-modal');
+                };
+                // Store the full object data in a data attribute
+                div.dataset.item = JSON.stringify(item); 
+                content.appendChild(div);
+            });
+            document.getElementById('selection-modal').style.display = 'flex';
+        }
+
+
+        async function searchLocation() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+
+            const loader = document.getElementById('search-loader');
+            
+            loader.style.display = 'inline-block';
+
+            try {
+                // Nominatim API endpoint for search:
+                const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&accept-language=en`;
+
+                // Use robust fetch with proxy fallback
+                const res = await fetchWithProxyFallback(nominatimUrl);
+                
+                // The fetchWithProxyFallback already checks res.ok, so no need for explicit check here
+                
+                const data = await res.json();
+
+                if (data.length === 0) {
+                    openStatusModal("Not Found", "No results found matching your query.");
+                } else if (data.length === 1) {
+                    jumpTo(data[0]);
+                } else {
+                    // Kindle Fix: Show modal list instead of rendering unstable DIV
+                    openSelectionModal(data);
+                }
+            } catch (e) {
+                openStatusModal("Search Error", e.message || "Search failed. Check network connection.");
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function jumpTo(item) {
+            // Clear existing markers when jumping to a new search result
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+                routeLayer = null;
+            }
+
+            const lat = parseFloat(item.lat);
+            const lon = parseFloat(item.lon);
+            map.setView([lat, lon], 14);
+            
+            const marker = L.marker([lat, lon]).addTo(map)
+                .bindPopup(item.display_name.split(',')[0])
+                .openPopup();
+            markers.push(marker);
+        }
+
+        async function calcRoute() {
+            let start = document.getElementById('route-start').value.trim();
+            const end = document.getElementById('route-end').value.trim();
+            
+            if (!end) return openStatusModal("Input Required", "Destination is required for routing.");
+
+            const loader = document.getElementById('route-loader');
+            loader.style.display = 'inline-block';
+            clearMap();
+
+            try {
+                // 1. Geocode Start/End
+                let startCoords = null;
+                if (!start) {
+                    const center = map.getCenter();
+                    startCoords = [center.lat, center.lng];
+                } else {
+                    // Nominatim geocoding for start
+                    const nominatimStartUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(start)}&accept-language=en`;
+                    
+                    const resS = await fetchWithProxyFallback(nominatimStartUrl, { referrerPolicy: 'no-referrer' });
+                    const dataS = await resS.json();
+                    if (!dataS || dataS.length === 0) throw new Error("Start location not found");
+                    startCoords = [parseFloat(dataS[0].lat), parseFloat(dataS[0].lon)];
+                }
+
+                // Nominatim geocoding for end
+                const nominatimEndUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(end)}&accept-language=en`;
+                
+                const resE = await fetchWithProxyFallback(nominatimEndUrl, { referrerPolicy: 'no-referrer' });
+                const dataE = await resE.json();
+                if (!dataE || dataE.length === 0) throw new Error("Destination not found");
+                const endCoords = [parseFloat(dataE[0].lat), parseFloat(dataE[0].lon)];
+
+                const startM = L.marker(startCoords).addTo(map).bindPopup("Start");
+                const endM = L.marker(endCoords).addTo(map).bindPopup("End");
+                markers.push(startM, endM);
+
+                const startLon = startCoords[1];
+                const startLat = startCoords[0];
+                const endLon = endCoords[1];
+                const endLat = endCoords[0];
+
+                // 2. OSRM Routing 
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+                
+                const routeRes = await fetchWithProxyFallback(osrmUrl, { referrerPolicy: 'no-referrer' });
+                const routeData = await routeRes.json();
+
+                if (!routeData.code || routeData.code !== 'Ok') throw new Error("Routing failed (No path found)");
+
+                const route = routeData.routes[0];
+                const geojson = route.geometry;
+                
+                // Use darker line for route
+                routeLayer = L.geoJSON(geojson, {
+                    style: { color: 'black', weight: 6, opacity: 1.0 }
+                }).addTo(map);
+
+                if (routeLayer.getBounds().isValid()) {
+                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                }
+
+                const distKm = (route.distance / 1000).toFixed(1);
+                const timeMin = Math.round(route.duration / 60);
+                document.getElementById('route-stats').innerText = `${distKm} km • ~${timeMin} min`;
+
+            } catch (e) {
+                openStatusModal("Routing Failed", e.message || "Route calculation failed. Service may be busy.");
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function panMap(dx, dy) {
+            map.panBy([dx * 150, dy * 150], { animate: false });
+        }
+
+        function resetView() {
+            if (routeLayer) {
+                // 1. If a route exists, center on the route bounds
+                if (routeLayer.getBounds().isValid()) {
+                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                }
+            } else if (markers.length > 0) {
+                // 2. If markers exist (from a search), center on the first one
+                map.setView(markers[0].getLatLng(), 14);
+            } else {
+                // 3. Fallback to default
+                map.setView([40.7128, -74.0060], 13);
+            }
+        }
+
+    </script>
+</body>
+</html>

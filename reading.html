@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reading Log</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .period-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .period-display {
+            font-weight: bold;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+
+        .nav-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .nav-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        /* SCROLLABLE CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* DAY ROW */
+        .day-row {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            flex: 1; /* Fill available space equally */
+            min-height: 50px;
+            align-items: stretch;
+        }
+        
+        .day-row:last-child {
+            border-bottom: none;
+        }
+
+        .day-label {
+            width: 60px;
+            background: #fafafa;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .day-num { font-weight: bold; font-size: 1.1rem; }
+        .day-name { font-size: 0.7rem; color: #666; text-transform: uppercase; }
+
+        .day-row.today .day-label {
+            background: black;
+            color: white;
+        }
+        .day-row.today .day-name { color: #ddd; }
+
+        /* TIME SLOTS */
+        .slots-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            padding: 5px;
+            gap: 5px;
+            overflow-x: auto;
+            scrollbar-width: none; /* Hide scrollbar */
+        }
+
+        .slot {
+            flex: 1;
+            min-width: 40px;
+            height: 80%;
+            border: 1px solid #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        .slot.filled {
+            background: black;
+            color: white;
+            border-color: black;
+        }
+
+        /* TOTAL DISPLAY */
+        .total-display {
+            width: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: monospace;
+            border-left: 1px solid #ccc;
+            background: #f9f9f9;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 4px;
+            background: #ccc;
+            border-top: 1px solid black;
+            flex-shrink: 0;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Reading Log</span>
+        </div>
+
+        <div class="period-controls">
+            <button class="nav-btn" onclick="changeWeek(-1)">&lt;</button>
+            <span class="period-display" id="current-period-label">...</span>
+            <button class="nav-btn" onclick="changeWeek(1)">&gt;</button>
+        </div>
+
+        <div class="window-content" id="reading-list">
+            </div>
+        
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        // Data structure: { "YYYY-MM-DD": 45 } (minutes)
+        let readingData = {}; 
+        
+        let currentStart = new Date(); // Start of current week view
+        let today = new Date(); // Actual today
+        let currentUser = null;
+        
+        // Intervals: 15m up to 120m (2h)
+        const INTERVALS = [15, 30, 45, 60, 75, 90, 105, 120];
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            initCurrentWeek();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudData();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalData();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+        
+        function initCurrentWeek() {
+            // Align currentStart to Monday
+            const day = currentStart.getDay(); // 0 (Sun) - 6 (Sat)
+            // Diff to get to Monday (1)
+            const diff = currentStart.getDate() - day + (day === 0 ? -6 : 1);
+            currentStart.setDate(diff);
+        }
+
+        // --- DATA LOADING ---
+        function loadLocalData() {
+            readingData = JSON.parse(localStorage.getItem('reading_log_data')) || {};
+            renderView();
+        }
+
+        function loadCloudData() {
+            // Load all logs
+            db.collection('users').doc(currentUser.uid).collection('reading_logs')
+                .onSnapshot(snap => {
+                    readingData = {};
+                    snap.forEach(doc => {
+                        // doc.id is YYYY-MM-DD, data is { minutes: 30 }
+                        readingData[doc.id] = doc.data().minutes;
+                    });
+                    renderView();
+                });
+        }
+
+        function saveData(dateKey, minutes) {
+            // Update local state immediately
+            if (minutes === 0) {
+                delete readingData[dateKey];
+            } else {
+                readingData[dateKey] = minutes;
+            }
+
+            if (currentUser) {
+                const docRef = db.collection('users').doc(currentUser.uid).collection('reading_logs').doc(dateKey);
+                if (minutes === 0) {
+                    docRef.delete();
+                } else {
+                    docRef.set({ minutes: minutes });
+                }
+            } else {
+                localStorage.setItem('reading_log_data', JSON.stringify(readingData));
+            }
+            renderView();
+        }
+
+        // --- VIEW LOGIC ---
+        function changeWeek(delta) {
+            currentStart.setDate(currentStart.getDate() + (delta * 7));
+            renderView();
+        }
+
+        function renderView() {
+            const container = document.getElementById('reading-list');
+            container.innerHTML = '';
+
+            // Update Header Label (Week Range)
+            const weekEnd = new Date(currentStart);
+            weekEnd.setDate(currentStart.getDate() + 6);
+            
+            const startStr = currentStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            document.getElementById('current-period-label').innerText = `${startStr} - ${endStr}`;
+
+            // Generate 7 Rows
+            for (let i = 0; i < 7; i++) {
+                const dateObj = new Date(currentStart);
+                dateObj.setDate(currentStart.getDate() + i);
+                
+                const y = dateObj.getFullYear();
+                const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const d = String(dateObj.getDate()).padStart(2, '0');
+                const dateKey = `${y}-${m}-${d}`;
+                
+                const dayNum = dateObj.getDate();
+                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                
+                const currentMinutes = readingData[dateKey] || 0;
+                const isToday = (dateObj.toDateString() === today.toDateString());
+
+                const row = document.createElement('div');
+                row.className = `day-row ${isToday ? 'today' : ''}`;
+
+                // 1. Date Label
+                const label = document.createElement('div');
+                label.className = 'day-label';
+                label.innerHTML = `<span class="day-num">${dayNum}</span><span class="day-name">${dayName}</span>`;
+                row.appendChild(label);
+
+                // 2. Slots
+                const slotsContainer = document.createElement('div');
+                slotsContainer.className = 'slots-container';
+
+                INTERVALS.forEach(val => {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    if (currentMinutes >= val) slot.classList.add('filled');
+                    
+                    // Label formatting
+                    let labelText = val;
+                    if (val === 60) labelText = "1h";
+                    if (val === 120) labelText = "2h";
+                    slot.innerText = labelText;
+
+                    slot.onclick = () => {
+                        // Toggle behavior: clicking current max clears it
+                        const newMinutes = (currentMinutes === val) ? 0 : val;
+                        saveData(dateKey, newMinutes);
+                    };
+
+                    slotsContainer.appendChild(slot);
+                });
+                row.appendChild(slotsContainer);
+
+                // 3. Total
+                const total = document.createElement('div');
+                total.className = 'total-display';
+                total.innerText = currentMinutes > 0 ? currentMinutes + "m" : "-";
+                row.appendChild(total);
+
+                container.appendChild(row);
+            }
+        }
+
+    </script>
+</body>
+</html>

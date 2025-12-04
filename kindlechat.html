@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KindleChat</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* MAIN LAYOUT */
+        #app-layout {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR */
+        #sidebar {
+            width: 250px;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .sidebar-header {
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eee;
+        }
+
+        #room-list {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .room-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            font-size: 0.95rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .room-item:hover { background: #f0f0f0; }
+        .room-item.active { background: black; color: white; font-weight: bold; }
+        
+        /* DELETE BUTTON IN LIST */
+        .del-room-btn {
+            font-weight: bold;
+            color: #999;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-family: sans-serif;
+            font-size: 1.2rem;
+            line-height: 0.8;
+        }
+        .del-room-btn:hover { color: black; }
+        .room-item.active .del-room-btn { color: #ccc; }
+        .room-item.active .del-room-btn:hover { color: white; }
+
+        /* CHAT VIEW */
+        #chat-view {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+        }
+
+        /* ROOM HEADER */
+        .room-header {
+            border-bottom: 2px solid black;
+            padding: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #eee;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .current-room {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* CHAT HISTORY */
+        #chat-history {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .msg {
+            display: flex;
+            flex-direction: column;
+            /* Allow wrapping, max-width controls the break point */
+            max-width: 85%;
+            position: relative; 
+            min-width: 50px; 
+        }
+        
+        .msg.self {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+        
+        .msg.other {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .msg-meta {
+            font-size: 0.7rem;
+            color: #666;
+            margin-bottom: 2px;
+            display: flex;
+        }
+        
+        /* Manual spacing for Kindle browser */
+        .msg-meta span {
+            margin-right: 8px;
+        }
+        .msg-meta span:last-child {
+            margin-right: 0;
+        }
+
+        .msg-bubble {
+            border: 2px solid black;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 1rem;
+            background: white;
+            box-shadow: 2px 2px 0px #ccc;
+            word-wrap: break-word;
+            position: relative; 
+            /* FIX: Crucial for allowing the bubble to shrink-wrap its content width */
+            display: inline-block; 
+            max-width: 100%; 
+        }
+        
+        .msg.self .msg-bubble {
+            background: black;
+            color: white;
+            border-color: black;
+            box-shadow: 2px 2px 0px #666;
+        }
+        
+        /* ASCII art messages use a fixed-width font */
+        .msg-bubble.ascii {
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap; /* Preserve whitespace/newlines */
+            font-size: 0.8rem;
+        }
+
+        /* --- REACTIONS (Font only) --- */
+        .reaction-bar {
+            margin-top: 5px;
+            display: flex;
+            gap: 5px;
+            font-size: 1rem;
+            padding: 2px 0;
+        }
+        
+        .reaction-item {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 2px 6px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            line-height: 1;
+            font-weight: bold;
+        }
+        
+        .msg.self .reaction-item {
+            background: #333;
+            color: white;
+            border-color: #555;
+        }
+
+        /* MODIFIED: CONSTANT PLUS BUTTON (REACTION TRIGGER) */
+        .react-btn {
+            position: absolute;
+            top: 50%; /* Center vertically with message */
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            border: 1px solid black;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            line-height: 18px;
+            font-size: 0.9rem;
+            box-shadow: 1px 1px 0 #999;
+            display: flex; 
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+            opacity: 0.5; /* Initial opacity */
+            transition: opacity 0.2s;
+        }
+        
+        .react-btn:hover {
+            opacity: 1.0;
+        }
+        
+        /* Position for messages sent by others (button on right) */
+        .msg.other .react-btn {
+            right: -25px; 
+            left: auto;
+        }
+
+        /* Position for self messages (button on left) */
+        .msg.self .react-btn {
+            left: -25px;
+            right: auto;
+        }
+
+        /* Hide the button if not logged in or a special message */
+        .react-btn.hidden {
+            display: none;
+        }
+        
+        /* Game Link CONTAINER - CRITICAL ADJUSTMENTS HERE */
+        .game-link-container {
+            /* FIX: Make it the bubble and remove its top margin, use minimal padding */
+            border: 2px solid black;
+            padding: 5px; 
+            background: #eee;
+            margin-top: 0; /* Remove redundant margin */
+            text-align: center;
+            /* FIX: Set display to a table-related value so it shrinks tightly to content */
+            display: table; 
+            min-width: 100px;
+            max-width: 100%;
+            box-sizing: border-box;
+            box-shadow: 2px 2px 0 #ccc; /* Inherit original bubble shadow */
+        }
+        
+        /* Override bubble style for game link messages */
+        .msg-bubble.game-link-bubble {
+            padding: 0;
+            border: none;
+            box-shadow: none;
+            background: transparent;
+        }
+        
+        .game-link-container.disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        /* Game Link INNER TEXT/BUTTON */
+        .game-link {
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            color: black;
+            display: block !important; 
+            font-size: 0.8rem;
+            line-height: 1.3;
+            word-break: break-word; 
+        }
+
+
+        /* INPUT AREA */
+        .input-area {
+            border-top: 2px solid black;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            background: #eee;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        textarea {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 1rem;
+            resize: none;
+            height: 70px; /* Increased height for multi-line support */
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+        
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+        
+        /* NEW: REACTION SELECTION MODAL */
+        #reaction-selection-modal {
+            position: absolute;
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 5px;
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .reaction-option {
+            padding: 5px 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            background: #eee;
+            border: 1px solid #ccc;
+        }
+        
+        .reaction-option:hover {
+            background: black;
+            color: white;
+        }
+
+
+        /* MODAL */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 90%;
+            margin: 10px 0;
+            padding: 8px;
+            border: 2px solid black;
+        }
+
+        /* LOCKED INPUT (Guest) */
+        #locked-input {
+            border-top: 2px solid black;
+            padding: 15px;
+            background: #ddd;
+            text-align: center;
+            font-style: italic;
+            color: #555;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+    </style>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">KindleChat</span>
+        </div>
+
+        <div id="app-layout">
+            
+            <div id="sidebar">
+                <div class="sidebar-header">
+                    <span style="font-weight:bold;">Chats</span>
+                    <button class="sys-btn" onclick="openCreateModal()">+</button>
+                </div>
+                <div id="room-list">
+                    </div>
+            </div>
+
+            <div id="chat-view">
+                <div class="room-header">
+                    <span class="current-room" id="room-title">All of KindleChat</span>
+                </div>
+
+                <div id="chat-history">
+                    </div>
+
+                <div class="input-area" id="active-input">
+                    <!-- UPDATED PLACEHOLDER TEXT -->
+                    <textarea id="msg-input" placeholder="Type a message..." rows="3"></textarea>
+                    <button class="sys-btn" id="send-btn" onclick="sendMessage()" style="height: 100%;">Send</button>
+                </div>
+
+                <div id="locked-input">
+                    Log in on the home screen to send messages.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SHARED MODAL OVERLAY -->
+    <div id="modal-overlay">
+        
+        <!-- CREATE MODAL CONTENT -->
+        <div class="modal-box" id="create-modal-content">
+            <h3>New Chat</h3>
+            <input type="text" id="new-room-name" class="modal-input" placeholder="Group Name (Optional)">
+            <input type="text" id="new-room-users" class="modal-input" placeholder="Usernames (comma separated)">
+            <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="createRoom()">Create</button>
+                <button class="sys-btn" onclick="closeModal('modal-overlay')">Cancel</button>
+            </div>
+            <p style="font-size:0.7rem; color:#666; margin-top:10px;">For DMs, just enter username.</p>
+        </div>
+        
+        <!-- DELETE MODAL CONTENT -->
+        <div class="modal-box" id="delete-modal-content" style="display:none;">
+            <h3>Leave Chat?</h3>
+            <p style="margin: 15px 0;">Remove this chat from your list?</p>
+            <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="confirmLeaveRoom()">Yes</button>
+                <button class="sys-btn" onclick="closeModal('modal-overlay')">No</button>
+            </div>
+        </div>
+
+    </div>
+    
+    <!-- NEW: REACTION SELECTION MODAL -->
+    <div id="reaction-selection-modal" onclick="closeReactionModal(event)">
+        <!-- Options injected by JS -->
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- STATE ---
+        let currentUser = null;
+        let currentUsername = "";
+        let currentRoomId = 'general';
+        let roomToDeleteId = null;
+        let unsubscribeMsg = null;
+        let unsubscribeRooms = null;
+        
+        // --- Reaction Keys (Simplified to match the new constant button action) ---
+        const FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            // Check Auth
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    currentUsername = user.email.split('@')[0];
+                    
+                    document.getElementById('active-input').style.display = 'flex';
+                    document.getElementById('locked-input').style.display = 'none';
+                    
+                    loadRooms();
+                } else {
+                    currentUser = null;
+                    document.getElementById('active-input').style.display = 'none';
+                    document.getElementById('locked-input').style.display = 'block';
+                    // Load General only for guests
+                    renderRoomList([{ id: 'general', name: 'All of KindleChat' }]);
+                }
+                loadMessages();
+            });
+
+            // Enter key
+            document.getElementById('msg-input').addEventListener("keypress", (e) => {
+                // Shift+Enter should allow newline (for ASCII art)
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            // Populate the reaction modal once
+            populateReactionModal();
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- REACTION MODAL POPULATION ---
+        function populateReactionModal() {
+            const modal = document.getElementById('reaction-selection-modal');
+            modal.innerHTML = '';
+            FONT_REACTIONS.forEach(reaction => {
+                const div = document.createElement('div');
+                div.className = 'reaction-option';
+                div.innerText = reaction;
+                // Click handler is attached by openReactionTarget to pass the msgId
+                modal.appendChild(div);
+            });
+        }
+        
+        // --- ROOM LOGIC (Unchanged) ---
+        function loadRooms() {
+            if (unsubscribeRooms) unsubscribeRooms();
+
+            const listEl = document.getElementById('room-list');
+            listEl.innerHTML = '<div style="padding:10px;">Loading...</div>';
+
+            unsubscribeRooms = db.collection('rooms')
+                .where('participants', 'array-contains', currentUsername)
+                .onSnapshot(snap => {
+                    let rooms = [];
+                    // 1. General
+                    rooms.push({ id: 'general', name: 'All of KindleChat' });
+                    
+                    // 2. Developer Chat (Ukiyo)
+                    let hasRealUkiyoChat = false;
+                    
+                    snap.forEach(doc => {
+                        let data = doc.data();
+                        let r = {
+                            id: doc.id,
+                            type: data.type
+                        };
+                        
+                        // Smart Naming
+                        if (data.type === 'dm') {
+                            // Name the room after the OTHER person
+                            const otherPerson = data.participants.find(p => p !== currentUsername);
+                            
+                            if (otherPerson === 'ukiyo') {
+                                r.name = "Ukiyo (Developer)";
+                                hasRealUkiyoChat = true;
+                            } else {
+                                // Fallback to "Me" if talking to self, otherwise other person's name
+                                // NOTE: The UIDs are currently email prefixes, which are not suitable for displaying.
+                                // It should display the other person's name (which is the prefix).
+                                r.name = otherPerson || "Me";
+                            }
+                        } else {
+                            // Group chat
+                            r.name = data.name || "Untitled Group";
+                        }
+                        
+                        rooms.push(r);
+                    });
+                    
+                    // If no real chat exists yet, add placeholder (unless I am Ukiyo)
+                    if (!hasRealUkiyoChat && currentUsername !== 'ukiyo') {
+                        rooms.splice(1, 0, { id: 'SPECIAL_UKIYO', name: 'Ukiyo (Developer)' });
+                    }
+
+                    renderRoomList(rooms);
+                });
+        }
+
+        function renderRoomList(rooms) {
+            const listEl = document.getElementById('room-list');
+            listEl.innerHTML = '';
+
+            rooms.forEach(room => {
+                const div = document.createElement('div');
+                div.className = `room-item ${room.id === currentRoomId ? 'active' : ''}`;
+                
+                // Allow deletion of non-essential rooms
+                let deleteHtml = '';
+                // 'general' cannot be deleted. 'SPECIAL_UKIYO' placeholder cannot be deleted.
+                if (room.id !== 'general' && room.id !== 'SPECIAL_UKIYO') {
+                    deleteHtml = `<span class="del-room-btn" onclick="promptLeaveRoom('${room.id}', event)">×</span>`;
+                }
+
+                div.innerHTML = `<span>${room.name}</span>${deleteHtml}`;
+                div.onclick = () => switchRoom(room.id, room.name);
+                listEl.appendChild(div);
+            });
+        }
+
+        async function switchRoom(id, name) {
+            if (currentRoomId === id) return;
+
+            // Handle Ukiyo Placeholder Click
+            if (id === 'SPECIAL_UKIYO') {
+                const participants = [currentUsername, 'ukiyo'];
+                try {
+                    const q = await db.collection('rooms')
+                        .where('participants', 'array-contains', currentUsername)
+                        .get();
+                    
+                    let foundId = null;
+                    q.forEach(doc => {
+                        const d = doc.data();
+                        if(d.participants.includes('ukiyo') && d.type === 'dm') foundId = doc.id;
+                    });
+
+                    if(foundId) {
+                        currentRoomId = foundId;
+                    } else {
+                        const ref = await db.collection('rooms').add({
+                            name: "Ukiyo (Developer)", 
+                            participants: participants,
+                            type: 'dm',
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        currentRoomId = ref.id;
+                    }
+                    
+                    document.getElementById('room-title').innerText = "Ukiyo (Developer)";
+                    loadMessages();
+                    return;
+
+                } catch(e) {
+                    // Replaced with custom modal in larger app context
+                    console.error("Error opening chat:", e);
+                    return;
+                }
+            }
+
+            currentRoomId = id;
+            document.getElementById('room-title').innerText = name;
+            
+            // Update active state in sidebar
+            document.querySelectorAll('.room-item').forEach(el => {
+                el.classList.remove('active');
+                // Use a check that finds the room by ID or name to robustly apply 'active' class
+                const roomNameInEl = el.querySelector('span:first-child').innerText;
+                if (roomNameInEl === name) el.classList.add('active');
+            });
+
+            loadMessages();
+        }
+
+        // --- MESSAGE LOGIC ---
+        function loadMessages() {
+            if (unsubscribeMsg) unsubscribeMsg();
+
+            const history = document.getElementById('chat-history');
+            history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
+
+            unsubscribeMsg = db.collection('rooms').doc(currentRoomId).collection('messages')
+                .orderBy('timestamp', 'asc')
+                .limitToLast(50)
+                .onSnapshot((snapshot) => {
+                    history.innerHTML = ''; 
+                    
+                    if (snapshot.empty) {
+                        history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
+                        return;
+                    }
+
+                    snapshot.forEach((doc) => {
+                        renderMessage(doc.data(), doc.id);
+                    });
+                    
+                    history.scrollTop = history.scrollHeight;
+                }, (error) => {
+                    console.error("Error:", error);
+                    history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
+                });
+        }
+
+        function renderMessage(msg, msgId) {
+            const history = document.getElementById('chat-history');
+            const div = document.createElement('div');
+            
+            const isSelf = currentUser && (msg.user === currentUsername);
+            div.className = `msg ${isSelf ? 'self' : 'other'}`;
+            div.dataset.msgId = msgId;
+
+            const nameHtml = isSelf ? '<span>You</span>' : `<span style="font-weight:bold;">${msg.user}</span>`;
+            
+            let timeStr = "";
+            if (msg.timestamp) {
+                const date = msg.timestamp.toDate();
+                timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+
+            let bubbleContent = '';
+            let isSpecialMessage = false;
+            let messageText = msg.text || '';
+            
+            // ASCII Art detection: Check for newlines (must have multiple lines)
+            const isAscii = messageText.includes('\n');
+            
+            if (isAscii) {
+                 bubbleContent = `<div class="msg-bubble ascii">${escapeHtml(messageText)}</div>`;
+                 isSpecialMessage = true;
+            } else if (msg.is_reaction_image) {
+                // Legacy support for old reactions, though menu is gone
+                bubbleContent = `<div class="msg-bubble ascii">${messageText}</div>`;
+                isSpecialMessage = true;
+            } else if (msg.is_game_link) {
+                // Render Game Link
+                const [gameType, gameId] = msg.text.split(':');
+                const gameName = gameType.charAt(0).toUpperCase() + gameType.slice(1);
+                
+                // DETERMINE IF USER IS THE STARTER (AFFECTS CLICKABILITY)
+                const isStarter = msg.user === currentUsername;
+                
+                // Determine display message based on game type
+                let displayMsg = '';
+                if (gameType === 'words') {
+                    displayMsg = `
+                        ${msg.user} started a Scrabble Game
+                        ${isStarter ? 'Wait for a player to join!' : 'Click to Join!'}
+                    `.trim();
+                } else {
+                    // Default/Fallback
+                    displayMsg = `
+                        New ${gameName} Game Ready! 
+                        Click to Join!
+                    `.trim();
+                }
+
+                // BUILD THE GAME LINK CONTAINER
+                const linkDestination = isStarter && gameType === 'words' ? '#' : `${gameType}.html?gameId=${gameId}`;
+                const containerClass = isStarter && gameType === 'words' ? 'game-link-container disabled' : 'game-link-container';
+                
+                // CRITICAL FIX: Use the special bubble class to remove standard padding/border
+                bubbleContent = `
+                    <div class="msg-bubble game-link-bubble">
+                        <div class="${containerClass}">
+                             <a href="${linkDestination}" class="game-link" ${isStarter && gameType === 'words' ? 'onclick="event.preventDefault()"' : ''}>
+                                ${displayMsg}
+                            </a>
+                        </div>
+                    </div>
+                `;
+                isSpecialMessage = true;
+            } else {
+                // Regular Text Message
+                bubbleContent = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+            }
+
+            // MODIFIED: Reaction Button (Opens Modal)
+            const reactButton = (currentUser && !isSpecialMessage) 
+                ? `<div class="react-btn" onclick="openReactionTarget('${msgId}', this, event)">+</div>`
+                : '';
+
+            // Build final HTML structure
+            // Wrap bubble and button in a flex container for horizontal alignment
+            div.innerHTML = `
+                <div class="msg-meta">
+                    ${nameHtml}
+                    <span>${timeStr}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap: 5px;">
+                    <!-- Button on left for self, on right for other -->
+                    ${isSelf ? reactButton : ''}
+                    ${bubbleContent}
+                    ${isSelf ? '' : reactButton}
+                </div>
+            `;
+            
+            // Render Reactions if present
+            if (msg.reactions && Object.keys(msg.reactions).length > 0) {
+                const reactionBar = document.createElement('div');
+                reactionBar.className = isSelf ? 'reaction-bar self-bar' : 'reaction-bar other-bar'; // Added classes for potential styling
+                
+                const groupedReactions = {};
+                for (const userUID in msg.reactions) {
+                    const reaction = msg.reactions[userUID];
+                    if (!groupedReactions[reaction]) groupedReactions[reaction] = [];
+                    groupedReactions[reaction].push(userUID);
+                }
+
+                for (const reaction in groupedReactions) {
+                    const count = groupedReactions[reaction].length;
+                    
+                    if (!FONT_REACTIONS.includes(reaction)) continue; 
+                    
+                    const el = document.createElement('div');
+                    el.className = 'reaction-item';
+                    el.title = groupedReactions[reaction].map(uid => uid.split('@')[0]).join(', '); // Show usernames
+                    el.innerHTML = `${reaction} ${count}`;
+
+                    // Toggle functionality: clicking removes your reaction
+                    el.onclick = () => toggleUserReaction(msgId, reaction);
+                    
+                    reactionBar.appendChild(el);
+                }
+                if (reactionBar.children.length > 0) div.appendChild(reactionBar);
+            }
+
+            history.appendChild(div);
+        }
+
+        async function sendMessage() {
+            const inputEl = document.getElementById('msg-input');
+            const text = inputEl.value.trim();
+            
+            if (!text) return;
+            if (!currentUser) return;
+
+            inputEl.value = '';
+            
+            const messageData = {
+                user: currentUsername,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                text: text // Text can include newlines for ASCII art
+            };
+            
+            try {
+                await db.collection('rooms').doc(currentRoomId).collection('messages').add(messageData);
+            } catch(e) {
+                // Replaced with custom modal in larger app context
+                console.error("Error sending message:", e);
+            }
+        }
+        
+        // --- REACTION FUNCTIONS ---
+        
+        function openReactionTarget(msgId, btnElement, event) {
+            event.stopPropagation();
+            if (!currentUser) return; 
+            
+            const modal = document.getElementById('reaction-selection-modal');
+            const rect = btnElement.getBoundingClientRect();
+            
+            // Position the modal near the button
+            modal.style.top = `${rect.top}px`;
+            
+            // Adjust X position based on whether it's a self or other message
+            const isSelf = btnElement.closest('.msg.self');
+            
+            // If self (button on left), position modal to the right of the button
+            if (isSelf) {
+                modal.style.left = `${rect.right + 5}px`;
+                modal.style.right = 'auto';
+            } else {
+                // If other (button on right), position modal to the left of the button
+                // Width is determined by content, calculate position dynamically 
+                // Using left:auto and adjusting right position relative to the main chat-view width might be safer
+                modal.style.left = `${rect.left - 130}px`; // Estimate width - adjustment
+                modal.style.right = 'auto';
+            }
+
+            // Bind selection handlers to this message ID
+            modal.querySelectorAll('.reaction-option').forEach(option => {
+                option.onclick = () => selectReaction(msgId, option.innerText);
+            });
+
+            modal.style.display = 'flex';
+        }
+        
+        function closeReactionModal(event) {
+            const modal = document.getElementById('reaction-selection-modal');
+            // If event is defined and click is outside the modal, hide it
+            if (event && !modal.contains(event.target) && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            } else if (!event) {
+                 // Manual close trigger
+                modal.style.display = 'none';
+            }
+        }
+        
+        async function selectReaction(msgId, reaction) {
+            await toggleUserReaction(msgId, reaction);
+            closeReactionModal();
+        }
+        
+        async function toggleUserReaction(msgId, reaction) {
+            if (!currentUser) return;
+            
+            const messageRef = db.collection('rooms').doc(currentRoomId).collection('messages').doc(msgId);
+            const userUID = currentUser.uid;
+            
+            try {
+                const doc = await messageRef.get();
+                if (!doc.exists) return;
+
+                let reactions = doc.data().reactions || {};
+
+                const userReaction = reactions[userUID];
+
+                if (userReaction === reaction) {
+                    // REMOVE: User clicks the reaction they already left
+                    const updates = { [`reactions.${userUID}`]: firebase.firestore.FieldValue.delete() };
+                    await messageRef.update(updates);
+                } else {
+                    // ADD/CHANGE: User clicks a *different* reaction (or the default +1)
+                    // We must update the entire 'reactions' field due to Firestore's limitation on updating sub-fields 
+                    // within a map if the path involves an ID. We only pass the map itself.
+                    reactions[userUID] = reaction;
+                    await messageRef.update({ reactions: reactions });
+                }
+            } catch (e) {
+                 console.error("Error toggling reaction:", e);
+            }
+        }
+        
+        // --- MODAL LOGIC ---
+        function openCreateModal() {
+            if (!currentUser) return alert("Please log in first.");
+            document.getElementById('create-modal-content').style.display = 'block';
+            document.getElementById('delete-modal-content').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function closeModal(id = 'modal-overlay') {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        async function createRoom() {
+            const nameInput = document.getElementById('new-room-name').value.trim();
+            const usersInput = document.getElementById('new-room-users').value.trim();
+            
+            if (!usersInput) return alert("Please add at least one username.");
+
+            let participants = usersInput.split(',').map(u => u.trim());
+            participants.push(currentUsername); 
+            
+            const roomName = nameInput || participants.filter(u => u !== currentUsername).join(", ");
+
+            try {
+                await db.collection('rooms').add({
+                    name: roomName,
+                    participants: participants,
+                    type: participants.length > 2 ? 'group' : 'dm',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                closeModal();
+            } catch(e) {
+                // Replaced with custom modal in larger app context
+                console.error("Error creating room:", e);
+            }
+        }
+
+        // --- LEAVE ROOM ---
+        function promptLeaveRoom(roomId, event) {
+            event.stopPropagation(); 
+            roomToDeleteId = roomId;
+            document.getElementById('create-modal-content').style.display = 'none';
+            document.getElementById('delete-modal-content').style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        async function confirmLeaveRoom() {
+            if (!roomToDeleteId) return;
+            
+            try {
+                await db.collection('rooms').doc(roomToDeleteId).update({
+                    participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
+                });
+                
+                if (currentRoomId === roomToDeleteId) {
+                    switchRoom('general', 'All of KindleChat');
+                }
+                
+                closeModal();
+            } catch(e) {
+                // Replaced with custom modal in larger app context
+                console.error("Error leaving chat:", e);
+                closeModal();
+            }
+        }
+
+        // Helper to handle escaping for text display within message bubbles
+        function escapeHtml(text) {
+            if (!text) return "";
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+    </script>
+</body>
+</html>

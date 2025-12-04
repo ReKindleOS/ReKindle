@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jigsaw</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Default Background (Overridden by JS) */
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* FIX: Centers vertically */
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: auto; /* Allow expansion */
+            max-height: 95vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* GAME AREA */
+        .game-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* PUZZLE BOARD */
+        #puzzle-board {
+            display: grid;
+            gap: 2px;
+            background: black;
+            border: 4px solid black;
+            width: 100%;
+            max-width: 400px;
+            /* FIX: Explicit height prevents collapse on Kindle */
+            height: 400px; 
+            aspect-ratio: 1/1; 
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        /* Fallback for smaller screens */
+        @media (max-height: 600px) {
+            #puzzle-board {
+                height: 300px;
+                max-width: 300px;
+            }
+        }
+
+        .piece {
+            background-color: white;
+            background-repeat: no-repeat;
+            cursor: pointer;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Selection State */
+        .piece.selected {
+            filter: invert(1); 
+            border: 2px solid white; 
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        
+        .piece.solved {
+            border: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            width: 100%;
+            justify-content: center;
+            max-width: 400px;
+        }
+
+        button {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            flex: 1;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* PREVIEW OVERLAY */
+        #preview-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: white;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+        
+        #preview-img {
+            width: 300px;
+            height: 300px;
+            border: 4px solid black;
+            margin-bottom: 20px;
+        }
+
+        #msg-area {
+            height: 20px;
+            margin-bottom: 10px;
+            font-style: italic;
+            font-weight: bold;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Jigsaw</span>
+        </div>
+        
+        <div class="game-content">
+            <div id="msg-area">Tap pieces to swap them.</div>
+
+            <div id="puzzle-board">
+                <!-- Pieces injected here -->
+            </div>
+
+            <div class="controls">
+                <button onclick="setDifficulty(3)">3x3</button>
+                <button onclick="setDifficulty(4)">4x4</button>
+                <button onclick="newGame()">New Art</button>
+                <button onclick="togglePreview()">Peek</button>
+            </div>
+        </div>
+
+        <!-- PREVIEW MODAL -->
+        <div id="preview-overlay">
+            <h3>Target Image</h3>
+            <img id="preview-img" src="" />
+            <button onclick="togglePreview()" style="max-width: 100px;">Close</button>
+        </div>
+
+    </div>
+
+    <!-- Hidden Canvas to generate art -->
+    <canvas id="sourceCanvas" width="400" height="400" style="display:none;"></canvas>
+
+    <script>
+        // --- STATE ---
+        let gridSize = 3; 
+        let pieces = []; 
+        let selectedIdx = -1;
+        let isSolved = false;
+        let imageUrl = '';
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            newGame();
+        };
+
+        // --- WALLPAPER LOADER ---
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function setDifficulty(size) {
+            gridSize = size;
+            newGame();
+        }
+
+        // --- ART GENERATOR ---
+        function generateArt() {
+            const canvas = document.getElementById('sourceCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 1. Clear White
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 400, 400);
+            
+            // 2. Draw Random Patterns
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = 'black';
+            ctx.fillStyle = 'black';
+
+            const shapes = 10 + Math.random() * 10;
+
+            for(let i=0; i<shapes; i++) {
+                const type = Math.random();
+                const x = Math.random() * 400;
+                const y = Math.random() * 400;
+                const s = 20 + Math.random() * 100;
+
+                ctx.beginPath();
+                
+                if (type < 0.33) {
+                    ctx.arc(x, y, s/2, 0, Math.PI * 2);
+                    if(Math.random() > 0.5) ctx.fill(); else ctx.stroke();
+                } else if (type < 0.66) {
+                    ctx.rect(x, y, s, s);
+                    if(Math.random() > 0.5) ctx.fill(); else ctx.stroke();
+                    if(Math.random() > 0.7) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, y); ctx.lineTo(x+s, y+s);
+                        ctx.stroke();
+                    }
+                } else {
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(Math.random() * 400, Math.random() * 400);
+                    ctx.stroke();
+                }
+            }
+            ctx.strokeRect(0,0,400,400);
+            return canvas.toDataURL();
+        }
+
+        // --- GAME LOGIC ---
+        function newGame() {
+            isSolved = false;
+            selectedIdx = -1;
+            document.getElementById('msg-area').innerText = "Tap pieces to swap them.";
+            
+            imageUrl = generateArt();
+            document.getElementById('preview-img').src = imageUrl;
+
+            const totalPieces = gridSize * gridSize;
+            pieces = Array.from({length: totalPieces}, (_, i) => i); 
+            
+            do {
+                for (let i = pieces.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+                }
+            } while (checkWin(true)); 
+
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('puzzle-board');
+            board.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+            board.style.gridTemplateRows = `repeat(${gridSize}, 1fr)`;
+            board.innerHTML = '';
+
+            const pct = 100 * gridSize; 
+
+            pieces.forEach((val, index) => {
+                const div = document.createElement('div');
+                div.className = 'piece';
+                if (selectedIdx === index) div.classList.add('selected');
+
+                const originalRow = Math.floor(val / gridSize);
+                const originalCol = val % gridSize;
+
+                const posX = (originalCol / (gridSize - 1)) * 100;
+                const posY = (originalRow / (gridSize - 1)) * 100;
+
+                div.style.backgroundImage = `url(${imageUrl})`;
+                div.style.backgroundSize = `${pct}%`;
+                div.style.backgroundPosition = `${posX}% ${posY}%`;
+
+                div.onclick = () => handlePieceClick(index);
+
+                board.appendChild(div);
+            });
+        }
+
+        function handlePieceClick(index) {
+            if (isSolved) return;
+
+            if (selectedIdx === -1) {
+                selectedIdx = index;
+            } else if (selectedIdx === index) {
+                selectedIdx = -1;
+            } else {
+                [pieces[selectedIdx], pieces[index]] = [pieces[index], pieces[selectedIdx]];
+                selectedIdx = -1;
+                checkWin();
+            }
+            renderBoard();
+        }
+
+        function checkWin(silent = false) {
+            for (let i = 0; i < pieces.length; i++) {
+                if (pieces[i] !== i) return false;
+            }
+            
+            if (!silent) {
+                isSolved = true;
+                document.getElementById('msg-area').innerText = "Puzzle Solved!";
+                // Flash window content
+                const content = document.querySelector('.window');
+                content.style.filter = "invert(1)";
+                setTimeout(() => { content.style.filter = "invert(0)"; }, 200);
+            }
+            return true;
+        }
+
+        function togglePreview() {
+            const el = document.getElementById('preview-overlay');
+            el.style.display = (el.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+    </script>
+</body>
+</html>

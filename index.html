@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ReKindle</title>
+    <link rel="manifest" href="manifest.json">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Load App Definitions -->
+    <script src="icons.js"></script>
+
+    <style>
+        /* SYSTEM 7 / E-INK AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --sidebar-width: 220px;
+            --active-item: #000000;
+            --active-text: #ffffff;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+        	image-rendering: pixelated;
+    		image-rendering: crisp-edges;
+    		background-repeat: repeat;
+   			background-position: top left;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden; /* NO SCROLLING */
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            user-select: none;
+            position: fixed; /* Lock viewport */
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* MAIN DASHBOARD FRAME */
+        .dashboard {
+            display: flex;
+            width: 96%;
+            height: 94%;
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            position: relative;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: var(--sidebar-width);
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+            flex-shrink: 0;
+        }
+
+        .system-header {
+            padding: 15px;
+            border-bottom: 2px solid black;
+            text-align: center;
+            background: white;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .os-title {
+            font-size: 1.4rem;
+            font-weight: 900;
+            letter-spacing: 1px;
+            margin: 0;
+        }
+
+        .user-info {
+            font-size: 0.75rem;
+            margin-top: 5px;
+            font-family: monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* INFO BUTTON */
+        .info-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-family: "Times New Roman", serif;
+            font-style: italic;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border: 2px solid black;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: white;
+        }
+        
+        .info-btn:active {
+            background: black;
+            color: white;
+        }
+
+        /* NAVIGATION TABS */
+        .nav-menu {
+            flex-grow: 1;
+            padding: 20px 10px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            padding: 12px 15px;
+            border: 2px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            background: white;
+            box-shadow: 2px 2px 0 #ccc;
+            /* OPTIMIZATION: Removed transition */
+            margin-bottom: 10px; 
+        }
+
+        /* OPTIMIZATION: Remove transform animation */
+        .nav-item:active {
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+
+        .nav-item.active {
+            background: black;
+            color: white;
+            box-shadow: 2px 2px 0 black;
+        }
+        
+        .nav-item.hidden {
+            display: none;
+        }
+
+        /* MAIN APP GRID AREA */
+        .app-view {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto; 
+            display: flex;
+            flex-direction: column;
+            background: white; /* Ensure opaque background for scrolling performance */
+        }
+
+        .view-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+            grid-auto-rows: 90px;
+            gap: 15px;
+            align-content: start;
+        }
+
+        #featured-grid {
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-auto-rows: auto;
+        }
+        
+        #favorites-grid {
+            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+            grid-auto-rows: 90px;
+            margin-bottom: 20px;
+            border: 2px solid black;
+            padding: 15px;
+            box-shadow: 4px 4px 0 #ccc;
+        }
+        
+        #favorites-section {
+            margin-bottom: 25px;
+        }
+
+        /* APP ICONS */
+        .app-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            text-decoration: none;
+            color: black;
+            cursor: pointer;
+            position: relative;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        /* OPTIMIZATION: Use background swap instead of filter invert */
+        .app-icon:active {
+            background-color: black;
+            color: white;
+        }
+        
+        /* OPTIMIZATION: Target SVG color directly instead of filter */
+        .app-icon:active svg { 
+            stroke: white;
+            fill: white; 
+        }
+
+        .icon-img {
+            width: 42px;
+            height: 42px;
+            margin-bottom: 6px;
+            /* OPTIMIZATION: Removed image-rendering: pixelated for SVGs */
+        }
+
+        .icon-label {
+            font-size: 0.8rem;
+            text-align: center;
+            font-weight: bold;
+            line-height: 1.1;
+        }
+
+        /* FEATURED SECTION BOX */
+        .featured-box-container {
+            border: 2px solid black;
+            background: #fdfdfd;
+            box-shadow: 4px 4px 0 #ccc;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+
+        .featured-box-header {
+            font-size: 1rem;
+            font-weight: 900;
+            border-bottom: 1px solid black;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* FEATURED CARD STYLE */
+        .featured-card {
+            display: flex;
+            align-items: center;
+            border: 2px solid black;
+            padding: 12px;
+            background: white;
+            text-decoration: none;
+            color: black;
+            position: relative;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 #ddd;
+            /* OPTIMIZATION: Removed transition */
+        }
+
+        /* OPTIMIZATION: No transform animation */
+        .featured-card:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+        }
+
+        .featured-card:active svg {
+            stroke: white;
+        }
+        
+        .featured-card:active .featured-sub {
+            color: #ccc;
+        }
+
+        .featured-icon {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .featured-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .featured-title {
+            font-weight: 900;
+            font-size: 1rem;
+            line-height: 1.1;
+        }
+
+        .featured-sub {
+            font-size: 0.75rem;
+            font-style: italic;
+            font-family: serif;
+            margin-top: 3px;
+            color: #555;
+        }
+
+        .notify-badge {
+            position: absolute;
+            top: 0; left: 5px;
+            width: 14px; height: 14px;
+            background: black;
+            color: white;
+            border-radius: 50%;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            display: none; 
+        }
+
+        .beta-label {
+            position: absolute;
+            top: -4px;
+            right: -8px;
+            background: black;
+            color: white;
+            font-size: 0.6rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+            z-index: 5;
+            /* OPTIMIZATION: Simplify transform */
+            transform: rotate(10deg);
+            box-shadow: 1px 1px 0 white;
+        }
+        
+        .favorite-toggle {
+            position: absolute;
+            top: 0px; 
+            left: 0px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            z-index: 10;
+            display: none; 
+        }
+
+        .favorite-toggle.show-toggle {
+            display: block;
+        }
+
+        .favorite-toggle svg {
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke: black;
+            stroke-width: 2;
+        }
+
+        .favorite-toggle.is-favorite svg {
+            fill: black;
+            stroke-width: 1;
+        }
+
+        .favorite-toggle:active svg {
+            stroke-width: 1;
+            fill: #999;
+        }
+
+        svg {
+            fill: none;
+            stroke: black;
+            stroke-width: 2.2;
+            stroke-linecap: square;
+            stroke-linejoin: miter;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); 
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 30px;
+            width: 300px;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 2px solid black;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin-top: 10px;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+        
+        .privacy-link {
+            display: block;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: black;
+            text-decoration: underline;
+        }
+
+    </style>
+</head>
+<body>
+
+    <noscript>
+        <style>#noscript-overlay { display: flex !important; z-index: 9999; }</style>
+        <div id="noscript-overlay" class="modal-overlay">
+            <div class="modal-box">
+                <h2 style="margin-top:0; border-bottom: 2px solid black; padding-bottom:10px;">JavaScript Required</h2>
+                <p>This application relies on JavaScript to function correctly.</p>
+                <p>Please enable JavaScript in your browser settings and reload the page.</p>
+            </div>
+        </div>
+    </noscript>
+
+    <div class="dashboard">
+        <div class="sidebar">
+            <div class="system-header">
+                <h1 class="os-title">ReKindle</h1>
+                <div class="user-info" id="user-display">Guest Mode</div>
+                <div class="info-btn" onclick="openAbout()">i</div>
+            </div>
+
+            <div class="nav-menu">
+                <div class="nav-item active" id="nav-all" onclick="filterApps('all', this)">All Apps</div>
+                <div class="nav-item" id="nav-essentials" onclick="filterApps('essentials', this)">Essentials</div>
+                <div class="nav-item" id="nav-tools" onclick="filterApps('tools', this)">Tools</div>
+                <div class="nav-item" id="nav-lifestyle" onclick="filterApps('lifestyle', this)">Lifestyle</div>
+                <div class="nav-item" id="nav-games" onclick="filterApps('games', this)">Games</div>
+                <div class="nav-item" id="nav-two_player" onclick="filterApps('two_player', this)">Two Player Games</div>
+                
+                <div style="flex-grow:1"></div>
+                
+                <div class="nav-item" onclick="location.href='settings.html'">Settings</div>
+                <div class="nav-item" id="auth-btn" onclick="openLogin()">Log In</div>
+            </div>
+        </div>
+
+        <div class="app-view">
+            <div id="featured-section" class="featured-box-container" style="display:none;">
+                <div class="featured-box-header">Featured</div>
+                <div class="grid-container" id="featured-grid"></div>
+            </div>
+
+            <div id="favorites-section" style="display:none;">
+                <div class="view-header">
+                    <span id="favorites-title">★ Your Favorites</span>
+                </div>
+                <div class="grid-container" id="favorites-grid"></div>
+            </div>
+
+            <div class="view-header">
+                <span id="category-title">All Applications</span>
+                <button class="sys-btn" id="edit-done-btn" onclick="toggleEditMode()" style="box-shadow: 2px 2px 0 black;">Edit</button>
+            </div>
+            
+            <div class="grid-container" id="app-grid"></div>
+        </div>
+        
+        <div id="login-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2>System Login</h2>
+                <p id="login-msg" style="font-size:0.8rem; margin-bottom:15px;">Sync your data across devices.</p>
+                <input type="text" id="username" class="modal-input" placeholder="Username">
+                <input type="password" id="password" class="modal-input" placeholder="Password">
+                <div style="display:flex; justify-content:center; gap:10px;">
+                    <button class="sys-btn" onclick="doLogin()">Login</button>
+                    <button class="sys-btn" onclick="doRegister()">Register</button>
+                </div>
+                <div style="margin-top:15px;">
+                    <button style="border:none; background:none; text-decoration:underline; cursor:pointer;" onclick="closeModal('login-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="logout-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Log Out?</h3>
+                <p style="margin-bottom:20px;">Are you sure you want to sign out?</p>
+                <div style="display:flex; justify-content:center; gap:10px;">
+                    <button class="sys-btn" onclick="confirmLogout()">Yes</button>
+                    <button class="sys-btn" onclick="closeModal('logout-modal')">No</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="about-modal" class="modal-overlay" onclick="closeModal('about-modal')">
+            <div class="modal-box" onclick="event.stopPropagation()">
+                <div id="logo-container" style="width: 60px; height: 60px; margin: 0 auto;"></div>
+                <h1 style="margin-top:5px;">ReKindle</h1>
+                <p>Your Kindle Upgraded</p>
+                <p style="font-size: 0.75rem; color: #666; margin-bottom: 5px; margin-top: 15px;">No data is, or ever will be shared or sold by ReKindle.</p>
+                <a href="privacy.html" class="privacy-link">Privacy Policy</a>
+                <div style="margin: 15px auto; width: 120px; height: 120px;" id="qr-container"></div>
+                <div style="font-size:0.7rem; font-weight:bold; margin-top:5px;">Scan to Donate</div>
+                <a href="http://ukiy.ooo/donate" target="_blank" class="privacy-link" style="margin-top: 0;">Buy me a coffee</a>
+                <button class="sys-btn" onclick="closeModal('about-modal')" style="margin-top:15px;">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentFilter = 'all';
+        let currentUser = null;
+        let gamesDisabled = false;
+        let favoriteApps = []; 
+        let isEditMode = false; 
+        
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(granted => {
+                if (granted) console.log("Storage persisted");
+            });
+        }        
+
+        window.onload = () => {
+            loadWallpaper();
+            gamesDisabled = areGamesDisabled();
+            
+            // Optimization: Initial Render
+            filterApps('all', document.querySelector('#nav-all'));
+            renderAboutContent();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    localStorage.setItem('rekindle_uid', user.uid);
+                    let displayUser = user.email.split('@')[0];
+                    if (user.email.endsWith("@rekindle.ink")) {
+                        displayUser = user.email.replace("@rekindle.ink", "");
+                    }
+                    document.getElementById('user-display').innerText = "User: " + displayUser;
+                    document.getElementById('auth-btn').innerText = "Log Out";
+                    document.getElementById('auth-btn').onclick = openLogoutModal;
+                    closeModal('login-modal');
+                    monitorGameNotifications(user.uid);
+                    monitorFavoriteApps(); 
+                } else {
+                    document.getElementById('user-display').innerText = "Guest Mode";
+                    document.getElementById('auth-btn').innerText = "Log In";
+                    document.getElementById('auth-btn').onclick = openLogin;
+                    favoriteApps = JSON.parse(localStorage.getItem('rekindle_favorites')) || [];
+                    renderFavoriteSection();
+                }
+            });
+            
+            updateNavVisibility();
+        };
+
+function loadWallpaper() {
+            let wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            let wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            const wallpaperId = localStorage.getItem('rekindle_wallpaper_id');
+            const hasPixelData = localStorage.getItem('rekindle_pixel_data');
+
+            // MIGRATION LOGIC:
+            // 1. If no image exists (New User)
+            // 2. If no pixel data exists (Old User)
+            // 3. If ID is not 'custom' (Old User using legacy preset)
+            if (!wallpaperImg || !hasPixelData || (wallpaperId && wallpaperId !== 'custom')) {
+                console.log("Migrating wallpaper to Classic Dither...");
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 32;
+                canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+
+                // Fill Background White
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 32, 32);
+
+                // Draw Black Pixels (Classic Dither Pattern)
+                ctx.fillStyle = '#000000';
+                const ditherPattern = [
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1,
+                    1,0,1,0,1,0,1,0,
+                    0,1,0,1,0,1,0,1
+                ];
+
+                for(let i=0; i<64; i++) {
+                    if(ditherPattern[i] === 1) {
+                        const col = i % 8;
+                        const row = Math.floor(i / 8);
+                        // Draw 4x4px blocks to match the 32px generation logic
+                        ctx.fillRect(col * 4, row * 4, 4, 4);
+                    }
+                }
+
+                // Generate new values
+                wallpaperImg = `url(${canvas.toDataURL('image/png')})`;
+                wallpaperSize = '16px 16px';
+                
+                // Overwrite LocalStorage with new format
+                localStorage.setItem('rekindle_bg_image', wallpaperImg);
+                localStorage.setItem('rekindle_bg_size', wallpaperSize);
+                localStorage.setItem('rekindle_wallpaper_id', 'custom');
+                localStorage.setItem('rekindle_pixel_data', JSON.stringify(ditherPattern));
+            }
+
+            // Apply to body
+            document.body.style.backgroundImage = wallpaperImg;
+            document.body.style.backgroundSize = wallpaperSize;
+        }
+        
+        function updateNavVisibility() {
+            gamesDisabled = areGamesDisabled(); 
+            const gameNav = document.getElementById('nav-games');
+            const twoPlayerNav = document.getElementById('nav-two_player');
+            
+            if (gamesDisabled) {
+                gameNav.style.display = 'none';
+                twoPlayerNav.style.display = 'none';
+                if (currentFilter === 'games' || currentFilter === 'two_player') {
+                    filterApps('all', document.getElementById('nav-all'));
+                }
+            } else {
+                gameNav.style.display = 'block';
+                twoPlayerNav.style.display = 'block';
+            }
+        }
+
+        function renderAboutContent() {
+            const logoContainer = document.getElementById('logo-container');
+            if (logoContainer) {
+                logoContainer.innerHTML = '<img src="logo.svg" style="width:100%; height:100%;" alt="ReKindle Logo">';
+            }
+            const qrContainer = document.getElementById('qr-container');
+            if (qrContainer) {
+                qrContainer.innerHTML = '<img src="donate.svg" style="width:100%; height:100%;" alt="Donate QR">';
+            }
+        }
+
+        function monitorFavoriteApps() {
+            if (!currentUser) return;
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites')
+                .onSnapshot(doc => {
+                    if (doc.exists) {
+                        favoriteApps = doc.data().appIds || [];
+                    } else {
+                        favoriteApps = [];
+                    }
+                    renderFavoriteSection();
+                    if (currentFilter === 'all') renderAppGrid('all');
+                });
+        }
+        
+        function toggleFavorite(appId, event) {
+            event.preventDefault(); 
+            event.stopPropagation(); 
+            
+            const isFav = favoriteApps.includes(appId);
+            if (isFav) {
+                favoriteApps = favoriteApps.filter(id => id !== appId);
+            } else {
+                favoriteApps.push(appId);
+            }
+            
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites').set({
+                    appIds: favoriteApps
+                });
+            } else {
+                localStorage.setItem('rekindle_favorites', JSON.stringify(favoriteApps));
+            }
+
+            renderFavoriteSection();
+            renderAppGrid(currentFilter);
+        }
+        
+        function renderFavoriteSection() {
+            const container = document.getElementById('favorites-section');
+            const grid = document.getElementById('favorites-grid');
+            grid.innerHTML = ''; // Clear for rebuild
+
+            const favApps = APPS.filter(a => favoriteApps.includes(a.id));
+            const displayApps = gamesDisabled ? favApps.filter(app => app.cat !== 'games' && app.cat !== 'two_player') : favApps;
+
+            if (displayApps.length > 0) {
+                container.style.display = 'block';
+                // Optimization: Use DocumentFragment
+                const fragment = document.createDocumentFragment();
+                displayApps.forEach(app => {
+                    fragment.appendChild(createAppElement(app));
+                });
+                grid.appendChild(fragment);
+            } else {
+                container.style.display = 'none';
+            }
+            
+            if (isEditMode) {
+                document.getElementById('favorites-section').querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
+            }
+        }
+        
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('edit-done-btn');
+            
+            if (isEditMode) {
+                btn.innerText = "Done";
+                document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
+            } else {
+                btn.innerText = "Edit";
+                document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.remove('show-toggle'));
+            }
+            
+            if (currentFilter !== 'all') {
+                 renderAppGrid(currentFilter);
+            }
+            renderFavoriteSection();
+        }
+
+        function createAppElement(app) {
+            const a = document.createElement('a');
+            a.href = `${app.id}.html`;
+            a.className = 'app-icon';
+            a.id = `icon-${app.id}`;
+            
+            const isFav = favoriteApps.includes(app.id);
+            const showToggleClass = isEditMode && currentFilter !== 'featured' ? 'show-toggle' : '';
+            const isFavClass = isFav ? 'is-favorite' : '';
+
+            let extraHtml = `<div class="notify-badge" id="badge-${app.id}">!</div>`;
+            extraHtml += `
+                <div class="favorite-toggle ${isFavClass} ${showToggleClass}" onclick="toggleFavorite('${app.id}', event)">
+                    <svg viewBox="0 0 32 32">
+                        <path d="M16 2 L20 12 L30 13 L22 20 L24 30 L16 25 L8 30 L10 20 L2 13 L12 12 Z"/>
+                    </svg>
+                </div>
+            `;
+            
+            if (app.beta) {
+                extraHtml += `<div class="beta-label">BETA</div>`;
+            }
+
+            a.innerHTML = `
+                <svg class="icon-img" viewBox="0 0 32 32">${app.icon}</svg>
+                <span class="icon-label">${app.name}</span>
+                ${extraHtml}
+            `;
+            return a;
+        }
+
+        function filterApps(category, btnElement) {
+            updateNavVisibility(); 
+            if (gamesDisabled && (category === 'games' || category === 'two_player')) {
+                category = 'all'; 
+                btnElement = document.getElementById('nav-all');
+            }
+
+            currentFilter = category;
+
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+            
+            const editBtn = document.getElementById('edit-done-btn');
+            if (category === 'all') {
+                editBtn.style.display = 'block';
+                editBtn.innerText = isEditMode ? "Done" : "Edit";
+            } else {
+                editBtn.style.display = 'none';
+            }
+
+            const featuredContainer = document.getElementById('featured-section');
+            const featuredGrid = document.getElementById('featured-grid');
+            
+            if (category === 'all') {
+                featuredContainer.style.display = 'block';
+                featuredGrid.innerHTML = '';
+                
+                const fragment = document.createDocumentFragment();
+                let featuredApps = APPS.filter(a => a.featured);
+                
+                if (gamesDisabled) {
+                    featuredApps = featuredApps.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
+                }
+                
+                featuredApps.sort((a, b) => {
+                    const orderA = a.featuredOrder !== undefined ? a.featuredOrder : 999;
+                    const orderB = b.featuredOrder !== undefined ? b.featuredOrder : 999;
+                    return orderA - orderB;
+                });
+                
+                featuredApps.forEach(app => {
+                    const a = document.createElement('a');
+                    a.href = `${app.id}.html`;
+                    a.className = 'featured-card';
+                    const subheading = app.desc || ''; 
+                    a.innerHTML = `
+                        <div class="featured-icon">
+                            <svg viewBox="0 0 32 32" style="width:100%;height:100%;">${app.icon}</svg>
+                        </div>
+                        <div class="featured-info">
+                            <span class="featured-title">${app.name}</span>
+                            <span class="featured-sub">${subheading}</span>
+                        </div>
+                    `;
+                    fragment.appendChild(a);
+                });
+                featuredGrid.appendChild(fragment);
+                
+                renderFavoriteSection(); 
+            } else {
+                featuredContainer.style.display = 'none';
+                document.getElementById('favorites-section').style.display = 'none';
+            }
+
+            renderAppGrid(category);
+        }
+        
+        function renderAppGrid(category) {
+            const grid = document.getElementById('app-grid');
+            grid.innerHTML = ''; // Clear existing
+            
+            const titles = { 
+                all: "All Applications",
+                productivity: "Productivity", 
+                essentials: "Essentials",
+                tools: "Tools", 
+                lifestyle: "Lifestyle", 
+                games: "Games", 
+                two_player: "Two Player Games" 
+            };
+
+            const fragment = document.createDocumentFragment();
+
+            if (category === 'all') {
+                document.getElementById('category-title').innerText = "All Applications";
+                
+                let baseList = APPS.filter(a => !a.featured && !favoriteApps.includes(a.id));
+                
+                if (gamesDisabled) {
+                    baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
+                }
+
+                const games = baseList.filter(a => a.cat === 'games' || a.cat === 'two_player');
+                const apps = baseList.filter(a => a.cat !== 'games' && a.cat !== 'two_player');
+
+                apps.sort((a, b) => a.name.localeCompare(b.name));
+                games.sort((a, b) => a.name.localeCompare(b.name));
+
+                apps.forEach(app => fragment.appendChild(createAppElement(app)));
+
+                if (games.length > 0) {
+                    const header = document.createElement('div');
+                    header.className = 'view-header';
+                    header.style.gridColumn = '1 / -1';
+                    header.style.marginTop = '25px';
+                    header.style.marginBottom = '15px';
+                    header.style.borderBottom = '2px solid black';
+                    header.innerHTML = '<span style="font-size: 1.2rem; font-weight: bold;">All Games</span>';
+                    fragment.appendChild(header);
+
+                    games.forEach(app => fragment.appendChild(createAppElement(app)));
+                }
+
+            } else {
+                let filtered = APPS.filter(a => a.cat === category);
+                if (gamesDisabled) {
+                    filtered = filtered.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
+                }
+                filtered.sort((a, b) => a.name.localeCompare(b.name));
+                document.getElementById('category-title').innerText = titles[currentFilter] || "Applications";
+                filtered.forEach(app => fragment.appendChild(createAppElement(app)));
+            }
+            
+            grid.appendChild(fragment); // Single reflow
+            
+            if (isEditMode) {
+                document.getElementById('app-grid').querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
+            }
+        }
+
+        function monitorGameNotifications(uid) {
+            db.collection('word_games')
+                .where('status', '==', 'active')
+                .onSnapshot(snap => {
+                    let myTurn = false;
+                    snap.forEach(doc => {
+                        const d = doc.data();
+                        if ((d.p1_uid === uid || d.p2_uid === uid) && d.turn === uid) {
+                            myTurn = true;
+                        }
+                    });
+                    const badge = document.getElementById('badge-words');
+                    if(badge) badge.style.display = myTurn ? 'flex' : 'none';
+                });
+        }
+
+        function openLogin() { document.getElementById('login-modal').style.display = 'flex'; }
+        function openAbout() { document.getElementById('about-modal').style.display = 'flex'; }
+        function openLogoutModal() { document.getElementById('logout-modal').style.display = 'flex'; }
+        function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+
+        function doLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const email = u.includes('@') ? u : u + "@rekindle.ink";
+            auth.signInWithEmailAndPassword(email, p).catch(e => {
+                document.getElementById('login-msg').innerText = "Error: " + e.message;
+            });
+        }
+
+        function doRegister() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const email = u.includes('@') ? u : u + "@rekindle.ink";
+            auth.createUserWithEmailAndPassword(email, p).catch(e => {
+                document.getElementById('login-msg').innerText = "Error: " + e.message;
+            });
+        }
+        
+        function confirmLogout() {
+            auth.signOut();
+            localStorage.removeItem('rekindle_uid');
+            localStorage.removeItem('rekindle_favorites');
+            closeModal('logout-modal');
+            location.reload();
+        }
+    </script>
+    <script>
+   		if ('serviceWorker' in navigator) {
+        	window.addEventListener('load', () => {
+            	navigator.serviceWorker.register('./sw.js')
+                	.then((registration) => {
+                    	console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                	}, (err) => {
+                    	console.log('ServiceWorker registration failed: ', err);
+                	});
+        	});
+    	}
+</script>
+</body>
+</html>

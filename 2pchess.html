@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chess (2P)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --board-light: #ffffff;
+            --board-dark: #a0a0a0; 
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME - Smaller to show wallpaper */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            /* Reduced height/width to ensure wallpaper visibility */
+            height: 90vh; 
+            width: 90vw;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white;
+            z-index: 2; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem;
+            line-height: 1; box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black; color: white;
+            transform: translate(1px, 1px); box-shadow: none;
+        }
+
+        /* WINDOW CONTENT - Reduced padding */
+        .window-content {
+            padding: 5px; /* Reduced from 20px */
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            flex-shrink: 0;
+        }
+
+        /* BOARD CONTAINER */
+        #board-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 0;
+            overflow: hidden; /* Prevent spillover */
+        }
+
+        /* BOARD */
+        #board {
+            /* Size set by JS */
+            border: 4px solid black;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            box-sizing: border-box;
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .square.light { background-color: var(--board-light); }
+        .square.dark { background-color: var(--board-dark); }
+
+        .square.selected {
+            box-shadow: inset 0 0 0 4px black;
+        }
+
+        .square.last-move {
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.1) 5px, rgba(0,0,0,0.1) 10px);
+        }
+
+        .piece {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            /* Fix vertical alignment for Unicode characters */
+            line-height: 1;
+            padding-bottom: 5%; 
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 500px;
+            margin-top: 10px;
+            flex-shrink: 0;
+            padding-bottom: 5px;
+        }
+
+        button.game-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px;
+            flex: 1;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+        }
+
+        button.game-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 250px;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Chess (2P)</span>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">White's Turn</div>
+            
+            <div id="board-container">
+                <div id="board"></div>
+            </div>
+
+            <div class="controls">
+                <button class="game-btn" onclick="flipBoard()">Flip</button>
+                <button class="game-btn" onclick="undoMove()">Undo</button>
+                <button class="game-btn" onclick="openResetModal()">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reset-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Start New Game?</h3>
+            <p style="margin: 15px 0;">Current progress will be lost.</p>
+            <div style="display:flex; gap:10px; justify-content: center;">
+                <button class="game-btn" onclick="confirmReset()">Yes</button>
+                <button class="game-btn" onclick="closeResetModal()">No</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let game = new Chess();
+        let selectedSquare = null;
+        let isFlipped = false;
+        
+        const PIECES = {
+            'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+            'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+        };
+
+        window.onload = () => {
+            loadWallpaper();
+            renderBoard();
+            resizeBoard();
+        };
+
+        window.addEventListener('resize', resizeBoard);
+
+        function resizeBoard() {
+            const container = document.getElementById('board-container');
+            const board = document.getElementById('board');
+            
+            if (container && board) {
+                // Get available dimensions
+                const availWidth = container.clientWidth;
+                const availHeight = container.clientHeight;
+                
+                // Use 95% of the smallest dimension to ensure it fits comfortably and square
+                const size = Math.min(availWidth, availHeight) * 0.95; 
+                
+                // Force square dimensions
+                board.style.width = size + 'px';
+                board.style.height = size + 'px';
+                
+                // Font scaling
+                const fontSize = size / 9; // Slightly smaller ratio for safety
+                const squares = document.querySelectorAll('.square');
+                squares.forEach(sq => sq.style.fontSize = fontSize + 'px');
+            }
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+            
+            let displayRows = isFlipped ? [0,1,2,3,4,5,6,7] : [7,6,5,4,3,2,1,0];
+            let displayCols = isFlipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+
+            const position = game.board();
+
+            for (let r of displayRows) {
+                for (let c of displayCols) {
+                    const squareName = String.fromCharCode(97 + c) + (r + 1);
+                    const arrayRow = 7 - r;
+                    const squareData = position[arrayRow][c];
+                    
+                    const div = document.createElement('div');
+                    const isLight = (r + c) % 2 !== 0;
+                    div.className = `square ${isLight ? 'light' : 'dark'}`;
+                    
+                    if (selectedSquare === squareName) div.classList.add('selected');
+                    
+                    const history = game.history({ verbose: true });
+                    if (history.length > 0) {
+                        const last = history[history.length - 1];
+                        if (last.to === squareName || last.from === squareName) {
+                            div.classList.add('last-move');
+                        }
+                    }
+
+                    div.onclick = () => handleSquareClick(squareName);
+
+                    if (squareData) {
+                        let pKey = squareData.type;
+                        if (squareData.color === 'w') pKey = pKey.toUpperCase();
+                        div.innerHTML = `<div class="piece">${PIECES[pKey]}</div>`;
+                    }
+
+                    board.appendChild(div);
+                }
+            }
+            resizeBoard();
+        }
+
+        function handleSquareClick(square) {
+            if (game.game_over()) return;
+
+            const piece = game.get(square);
+            const turnColor = game.turn(); 
+
+            if (piece && piece.color === turnColor) {
+                selectedSquare = square;
+                renderBoard();
+                return;
+            }
+
+            if (selectedSquare) {
+                try {
+                    const move = game.move({
+                        from: selectedSquare,
+                        to: square,
+                        promotion: 'q'
+                    });
+
+                    if (move) {
+                        selectedSquare = null;
+                        checkStatus();
+                        renderBoard();
+                    } else {
+                        selectedSquare = null;
+                        renderBoard();
+                    }
+                } catch (e) {
+                    selectedSquare = null;
+                    renderBoard();
+                }
+            }
+        }
+
+        function checkStatus() {
+            const statusEl = document.getElementById('status-bar');
+            let status = "";
+            let moveColor = game.turn() === 'w' ? "White" : "Black";
+
+            if (game.in_checkmate()) {
+                status = `Checkmate! ${moveColor === 'White' ? 'Black' : 'White'} wins.`;
+            } else if (game.in_draw()) {
+                status = "Draw.";
+            } else {
+                status = `${moveColor}'s Turn`;
+                if (game.in_check()) status += " (Check!)";
+            }
+            statusEl.innerText = status;
+        }
+
+        function undoMove() {
+            game.undo();
+            selectedSquare = null;
+            checkStatus();
+            renderBoard();
+        }
+
+        // --- RESET LOGIC ---
+        function openResetModal() {
+            document.getElementById('reset-modal').style.display = 'flex';
+        }
+
+        function closeResetModal() {
+            document.getElementById('reset-modal').style.display = 'none';
+        }
+
+        function confirmReset() {
+            game = new Chess();
+            selectedSquare = null;
+            checkStatus();
+            renderBoard();
+            closeResetModal();
+        }
+
+        function flipBoard() {
+            isFlipped = !isFlipped;
+            renderBoard();
+        }
+    </script>
+</body>
+</html>

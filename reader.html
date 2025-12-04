@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reader</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 STYLE */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Georgia", serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px black;
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            position: relative;
+            flex-shrink: 0;
+            font-family: "Helvetica Neue", sans-serif;
+        }
+
+        .title-text { font-weight: bold; background: white; padding: 0 15px; z-index: 1; }
+        .title-stripes {
+            position: absolute; top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            z-index: 0;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white; z-index: 2;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem; line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        /* READER UI */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 2px solid black;
+            background: #eee;
+            font-family: sans-serif;
+        }
+
+        .sys-btn {
+            background: white; border: 2px solid black; padding: 4px 12px;
+            font-weight: bold; cursor: pointer; box-shadow: 2px 2px 0 black; font-size: 0.85rem;
+        }
+        .sys-btn:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        .nav-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        #viewer-container {
+            flex-grow: 1;
+            overflow: hidden;
+            position: relative;
+            background: white;
+        }
+
+        #epub-render-area {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* PAGE TURN ZONES */
+        .click-zone {
+            position: absolute; top: 0; height: 100%; width: 20%;
+            z-index: 10; cursor: pointer;
+        }
+        #prev-zone { left: 0; }
+        #next-zone { right: 0; width: 80%; } 
+
+        /* FOOTER */
+        .footer {
+            border-top: 2px solid black;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: center;
+            background: #eee;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        /* LIBRARY OVERLAY */
+        #library-overlay {
+            position: absolute; top: 35px; left: 0; width: 100%; height: calc(100% - 35px);
+            background: white; z-index: 20; display: flex; flex-direction: column;
+        }
+
+        /* LIB TABS */
+        .lib-tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+        
+        .lib-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-right: 1px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            background: #eee;
+        }
+        .lib-tab.active { background: white; border-bottom: 2px solid white; margin-bottom: -2px; z-index: 10; }
+
+        /* LIB VIEWS */
+        .lib-view {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .book-item {
+            border: 2px solid black; padding: 10px; margin-bottom: 10px;
+            cursor: pointer; display: flex; align-items: center; gap: 15px;
+            box-shadow: 3px 3px 0 #ccc;
+            position: relative;
+        }
+        .book-item:active { background: black; color: white; transform: translate(2px, 2px); box-shadow: none; }
+        
+        .cloud-icon {
+            font-size: 1.2rem; margin-left: auto; color: #666;
+        }
+        
+        /* ONLINE SEARCH */
+        .search-bar {
+            display: flex; gap: 10px; margin-bottom: 15px;
+        }
+        
+        input[type="text"] {
+            flex-grow: 1; padding: 8px; border: 2px solid black; font-family: inherit; font-size: 1rem;
+        }
+
+        .online-book {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .book-meta h3 { margin: 0 0 5px 0; font-size: 1rem; }
+        .book-meta p { margin: 0; font-size: 0.8rem; color: #666; }
+
+        /* SUGGESTIONS */
+        .category-grid {
+            display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
+        }
+        .cat-btn {
+            flex: 1; min-width: 80px; padding: 8px; 
+            border: 1px solid black; background: #fafafa;
+            cursor: pointer; font-weight: bold; font-size: 0.9rem;
+            text-align: center;
+        }
+        .cat-btn:active { background: black; color: white; }
+
+        .section-title {
+            font-size: 1.1rem; font-weight: bold; border-bottom: 2px solid black;
+            padding-bottom: 5px; margin-bottom: 15px; text-transform: uppercase;
+        }
+
+        .upload-area {
+            border-top: 2px solid black; padding: 20px; background: #eee; text-align: center;
+        }
+        input[type="file"] { display: none; }
+        
+        #loading-indicator {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: none; justify-content: center; align-items: center;
+            font-weight: bold; z-index: 50;
+            flex-direction: column;
+            gap: 10px;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .load-more-btn {
+            width: 100%; padding: 10px; margin-top: 10px;
+            background: #eee; border: 2px solid black; font-weight: bold; cursor: pointer;
+        }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="location.href='index.html'">X</div>
+            <span class="title-text" id="app-title">Reader</span>
+        </div>
+
+        <div class="toolbar">
+            <button class="sys-btn" onclick="showLibrary()">Library</button>
+            <span id="chapter-title" style="font-size:0.9rem; font-weight:bold; overflow:hidden; white-space:nowrap; max-width:150px; text-align:center;"></span>
+            <div class="nav-group">
+                <button class="sys-btn" onclick="book.rendition.prev()">&lt;</button>
+                <button class="sys-btn" onclick="book.rendition.next()">&gt;</button>
+            </div>
+        </div>
+
+        <div id="viewer-container">
+            <div id="epub-render-area"></div>
+            <div id="prev-zone" class="click-zone" onclick="prevPage()"></div>
+            <div id="next-zone" class="click-zone" onclick="nextPage()"></div>
+        </div>
+
+        <div class="footer">
+            <span id="progress-text">--%</span>
+        </div>
+
+        <!-- LOADING OVERLAY -->
+        <div id="loading-indicator">
+            <div id="loading-msg">Processing...</div>
+            <button id="loading-close" class="sys-btn" style="display:none;" onclick="document.getElementById('loading-indicator').style.display='none'">Close</button>
+        </div>
+
+        <!-- DELETE CONFIRMATION MODAL -->
+        <div id="delete-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Delete Book?</h3>
+                <p>Remove this book from your library?</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="confirmDelete()">Delete</button>
+                    <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIBRARY OVERLAY -->
+        <div id="library-overlay">
+            <div class="lib-tabs">
+                <div class="lib-tab active" id="tab-local" onclick="setLibTab('local')">My Books</div>
+                <div class="lib-tab" id="tab-online" onclick="setLibTab('online')">Online Store</div>
+            </div>
+
+            <!-- LOCAL LIBRARY (MERGED VIEW) -->
+            <div id="view-local" class="lib-view">
+                <div id="book-list">
+                    <div style="text-align:center; margin-top:50px;">Loading library...</div>
+                </div>
+            </div>
+
+            <!-- ONLINE STORE -->
+            <div id="view-online" class="lib-view" style="display:none;">
+                <div class="search-bar">
+                    <input type="text" id="search-input" placeholder="Search title, author..." onkeypress="handleSearch(event)">
+                    <button class="sys-btn" onclick="searchOnline()">Search</button>
+                </div>
+                
+                <!-- Suggestions View -->
+                <div id="online-suggestions">
+                    <div class="section-title">Categories</div>
+                    <div class="category-grid">
+                        <div class="cat-btn" onclick="runCategory('Fiction')">Fiction</div>
+                        <div class="cat-btn" onclick="runCategory('Science Fiction')">Sci-Fi</div>
+                        <div class="cat-btn" onclick="runCategory('Mystery')">Mystery</div>
+                        <div class="cat-btn" onclick="runCategory('Romance')">Romance</div>
+                        <div class="cat-btn" onclick="runCategory('History')">History</div>
+                        <div class="cat-btn" onclick="runCategory('Philosophy')">Philosophy</div>
+                        <div class="cat-btn" onclick="runCategory('Adventure')">Adventure</div>
+                        <div class="cat-btn" onclick="runCategory('Fantasy')">Fantasy</div>
+                    </div>
+
+                    <div class="section-title">Popular Now</div>
+                    <div id="popular-books">Loading...</div>
+                    <button id="btn-load-more-popular" class="load-more-btn" style="display:none;" onclick="loadMorePopular()">Load More</button>
+                </div>
+
+                <!-- Search Results View -->
+                <div id="online-results" style="display:none;"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- STATE ---
+        let book = null;
+        let rendition = null;
+        let currentUser = null;
+        
+        let localBooks = []; // From LocalForage
+        let cloudBooks = []; // From Firestore
+        let mergedLibrary = []; // Combined for display
+
+        let popularLoaded = false;
+        let nextPopularUrl = null;
+        
+        let deleteTarget = null; // Store { localKey, docId } for deletion modal
+        let skipBlankCheck = 0; // Prevent infinite loops in blank page skipper
+        let saveTimeout = null; // Debounce timer for saving progress
+        let lastValidCfi = null; // Track last known valid position
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            auth.onAuthStateChanged(async user => {
+                if(user) {
+                    currentUser = user;
+                    // 1. Sync Guest Books to Cloud (Up)
+                    await syncLocalToCloud();
+                    // 2. Start Listener (Down)
+                    setupCloudListener();
+                }
+                // Always load local library initially
+                loadLocalLibrary();
+            });
+            
+            // AUTO REFRESH when switching back to app
+            window.onfocus = () => {
+                loadLocalLibrary();
+            };
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            if(img) document.body.style.backgroundImage = img;
+        }
+
+        // --- HELPER: POLYFILL ARRAYBUFFER ---
+        function blobToArrayBuffer(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(blob);
+            });
+        }
+
+        // --- SYNC LOGIC ---
+
+        // Step 1: Upload any local "guest" books to cloud on login
+        async function syncLocalToCloud() {
+            if (!currentUser) return;
+            
+            const local = await localforage.getItem('library_index') || [];
+            
+            // Get current cloud list to avoid duplicates
+            const snapshot = await db.collection('users').doc(currentUser.uid).collection('library').get();
+            const cloudUrls = new Set();
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                if(d.url) cloudUrls.add(d.url);
+            });
+
+            const batch = db.batch();
+            let ops = 0;
+
+            for(const lb of local) {
+                // If it has a URL (store book) and not in cloud yet
+                if (lb.url && !cloudUrls.has(lb.url)) {
+                    const newRef = db.collection('users').doc(currentUser.uid).collection('library').doc();
+                    batch.set(newRef, {
+                        title: lb.title,
+                        author: lb.author || 'Unknown',
+                        url: lb.url,
+                        cfi: null,
+                        added: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    ops++;
+                }
+            }
+
+            if(ops > 0) {
+                try {
+                    await batch.commit();
+                    console.log(`Synced ${ops} books to cloud.`);
+                } catch(e) {
+                    console.error("Sync error", e);
+                }
+            }
+        }
+
+        // Step 2: Listen for Cloud changes
+        function setupCloudListener() {
+            db.collection('users').doc(currentUser.uid).collection('library')
+                .onSnapshot(async snapshot => {
+                    cloudBooks = [];
+                    snapshot.forEach(doc => {
+                        cloudBooks.push({ ...doc.data(), docId: doc.id });
+                    });
+                    
+                    renderMergedLibrary();
+                });
+        }
+
+        // 3. Local Loader
+        async function loadLocalLibrary() {
+            localBooks = await localforage.getItem('library_index') || [];
+            renderMergedLibrary();
+        }
+
+        // 4. Merger
+        function renderMergedLibrary() {
+            const list = document.getElementById('book-list');
+            list.innerHTML = '';
+            
+            mergedLibrary = [];
+            const processedUrls = new Set();
+
+            // Process Cloud Books first
+            cloudBooks.forEach(cb => {
+                // Find locally
+                const localMatch = localBooks.find(lb => (cb.url && lb.url === cb.url));
+                
+                const displayBook = {
+                    ...cb,
+                    isDownloaded: !!localMatch,
+                    localKey: localMatch ? localMatch.key : null,
+                    source: 'cloud'
+                };
+                
+                mergedLibrary.push(displayBook);
+                if (cb.url) processedUrls.add(cb.url);
+            });
+
+            // Add Local-Only books (Sideloaded / Not yet synced)
+            localBooks.forEach(lb => {
+                if (lb.url && processedUrls.has(lb.url)) return;
+                
+                // Avoid visual duplicates based on title/author if URL missing (sideloads)
+                const alreadyExists = mergedLibrary.some(mb => mb.title === lb.title && mb.author === lb.author);
+                if (!alreadyExists) {
+                    mergedLibrary.push({
+                        ...lb,
+                        isDownloaded: true,
+                        localKey: lb.key,
+                        source: 'local'
+                    });
+                }
+            });
+
+            if(mergedLibrary.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">No books.<br>Download from Online Store.</div>';
+                return;
+            }
+
+            // Render
+            mergedLibrary.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'book-item';
+                
+                const statusIcon = b.isDownloaded ? '' : '<span class="cloud-icon">☁</span>';
+                
+                div.innerHTML = `
+                    <div style="flex-grow:1;">
+                        <div style="font-weight:bold;">${b.title}</div>
+                        <div style="font-size:0.8rem; color:#666;">${b.author || 'Unknown'}</div>
+                    </div>
+                    ${statusIcon}
+                    <button class="sys-btn" style="padding:4px 8px; margin-left:10px;" onclick="e=event; e.stopPropagation(); deleteBook('${b.localKey}', '${b.docId}')">×</button>
+                `;
+                
+                div.onclick = () => openBook(b);
+                list.appendChild(div);
+            });
+        }
+
+        // --- BOOK OPENING LOGIC ---
+        async function openBook(bookObj) {
+            if (!bookObj.isDownloaded) {
+                if (bookObj.url) {
+                    const success = await fetchAndSaveBook(bookObj.url, bookObj.title, bookObj.author, false); // false = don't add to cloud again
+                    if (!success) return;
+                    
+                    const updatedLocal = await localforage.getItem('library_index') || [];
+                    const match = updatedLocal.find(b => b.url === bookObj.url);
+                    if (match) {
+                        bookObj.localKey = match.key;
+                        bookObj.isDownloaded = true;
+                    } else {
+                        alert("Download verify failed.");
+                        return;
+                    }
+                } else {
+                    alert("Cannot download: Missing URL.");
+                    return;
+                }
+            }
+
+            let bookData = await localforage.getItem(bookObj.localKey);
+            if (!bookData) {
+                alert("Book file corrupt or missing.");
+                return;
+            }
+
+            // --- LOCAL PROGRESS CHECK (Guest Mode) ---
+            let startCfi = bookObj.cfi;
+            if (!currentUser && !startCfi) {
+                const localIndex = await localforage.getItem('library_index') || [];
+                const localEntry = localIndex.find(b => b.key === bookObj.localKey);
+                if (localEntry && localEntry.cfi) {
+                    startCfi = localEntry.cfi;
+                }
+            }
+            
+            lastValidCfi = startCfi; // Init safe value
+
+            document.getElementById('library-overlay').style.display = 'none';
+            document.getElementById('app-title').innerText = bookObj.title.substring(0, 15) + '...';
+            
+            if(book) { book.destroy(); book = null; }
+            document.getElementById('epub-render-area').innerHTML = '';
+
+            try {
+                book = ePub(bookData);
+                rendition = book.renderTo("epub-render-area", {
+                    width: "100%", height: "100%",
+                    flow: "paginated", manager: "default", spread: "none"
+                });
+
+                // BLANK PAGE DETECTION HOOK (FIXED)
+                rendition.hooks.content.register((contents, view) => {
+                    const doc = contents.document;
+                    
+                    // Robust text extraction: check both body and documentElement (for XML)
+                    const body = doc.body;
+                    let text = "";
+                    
+                    if (body) {
+                        text = body.innerText.trim();
+                    } else if (doc.documentElement) {
+                        text = doc.documentElement.textContent.trim();
+                    }
+                    
+                    // Check for images
+                    const hasImg = doc.getElementsByTagName("img").length > 0;
+                    const hasSvg = doc.getElementsByTagName("svg").length > 0;
+                    const hasImage = doc.getElementsByTagName("image").length > 0;
+                    
+                    // If no text AND no images, mark blank
+                    if (text.length < 20 && !hasImg && !hasSvg && !hasImage) {
+                        // Mark on documentElement to ensure visibility
+                        doc.documentElement.setAttribute('data-rekindle-blank', 'true');
+                        if (body) body.setAttribute('data-rekindle-blank', 'true');
+                    }
+                });
+
+                await rendition.display(startCfi || undefined);
+
+                rendition.on("relocated", async (location) => {
+                    const newCfi = location.start.cfi;
+                    
+                    // AGGRESSIVE SKIPPER LOGIC
+                    let shouldSkip = false;
+                    
+                    // Check 1: Explicit Blank Attribute
+                    try {
+                        const views = rendition.getContents(); 
+                        for (let content of views) {
+                             const doc = content.document;
+                             if (doc.documentElement.getAttribute('data-rekindle-blank') === 'true' || 
+                                 (doc.body && doc.body.getAttribute('data-rekindle-blank') === 'true')) {
+                                 shouldSkip = true;
+                                 break;
+                             }
+                        }
+                    } catch(e) { console.log("Blank check err", e); }
+                    
+                    // Check 2: Invalid Position Loop (Position stuck on previous page)
+                    // If CFI hasn't changed from last known valid, we might be stuck in an empty section
+                    // We only check this if we *tried* to move forward (assuming typical forward read)
+                    // But we can't easily know direction here. 
+                    // However, if we are on a page that is blank, we definitely want to move.
+                    
+                    if (shouldSkip && skipBlankCheck < 50) {
+                        skipBlankCheck++;
+                        // console.log("Skipping blank/stuck page...");
+                        rendition.next();
+                        return; // Don't save this position
+                    } else {
+                        skipBlankCheck = 0; // Reset counter on valid page
+                        lastValidCfi = newCfi; // This is a good page
+                    }
+
+                    // DEBOUNCED SAVE
+                    clearTimeout(saveTimeout);
+                    saveTimeout = setTimeout(async () => {
+                        if(currentUser && bookObj.docId) {
+                            db.collection('users').doc(currentUser.uid).collection('library').doc(bookObj.docId).update({
+                                cfi: newCfi
+                            });
+                        } else if (bookObj.localKey) {
+                            const index = await localforage.getItem('library_index') || [];
+                            const entryIndex = index.findIndex(b => b.key === bookObj.localKey);
+                            if (entryIndex !== -1) {
+                                index[entryIndex].cfi = newCfi;
+                                await localforage.setItem('library_index', index);
+                            }
+                        }
+                    }, 500); 
+
+                    if (location.start.displayed && location.start.displayed.page && location.start.displayed.total) {
+                        const percent = Math.round((location.start.displayed.page / location.start.displayed.total) * 100);
+                        document.getElementById('progress-text').innerText = percent + "%";
+                    }
+                });
+            } catch(e) {
+                alert("Error opening book: " + e.message);
+            }
+        }
+
+        // --- DOWNLOAD & CLEAN LOGIC ---
+        
+        async function fetchAndSaveBook(url, title, author, addToCloud = true) {
+            showLoading(`Downloading ${title}...`);
+            await new Promise(r => setTimeout(r, 100));
+
+            try {
+                let blob = null;
+                // Proxy Strategy
+                try {
+                    const proxyUrl = "https://corsproxy.io/?" + encodeURIComponent(url);
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error("Status " + res.status);
+                    blob = await res.blob();
+                } catch(e1) {
+                    console.log("Primary proxy failed, attempting backup...");
+                    try {
+                        const backupUrl = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url);
+                        const res2 = await fetch(backupUrl);
+                        if (!res2.ok) throw new Error("Fetch failed");
+                        blob = await res2.blob();
+                    } catch(e2) {
+                        const finalUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+                        const res3 = await fetch(finalUrl);
+                        if (!res3.ok) throw new Error("Final Fetch failed");
+                        blob = await res3.blob();
+                    }
+                }
+
+                if (!blob || blob.size === 0) throw new Error("Empty file");
+
+                const buffer = await blobToArrayBuffer(blob);
+                const key = `book_${Date.now()}`;
+                
+                await localforage.setItem(key, buffer);
+                
+                const newEntry = { 
+                    title: title, 
+                    author: author || 'Unknown', 
+                    url: url,
+                    key: key, 
+                    date: Date.now(),
+                    cfi: null
+                };
+                
+                let index = await localforage.getItem('library_index') || [];
+                index.push(newEntry);
+                await localforage.setItem('library_index', index);
+                
+                if (addToCloud && currentUser) {
+                    const existing = cloudBooks.find(b => b.url === url);
+                    if (!existing) {
+                        await db.collection('users').doc(currentUser.uid).collection('library').add({
+                            title: title,
+                            author: author || 'Unknown',
+                            url: url,
+                            cfi: null,
+                            added: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                }
+
+                document.getElementById('loading-indicator').style.display = 'none';
+                loadLocalLibrary(); 
+                return true;
+
+            } catch(e) {
+                showLoadingError(e.message);
+                return false;
+            }
+        }
+
+        function triggerStoreDownload(url, title, author) {
+            fetchAndSaveBook(url, title, author, true).then(success => {
+                if(success) {
+                    setLibTab('local');
+                }
+            });
+        }
+
+        // --- DELETION LOGIC ---
+        function deleteBook(localKey, docId) {
+            deleteTarget = { localKey, docId };
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+            if(id === 'delete-modal') deleteTarget = null;
+        }
+
+        async function confirmDelete() {
+            if (!deleteTarget) return;
+            
+            const { localKey, docId } = deleteTarget;
+            
+            if(currentUser && docId && docId !== 'undefined' && docId !== 'null') {
+                await db.collection('users').doc(currentUser.uid).collection('library').doc(docId).delete();
+            }
+            
+            if(localKey && localKey !== 'undefined' && localKey !== 'null') {
+                await localforage.removeItem(localKey);
+                let index = await localforage.getItem('library_index') || [];
+                index = index.filter(b => b.key !== localKey);
+                await localforage.setItem('library_index', index);
+                loadLocalLibrary(); 
+            }
+            
+            closeModal('delete-modal');
+        }
+
+        // --- UI HELPERS ---
+        function setLibTab(tab) {
+            document.querySelectorAll('.lib-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById('view-local').style.display = tab === 'local' ? 'flex' : 'none';
+            document.getElementById('view-online').style.display = tab === 'online' ? 'flex' : 'none';
+            
+            if (tab === 'online' && !document.getElementById('search-input').value) {
+                showSuggestions();
+            }
+        }
+
+        function showLibrary() {
+            document.getElementById('library-overlay').style.display = 'flex';
+            document.getElementById('app-title').innerText = "Reader"; // Reset Title
+            if(currentUser) setupCloudListener(); 
+            loadLocalLibrary();
+        }
+
+        function showLoading(msg) {
+            const ind = document.getElementById('loading-indicator');
+            document.getElementById('loading-msg').innerText = msg;
+            document.getElementById('loading-close').style.display = 'none';
+            ind.style.display = 'flex';
+        }
+
+        function showLoadingError(msg) {
+            document.getElementById('loading-msg').innerText = "Error: " + msg;
+            document.getElementById('loading-close').style.display = 'inline-block';
+        }
+
+        function prevPage() { if(rendition) rendition.prev(); }
+        function nextPage() { if(rendition) rendition.next(); }
+
+        // --- ONLINE STORE ---
+        function showSuggestions() {
+            document.getElementById('online-suggestions').style.display = 'block';
+            document.getElementById('online-results').style.display = 'none';
+            if (!popularLoaded) loadPopularBooks();
+        }
+
+        async function loadPopularBooks() {
+            const popDiv = document.getElementById('popular-books');
+            popDiv.innerHTML = '<div style="text-align:center;">Fetching top books...</div>';
+            try {
+                const res = await fetch('https://gutendex.com/books?sort=popular');
+                const data = await res.json();
+                popDiv.innerHTML = '';
+                nextPopularUrl = data.next;
+                data.results.forEach(book => {
+                    const item = createOnlineBookItem(book);
+                    if(item) popDiv.appendChild(item);
+                });
+                if (nextPopularUrl) document.getElementById('btn-load-more-popular').style.display = 'block';
+                popularLoaded = true;
+            } catch(e) { popDiv.innerHTML = 'Error loading.'; }
+        }
+
+        async function loadMorePopular() {
+            if (!nextPopularUrl) return;
+            const btn = document.getElementById('btn-load-more-popular');
+            btn.innerText = "Loading...";
+            try {
+                const res = await fetch(nextPopularUrl);
+                const data = await res.json();
+                nextPopularUrl = data.next;
+                const popDiv = document.getElementById('popular-books');
+                data.results.forEach(book => {
+                    const item = createOnlineBookItem(book);
+                    if(item) popDiv.appendChild(item);
+                });
+                btn.innerText = "Load More";
+                if (!nextPopularUrl) btn.style.display = 'none';
+            } catch(e) { btn.innerText = "Error"; }
+        }
+
+        function handleSearch(e) { if(e.key === 'Enter') searchOnline(); }
+        function runCategory(cat) { document.getElementById('search-input').value = cat; searchOnline(); }
+
+        async function searchOnline() {
+            const query = document.getElementById('search-input').value.trim();
+            if(!query) return;
+            document.getElementById('online-suggestions').style.display = 'none';
+            const resultsDiv = document.getElementById('online-results');
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">Searching...</div>';
+            try {
+                const res = await fetch(`https://gutendex.com/books?search=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                resultsDiv.innerHTML = '';
+                if(data.results.length === 0) { resultsDiv.innerHTML = '<div style="text-align:center;">No results.</div>'; return; }
+                data.results.forEach(book => {
+                    const item = createOnlineBookItem(book);
+                    if(item) resultsDiv.appendChild(item);
+                });
+            } catch(e) { resultsDiv.innerHTML = '<div style="text-align:center;">Error.</div>'; }
+        }
+
+        function createOnlineBookItem(book) {
+            const epubUrl = book.formats['application/epub+zip'];
+            if(!epubUrl) return null; 
+            const author = book.authors.length > 0 ? book.authors[0].name : 'Unknown';
+            const safeTitle = book.title.replace(/'/g, "\\'");
+            const safeAuthor = author.replace(/'/g, "\\'");
+            const div = document.createElement('div');
+            div.className = 'online-book';
+            div.innerHTML = `
+                <div class="book-meta"><h3>${book.title}</h3><p>${author}</p></div>
+                <button class="sys-btn" onclick="triggerStoreDownload('${epubUrl}', '${safeTitle}', '${safeAuthor}')">Get</button>
+            `;
+            return div;
+        }
+
+    </script>
+</body>
+</html>

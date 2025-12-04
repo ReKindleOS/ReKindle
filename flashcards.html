@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flashcards</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* VIEWS */
+        .view {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* DECK LIST */
+        #deck-list {
+            overflow-y: auto;
+        }
+
+        .deck-item {
+            border: 2px solid black;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 #ccc;
+        }
+
+        .deck-item:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .deck-info {
+            flex-grow: 1;
+        }
+
+        .deck-title { font-weight: 900; font-size: 1.1rem; }
+        .deck-stats { font-family: "Courier New", monospace; color: #555; }
+        .due-badge { background: black; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+
+        .delete-deck-btn {
+            padding: 10px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 5;
+        }
+        
+        .delete-deck-btn:hover { color: red; }
+
+        /* STUDY VIEW */
+        #study-view {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .flashcard {
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 4/3;
+            border: 3px solid black;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            box-shadow: 6px 6px 0 #ccc;
+            cursor: pointer;
+            background: white;
+            white-space: pre-wrap;
+        }
+
+        .rating-bar {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 500px;
+            margin-top: 20px;
+            visibility: hidden;
+        }
+
+        .rate-btn {
+            flex: 1;
+            border: 2px solid black;
+            background: white;
+            padding: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+        }
+
+        .rate-btn.again { border-bottom: 4px solid black; }
+        .rate-btn.hard { border-bottom: 4px solid #666; }
+        .rate-btn.good { border-bottom: 4px solid #999; }
+        .rate-btn.easy { border-bottom: 4px solid #ccc; }
+
+        .rate-btn:active { transform: translate(2px, 2px); box-shadow: none; }
+
+        /* EDITOR VIEW */
+        #editor-view {
+            display: none;
+        }
+
+        input, textarea {
+            width: 100%;
+            border: 2px solid black;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-family: inherit;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* MODAL */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-box input { margin: 10px 0; }
+
+        .modal-btns {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text" id="header-text">Flashcards</span>
+            
+            <div class="controls" id="main-controls">
+                <button class="sys-btn" onclick="openAddDeckModal()">+ Deck</button>
+            </div>
+            <div class="controls" id="study-controls" style="display:none;">
+                <button class="sys-btn" onclick="showDeckList()">Back</button>
+                <button class="sys-btn" onclick="promptDeleteCard()">Delete</button>
+                <button class="sys-btn" onclick="openAddCardModal()">+ Card</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            
+            <div id="deck-list" class="view">
+                <div style="text-align:center; padding:20px;">Loading...</div>
+            </div>
+
+            <div id="study-view" class="view">
+                <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%;">
+                    <div id="flashcard" class="flashcard" onclick="flipCard()">
+                        Select a deck to start.
+                    </div>
+                    <div style="margin-top:10px; font-style:italic;" id="card-counter"></div>
+                </div>
+
+                <div class="rating-bar" id="rating-bar">
+                    <button class="rate-btn again" onclick="rateCard(1)">Again<br><span style="font-size:0.7rem">&lt; 1m</span></button>
+                    <button class="rate-btn hard" onclick="rateCard(2)">Hard<br><span style="font-size:0.7rem">2d</span></button>
+                    <button class="rate-btn good" onclick="rateCard(3)">Good<br><span style="font-size:0.7rem">4d</span></button>
+                    <button class="rate-btn easy" onclick="rateCard(4)">Easy<br><span style="font-size:0.7rem">7d</span></button>
+                </div>
+            </div>
+
+        </div>
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="modal-overlay">
+        
+        <!-- NEW DECK -->
+        <div class="modal-box" id="modal-deck" style="display:none;">
+            <h3>New Deck</h3>
+            <input type="text" id="new-deck-name" placeholder="Deck Name (e.g. Spanish)">
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="createDeck()">Create</button>
+                <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- NEW CARD -->
+        <div class="modal-box" id="modal-card" style="display:none; width: 400px;">
+            <h3>New Card</h3>
+            <textarea id="card-front" rows="3" placeholder="Front Side"></textarea>
+            <textarea id="card-back" rows="3" placeholder="Back Side"></textarea>
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="createCard()">Save</button>
+                <button class="sys-btn" onclick="closeModal()">Done</button>
+            </div>
+        </div>
+
+        <!-- DELETE CONFIRMATION -->
+        <div class="modal-box" id="modal-delete" style="display:none;">
+            <h3>Delete?</h3>
+            <p id="delete-msg">Are you sure?</p>
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="confirmDelete()">Delete</button>
+                <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let decks = [];
+        let cards = [];
+        let sessionQueue = [];
+        let currentCard = null;
+        let currentDeckId = null;
+        let currentUser = null;
+        let isFlipped = false;
+        
+        let itemToDelete = null; // { type: 'deck'|'card', id: string }
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudData();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalData();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- DATA MANAGEMENT ---
+        function loadLocalData() {
+            decks = JSON.parse(localStorage.getItem('anki_decks')) || [];
+            cards = JSON.parse(localStorage.getItem('anki_cards')) || [];
+            renderDeckList();
+        }
+
+        function loadCloudData() {
+            // Load Decks
+            db.collection('users').doc(currentUser.uid).collection('flashcard_decks').onSnapshot(snap => {
+                decks = [];
+                snap.forEach(doc => decks.push({ id: doc.id, ...doc.data() }));
+                renderDeckList();
+            });
+            // Load Cards
+            db.collection('users').doc(currentUser.uid).collection('flashcards').onSnapshot(snap => {
+                cards = [];
+                snap.forEach(doc => cards.push({ id: doc.id, ...doc.data() }));
+            });
+        }
+
+        function saveData() {
+            if (!currentUser) {
+                localStorage.setItem('anki_decks', JSON.stringify(decks));
+                localStorage.setItem('anki_cards', JSON.stringify(cards));
+                renderDeckList();
+            }
+        }
+
+        // --- DECK LIST VIEW ---
+        function renderDeckList() {
+            const list = document.getElementById('deck-list');
+            list.innerHTML = '';
+
+            if (decks.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No decks. Tap "+ Deck" to create one.</div>';
+                return;
+            }
+
+            decks.forEach(deck => {
+                // Count due cards
+                const now = Date.now();
+                const deckCards = cards.filter(c => c.deckId === deck.id);
+                const due = deckCards.filter(c => c.nextReview <= now).length;
+
+                const div = document.createElement('div');
+                div.className = 'deck-item';
+                div.onclick = () => startStudy(deck.id, deck.name);
+                
+                div.innerHTML = `
+                    <div class="deck-info">
+                        <div class="deck-title">${deck.name}</div>
+                        <div class="deck-stats">
+                            ${deckCards.length} Cards 
+                            ${due > 0 ? `<span class="due-badge">${due} Due</span>` : ''}
+                        </div>
+                    </div>
+                    <span class="delete-deck-btn" onclick="promptDeleteDeck('${deck.id}', event)">×</span>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        // --- ACTIONS ---
+        function openAddDeckModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-deck').style.display = 'block';
+            document.getElementById('modal-card').style.display = 'none';
+            document.getElementById('modal-delete').style.display = 'none';
+            document.getElementById('new-deck-name').value = '';
+            document.getElementById('new-deck-name').focus();
+        }
+
+        function createDeck() {
+            const name = document.getElementById('new-deck-name').value.trim();
+            if (!name) return;
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('flashcard_decks').add({ name: name });
+            } else {
+                decks.push({ id: Date.now().toString(), name: name });
+                saveData();
+            }
+            closeModal();
+        }
+
+        function openAddCardModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-deck').style.display = 'none';
+            document.getElementById('modal-delete').style.display = 'none';
+            document.getElementById('modal-card').style.display = 'block';
+            document.getElementById('card-front').value = '';
+            document.getElementById('card-back').value = '';
+            document.getElementById('card-front').focus();
+        }
+
+        function createCard() {
+            const front = document.getElementById('card-front').value.trim();
+            const back = document.getElementById('card-back').value.trim();
+            
+            if (!front || !back) return;
+
+            const newCard = {
+                deckId: currentDeckId,
+                front: front,
+                back: back,
+                nextReview: Date.now(), // Due immediately
+                interval: 0,
+                ease: 2.5,
+                reps: 0
+            };
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('flashcards').add(newCard);
+            } else {
+                newCard.id = Date.now().toString();
+                cards.push(newCard);
+                saveData();
+            }
+            
+            // Clear inputs for next card
+            document.getElementById('card-front').value = '';
+            document.getElementById('card-back').value = '';
+            document.getElementById('card-front').focus();
+            
+            // Refresh session if empty
+            if (sessionQueue.length === 0 && currentDeckId) {
+                sessionQueue.push(newCard);
+                nextCard();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+            itemToDelete = null;
+        }
+
+        // --- DELETION LOGIC ---
+        
+        function promptDeleteDeck(id, event) {
+            event.stopPropagation(); // Prevent opening deck
+            itemToDelete = { type: 'deck', id: id };
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-deck').style.display = 'none';
+            document.getElementById('modal-card').style.display = 'none';
+            document.getElementById('modal-delete').style.display = 'block';
+            document.getElementById('delete-msg').innerText = "Delete this deck and all its cards?";
+        }
+
+        function promptDeleteCard() {
+            if (!currentCard) return;
+            itemToDelete = { type: 'card', id: currentCard.id };
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-deck').style.display = 'none';
+            document.getElementById('modal-card').style.display = 'none';
+            document.getElementById('modal-delete').style.display = 'block';
+            document.getElementById('delete-msg').innerText = "Delete this card?";
+        }
+
+        function confirmDelete() {
+            if (!itemToDelete) return;
+
+            if (itemToDelete.type === 'deck') {
+                deleteDeck(itemToDelete.id);
+            } else if (itemToDelete.type === 'card') {
+                deleteCard(itemToDelete.id);
+            }
+            closeModal();
+        }
+
+        function deleteDeck(id) {
+            if (currentUser) {
+                // Delete Deck
+                db.collection('users').doc(currentUser.uid).collection('flashcard_decks').doc(id).delete();
+                
+                // Delete Cards in Deck
+                // Firestore requires deleting documents individually
+                // In a real app, use a Cloud Function. Here we iterate client-side.
+                const cardsToDelete = cards.filter(c => c.deckId === id);
+                cardsToDelete.forEach(c => {
+                    db.collection('users').doc(currentUser.uid).collection('flashcards').doc(c.id).delete();
+                });
+            } else {
+                decks = decks.filter(d => d.id !== id);
+                cards = cards.filter(c => c.deckId !== id);
+                saveData();
+            }
+        }
+
+        function deleteCard(id) {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('flashcards').doc(id).delete();
+            } else {
+                cards = cards.filter(c => c.id !== id);
+                saveData();
+            }
+            
+            // Remove from current session if active
+            if (currentCard && currentCard.id === id) {
+                // sessionQueue doesn't hold the card anymore (shifted in nextCard or handled here)
+                // If we are viewing it, we need to advance.
+                // Note: currentCard is just a reference. sessionQueue still has pending cards.
+                nextCard();
+            }
+        }
+
+        // --- STUDY LOGIC ---
+        function startStudy(deckId, deckName) {
+            currentDeckId = deckId;
+            document.getElementById('header-text').innerText = deckName;
+            document.getElementById('main-controls').style.display = 'none';
+            document.getElementById('study-controls').style.display = 'flex';
+            document.getElementById('deck-list').style.display = 'none';
+            document.getElementById('study-view').style.display = 'flex';
+
+            const now = Date.now();
+            sessionQueue = cards.filter(c => c.deckId === deckId && c.nextReview <= now);
+            
+            // Shuffle queue slightly
+            sessionQueue.sort(() => Math.random() - 0.5);
+
+            nextCard();
+        }
+
+        function showDeckList() {
+            document.getElementById('header-text').innerText = "Flashcards";
+            document.getElementById('main-controls').style.display = 'flex';
+            document.getElementById('study-controls').style.display = 'none';
+            document.getElementById('deck-list').style.display = 'block';
+            document.getElementById('study-view').style.display = 'none';
+            renderDeckList(); // Refresh counts
+        }
+
+        function nextCard() {
+            if (sessionQueue.length === 0) {
+                document.getElementById('flashcard').innerText = "All done for now!";
+                document.getElementById('rating-bar').style.visibility = 'hidden';
+                document.getElementById('card-counter').innerText = "";
+                currentCard = null;
+                return;
+            }
+
+            currentCard = sessionQueue[0]; // Peek
+            isFlipped = false;
+            
+            const cardEl = document.getElementById('flashcard');
+            cardEl.innerText = currentCard.front;
+            cardEl.style.background = 'white';
+            cardEl.style.color = 'black';
+            
+            document.getElementById('rating-bar').style.visibility = 'hidden';
+            document.getElementById('card-counter').innerText = `${sessionQueue.length} cards due`;
+        }
+
+        function flipCard() {
+            if (!currentCard || isFlipped) return;
+            
+            const cardEl = document.getElementById('flashcard');
+            cardEl.innerText = currentCard.back;
+            // Visual cue for back
+            cardEl.style.background = '#f0f0f0';
+            
+            document.getElementById('rating-bar').style.visibility = 'visible';
+            isFlipped = true;
+        }
+
+        // Simple SM-2 implementation
+        function rateCard(quality) {
+            if (!currentCard) return;
+
+            // Remove from queue
+            sessionQueue.shift();
+
+            // Calculate next interval
+            let card = currentCard;
+            
+            if (quality < 3) {
+                // Fail: Reset interval, schedule for soon
+                card.reps = 0;
+                card.interval = 1; 
+                card.nextReview = Date.now() + 60000;
+            } else {
+                // Pass
+                if (card.reps === 0) {
+                    card.interval = 1;
+                } else if (card.reps === 1) {
+                    card.interval = 6;
+                } else {
+                    card.interval = Math.round(card.interval * card.ease);
+                }
+                
+                // Adjust Ease
+                card.ease = card.ease + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+                if (card.ease < 1.3) card.ease = 1.3;
+                
+                card.reps++;
+                // Set next review date (Interval is in days)
+                card.nextReview = Date.now() + (card.interval * 24 * 60 * 60 * 1000);
+            }
+
+            // Save Card
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('flashcards').doc(card.id).update(card);
+            } else {
+                saveData();
+            }
+            
+            nextCard();
+        }
+
+    </script>
+</body>
+</html>

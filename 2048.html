@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2048</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* HEADER CONTROLS */
+        .header-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* SCORE BOARD */
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 350px;
+            margin-bottom: 15px;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-bottom: 2px solid black;
+            padding-bottom: 5px;
+        }
+
+        /* GAME GRID - FIX: Removed aspect-ratio for Kindle compat */
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 5px;
+            background: black;
+            border: 4px solid black;
+            width: 100%;
+            max-width: 300px; 
+            padding: 5px;
+            box-sizing: border-box;
+            position: relative;
+            margin-bottom: 15px;
+            /* Height set by JS */
+        }
+
+        .cell {
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            position: relative;
+        }
+
+        /* TILE STYLES */
+        .tile {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            top: 0; left: 0;
+            background: white;
+            color: black;
+            font-weight: 900;
+            /* Animations removed for E-ink performance */
+        }
+
+        .tile[data-val="2"]    { border: 1px dashed #999; }
+        .tile[data-val="4"]    { border: 2px solid #999; }
+        .tile[data-val="8"]    { border: 2px solid black; }
+        .tile[data-val="16"]   { background: black; color: white; }
+        .tile[data-val="32"]   { background: black; color: white; border: 2px double white; }
+        .tile[data-val="64"]   { background: white; color: black; border: 4px double black; }
+        .tile[data-val="128"]  { background: repeating-linear-gradient(45deg, #eee, #eee 5px, #fff 5px, #fff 10px); border: 2px solid black; }
+        .tile[data-val="256"]  { background: black; color: white; border: 4px double white; font-size: 1.5rem; }
+        .tile[data-val="512"]  { background: black; color: white; border: 6px double white; font-size: 1.5rem; }
+        .tile[data-val="1024"] { background: white; color: black; border: 6px solid black; font-size: 1.2rem; }
+        .tile[data-val="2048"] { background: black; color: white; border: 2px solid white; font-size: 1.2rem; box-shadow: inset 0 0 0 4px white; }
+
+        /* ARROW CONTROLS */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            max-width: 180px;
+        }
+
+        .ctrl-btn {
+            aspect-ratio: 1.2/1;
+            background: white;
+            border: 2px solid black;
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            border-radius: 4px;
+            user-select: none;
+        }
+
+        .ctrl-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .btn-up { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-down { grid-column: 2; grid-row: 2; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+
+        /* OVERLAY (Game Over) */
+        #game-over {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        #game-over h2 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            border-bottom: 4px double black;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">2048</span>
+            <div class="header-controls">
+                <button class="sys-btn" onclick="initGame()">Reset</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div class="score-board">
+                <span>Score: <span id="score">0</span></span>
+                <span>Best: <span id="best">0</span></span>
+            </div>
+
+            <div id="grid-container">
+                <!-- Cells generated by JS -->
+            </div>
+            
+            <div class="controls">
+                <div class="ctrl-btn btn-up" onpointerdown="handleControl(3)">▲</div>
+                <div class="ctrl-btn btn-left" onpointerdown="handleControl(0)">◀</div>
+                <div class="ctrl-btn btn-down" onpointerdown="handleControl(1)">▼</div>
+                <div class="ctrl-btn btn-right" onpointerdown="handleControl(2)">▶</div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h2>Game Over</h2>
+            <p>Score: <span id="final-score">0</span></p>
+            <button class="sys-btn" style="padding: 10px 20px; font-size:1.2rem; margin-top:20px;" onclick="initGame()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const SIZE = 4;
+        let grid = [];
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('2048_best')) || 0;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            document.getElementById('best').innerText = bestScore;
+            initGame();
+            setupInput();
+            resizeBoard();
+            window.addEventListener('resize', resizeBoard);
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+        
+        // FIX: Force height for browsers missing aspect-ratio support (Kindle)
+        function resizeBoard() {
+            const board = document.getElementById('grid-container');
+            if(board) {
+                board.style.height = board.offsetWidth + 'px';
+            }
+        }
+
+        function initGame() {
+            grid = Array(SIZE).fill(null).map(() => Array(SIZE).fill(0));
+            score = 0;
+            updateScore(0);
+            document.getElementById('game-over').style.display = 'none';
+            
+            spawnTile();
+            spawnTile();
+            
+            renderGrid();
+        }
+
+        // --- CORE LOGIC ---
+        function spawnTile() {
+            const emptyCells = [];
+            for(let r=0; r<SIZE; r++) {
+                for(let c=0; c<SIZE; c++) {
+                    if(grid[r][c] === 0) emptyCells.push({r, c});
+                }
+            }
+
+            if(emptyCells.length > 0) {
+                const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                grid[cell.r][cell.c] = Math.random() < 0.9 ? 2 : 4;
+            }
+        }
+
+        function move(direction) {
+            let moved = false;
+            let workingGrid = [...grid.map(row => [...row])];
+            
+            // Map direction to left-rotations needed to orient for a Left slide
+            // 0:Left, 1:Down, 2:Right, 3:Up
+            const rotations = [0, 3, 2, 1]; 
+            const rots = rotations[direction];
+
+            for(let i=0; i<rots; i++) workingGrid = rotateLeft(workingGrid);
+
+            for(let r=0; r<SIZE; r++) {
+                const row = workingGrid[r];
+                const newRow = slideAndMerge(row);
+                if(newRow.join(',') !== row.join(',')) moved = true;
+                workingGrid[r] = newRow;
+            }
+
+            for(let i=0; i<(4-rots)%4; i++) workingGrid = rotateLeft(workingGrid);
+
+            if(moved) {
+                grid = workingGrid;
+                spawnTile();
+                renderGrid();
+                checkGameOver();
+            }
+        }
+
+        function slideAndMerge(row) {
+            let arr = row.filter(val => val !== 0);
+            for(let i=0; i<arr.length-1; i++) {
+                if(arr[i] === arr[i+1]) {
+                    arr[i] *= 2;
+                    updateScore(score + arr[i]);
+                    arr[i+1] = 0;
+                }
+            }
+            arr = arr.filter(val => val !== 0);
+            while(arr.length < SIZE) arr.push(0);
+            return arr;
+        }
+
+        function rotateLeft(matrix) {
+            const N = matrix.length;
+            const result = Array(N).fill(null).map(() => Array(N).fill(0));
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    result[N - 1 - c][r] = matrix[r][c];
+                }
+            }
+            return result;
+        }
+
+        function checkGameOver() {
+            for(let r=0; r<SIZE; r++) {
+                for(let c=0; c<SIZE; c++) {
+                    if(grid[r][c] === 0) return;
+                    if(c < SIZE-1 && grid[r][c+1] === grid[r][c]) return;
+                    if(r < SIZE-1 && grid[r+1][c] === grid[r][c]) return;
+                }
+            }
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'flex';
+        }
+
+        function updateScore(newScore) {
+            score = newScore;
+            document.getElementById('score').innerText = score;
+            if(score > bestScore) {
+                bestScore = score;
+                document.getElementById('best').innerText = bestScore;
+                localStorage.setItem('2048_best', bestScore);
+            }
+        }
+
+        // --- RENDER ---
+        function renderGrid() {
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            for(let r=0; r<SIZE; r++) {
+                for(let c=0; c<SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    const val = grid[r][c];
+                    if(val !== 0) {
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        tile.innerText = val;
+                        tile.dataset.val = val;
+                        cell.appendChild(tile);
+                    }
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        // --- INPUT HANDLING ---
+        function handleControl(dir, event) {
+            if(event) event.preventDefault();
+            move(dir);
+        }
+
+        function setupInput() {
+            document.addEventListener('keydown', (e) => {
+                // 0:Left, 1:Down, 2:Right, 3:Up
+                if(e.key === 'ArrowLeft') { e.preventDefault(); move(0); }
+                else if(e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+                else if(e.key === 'ArrowRight') { e.preventDefault(); move(2); }
+                else if(e.key === 'ArrowUp') { e.preventDefault(); move(3); }
+            });
+
+            // Touch Swipe
+            let touchStartX = 0;
+            let touchStartY = 0;
+            document.body.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+                touchStartY = e.changedTouches[0].screenY;
+            }, {passive: false});
+
+            document.body.addEventListener('touchend', (e) => {
+                const touchEndX = e.changedTouches[0].screenX;
+                const touchEndY = e.changedTouches[0].screenY;
+                const dx = touchEndX - touchStartX;
+                const dy = touchEndY - touchStartY;
+                if (Math.max(Math.abs(dx), Math.abs(dy)) > 30) {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        move(dx > 0 ? 2 : 0);
+                    } else {
+                        move(dy > 0 ? 1 : 3);
+                    }
+                }
+            }, {passive: false});
+        }
+
+    </script>
+</body>
+</html>

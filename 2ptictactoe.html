@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tic-Tac-Toe</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white;
+            z-index: 2; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem;
+            line-height: 1; box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black; color: white; transform: translate(1px, 1px); box-shadow: none;
+        }
+
+        /* CONTENT AREA */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            background: #eee;
+            font-family: "Courier New", monospace;
+        }
+
+        /* --- REGULAR BOARD --- */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr); 
+            gap: 5px;
+            width: 100%;
+            max-width: 380px; 
+            margin-bottom: 20px;
+            /* FIX: Removed aspect-ratio, height via JS */
+        }
+
+        .cell {
+            background: white;
+            border: 3px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            font-weight: 900;
+            cursor: pointer;
+            line-height: 1;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .cell.x { color: black; }
+        .cell.o { color: black; -webkit-text-stroke: 2px black; color: transparent; }
+        .cell.winner { background: black; color: white; -webkit-text-stroke: 0; border-color: black; }
+
+        /* --- ULTIMATE BOARD --- */
+        .u-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px; 
+            background: black;
+            border: 4px solid black;
+            width: 100%;
+            max-width: 420px;
+            margin-bottom: 15px;
+            padding: 4px;
+            box-sizing: border-box;
+            /* FIX: Removed aspect-ratio */
+        }
+
+        .sub-board {
+            background: white;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 1px;
+            padding: 2px;
+            position: relative;
+            transition: opacity 0.3s, transform 0.2s;
+        }
+
+        /* Highlight legal moves */
+        .sub-board.active {
+            background: #ffffff;
+            z-index: 10;
+            box-shadow: 0 0 0 3px black; 
+            transform: scale(1.03);
+            animation: pulse-border 1.5s infinite ease-in-out;
+        }
+        
+        .u-board.focused .sub-board:not(.active) {
+            opacity: 0.25; 
+            pointer-events: none;
+            filter: grayscale(100%);
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 3px black; }
+            50% { box-shadow: 0 0 0 6px black; }
+            100% { box-shadow: 0 0 0 3px black; }
+        }
+
+        /* Sub-cells */
+        .sub-cell {
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #eee;
+        }
+        
+        .sub-cell.x { color: black; }
+        .sub-cell.o { color: #666; } 
+
+        /* Won Sub-board Overlay */
+        .sub-board.won::after {
+            content: attr(data-winner);
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5rem;
+            font-weight: 900;
+            color: black;
+            z-index: 5;
+        }
+        
+        .sub-board.won.x::after { content: "X"; }
+        .sub-board.won.o::after { content: "O"; }
+
+        /* CONTROLS */
+        .controls {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            text-transform: uppercase;
+            flex: 1;
+        }
+
+        .sys-btn.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Tic-Tac-Toe</span>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">Select Mode</div>
+
+            <div id="game-container" style="width:100%; display:flex; justify-content:center;"></div>
+
+            <div class="controls">
+                <button class="sys-btn" id="btn-regular" onclick="setMode('regular')">Classic</button>
+                <button class="sys-btn" id="btn-ultimate" onclick="setMode('ultimate')">Ultimate</button>
+                <button class="sys-btn" onclick="resetGame()">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const WINNING_COMBOS = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Cols
+            [0, 4, 8], [2, 4, 6]             // Diagonals
+        ];
+
+        // --- STATE ---
+        let mode = 'regular'; // 'regular' or 'ultimate'
+        let currentPlayer = 'X';
+        let gameActive = true;
+        
+        // Regular State
+        let regBoard = Array(9).fill(null);
+        
+        // Ultimate State
+        let metaBoard = Array(9).fill(null); 
+        let localBoards = []; 
+        let nextBoardIndex = null; 
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            setMode('regular');
+            window.addEventListener('resize', resizeBoard);
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+        
+        // FIX: Force resize for Kindle browser
+        function resizeBoard() {
+            const board = document.getElementById('reg-board') || document.getElementById('u-board');
+            if(board) {
+                board.style.height = board.offsetWidth + 'px';
+            }
+        }
+
+        function setMode(newMode) {
+            mode = newMode;
+            document.querySelectorAll('.sys-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+            resetGame();
+        }
+
+        function resetGame() {
+            currentPlayer = 'X';
+            gameActive = true;
+            document.getElementById('status-bar').innerText = "Player X's Turn";
+
+            if (mode === 'regular') {
+                regBoard = Array(9).fill(null);
+                renderRegular();
+            } else {
+                localBoards = [];
+                for(let i=0; i<9; i++) localBoards.push(Array(9).fill(null));
+                metaBoard = Array(9).fill(null);
+                nextBoardIndex = null;
+                renderUltimate();
+            }
+            resizeBoard();
+        }
+
+        // --- REGULAR GAME ---
+        function renderRegular() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '<div class="board" id="reg-board"></div>';
+            const boardEl = document.getElementById('reg-board');
+
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                if(regBoard[i]) {
+                    cell.innerText = regBoard[i];
+                    cell.classList.add(regBoard[i].toLowerCase());
+                }
+                cell.onclick = () => handleRegularMove(i);
+                boardEl.appendChild(cell);
+            }
+            resizeBoard();
+        }
+
+        function handleRegularMove(index) {
+            if (!gameActive || regBoard[index]) return;
+
+            regBoard[index] = currentPlayer;
+            renderRegular();
+
+            const winLine = checkWin(regBoard);
+            if (winLine) {
+                gameActive = false;
+                document.getElementById('status-bar').innerText = `${currentPlayer} Wins!`;
+                highlightRegularWin(winLine);
+                flashScreen();
+            } else if (!regBoard.includes(null)) {
+                gameActive = false;
+                document.getElementById('status-bar').innerText = "Draw!";
+            } else {
+                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                document.getElementById('status-bar').innerText = `Player ${currentPlayer}'s Turn`;
+            }
+        }
+
+        function highlightRegularWin(indices) {
+            indices.forEach(idx => {
+                document.querySelectorAll('.cell')[idx].classList.add('winner');
+            });
+        }
+
+        // --- ULTIMATE GAME ---
+        function renderUltimate() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '<div class="u-board" id="u-board"></div>';
+            const boardEl = document.getElementById('u-board');
+
+            const isLocked = (nextBoardIndex !== null && !metaBoard[nextBoardIndex]);
+            if (isLocked) {
+                boardEl.classList.add('focused');
+            }
+
+            for (let b = 0; b < 9; b++) {
+                const subBoard = document.createElement('div');
+                subBoard.className = 'sub-board';
+                
+                if (gameActive && (nextBoardIndex === null || nextBoardIndex === b) && !metaBoard[b]) {
+                    subBoard.classList.add('active');
+                }
+
+                if (metaBoard[b]) {
+                    subBoard.classList.add('won', metaBoard[b].toLowerCase());
+                }
+
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'sub-cell';
+                    const val = localBoards[b][c];
+                    if(val) {
+                        cell.innerText = val;
+                        cell.classList.add(val.toLowerCase());
+                    }
+                    cell.onclick = () => handleUltimateMove(b, c);
+                    subBoard.appendChild(cell);
+                }
+                boardEl.appendChild(subBoard);
+            }
+            resizeBoard();
+        }
+
+        function handleUltimateMove(bIdx, cIdx) {
+            if (!gameActive) return;
+            
+            if (metaBoard[bIdx]) return; 
+            if (localBoards[bIdx][cIdx]) return; 
+            if (nextBoardIndex !== null && nextBoardIndex !== bIdx) return; 
+
+            localBoards[bIdx][cIdx] = currentPlayer;
+
+            const localWin = checkWin(localBoards[bIdx]);
+            if (localWin) {
+                metaBoard[bIdx] = currentPlayer;
+                const globalWin = checkWin(metaBoard);
+                if (globalWin) {
+                    gameActive = false;
+                    renderUltimate();
+                    document.getElementById('status-bar').innerText = `${currentPlayer} Wins Ultimate!`;
+                    flashScreen();
+                    return;
+                }
+            } else if (!localBoards[bIdx].includes(null)) {
+                metaBoard[bIdx] = 'D'; 
+            }
+
+            if (metaBoard[cIdx] !== null) {
+                nextBoardIndex = null;
+            } else {
+                nextBoardIndex = cIdx;
+            }
+
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            document.getElementById('status-bar').innerText = `Player ${currentPlayer}'s Turn`;
+            
+            renderUltimate();
+        }
+
+        // --- SHARED UTILS ---
+        function checkWin(boardArr) {
+            for (let combo of WINNING_COMBOS) {
+                const [a, b, c] = combo;
+                if (boardArr[a] && boardArr[a] !== 'D' && boardArr[a] === boardArr[b] && boardArr[a] === boardArr[c]) {
+                    return combo;
+                }
+            }
+            return null;
+        }
+
+        function flashScreen() {
+            const content = document.querySelector('.window-content');
+            content.style.filter = "invert(1)";
+            setTimeout(() => {
+                content.style.filter = "invert(0)";
+            }, 300);
+        }
+
+    </script>
+</body>
+</html>

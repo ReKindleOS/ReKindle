@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spellbound</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --hex-bg: #ffffff;
+            --hex-border: #000000;
+            --center-hex-bg: #000000;
+            --center-hex-text: #ffffff;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content; /* ADAPTIVE HEIGHT */
+            max-height: 95vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* HEADER CONTROLS */
+        .header-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #score-area {
+            background: white;
+            padding: 2px 8px;
+            border: 1px solid black;
+            font-weight: bold;
+            font-size: 0.9rem;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .new-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            text-transform: uppercase;
+        }
+
+        .new-btn:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            background: black;
+            color: white;
+        }
+
+        /* GAME CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+        }
+
+        /* INPUT AREA */
+        #input-display {
+            font-size: 2rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ccc;
+            width: 80%;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 30px;
+            background-color: black;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* HONEYCOMB GRID */
+        .honeycomb {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .hex-row {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 5px;
+        }
+
+        .hex-btn {
+            width: 70px;
+            height: 60px;
+            background-color: var(--hex-bg);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.6rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            color: black;
+            border: none;
+        }
+        
+        .hex-wrapper {
+            width: 74px;
+            height: 64px;
+            background: black;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 4px;
+        }
+        
+        .hex-btn:active {
+            background-color: #ddd;
+        }
+
+        .center-hex .hex-btn {
+            background-color: var(--center-hex-bg);
+            color: var(--center-hex-text);
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        button.ctrl-btn {
+            background: white;
+            border: 2px solid black;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        button.ctrl-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* MESSAGE TOAST */
+        #message-toast {
+            position: absolute;
+            top: 60px;
+            background: black;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            display: none;
+            z-index: 10;
+        }
+
+        /* WORD LIST */
+        #found-words {
+            width: 100%;
+            border-top: 2px solid black;
+            padding-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.9rem;
+            justify-content: center;
+            overflow-y: auto;
+            max-height: 150px;
+        }
+        
+        .found-word {
+            text-transform: capitalize;
+            padding: 2px 5px;
+        }
+
+        /* GENERATING OVERLAY */
+        #loading-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #ccc;
+            border-top: 4px solid #000;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* CONFIRMATION MODAL */
+        #new-game-modal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px #000000;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+        
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            
+            <span class="title-text">Spellbound</span>
+            <div class="header-controls">
+                <div id="score-area">0</div>
+                <button class="new-btn" onclick="confirmNewGame()">New</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div id="message-toast"></div>
+
+            <div id="input-display">
+                <span id="current-word"></span><span class="cursor"></span>
+            </div>
+
+            <div class="honeycomb">
+                <div class="hex-row">
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-1" onclick="tapLetter(1)"></div></div>
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-2" onclick="tapLetter(2)"></div></div>
+                </div>
+                <div class="hex-row">
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-3" onclick="tapLetter(3)"></div></div>
+                    <div class="hex-wrapper center-hex"><div class="hex-btn" id="hex-0" onclick="tapLetter(0)"></div></div>
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-4" onclick="tapLetter(4)"></div></div>
+                </div>
+                <div class="hex-row">
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-5" onclick="tapLetter(5)"></div></div>
+                    <div class="hex-wrapper"><div class="hex-btn" id="hex-6" onclick="tapLetter(6)"></div></div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="ctrl-btn" onclick="deleteLetter()">Delete</button>
+                <button class="ctrl-btn" onclick="shuffleLetters()">Shuffle</button>
+                <button class="ctrl-btn" onclick="submitWord()">Enter</button>
+            </div>
+
+            <div id="found-words">
+                <!-- Words go here -->
+            </div>
+        </div>
+
+        <!-- GENERATING OVERLAY -->
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <h3 style="margin:0;">Generating...</h3>
+            <p style="font-size:0.8rem; color:#666;" id="loading-msg">Consulting dictionary...</p>
+        </div>
+
+        <!-- NEW GAME MODAL -->
+        <div id="new-game-modal">
+            <div class="modal-box">
+                <h3>New Game?</h3>
+                <p>Generate a brand new puzzle? Current progress will be saved.</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="startNewGameAction()">Yes</button>
+                    <button class="sys-btn" onclick="closeModal('new-game-modal')">No</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- DICTIONARY URL ---
+        const DICT_URL = 'https://raw.githubusercontent.com/dolph/dictionary/master/popular.txt';
+
+        // --- STATE ---
+        let currentPuzzle = null;
+        let input = "";
+        let found = [];
+        let score = 0;
+        let currentUser = null;
+        let isDaily = true;
+        let cachedDictionary = null; 
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            auth.onAuthStateChanged(user => {
+                currentUser = user;
+                startSession();
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        async function startSession() {
+            const overlay = document.getElementById('loading-overlay');
+            // Try to load saved daily
+            let loaded = false;
+            
+            if (currentUser) {
+                loaded = await loadCloudProgress();
+            } else {
+                loaded = loadLocalProgress();
+            }
+
+            if (!loaded) {
+                overlay.style.display = 'flex';
+                document.getElementById('loading-msg').innerText = "Generating daily puzzle...";
+                generatePuzzleFromDict(true); // Generate new daily
+            } else {
+                renderBoard();
+                renderFoundWords();
+                updateScoreDisplay();
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function initGame(isDailyMode, puzzleData) {
+            isDaily = isDailyMode;
+            input = "";
+            document.getElementById('current-word').innerText = "";
+
+            currentPuzzle = puzzleData;
+            found = [];
+            score = 0;
+            
+            updateScoreDisplay();
+            renderFoundWords();
+            renderBoard();
+            
+            if (isDaily) saveProgress(); // Save immediately so it persists
+            
+            showToast("Puzzle Ready!");
+        }
+
+        function confirmNewGame() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function startNewGameAction() {
+            closeModal('new-game-modal');
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = 'flex';
+            setTimeout(() => generatePuzzleFromDict(false), 50); // False = not daily (random game)
+        }
+
+        async function generatePuzzleFromDict(isDailyMode) {
+            const overlay = document.getElementById('loading-overlay');
+            const msg = document.getElementById('loading-msg');
+            
+            try {
+                let words = cachedDictionary;
+
+                if (!words) {
+                    msg.innerText = "Downloading dictionary (200KB)...";
+                    const res = await fetch(DICT_URL);
+                    const text = await res.text();
+                    words = text.split('\n')
+                        .map(w => w.trim().toUpperCase())
+                        .filter(w => w.length >= 4 && /^[A-Z]+$/.test(w)); 
+                    
+                    cachedDictionary = words;
+                }
+
+                msg.innerText = "Mining pangrams...";
+                
+                // 1. Find Pangrams (Words with exactly 7 unique letters)
+                const pangrams = words.filter(w => new Set(w).size === 7);
+                
+                if (pangrams.length === 0) throw new Error("No pangrams found in dictionary.");
+
+                // 2. Pick a random pangram to serve as the base
+                const baseWord = pangrams[Math.floor(Math.random() * pangrams.length)];
+                
+                // 3. Extract unique letters
+                const uniqueChars = Array.from(new Set(baseWord));
+                
+                // 4. Pick center letter
+                const center = uniqueChars[Math.floor(Math.random() * 7)];
+                const outers = uniqueChars.filter(c => c !== center);
+                
+                msg.innerText = "Validating words...";
+
+                // 5. Find all valid words
+                const validWords = words.filter(w => {
+                    if (!w.includes(center)) return false;
+                    for (let char of w) {
+                        if (!uniqueChars.includes(char)) return false;
+                    }
+                    return true;
+                });
+
+                // Shuffle outers for display
+                for (let i = outers.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [outers[i], outers[j]] = [outers[j], outers[i]];
+                }
+
+                const puzzleData = {
+                    center: center,
+                    outers: outers,
+                    valid: validWords
+                };
+
+                initGame(isDailyMode, puzzleData);
+                
+            } catch (e) {
+                console.error(e);
+                alert("Failed to generate puzzle. Check internet connection.");
+            } finally {
+                overlay.style.display = 'none';
+            }
+        }
+
+        // --- DATA SYNC ---
+        function loadLocalProgress() {
+            const savedData = JSON.parse(localStorage.getItem('spellbound_progress'));
+            const todayStr = new Date().toDateString();
+
+            if(savedData && savedData.date === todayStr && savedData.puzzle) {
+                currentPuzzle = savedData.puzzle;
+                found = savedData.words || [];
+                calculateScore();
+                return true;
+            }
+            return false;
+        }
+
+        function loadCloudProgress() {
+            const todayStr = new Date().toDateString();
+            
+            return db.collection('users').doc(currentUser.uid).collection('apps').doc('spellbound')
+            .get().then((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.date === todayStr && data.puzzle) {
+                        currentPuzzle = data.puzzle;
+                        found = data.words || [];
+                        calculateScore();
+                        return true;
+                    }
+                }
+                return false;
+            }).catch(() => {
+                return false;
+            });
+        }
+
+        function saveProgress() {
+            if (!isDaily || !currentPuzzle) return; 
+
+            const todayStr = new Date().toDateString();
+            const data = { 
+                date: todayStr, 
+                words: found,
+                puzzle: currentPuzzle
+            };
+
+            localStorage.setItem('spellbound_progress', JSON.stringify(data));
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('spellbound').set(data);
+            }
+        }
+
+        // --- RENDERERS ---
+        function renderBoard() {
+            if (!currentPuzzle) return;
+            document.getElementById('hex-0').innerText = currentPuzzle.center;
+            for(let i=0; i<6; i++) {
+                document.getElementById(`hex-${i+1}`).innerText = currentPuzzle.outers[i];
+            }
+        }
+        
+        function renderFoundWords() {
+            const container = document.getElementById('found-words');
+            container.innerHTML = found.map(w => `<span class="found-word">${w}</span>`).join(" • ");
+        }
+
+        // --- ACTIONS ---
+        function tapLetter(index) {
+            if (!currentPuzzle) return;
+            let char = "";
+            if (index === 0) char = currentPuzzle.center;
+            else char = currentPuzzle.outers[index-1];
+            
+            input += char;
+            updateInputDisplay();
+        }
+
+        function deleteLetter() {
+            input = input.slice(0, -1);
+            updateInputDisplay();
+        }
+
+        function updateInputDisplay() {
+            document.getElementById('current-word').innerText = input;
+        }
+
+        function shuffleLetters() {
+            if (!currentPuzzle) return;
+            for (let i = currentPuzzle.outers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [currentPuzzle.outers[i], currentPuzzle.outers[j]] = [currentPuzzle.outers[j], currentPuzzle.outers[i]];
+            }
+            renderBoard();
+        }
+
+        function submitWord() {
+            if (!currentPuzzle) return;
+            const word = input;
+            
+            if (word.length < 4) {
+                showToast("Too short");
+                return;
+            }
+
+            if (!word.includes(currentPuzzle.center)) {
+                showToast("Must use center letter");
+                return;
+            }
+
+            if (found.includes(word)) {
+                showToast("Already found");
+                input = "";
+                updateInputDisplay();
+                return;
+            }
+
+            if (currentPuzzle.valid.includes(word)) {
+                found.push(word);
+                
+                let points = word.length === 4 ? 1 : word.length;
+                const uniqueChars = new Set(word.split(''));
+                if (uniqueChars.size === 7) points += 7; // Pangram bonus
+                
+                score += points;
+                
+                if (isDaily) saveProgress();
+                
+                updateScoreDisplay();
+                showToast("Nice! +" + points);
+                renderFoundWords();
+                input = "";
+                updateInputDisplay();
+            } else {
+                showToast("Not in word list");
+            }
+        }
+        
+        function calculateScore() {
+             score = 0;
+             found.forEach(word => {
+                let points = word.length === 4 ? 1 : word.length;
+                const uniqueChars = new Set(word.split(''));
+                if (uniqueChars.size === 7) points += 7;
+                score += points;
+             });
+             updateScoreDisplay();
+        }
+
+        function updateScoreDisplay() {
+            document.getElementById('score-area').innerText = score;
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('message-toast');
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 1500);
+        }
+
+    </script>
+</body>
+</html>

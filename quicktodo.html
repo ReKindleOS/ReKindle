@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick ToDo</title>
+    <style>
+        /* SYSTEM 7 / E-INK STYLES */
+        :root {
+            --bg-color: #ffffff;
+            --line-color: #a0c0e0; 
+            --margin-color: #ffcccc; 
+            --row-height: 50px;
+            --margin-width: 60px;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Courier New", monospace;
+            margin: 0;
+            padding: 20px; /* Standard ReKindle padding */
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by settings */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px black;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 700px;
+            position: relative;
+        }
+
+        /* STANDARD TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* INFO BUTTON */
+        .info-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: serif;
+            font-style: italic;
+            font-size: 0.9rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .info-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS (Right side of title bar) */
+        .header-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            background: black;
+            color: white;
+        }
+
+        /* NOTEBOOK CONTAINER */
+        .notebook-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden; 
+            display: flex;
+            background: white;
+        }
+
+        /* LEFT MARGIN */
+        .margin-column {
+            width: var(--margin-width);
+            height: 100%;
+            border-right: 2px solid #ff9999; 
+            display: flex;
+            flex-direction: column;
+            padding-top: 2px; 
+            box-sizing: border-box;
+            background-color: #fff;
+            z-index: 5;
+        }
+
+        .margin-cell {
+            height: var(--row-height);
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 1px solid transparent; 
+        }
+
+        /* Checkbox only appears when item exists */
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid black;
+            border-radius: 4px;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .margin-cell.has-item .checkbox { display: flex; }
+
+        /* RIGHT PAPER */
+        .paper-column {
+            flex: 1;
+            position: relative;
+            /* Lined paper effect */
+            background-image: linear-gradient(transparent 95%, #a0c0e0 95%);
+            background-size: 100% var(--row-height);
+            background-attachment: local;
+        }
+
+        /* TEXT LAYER */
+        .text-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding-top: 2px; 
+            pointer-events: none; 
+        }
+
+        .text-row {
+            height: var(--row-height);
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 1.3rem;
+            /* Use a handwriting-style font if available, fallback to Courier */
+            font-family: "Reenie Beanie", "Courier New", cursive; 
+            color: #000;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .text-row.processing {
+            color: #aaa;
+            font-style: italic;
+        }
+
+        /* CANVAS LAYER */
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+            z-index: 10;
+        }
+
+        /* AUTH OVERLAY */
+        #auth-overlay {
+            position: absolute;
+            top: 35px; left: 0; width: 100%; height: calc(100% - 35px);
+            background: rgba(255,255,255,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .auth-content {
+            background: white;
+            border: 2px solid black;
+            padding: 20px;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        /* SYNC CHOICE MODAL */
+        #sync-choice-modal, #instructions-modal {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+        .modal-btns { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+
+    </style>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="location.href='index.html'">X</div>
+            <span class="title-text">Quick ToDo</span>
+            <div class="info-btn" onclick="showInstructions()">i</div>
+        </div>
+
+        <div class="notebook-container">
+            <!-- Left Margin: Checkboxes -->
+            <div class="margin-column" id="margin-col">
+                <!-- Generated by JS -->
+            </div>
+
+            <!-- Right Paper: Text + Canvas -->
+            <div class="paper-column" id="paper-col">
+                <div class="text-layer" id="text-layer">
+                    <!-- Generated by JS -->
+                </div>
+                <canvas id="board"></canvas>
+            </div>
+        </div>
+
+        <!-- AUTH OVERLAY -->
+        <div id="auth-overlay">
+            <div class="auth-content">
+                <h3 style="margin-top:0;">Google Tasks Sync</h3>
+                <p>Connect to sync your scribbles with Google Tasks.</p>
+                <button class="sys-btn" style="font-size:1rem; padding:10px 20px;" onclick="oauthSignIn()">Log In</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SYNC CHOICE MODAL -->
+    <div id="sync-choice-modal">
+        <div class="modal-box">
+            <h3>Google Tasks Integration</h3>
+            <p style="margin:15px 0;">Enable Google Tasks sync or continue with Local Storage?</p>
+            <div class="modal-btns">
+                <button class="sys-btn" style="padding:10px 20px; font-size:1rem;" onclick="setSyncPreference(true)">Use Google</button>
+                <button class="sys-btn" style="padding:10px 20px; font-size:1rem;" onclick="setSyncPreference(false)">Use Local</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INSTRUCTIONS MODAL -->
+    <div id="instructions-modal">
+        <div class="modal-box">
+            <h3>How to Use</h3>
+            <div style="text-align:left; font-size:0.9rem; margin-top:15px;">
+                <p><strong>1. Write New Tasks:</strong><br>Use your pen to write on any empty line.</p>
+                <p><strong>2. Complete Tasks:</strong><br>Draw a horizontal line (strike-through) over existing text to mark it as done.</p>
+                <p><strong>3. Sync:</strong><br>Changes are automatically saved to your chosen account.</p>
+            </div>
+            <div class="modal-btns">
+                <button class="sys-btn" style="padding:8px 20px;" onclick="closeInstructions()">Got it</button>
+            </div>
+        </div>
+    </div>
+
+	<script>
+        // --- CONFIG ---
+        const WORKER_URL = "https://ocr.timjarnott.workers.dev/"; 
+        const ROW_HEIGHT = 50; 
+        const NUM_ROWS = 16; 
+        const AUTO_SEND_DELAY = 1500; 
+        
+        // Google Config
+        const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/tasks';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest';
+
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // --- STATE ---
+        let listData = new Array(NUM_ROWS).fill(null);
+        let listIds = new Array(NUM_ROWS).fill(null);
+        
+        let isDrawing = false;
+        let autoSendTimer = null;
+        let hasStrokes = false;
+        
+        // OPTIMIZATION: Buffer points instead of calculating bounds live
+        let strokeBuffer = []; 
+        
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        let currentUser = null;
+        let googleTaskListId = null; 
+        let googleEnabled = false;
+
+        // --- DOM ---
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        const textLayer = document.getElementById('text-layer');
+        const marginCol = document.getElementById('margin-col');
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            initGrid();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Check First Launch
+            if (!localStorage.getItem('quicktodo_seen_instructions')) {
+                showInstructions();
+            }
+
+            firebase.initializeApp(firebaseConfig);
+            const auth = firebase.auth();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    checkSyncSettings();
+                } else {
+                    initFirebase(); 
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        function showInstructions() {
+            document.getElementById('instructions-modal').style.display = 'flex';
+        }
+
+        function closeInstructions() {
+            document.getElementById('instructions-modal').style.display = 'none';
+            localStorage.setItem('quicktodo_seen_instructions', 'true');
+        }
+
+        function checkSyncSettings() {
+            const setting = localStorage.getItem('rekindle_google_tasks_enabled');
+            if (setting === 'true') {
+                googleEnabled = true;
+                initGoogle();
+            } else if (setting === 'false') {
+                googleEnabled = false;
+                initFirebase();
+            } else {
+                document.getElementById('sync-choice-modal').style.display = 'flex';
+            }
+        }
+
+        function setSyncPreference(enableGoogle) {
+            document.getElementById('sync-choice-modal').style.display = 'none';
+            localStorage.setItem('rekindle_google_tasks_enabled', enableGoogle);
+            const db = firebase.firestore();
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set({
+                google_tasks: enableGoogle
+            }, { merge: true });
+
+            if (enableGoogle) {
+                googleEnabled = true;
+                initGoogle();
+            } else {
+                googleEnabled = false;
+                initFirebase();
+            }
+        }
+
+        // --- SYNC INIT ---
+        function initFirebase() {
+            const db = firebase.firestore();
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('tasks').limit(NUM_ROWS).get().then(snap => {
+                    let i = 0;
+                    snap.forEach(doc => {
+                        if (i < NUM_ROWS) {
+                            listData[i] = doc.data().title;
+                            listIds[i] = doc.id;
+                            i++;
+                        }
+                    });
+                    renderData();
+                });
+            } else {
+                const localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
+                for(let i=0; i<localTasks.length && i<NUM_ROWS; i++) {
+                    listData[i] = localTasks[i].title;
+                    listIds[i] = localTasks[i].id;
+                }
+                renderData();
+            }
+        }
+
+        function initGoogle() {
+            gapi.load('client', async () => {
+                await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                const fragmentString = location.hash.substring(1);
+                const params = new URLSearchParams(fragmentString);
+                const newAccessToken = params.get('access_token');
+
+                if (newAccessToken) {
+                    localStorage.setItem('google_access_token', newAccessToken);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    gapi.client.setToken({ access_token: newAccessToken });
+                    startGoogleSync();
+                } else {
+                    const token = localStorage.getItem('google_access_token');
+                    if (token) {
+                        gapi.client.setToken({ access_token: token });
+                        startGoogleSync();
+                    } else {
+                        // Auto-login logic
+                        if (!location.hash.includes('error=')) {
+                            // Show connecting state briefly
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                            document.querySelector('#auth-overlay h3').innerText = "Redirecting...";
+                            document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
+                            oauthSignIn();
+                        } else {
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                        }
+                    }
+                }
+            });
+        }
+
+        function startGoogleSync() {
+            document.getElementById('auth-overlay').style.display = 'none';
+            fetchGoogleTasks();
+            setInterval(fetchGoogleTasks, 60000);
+        }
+
+        function oauthSignIn() {
+            var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            var form = document.createElement('form');
+            form.setAttribute('method', 'GET');
+            form.setAttribute('action', oauth2Endpoint);
+            var params = { 'client_id': CLIENT_ID, 'redirect_uri': window.location.href.split('#')[0], 'response_type': 'token', 'scope': SCOPES, 'include_granted_scopes': 'true', 'state': 'pass-through value' };
+            for (var p in params) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'hidden');
+                input.setAttribute('name', p);
+                input.setAttribute('value', params[p]);
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        async function fetchGoogleTasks() {
+            try {
+                const listsResp = await gapi.client.tasks.tasklists.list({ maxResults: 1 });
+                if (listsResp.result.items && listsResp.result.items.length > 0) {
+                    googleTaskListId = listsResp.result.items[0].id;
+                    const tasksResp = await gapi.client.tasks.tasks.list({
+                        tasklist: googleTaskListId,
+                        showCompleted: false,
+                        maxResults: NUM_ROWS
+                    });
+                    const tasks = tasksResp.result.items || [];
+                    listData.fill(null);
+                    listIds.fill(null);
+                    tasks.forEach((t, i) => {
+                        if (i < NUM_ROWS) {
+                            listData[i] = t.title;
+                            listIds[i] = t.id;
+                        }
+                    });
+                    renderData();
+                }
+            } catch(e) {
+                console.error("Google Sync Error", e);
+                if(e.status === 401) {
+                    // Re-authenticate silently if possible
+                    oauthSignIn();
+                }
+            }
+        }
+
+        // --- GRID SETUP ---
+        function initGrid() {
+            marginCol.innerHTML = '';
+            textLayer.innerHTML = '';
+            for (let i = 0; i < NUM_ROWS; i++) {
+                const mCell = document.createElement('div');
+                mCell.className = 'margin-cell';
+                mCell.id = `margin-${i}`;
+                const box = document.createElement('div');
+                box.className = 'checkbox';
+                box.onclick = () => completeTask(i);
+                mCell.appendChild(box);
+                marginCol.appendChild(mCell);
+                const tRow = document.createElement('div');
+                tRow.className = 'text-row';
+                tRow.id = `text-${i}`;
+                textLayer.appendChild(tRow);
+            }
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('paper-col');
+            const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+            canvas.width = container.clientWidth * dpr;
+            canvas.height = container.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            resetCanvas();
+        }
+
+        function resetCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'black';
+            
+            hasStrokes = false;
+            
+            // RESET BUFFER & BOUNDS
+            strokeBuffer = [];
+            minX = Infinity; maxX = -Infinity;
+            minY = Infinity; maxY = -Infinity;
+        }
+
+        function renderData() {
+            for (let i = 0; i < NUM_ROWS; i++) {
+                const textEl = document.getElementById(`text-${i}`);
+                const marginEl = document.getElementById(`margin-${i}`);
+                
+                // Clear any strike-through style from previous operations
+                textEl.style.textDecoration = "none";
+                textEl.style.color = "#000";
+
+                if (listData[i]) {
+                    textEl.innerText = listData[i];
+                    marginEl.classList.add('has-item');
+                } else {
+                    textEl.innerText = '';
+                    marginEl.classList.remove('has-item');
+                }
+            }
+        }
+
+        async function completeTask(i) {
+            const id = listIds[i];
+            
+            // Mark complete visually first
+            const textEl = document.getElementById(`text-${i}`);
+            if (textEl) {
+                textEl.style.textDecoration = "line-through";
+                textEl.style.color = "#888";
+            }
+
+            if (!id) {
+                // If it was a local unsaved item just clear visual
+                setTimeout(() => {
+                    listData[i] = null;
+                    renderData();
+                }, 500);
+                return;
+            }
+
+            // Sync deletion
+            try {
+                if (googleEnabled && googleTaskListId) {
+                    await gapi.client.tasks.tasks.patch({
+                        tasklist: googleTaskListId,
+                        task: id,
+                        resource: { status: 'completed' }
+                    });
+                    // Reload after delete to keep sync tight
+                    setTimeout(fetchGoogleTasks, 500);
+                } 
+                else if (currentUser) {
+                    await firebase.firestore().collection('users').doc(currentUser.uid).collection('tasks').doc(id).delete();
+                    // Firebase listener will auto-update UI, but let's re-fetch to be sure
+                    setTimeout(initFirebase, 200);
+                } 
+                else {
+                    let localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
+                    localTasks = localTasks.filter(t => t.id !== id);
+                    localStorage.setItem('rekindle_tasks_local', JSON.stringify(localTasks));
+                    // Reload local
+                    setTimeout(initFirebase, 200);
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        // --- DRAWING WITH BUFFERING ---
+        function startDraw(e) {
+            if (!e.isPrimary) return;
+            e.preventDefault();
+            isDrawing = true;
+            hasStrokes = true;
+            clearTimeout(autoSendTimer);
+            const y = e.offsetY;
+            const x = e.offsetX;
+            
+            trackPoint(x, y);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function moveDraw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            
+            if (e.getCoalescedEvents) {
+                const events = e.getCoalescedEvents();
+                for (const event of events) {
+                    ctx.lineTo(event.offsetX, event.offsetY);
+                    trackPoint(event.offsetX, event.offsetY);
+                }
+            } else {
+                ctx.lineTo(e.offsetX, e.offsetY);
+                trackPoint(e.offsetX, e.offsetY);
+            }
+            ctx.stroke();
+        }
+
+        function endDraw() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            ctx.closePath();
+            if (hasStrokes) {
+                autoSendTimer = setTimeout(processWriting, AUTO_SEND_DELAY);
+            }
+        }
+
+        function trackPoint(x, y) {
+            // DEFER MATH: Just store points.
+            strokeBuffer.push(x);
+            strokeBuffer.push(y);
+        }
+
+        canvas.addEventListener('pointerdown', startDraw);
+        canvas.addEventListener('pointermove', moveDraw);
+        canvas.addEventListener('pointerup', endDraw);
+        canvas.addEventListener('pointerout', endDraw);
+
+        // --- OPTIMIZED PROCESSING ---
+        async function processWriting() {
+            if (!hasStrokes || strokeBuffer.length === 0) return;
+            
+            // 1. CALCULATE BOUNDS NOW (Deferred)
+            minX = Infinity; maxX = -Infinity;
+            minY = Infinity; maxY = -Infinity;
+            
+            for (let i = 0; i < strokeBuffer.length; i += 2) {
+                const x = strokeBuffer[i];
+                const y = strokeBuffer[i+1];
+                if(x < minX) minX = x;
+                if(x > maxX) maxX = x;
+                if(y < minY) minY = y;
+                if(y > maxY) maxY = y;
+            }
+
+            // 2. DETERMINE ROW DRAWN UPON
+            const midY = (minY + maxY) / 2;
+            const drawnRowIndex = Math.floor(midY / ROW_HEIGHT);
+
+            // 3. COLLISION CHECK: If row has text, check for strike-through logic
+            if (drawnRowIndex >= 0 && drawnRowIndex < NUM_ROWS && listData[drawnRowIndex]) {
+                
+                // Measure text width to check for overlap
+                const textEl = document.getElementById(`text-${drawnRowIndex}`);
+                const span = document.createElement('span');
+                span.style.font = window.getComputedStyle(textEl).font;
+                span.style.visibility = 'hidden';
+                span.style.position = 'absolute';
+                span.innerText = listData[drawnRowIndex];
+                document.body.appendChild(span);
+                const textWidth = span.getBoundingClientRect().width;
+                document.body.removeChild(span);
+                
+                const paddingLeft = 10;
+                const textEndX = paddingLeft + textWidth;
+
+                // CHECK OVERLAP
+                // If scribble is completely to the right of the text, ignore it (don't delete)
+                // We add a small buffer (20px)
+                if (minX > (textEndX + 20)) {
+                    resetCanvas();
+                    return; // Ignore scribble
+                }
+
+                const width = maxX - minX;
+                const height = maxY - minY;
+                
+                // Heuristics for "crossing out":
+                // 1. Wide enough to be a line ( > 30px )
+                // 2. Mostly horizontal aspect ( width > height * 0.5 )
+                const isStrike = (width > 30) && (width > height * 0.5);
+
+                if (isStrike) {
+                    resetCanvas(); // Clear ink immediately
+                    await completeTask(drawnRowIndex);
+                } else {
+                    // Not a strike (e.g. random dot or vertical mark), just clear ink
+                    resetCanvas();
+                }
+                return;
+            }
+
+            // 4. FIND FIRST EMPTY ROW FOR NEW TASK
+            // (We ignore where they drew if it was empty space, always compacting list)
+            let rowIndex = -1;
+            for (let i = 0; i < NUM_ROWS; i++) {
+                if (!listData[i]) {
+                    rowIndex = i;
+                    break;
+                }
+            }
+            
+            if (rowIndex === -1) {
+                resetCanvas();
+                return;
+            }
+
+            const targetRowText = document.getElementById(`text-${rowIndex}`);
+            const originalText = targetRowText.innerText;
+            targetRowText.innerText = "Processing...";
+            targetRowText.classList.add('processing');
+
+            try {
+                // 5. INTELLIGENT CROP & RESIZE
+                const padding = 20;
+                let cX = Math.max(0, minX - padding);
+                let cY = Math.max(0, minY - padding);
+                let cW = (maxX - minX) + (padding * 2);
+                let cH = (maxY - minY) + (padding * 2);
+
+                if (cW <= 0 || cH <= 0) throw new Error("Invalid Drawing Dimensions");
+
+                const MAX_WIDTH = 512;
+                let scale = 1;
+                if (cW > MAX_WIDTH) {
+                    scale = MAX_WIDTH / cW;
+                }
+                
+                const finalW = cW * scale;
+                const finalH = cH * scale;
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = finalW;
+                tempCanvas.height = finalH;
+                const tCtx = tempCanvas.getContext('2d');
+                
+                tCtx.fillStyle = '#ffffff';
+                tCtx.fillRect(0, 0, finalW, finalH);
+                
+                const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+                
+                tCtx.drawImage(
+                    canvas, 
+                    cX * dpr, cY * dpr, cW * dpr, cH * dpr, 
+                    0, 0, finalW, finalH
+                );
+
+                const base64 = tempCanvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+
+                // 6. Send to AI
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64 })
+                });
+                
+                const data = await response.json();
+                
+                if (data.text) {
+                    let cleanText = data.text.trim().replace(/^[\.\-\*]\s*/, '');
+                    listData[rowIndex] = cleanText;
+                    await createTask(cleanText, rowIndex);
+                } else {
+                    listData[rowIndex] = originalText; 
+                }
+            } catch (err) {
+                console.error(err);
+                listData[rowIndex] = originalText || "Error";
+            } finally {
+                renderData(); 
+                resetCanvas(); 
+                targetRowText.classList.remove('processing');
+            }
+        }
+
+        async function createTask(text, rowIndex) {
+            if (googleEnabled && googleTaskListId) {
+                try {
+                    const res = await gapi.client.tasks.tasks.insert({
+                        tasklist: googleTaskListId,
+                        resource: { title: text }
+                    });
+                    listIds[rowIndex] = res.result.id;
+                } catch(e) { console.error("Google Save Error", e); }
+            } 
+            else if (currentUser) {
+                const ref = await firebase.firestore().collection('users').doc(currentUser.uid).collection('tasks').add({
+                    title: text,
+                    created: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                listIds[rowIndex] = ref.id;
+            } 
+            else {
+                const id = Date.now().toString();
+                let localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
+                localTasks.push({ id: id, title: text });
+                localStorage.setItem('rekindle_tasks_local', JSON.stringify(localTasks));
+                listIds[rowIndex] = id;
+            }
+        }
+    </script>
+</body>
+</html>

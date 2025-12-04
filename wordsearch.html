@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Word Search</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --highlight: #000000;
+            --highlight-text: #ffffff;
+            --found-color: #ccc;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            /* Default Background (Overridden by JS) */
+            /* Background managed by settings */
+            
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* FIX: Centers Vertically */
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content; /* ADAPTIVE HEIGHT */
+            max-height: 95vh; /* Taller window for bigger game */
+            width: 95%;
+            max-width: 650px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* WORD LIST */
+        #word-bank {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+            width: 100%;
+            min-height: 30px;
+        }
+
+        .word-item {
+            font-family: "Courier New", monospace;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 2px 4px;
+            text-transform: uppercase;
+        }
+
+        .word-item.found {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        /* GAME GRID */
+        #grid-container {
+            display: grid;
+            gap: 0;
+            border: 4px solid black;
+            background: black; /* Gap color */
+            touch-action: manipulation;
+            width: 100%;
+            max-width: 550px; /* Larger size */
+            /* Height is set by JS to ensure square */
+        }
+
+        .cell {
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.6rem; /* Larger font */
+            cursor: pointer;
+            user-select: none;
+            text-transform: uppercase;
+            border: 1px solid #ccc;
+            /* Height/Width handled by Grid layout */
+        }
+
+        /* SELECTION STATES */
+        .cell.active-start {
+            background-color: black;
+            color: white;
+            border-color: black;
+        }
+
+        .cell.found {
+            background-color: var(--found-color);
+            color: black;
+            font-weight: 900;
+            border-color: #999;
+        }
+        
+        #status-msg {
+            margin-bottom: 10px;
+            font-style: italic;
+            height: 1.2em;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            
+            <span class="title-text">Search</span>
+            
+            <div class="controls">
+                <button class="sys-btn" onclick="newGame()">Reset</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div id="word-bank">
+                <!-- Words injected here -->
+            </div>
+            
+            <div id="status-msg">Tap start letter, then tap end letter.</div>
+
+            <div id="grid-container">
+                <!-- Grid injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const GRID_SIZE = 10; // 10x10 grid
+        const WORD_POOL = [
+            "APPLE", "BRAIN", "CLOUD", "DRIVE", "EARTH", "FLAME", "GRAPE", "HEART",
+            "IMAGE", "LUNCH", "MONEY", "NIGHT", "OCEAN", "PIANO", "RIVER", "SHARK",
+            "TIGER", "VALUE", "WATER", "YOUTH", "ZEBRA", "BREAD", "CHAIR", "DANCE",
+            "FRUIT", "GHOST", "HOUSE", "LEMON", "MUSIC", "PAPER", "RADIO", "SNAKE",
+            "TABLE", "UNCLE", "VIDEO", "WORLD", "BEACH", "CLOCK", "DREAM", "FEAST"
+        ];
+
+        // --- STATE ---
+        let gridData = []; 
+        let placedWords = []; 
+        let foundWords = [];
+        let startSelection = null; // {r, c}
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            newGame();
+            // Force resize handling
+            window.addEventListener('resize', resizeGrid);
+            setTimeout(resizeGrid, 100);
+        };
+
+        // --- WALLPAPER LOADER ---
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+        
+        // --- RESIZE LOGIC (FORCE SQUARE) ---
+        function resizeGrid() {
+            const container = document.getElementById('grid-container');
+            if(container) {
+                // Set height equal to width to force perfect square
+                container.style.height = container.offsetWidth + 'px';
+            }
+        }
+
+        function newGame() {
+            gridData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(''));
+            placedWords = [];
+            foundWords = [];
+            startSelection = null;
+            document.getElementById('status-msg').innerText = "Tap start letter, then tap end letter.";
+            
+            // 1. Pick 6 random words
+            const shuffled = [...WORD_POOL].sort(() => 0.5 - Math.random());
+            const targets = shuffled.slice(0, 6);
+
+            // 2. Place words
+            targets.forEach(word => placeWord(word));
+
+            // 3. Fill empty spaces
+            fillGrid();
+
+            // 4. Render
+            renderUI(targets);
+        }
+
+        // --- LOGIC ---
+        function placeWord(word) {
+            const dirs = [
+                [0, 1],  // Horizontal
+                [1, 0],  // Vertical
+                [1, 1],  // Diagonal Down-Right
+                [-1, 1]  // Diagonal Up-Right
+            ];
+
+            let placed = false;
+            let attempts = 0;
+
+            while (!placed && attempts < 100) {
+                attempts++;
+                const dir = dirs[Math.floor(Math.random() * dirs.length)];
+                const r = Math.floor(Math.random() * GRID_SIZE);
+                const c = Math.floor(Math.random() * GRID_SIZE);
+
+                if (canPlace(word, r, c, dir)) {
+                    for (let i = 0; i < word.length; i++) {
+                        gridData[r + i * dir[0]][c + i * dir[1]] = word[i];
+                    }
+                    placedWords.push({
+                        word: word,
+                        // Store endpoints for validation later if needed
+                        start: {r, c},
+                        end: {r: r + (word.length-1)*dir[0], c: c + (word.length-1)*dir[1]}
+                    });
+                    placed = true;
+                }
+            }
+        }
+
+        function canPlace(word, r, c, dir) {
+            for (let i = 0; i < word.length; i++) {
+                const nr = r + i * dir[0];
+                const nc = c + i * dir[1];
+                if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) return false;
+                if (gridData[nr][nc] !== '' && gridData[nr][nc] !== word[i]) return false;
+            }
+            return true;
+        }
+
+        function fillGrid() {
+            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (gridData[r][c] === '') {
+                        gridData[r][c] = letters[Math.floor(Math.random() * letters.length)];
+                    }
+                }
+            }
+        }
+
+        // --- RENDER ---
+        function renderUI(targets) {
+            // Word Bank
+            const bank = document.getElementById('word-bank');
+            bank.innerHTML = '';
+            targets.forEach(word => {
+                const div = document.createElement('div');
+                div.innerText = word;
+                div.className = 'word-item';
+                div.id = `word-${word}`;
+                bank.appendChild(div);
+            });
+
+            // Grid
+            const container = document.getElementById('grid-container');
+            container.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+            container.innerHTML = '';
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.innerText = gridData[r][c];
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.id = `c-${r}-${c}`;
+
+                    // Click Handler (Tap-Tap Logic)
+                    cell.onclick = () => handleTap(r, c);
+                    
+                    container.appendChild(cell);
+                }
+            }
+            
+            // Ensure square immediately after render
+            resizeGrid();
+        }
+
+        // --- INTERACTION (Tap-Tap) ---
+        function handleTap(r, c) {
+            // 1. If no start point selected
+            if (!startSelection) {
+                startSelection = {r, c};
+                document.getElementById(`c-${r}-${c}`).classList.add('active-start');
+                return;
+            }
+
+            // 2. If start point exists (Second Tap)
+            const start = startSelection;
+            const end = {r, c};
+            
+            // Reset visual for start
+            document.getElementById(`c-${start.r}-${start.c}`).classList.remove('active-start');
+            startSelection = null;
+
+            // Validate line
+            const dr = end.r - start.r;
+            const dc = end.c - start.c;
+
+            // Must be horizontal, vertical, or perfectly diagonal
+            if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) {
+                return; // Invalid move
+            }
+
+            // Calculate word string
+            const steps = Math.max(Math.abs(dr), Math.abs(dc));
+            const stepR = dr === 0 ? 0 : dr / Math.abs(dr);
+            const stepC = dc === 0 ? 0 : dc / Math.abs(dc);
+
+            let wordStr = "";
+            let pathIds = [];
+
+            for (let i = 0; i <= steps; i++) {
+                const nr = start.r + (i * stepR);
+                const nc = start.c + (i * stepC);
+                const id = `c-${nr}-${nc}`;
+                pathIds.push(id);
+                wordStr += document.getElementById(id).innerText;
+            }
+
+            // Check if matches word (or reversed)
+            const reverseStr = wordStr.split('').reverse().join('');
+            const match = document.getElementById(`word-${wordStr}`) || document.getElementById(`word-${reverseStr}`);
+
+            if (match && !match.classList.contains('found')) {
+                match.classList.add('found');
+                pathIds.forEach(id => {
+                    document.getElementById(id).classList.add('found');
+                });
+                foundWords.push(match.innerText);
+                
+                // Win Check
+                if (foundWords.length === placedWords.length) {
+                    document.getElementById('status-msg').innerText = "Puzzle Complete!";
+                    // Flash Window Content
+                    const content = document.querySelector('.window-content');
+                    content.style.filter = "invert(1)";
+                    setTimeout(() => { content.style.filter = "invert(0)"; }, 300);
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>
