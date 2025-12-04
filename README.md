@@ -7,26 +7,26 @@ ReKindle is a free, web-based dashboard and operating system designed specifical
 ## Gallery
 
 <p align="center">
-  <img src="screenshots/rekindle-1.png" width="30%" />
-  <img src="screenshots/rekindle-2.png" width="30%" />
-  <img src="screenshots/rekindle-3.png" width="30%" />
+  <img src="screenshots/ReKindle-1.png" width="30%" />
+  <img src="screenshots/ReKindle-2.png" width="30%" />
+  <img src="screenshots/ReKindle-3.png" width="30%" />
 </p>
 
 <p align="center">
-  <img src="screenshots/rekindle-4.png" width="30%" />
-  <img src="screenshots/rekindle-5.png" width="30%" />
-  <img src="screenshots/rekindle-6.png" width="30%" />
+  <img src="screenshots/ReKindle-4.png" width="30%" />
+  <img src="screenshots/ReKindle-5.png" width="30%" />
+  <img src="screenshots/ReKindle-6.png" width="30%" />
 </p>
 
 <p align="center">
-  <img src="screenshots/rekindle-7.png" width="30%" />
-  <img src="screenshots/rekindle-8.png" width="30%" />
-  <img src="screenshots/rekindle-9.png" width="30%" />
+  <img src="screenshots/ReKindle-7.png" width="30%" />
+  <img src="screenshots/ReKindle-8.png" width="30%" />
+  <img src="screenshots/ReKindle-9.png" width="30%" />
 </p>
 
 <p align="center">
-  <img src="screenshots/rekindle-10.png" width="30%" />
-  <img src="screenshots/rekindle-11.png" width="30%" />
+  <img src="screenshots/ReKindle-10.png" width="30%" />
+  <img src="screenshots/ReKindle-11.png" width="30%" />
 </p>
 
 ## Features
