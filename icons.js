@@ -37,7 +37,7 @@ const APPS = [
         id: 'weather', 
         name: 'Weather', 
         cat: 'essentials', 
-        icon: '<circle cx="16" cy="16" r="7" stroke-width="2"/><path d="M16 4v2M16 26v2M4 16h2M26 16h2M7.5 7.5l1.5 1.5M23 23l1.5 1.5M23 9l1.5-1.5M9 23l-1.5 1.5" stroke-width="2"/>' 
+        icon: '<circle cx="16" cy="16" r="7" stroke-width="2"/><path d="M16 4v2M16 26v2M4 16h2M26 16h2M7.5 7.5l1.4 1.4M23 23l1.4 1.4M23 9l1.4-1.4M9 23l-1.4 1.4" stroke-width="2"/>' 
     },
 
     // --- TOOLS ---
@@ -64,7 +64,7 @@ const APPS = [
         id: 'converter', 
         name: 'Converter', 
         cat: 'tools', 
-        icon: '<path d="M6 10 H26 L22 6 M26 22 H6 L10 26" stroke-width="2" />' 
+        icon: '<path d="M6 12 H26 L22 8 M26 20 H6 L10 24" stroke-width="2" />' 
     },
     { 
         id: 'countdown', 
@@ -120,9 +120,9 @@ const APPS = [
     },
     { 
         id: 'clocks', 
-        name: 'World Clock', 
+        name: 'Clock', 
         cat: 'tools', 
-        icon: '<circle cx="16" cy="16" r="14" stroke="black" stroke-width="2" fill="none"/><ellipse cx="16" cy="16" rx="14" ry="6" stroke="black" stroke-width="1" fill="none"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="1"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="1"/><polyline points="16 16 20 13" stroke="black" stroke-width="2"/>'
+        icon: '<circle cx="16" cy="16" r="14" stroke="black" stroke-width="2" fill="none"/><line x1="16" y1="16" x2="16" y2="6" stroke-width="2"/><line x1="16" y1="16" x2="23" y2="16" stroke-width="2"/>'
     },
     { 
         id: 'breathing', 
@@ -194,13 +194,13 @@ const APPS = [
         id: 'books', 
         name: 'Reading List', 
         cat: 'lifestyle', 
-        icon: '<rect x="6" y="4" width="20" height="24"/><line x1="6" y1="8" x2="26" y2="8"/><line x1="14" y1="12" x2="22" y2="12"/>' 
+        icon: '<rect x="6" y="4" width="20" height="24"/><line x1="6" y1="8" x2="26" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="22" y2="16"/><line x1="10" y1="20" x2="22" y2="20"/>' 
     },
     { 
         id: 'reading', 
         name: 'Reading Log', 
         cat: 'lifestyle', 
-        icon: '<rect x="6" y="4" width="20" height="24"/><line x1="10" y1="8" x2="22" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="18" y2="16"/><polyline points="20 22 22 20 26 24"/>' 
+        icon: '<rect x="6" y="4" width="20" height="24"/><line x1="10" y1="8" x2="22" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="18" y2="16"/><polyline points="17 23 21 25 23 19" fill="none" stroke="black" stroke-width="2" transform="rotate(10, 16, 20)"/>' 
     },
     { 
         id: 'reddit', 
@@ -236,7 +236,7 @@ const APPS = [
         id: '2048', 
         name: '2048', 
         cat: 'games', 
-        icon: '<rect x="2" y="2" width="28" height="28" fill="white" stroke="black" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="2"/><text x="9" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold" fill="black">2</text><text x="23" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold" fill="black">0</text><text x="9" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold" fill="black">4</text><text x="23" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold" fill="black">8</text>'
+        icon: '<rect x="2" y="2" width="28" height="28" fill="white" stroke="black" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="2"/><text x="9" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">2</text><text x="23" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">0</text><text x="9" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">4</text><text x="23" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">8</text>'
     },
     { 
         id: 'anagrams', 
@@ -251,22 +251,11 @@ const APPS = [
         icon: '<rect x="6" y="6" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-10 13 15)"/><text x="11" y="18" font-size="10" font-weight="bold" transform="rotate(-10 13 15)">A♠</text><rect x="14" y="8" width="14" height="18" rx="2" fill="black" stroke="white" stroke-width="1" transform="rotate(10 21 17)"/><text x="19" y="20" font-size="10" font-weight="bold" fill="white" transform="rotate(10 21 17)">J</text>'
     },
     { 
-        id: 'tetris', 
-        name: 'Tetris', 
-        cat: 'games', 
-        icon: '<path d="M6 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/><path d="M16 20 h10 v10 h-10 z" fill="black" stroke="none"/><path d="M16 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/>' 
-    },
-    { 
-        id: 'chess', 
-        name: 'Chess', 
-        cat: 'games', 
-        icon: '<path d="M22 26 H10 V23 H22 V26 M12 23 L13 15 C12 13 11 11 12 9 C13 5 17 4 20 5 C22 6 23 8 23 8 L21 12 L21 23 H12" fill="black" stroke="black" stroke-width="1" stroke-linejoin="round"/>'
-    },
-    { 
-        id: 'bindings', 
-        name: 'Connections', 
-        cat: 'games', 
-        icon: '<rect x="6" y="6" width="8" height="8"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' // Adjusted icon to be distinct
+        id: 'checkers', 
+        name: 'Checkers', 
+        cat: 'games',
+        beta: true,
+        icon: '<circle cx="16" cy="16" r="10" fill="white" stroke="black" stroke-width="2"/>' 
     },
     { 
         id: 'crossword', 
@@ -299,11 +288,25 @@ const APPS = [
         icon: '<circle cx="16" cy="16" r="8" fill="black"/><line x1="16" y1="4" x2="16" y2="8"/><line x1="16" y1="24" x2="16" y2="28"/><line x1="4" y1="16" x2="8" y2="16"/><line x1="24" y1="16" x2="28" y2="16"/>' 
     },
     { 
+        id: 'mini', 
+        name: 'Mini Crossword', 
+        cat: 'games', 
+        beta: true,
+        icon: '<rect x="6" y="6" width="20" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="6" y="6" width="8" height="8" fill="black"/><rect x="18" y="18" width="8" height="8" fill="black"/>'
+    },
+    { 
         id: 'nerdle', 
         name: 'Nerdle', 
         beta: true,        
         cat: 'games', 
-        icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><text x="16" y="20" font-size="10" text-anchor="middle" font-weight="bold" font-family="monospace">1+2=3</text>'
+        icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><text x="16" y="20" font-size="9" font-family="monospace" text-anchor="middle">1+2=3</text>'
+    },
+    { 
+        id: 'nonograms', 
+        name: 'Nonograms', 
+        cat: 'games',
+        beta: true,
+        icon: '<rect x="6" y="6" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><line x1="11" y1="6" x2="11" y2="26"/><line x1="21" y1="6" x2="21" y2="26"/><line x1="6" y1="11" x2="26" y2="11"/><line x1="6" y1="21" x2="26" y2="21"/>'
     },
     { 
         id: 'words', 
@@ -333,7 +336,13 @@ const APPS = [
         id: 'sudoku', 
         name: 'Sudoku', 
         cat: 'games', 
-        icon: '<rect x="2" y="2" width="28" height="28" fill="none" stroke="black" stroke-width="2"/><path d="M11 2v28M21 2v28M2 11h28M2 21h28" stroke="black" stroke-width="1"/><text x="16" y="19" font-size="10" font-family="monospace" text-anchor="middle" font-weight="bold">9</text>'
+        icon: '<rect x="2" y="2" width="28" height="28" fill="none" stroke="black" stroke-width="2"/><path d="M11 2v28M21 2v28M2 11h28M2 21h28" stroke="black" stroke-width="1"/><text x="16" y="19" font-size="10" font-family="monospace" text-anchor="middle">9</text>'
+    },
+    { 
+        id: 'tetris', 
+        name: 'Blocks', 
+        cat: 'games', 
+        icon: '<path d="M6 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/><path d="M16 20 h10 v10 h-10 z" fill="black" stroke="none"/><path d="M16 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/>' 
     },
     { 
         id: 'wordsearch', 
@@ -347,6 +356,12 @@ const APPS = [
         cat: 'games', 
         icon: '<rect x="2" y="2" width="12" height="12"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' 
     },
+    { 
+        id: 'bindings', 
+        name: 'Connections', 
+        cat: 'games', 
+        icon: '<rect x="6" y="6" width="8" height="8"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' // Adjusted icon to be distinct
+    },
 
     // --- TWO PLAYER GAMES ---
     { 
@@ -354,6 +369,13 @@ const APPS = [
         name: 'Battleship', 
         cat: 'two_player', 
         icon: '<circle cx="16" cy="16" r="10"/><circle cx="16" cy="16" r="2" fill="black"/>' 
+    },
+    { 
+        id: '2pcheckers', 
+        name: 'Checkers 2P', 
+        cat: 'two_player',
+        beta: true,
+        icon: '<circle cx="14" cy="18" r="7" fill="white" stroke="black" stroke-width="2"/><circle cx="20" cy="14" r="7" fill="black" stroke="black" stroke-width="2"/>' 
     },
     { 
         id: '2pchess', 
