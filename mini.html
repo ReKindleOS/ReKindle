@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mini Crossword</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --highlight: #e0e0e0; 
+            --selected: #000000;
+            --selected-text: #ffffff;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            max-height: 98vh;
+            width: 98%;
+            max-width: 600px; /* Narrower for Mini */
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white;
+            z-index: 2; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem; line-height: 1; box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute; right: 10px; z-index: 1; background: white; display: flex; gap: 10px;
+        }
+
+        .sys-btn {
+            background: white; border: 2px solid black; padding: 2px 8px; font-family: inherit;
+            font-weight: bold; cursor: pointer; box-shadow: 2px 2px 0 black; font-size: 0.8rem;
+        }
+        .sys-btn:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* CURRENT CLUE BAR */
+        #clue-bar {
+            width: 100%; background: black; color: white; padding: 8px; text-align: center;
+            font-weight: bold; font-size: 1rem; 
+            margin-bottom: 10px;
+            min-height: 3em;
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* CLUE LISTS */
+        .clue-lists-container {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .clue-list-group {
+            width: 48%; /* Ensure two columns fit */
+            text-align: left;
+        }
+
+        .clue-list-group h4 {
+            margin: 0 0 5px 0;
+            border-bottom: 1px solid black;
+            padding-bottom: 2px;
+        }
+
+        .clue-item {
+            margin-bottom: 5px;
+        }
+
+        /* GRID */
+        #grid-container {
+            display: grid;
+            gap: 0;
+            border: 4px solid black;
+            width: 100%; 
+            max-width: 400px; /* Constrain width so cells are big */
+            background: black;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .cell {
+            background: white; border: 1px solid #999; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: bold; cursor: pointer; text-transform: uppercase;
+            width: 100%; height: 100%;
+            user-select: none;
+            /* Default font size for 5x5 grid (will be adjusted in JS) */
+            font-size: 2.2rem;
+        }
+
+        .cell-num {
+            position: absolute; top: 2px; left: 2px; 
+            font-weight: normal; pointer-events: none; line-height: 1;
+            color: #333; font-size: 0.7rem;
+        }
+
+        .cell.active-word { background: var(--highlight); }
+        .cell.selected { background: var(--selected) !important; color: var(--selected-text); }
+        .cell.black { background: black; border-color: black; cursor: default; }
+
+        /* KEYBOARD */
+        #keyboard {
+            width: 100%; max-width: 600px; 
+            margin-top: auto; 
+            padding-bottom: 5px;
+            display: flex; flex-direction: column; gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .key-row { display: flex; width: 100%; gap: 3px; justify-content: center; }
+
+        .key {
+            flex: 1; height: 50px; border: 2px solid black; border-radius: 4px;
+            background: white; font-weight: bold; font-size: 1.2rem; display: flex;
+            align-items: center; justify-content: center; cursor: pointer; box-shadow: 1px 1px 0 #ccc;
+        }
+        .key:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+        .key.big { flex: 1.5; font-size: 0.9rem; }
+        
+        #status-bar { border-top: 2px solid black; padding: 4px; font-size: 0.75rem; background: #eee; text-align: center; width: 100%; box-sizing: border-box; }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 250px;
+            text-align: center;
+        }
+
+        .modal-btns {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Mini</span>
+            
+            <div class="controls">
+                <button class="sys-btn" onclick="openNewGameModal()">New</button>
+                <button class="sys-btn" onclick="solveSelectedWord()">Solve</button>
+                <button class="sys-btn" onclick="checkPuzzle()">Check</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div id="clue-bar">Fetching Puzzle...</div>
+
+            <div id="grid-container"></div>
+            
+            <div id="clue-lists" class="clue-lists-container">
+                <div id="across-clues" class="clue-list-group">
+                    <h4>ACROSS</h4>
+                </div>
+                <div id="down-clues" class="clue-list-group">
+                    <h4>DOWN</h4>
+                </div>
+            </div>
+
+            <div id="keyboard">
+                <div class="key-row" id="row1"></div>
+                <div class="key-row" id="row2"></div>
+                <div class="key-row" id="row3"></div>
+            </div>
+        </div>
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <!-- NEW GAME MODAL -->
+    <div id="new-game-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Start New Puzzle?</h3>
+            <p>Current progress will be lost.</p>
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="confirmNewGame()">Yes</button>
+                <button class="sys-btn" onclick="closeNewGameModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let currentPuzzle = null;
+        let gridState = []; 
+        let selectedIndex = -1;
+        let direction = 'across'; 
+        let currentUser = null;
+        let saveTimer = null;
+        
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            initKeyboard();
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadProgress(); 
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadProgress(); 
+                }
+            });
+            
+            window.addEventListener('resize', () => {
+                resizeGrid();
+            });
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            const size = localStorage.getItem('rekindle_bg_size');
+            if(img) document.body.style.backgroundImage = img;
+            if(size) document.body.style.backgroundSize = size;
+        }
+        
+        function resizeGrid() {
+            const container = document.getElementById('grid-container');
+            if (container) {
+                // Force square aspect ratio based on width
+                container.style.height = container.offsetWidth + 'px';
+            }
+        }
+
+        // --- SAVE/LOAD LOGIC ---
+
+        async function loadProgress() {
+            let data = null;
+            
+            if (currentUser) {
+                try {
+                    const doc = await db.collection('users').doc(currentUser.uid).collection('apps').doc('mini_crossword').get();
+                    if (doc.exists) {
+                        data = doc.data();
+                    }
+                } catch(e) { console.error("Cloud load error", e); }
+            }
+            
+            if (!data) {
+                const local = localStorage.getItem('mini_crossword_progress');
+                if (local) {
+                    try {
+                        data = JSON.parse(local);
+                    } catch(e) { console.error("Local parse error", e); }
+                }
+            }
+
+            if (data && data.puzzle && data.grid) {
+                currentPuzzle = data.puzzle;
+                gridState = data.grid;
+                restoreGame();
+            } else {
+                newGame();
+            }
+        }
+
+        function saveProgress() {
+            if (!currentPuzzle) return;
+            const data = {
+                puzzle: currentPuzzle,
+                grid: gridState,
+                savedAt: Date.now()
+            };
+            
+            localStorage.setItem('mini_crossword_progress', JSON.stringify(data));
+            
+            if (currentUser) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    db.collection('users').doc(currentUser.uid).collection('apps').doc('mini_crossword').set(data);
+                }, 2000);
+            }
+        }
+
+        function clearSave() {
+            localStorage.removeItem('mini_crossword_progress');
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('mini_crossword').delete();
+            }
+        }
+
+        function restoreGame() {
+            // Check if it's a 5x5 puzzle (our target format)
+            if (currentPuzzle.rows !== 5 || currentPuzzle.cols !== 5) {
+                console.warn("Restored puzzle is not 5x5. Starting new game.");
+                newGame();
+                return;
+            }
+            
+            renderGrid();
+            renderClueList();
+            
+            // Find first playable square
+            const start = gridState.findIndex((c, i) => c === '' && currentPuzzle.grid[i] !== '.');
+            if (start !== -1) selectCell(start);
+            else selectCell(0);
+            document.getElementById('clue-bar').innerText = "Game Resumed";
+            updateUI(); // Ensure clue displays
+        }
+
+        // --- GAME LOGIC ---
+
+        async function newGame() {
+            clearSave();
+            document.getElementById('clue-bar').innerText = "Loading Mini...";
+            document.getElementById('grid-container').innerHTML = '';
+            
+            try {
+                // Fetch from local JSON file
+                const res = await fetch('mini.json');
+                if (!res.ok) throw new Error("Failed to load mini.json");
+                const collection = await res.json();
+                const puzzles = collection.puzzles || [];
+                
+                if (puzzles.length === 0) throw new Error("No puzzles found in collection.");
+                
+                // Pick a random puzzle
+                const rawData = puzzles[Math.floor(Math.random() * puzzles.length)];
+                loadPuzzle(rawData);
+                
+            } catch (e) {
+                console.error(e);
+                document.getElementById('clue-bar').innerText = "Error loading puzzle.";
+            }
+        }
+
+        function loadPuzzle(data) {
+            currentPuzzle = {
+                rows: data.size.rows,
+                cols: data.size.cols,
+                // The grid property in mini.json is a continuous string (e.g., "AGENDMOTOR...")
+                // Since there are no black squares, we use this directly as the solution.
+                grid: data.grid.split(''), 
+                clues: { across: {}, down: {} },
+                nums: Array(data.size.rows * data.size.cols).fill(0) // Initialize nums array
+            };
+            
+            // Reconstruct Clues and Gridnums
+            let clueNum = 1;
+            let gridIndex = 0;
+            
+            // Handle Across Clues (simple sequential numbers 1-5 for 5x5)
+            for (const [key, value] of Object.entries(data.clues.across)) {
+                 const num = parseInt(key); // Should be 1 through 5
+                 currentPuzzle.clues.across[num] = value.clue;
+                 
+                 // Since it's a dense 5x5 grid, numbers are only needed for the start of the word (first cell of the row/col)
+                 if (value.row !== undefined && value.col !== undefined) {
+                     gridIndex = value.row * currentPuzzle.cols + value.col;
+                     currentPuzzle.nums[gridIndex] = num;
+                 }
+            }
+            
+            // Handle Down Clues (We must infer these because mini.json omits them)
+            // For a dense 5x5 grid, every cell (0,0) to (0,4) must start a down clue.
+            for (let c = 0; c < currentPuzzle.cols; c++) {
+                 // Check if the top cell already has a number from the across clues
+                 if (currentPuzzle.nums[c] === 0) {
+                     currentPuzzle.nums[c] = clueNum;
+                 } else {
+                     clueNum = currentPuzzle.nums[c];
+                 }
+                 
+                 // Down answers are just the vertical letters
+                 const answer = [];
+                 for (let r = 0; r < currentPuzzle.rows; r++) {
+                     answer.push(currentPuzzle.grid[r * currentPuzzle.cols + c]);
+                 }
+                 
+                 currentPuzzle.clues.down[clueNum] = `(Down clue for ${answer.join('')})`;
+                 clueNum++;
+            }
+
+
+            gridState = new Array(currentPuzzle.rows * currentPuzzle.cols).fill('');
+            
+            saveProgress();
+            renderGrid();
+            renderClueList();
+            
+            const start = currentPuzzle.grid.findIndex(c => c !== '.');
+            if (start !== -1) selectCell(start);
+        }
+
+        function renderGrid() {
+            if (!currentPuzzle) return;
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            
+            resizeGrid();
+            
+            const cols = currentPuzzle.cols;
+            const rows = currentPuzzle.rows;
+            
+            container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+            const fontSize = '2.2rem';
+            const numSize = '0.7rem';
+
+            for (let i = 0; i < currentPuzzle.grid.length; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${i}`;
+                cell.style.fontSize = fontSize;
+                
+                // Assuming mini-crosswords have no black squares based on data structure
+                // But keeping compatibility logic just in case
+                if (currentPuzzle.grid[i] === '.') {
+                    cell.classList.add('black');
+                } else {
+                    const num = currentPuzzle.nums[i];
+                    if (num && num !== 0) {
+                        cell.innerHTML = `<span class="cell-num" style="font-size:${numSize}">${num}</span>`;
+                    }
+                    const content = document.createElement('span');
+                    content.innerText = gridState[i] || '';
+                    cell.appendChild(content);
+                    cell.onclick = () => handleCellClick(i);
+                }
+                container.appendChild(cell);
+            }
+            
+            if (selectedIndex !== -1) updateUI();
+        }
+
+        function renderClueList() {
+            const acrossContainer = document.getElementById('across-clues');
+            const downContainer = document.getElementById('down-clues');
+            acrossContainer.innerHTML = '<h4>ACROSS</h4>';
+            downContainer.innerHTML = '<h4>DOWN</h4>';
+            
+            const acrossClues = currentPuzzle.clues.across;
+            const downClues = currentPuzzle.clues.down;
+
+            for (const num in acrossClues) {
+                const div = document.createElement('div');
+                div.className = 'clue-item';
+                div.innerHTML = `<b>${num}.</b> ${acrossClues[num]}`;
+                acrossContainer.appendChild(div);
+            }
+
+            for (const num in downClues) {
+                const div = document.createElement('div');
+                div.className = 'clue-item';
+                div.innerHTML = `<b>${num}.</b> ${downClues[num]}`;
+                downContainer.appendChild(div);
+            }
+        }
+
+        function initKeyboard() {
+            const rows = [
+                "QWERTYUIOP".split(""),
+                "ASDFGHJKL".split(""),
+                [..."ZXCVBNM".split(""), "⌫"]
+            ];
+            
+            const kb = document.getElementById('keyboard');
+            kb.innerHTML = '<div class="key-row" id="row1"></div><div class="key-row" id="row2"></div><div class="key-row" id="row3"></div>';
+
+            rows.forEach((keys, i) => {
+                const rowEl = document.getElementById(`row${i+1}`);
+                keys.flat().forEach(key => {
+                    const btn = document.createElement('div');
+                    btn.innerText = key;
+                    btn.className = 'key';
+                    if (key === '⌫') btn.classList.add('big');
+                    
+                    btn.onclick = () => handleInput(key);
+                    rowEl.appendChild(btn);
+                });
+            });
+        }
+
+        // --- INTERACTION ---
+        function selectCell(index) {
+            if (currentPuzzle.grid[index] === '.') return;
+            selectedIndex = index;
+            updateUI();
+        }
+
+        function handleCellClick(index) {
+            if (currentPuzzle.grid[index] === '.') return;
+            if (index === selectedIndex) {
+                direction = direction === 'across' ? 'down' : 'across';
+            } else {
+                selectedIndex = index;
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            if (!currentPuzzle) return;
+            
+            document.querySelectorAll('.cell').forEach(c => {
+                c.classList.remove('active-word', 'selected');
+            });
+
+            const indices = getActiveWordIndices(selectedIndex, direction);
+            indices.forEach(idx => {
+                const el = document.getElementById(`cell-${idx}`);
+                if(el) el.classList.add('active-word');
+            });
+
+            const selEl = document.getElementById(`cell-${selectedIndex}`);
+            if(selEl) selEl.classList.add('selected');
+
+            const startIdx = indices[0];
+            const num = currentPuzzle.nums[startIdx];
+            const clueText = currentPuzzle.clues[direction][num] || "(No Clue)";
+            document.getElementById('clue-bar').innerText = `${num} ${direction.toUpperCase()}: ${clueText}`;
+        }
+
+        function getActiveWordIndices(idx, dir) {
+            const indices = [];
+            const cols = currentPuzzle.cols;
+            const rows = currentPuzzle.rows;
+            const r = Math.floor(idx / cols);
+            const c = idx % cols;
+
+            if (dir === 'across') {
+                let startC = c;
+                while (startC > 0 && currentPuzzle.grid[r * cols + (startC - 1)] !== '.') startC--;
+                let currC = startC;
+                while (currC < cols && currentPuzzle.grid[r * cols + currC] !== '.') {
+                    indices.push(r * cols + currC);
+                    currC++;
+                }
+            } else {
+                let startR = r;
+                while (startR > 0 && currentPuzzle.grid[(startR - 1) * cols + c] !== '.') startR--;
+                let currR = startR;
+                while (currR < rows && currentPuzzle.grid[currR * cols + c] !== '.') {
+                    indices.push(currR * cols + c);
+                    currR++;
+                }
+            }
+            return indices;
+        }
+
+        // --- INPUT ---
+        function handleInput(key) {
+            if (!currentPuzzle || selectedIndex === -1) return;
+            
+            if (key === '⌫') {
+                gridState[selectedIndex] = '';
+                moveSelection(-1);
+            } else {
+                gridState[selectedIndex] = key;
+                moveSelection(1);
+            }
+            
+            saveProgress();
+            renderContent(); 
+        }
+
+        function moveSelection(step) {
+            const cols = currentPuzzle.cols;
+            const total = currentPuzzle.rows * cols;
+            let next = selectedIndex;
+            let safety = 0;
+
+            do {
+                if (direction === 'across') next += step;
+                else next += (step * cols);
+                
+                if (next < 0 || next >= total) {
+                    // Wrap to start of current word if stepped off edge
+                    const currentIndices = getActiveWordIndices(selectedIndex, direction);
+                    if (step === 1) next = currentIndices[0]; // Wrap to start if going past end
+                    if (step === -1) next = currentIndices[currentIndices.length - 1]; // Wrap to end if going past start
+                    break;
+                }
+                safety++;
+            } while (safety < 100 && currentPuzzle.grid[next] === '.');
+
+            if (currentPuzzle.grid[next] !== '.') {
+                selectedIndex = next;
+                updateUI();
+            }
+        }
+
+        function renderContent() {
+            gridState.forEach((char, i) => {
+                const cell = document.getElementById(`cell-${i}`);
+                if (!cell || cell.classList.contains('black')) return;
+                
+                let span = cell.querySelector('span:not(.cell-num)');
+                if (!span) {
+                    span = document.createElement('span');
+                    cell.appendChild(span);
+                }
+                span.innerText = char;
+            });
+        }
+
+        function checkPuzzle() {
+            if (!currentPuzzle) return;
+
+            let isFull = true;
+            let hasError = false;
+            let isEmpty = true;
+
+            for(let i=0; i<gridState.length; i++) {
+                const userChar = gridState[i];
+                const solutionChar = currentPuzzle.grid[i];
+
+                if (solutionChar === '.') continue;
+
+                if (!userChar) {
+                    isFull = false;
+                } else {
+                    isEmpty = false;
+                    // Mini puzzles are typically upper case only
+                    if (userChar.toUpperCase() !== solutionChar.toUpperCase()) {
+                        hasError = true;
+                    }
+                }
+            }
+
+            const bar = document.getElementById('clue-bar');
+            if (isEmpty) {
+                 bar.innerText = "Grid is empty.";
+            } else if (hasError) {
+                bar.innerText = "Errors found.";
+            } else if (!isFull) {
+                bar.innerText = "Correct so far!";
+            } else {
+                bar.innerText = "PUZZLE SOLVED!";
+                bar.style.backgroundColor = "black";
+                bar.style.color = "white";
+                clearSave();
+            }
+            setTimeout(() => {
+                 // Restore clue after msg
+                 if(bar.style.backgroundColor !== "black") {
+                     bar.style.backgroundColor = "black";
+                     bar.style.color = "white";
+                     updateUI();
+                 }
+            }, 2000);
+        }
+        
+        function solveSelectedWord() {
+            if (!currentPuzzle || selectedIndex === -1) return;
+            
+            const indices = getActiveWordIndices(selectedIndex, direction);
+            indices.forEach(idx => {
+                if (currentPuzzle.grid[idx] !== '.') {
+                    gridState[idx] = currentPuzzle.grid[idx];
+                }
+            });
+            saveProgress();
+            renderContent();
+            
+            // Move to next word (simplified)
+            moveSelection(1);
+        }
+        
+        // --- NEW GAME MODAL ---
+        function openNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function closeNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'none';
+        }
+
+        function confirmNewGame() {
+            closeNewGameModal();
+            newGame();
+        }
+
+    </script>
+</body>
+</html>
