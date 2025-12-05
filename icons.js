@@ -257,6 +257,12 @@ const APPS = [
         beta: true,
         icon: '<circle cx="16" cy="16" r="10" fill="white" stroke="black" stroke-width="2"/>' 
     },
+	{ 
+        id: 'chess', // <-- THIS IS THE SINGLE PLAYER CHESS ID
+        name: 'Chess', 
+        cat: 'games', 
+        icon: '<path d="M22 26 H10 V23 H22 V26 M12 23 L13 15 C12 13 11 11 12 9 C13 5 17 4 20 5 C22 6 23 8 23 8 L21 12 L21 23 H12" fill="black" stroke="black" stroke-width="1" stroke-linejoin="round"/>' // <-- This icon is now a King/Queen (Black Piece)
+    },      
     { 
         id: 'crossword', 
         name: 'Crossword', 
