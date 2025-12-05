@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Picross</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --grid-line: #000000;
+            --filled-cell: #000000;
+            --x-color: #000000;
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* SCREEN MANAGER */
+        .screen {
+            display: none;
+            flex-grow: 1;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        .screen.active {
+            display: flex;
+        }
+
+        /* MENU SCREEN */
+        #screen-menu {
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #fafafa;
+            box-sizing: border-box;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-area h1 {
+            font-size: 3rem;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .logo-area p {
+            margin: 5px 0 0 0;
+            font-style: italic;
+            color: #666;
+        }
+
+        .difficulty-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .menu-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #ccc;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            transition: transform 0.1s;
+        }
+
+        .menu-btn span {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: normal;
+        }
+
+        .menu-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #ccc;
+            background: black;
+            color: white;
+        }
+        
+        .menu-btn:active span {
+            color: #ccc;
+        }
+
+        .menu-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* GAME SCREEN */
+        .game-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .game-title {
+            font-weight: bold;
+            font-family: monospace;
+            text-transform: capitalize;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 60%;
+        }
+
+        .icon-btn {
+            border: 2px solid black;
+            background: white;
+            min-width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+        }
+        
+        .icon-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+
+        /* NONOGRAM GRID LAYOUT */
+        .puzzle-container {
+            flex-grow: 1;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: #fff;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .nonogram-grid {
+            display: grid;
+            gap: 0;
+            border: 2px solid black;
+            background: black; /* Gap color */
+            user-select: none;
+            /* Ensures grid doesn't overflow container */
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .cell {
+            background: white;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            cursor: pointer;
+            position: relative;
+            box-sizing: border-box;
+            font-family: monospace;
+            font-weight: bold;
+            line-height: 1;
+            padding: 0;
+        }
+
+        /* Hint Cells */
+        .cell.hint {
+            background: #e0e0e0;
+            color: black;
+            cursor: default;
+            border: 1px solid #999;
+        }
+
+        /* Playable Cells */
+        .cell.filled {
+            background-color: var(--filled-cell);
+        }
+
+        .cell.crossed::after {
+            content: "X";
+            font-weight: bold;
+            color: var(--x-color);
+            /* Font size relative to cell size */
+            font-size: 80%; 
+        }
+
+        /* Thicker borders for 5x5 blocks */
+        .cell.thick-right { border-right: 2px solid black !important; }
+        .cell.thick-bottom { border-bottom: 2px solid black !important; }
+
+        /* TOOLBAR (Mobile) */
+        .toolbar {
+            border-top: 2px solid black;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            background: #eee;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .tool-btn {
+            flex: 1;
+            max-width: 150px;
+            padding: 12px;
+            border: 2px solid black;
+            background: white;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .tool-btn.active {
+            background: black;
+            color: white;
+            box-shadow: inset 2px 2px 0 #555;
+            transform: translate(2px, 2px);
+        }
+
+        /* STATUS */
+        #auth-status {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            font-size: 0.7rem;
+            color: #666;
+            pointer-events: none;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
+            max-width: 80%;
+        }
+
+        .modal-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            margin-top: 20px;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+        }
+        
+        .modal-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+        
+        /* FILTER TABS */
+        .filter-tabs {
+            display: flex;
+            background: #eee;
+            border-bottom: 2px solid black;
+            overflow-x: auto;
+        }
+        
+        .filter-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-right: 1px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.9rem;
+            min-width: 60px;
+        }
+        
+        .filter-tab:last-child { border-right: none; }
+        
+        .filter-tab.active {
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+            z-index: 10;
+        }
+        
+        #loading-msg {
+            margin-top: 20px;
+            font-style: italic;
+            color: #666;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Picross</span>
+        </div>
+
+        <!-- MENU SCREEN -->
+        <div id="screen-menu" class="screen active">
+            <div class="logo-area">
+                <h1>Picross</h1>
+                <p>Logical Painting</p>
+            </div>
+            
+            <div class="difficulty-container">
+                <button class="menu-btn" id="btn-easy" onclick="playRandom('easy')">
+                    Easy <span>5-10 Grid</span>
+                </button>
+                <button class="menu-btn" id="btn-medium" onclick="playRandom('medium')">
+                    Medium <span>15-20 Grid</span>
+                </button>
+                <button class="menu-btn" id="btn-hard" onclick="playRandom('hard')">
+                    Hard <span>25-30 Grid</span>
+                </button>
+                <button class="menu-btn" id="btn-expert" onclick="playRandom('expert')">
+                    Expert <span>30+ Grid</span>
+                </button>
+            </div>
+            
+            <div id="loading-msg">Loading puzzles...</div>
+            <div id="auth-status">Local Mode</div>
+        </div>
+
+        <!-- GAME SCREEN -->
+        <div id="screen-game" class="screen">
+            <div class="game-header">
+                <button class="icon-btn" onclick="showMenu()">←</button>
+                <span class="game-title" id="puzzle-title">Puzzle</span>
+                <button class="icon-btn" style="width:auto; padding:0 10px;" onclick="checkWin(true)">Check</button>
+            </div>
+
+            <div class="puzzle-container" id="puzzle-container">
+                <div id="game-grid" class="nonogram-grid"></div>
+            </div>
+
+            <div class="toolbar">
+                <button class="tool-btn active" id="btn-fill" onclick="setTool('fill')">
+                    <span style="display:inline-block; width:16px; height:16px; background:black; border:1px solid black;"></span> Fill
+                </button>
+                <button class="tool-btn" id="btn-mark" onclick="setTool('mark')">
+                    <span style="font-weight:900; font-size:1.2rem;">X</span> Mark
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WIN MODAL -->
+    <div id="win-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="margin-top:0;">PUZZLE SOLVED!</h2>
+            <p>Great pixel logic.</p>
+            <button class="modal-btn" onclick="showMenu()">Continue</button>
+        </div>
+    </div>
+
+    <!-- MESSAGE MODAL -->
+    <div id="msg-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="msg-title" style="margin-top:0;">Status</h3>
+            <p id="msg-body">Message goes here.</p>
+            <button class="modal-btn" onclick="closeMsgModal()">OK</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let puzzles = [];
+        let categories = {
+            easy: [],
+            medium: [],
+            hard: [],
+            expert: []
+        };
+        
+        let progress = {}; // { puzzleId: { solved: bool, grid: [] } }
+        let currentPuzzle = null;
+        let currentGrid = []; // 0=Empty, 1=Filled, 2=Crossed
+        let currentTool = 'fill';
+        let currentUser = null;
+        let saveTimer = null;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            fetchPuzzles();
+            
+            // Handle window resize to adjust grid
+            window.addEventListener('resize', () => {
+                if (currentPuzzle && document.getElementById('screen-game').classList.contains('active')) {
+                    renderGameGrid(); // Re-calculate sizes
+                }
+            });
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('auth-status').innerText = "Synced: " + user.email;
+                    loadCloudProgress();
+                } else {
+                    document.getElementById('auth-status').innerText = "Guest Mode";
+                    loadLocalProgress();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        async function fetchPuzzles() {
+            try {
+                const res = await fetch('nonograms.json');
+                if (!res.ok) throw new Error("Failed to load puzzles");
+                const rawPuzzles = await res.json();
+                
+                // Add IDs and Categorize
+                puzzles = rawPuzzles.map((p, index) => ({
+                    ...p,
+                    id: p.filename || `puzzle_${index}`
+                }));
+
+                puzzles.forEach(p => {
+                    const dim = Math.max(p.width, p.height);
+                    if (dim <= 10) categories.easy.push(p);
+                    else if (dim <= 20) categories.medium.push(p);
+                    else if (dim <= 30) categories.hard.push(p);
+                    else categories.expert.push(p);
+                });
+
+                document.getElementById('loading-msg').style.display = 'none';
+                updateMenuButtons();
+
+            } catch (e) {
+                console.error(e);
+                document.getElementById('loading-msg').innerText = "Error loading puzzles.";
+            }
+        }
+        
+        function updateMenuButtons() {
+            for (const [cat, list] of Object.entries(categories)) {
+                const btn = document.getElementById(`btn-${cat}`);
+                if (list.length === 0) {
+                    btn.disabled = true;
+                    btn.querySelector('span').innerText = "(0 Available)";
+                }
+            }
+        }
+
+        // --- NAVIGATION ---
+        function showMenu() {
+            document.getElementById('win-modal').style.display = 'none';
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-menu').classList.add('active');
+            currentPuzzle = null;
+        }
+
+        function playRandom(category) {
+            const pool = categories[category];
+            if (!pool || pool.length === 0) return;
+            
+            // Pick random puzzle from category
+            const puzzle = pool[Math.floor(Math.random() * pool.length)];
+            startPuzzle(puzzle);
+        }
+
+        function startPuzzle(puzzle) {
+            currentPuzzle = puzzle;
+            document.getElementById('puzzle-title').innerText = puzzle.title;
+
+            // Load state or init new
+            const saved = progress[puzzle.id];
+            if (saved && saved.grid && saved.grid.length === puzzle.width * puzzle.height) {
+                currentGrid = [...saved.grid];
+            } else {
+                currentGrid = new Array(puzzle.width * puzzle.height).fill(0);
+            }
+
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-game').classList.add('active');
+            
+            // Short delay to allow layout to settle before calculating size
+            setTimeout(renderGameGrid, 50);
+        }
+
+        // --- GRID RENDER (DYNAMIC SIZING) ---
+        function renderGameGrid() {
+            if (!currentPuzzle) return;
+
+            const container = document.getElementById('game-grid');
+            const wrapper = document.getElementById('puzzle-container');
+            container.innerHTML = '';
+            
+            const pWidth = currentPuzzle.width;
+            const pHeight = currentPuzzle.height;
+            const rowClues = currentPuzzle.rows; // Arrays of numbers
+            const colClues = currentPuzzle.columns; // Arrays of numbers
+            
+            // 1. Calculate Max Hint Depths
+            let maxRowHints = 0;
+            rowClues.forEach(arr => maxRowHints = Math.max(maxRowHints, arr.length));
+            
+            let maxColHints = 0;
+            colClues.forEach(arr => maxColHints = Math.max(maxColHints, arr.length));
+
+            // Total Grid Dimensions (Hints + Playable Area)
+            const totalCols = maxRowHints + pWidth;
+            const totalRows = maxColHints + pHeight;
+
+            // 2. Calculate Cell Size to Fill Window
+            const availWidth = wrapper.clientWidth - 10; // padding buffer
+            const availHeight = wrapper.clientHeight - 10; 
+
+            const sizeW = Math.floor(availWidth / totalCols);
+            const sizeH = Math.floor(availHeight / totalRows);
+            
+            let cellSize = Math.min(sizeW, sizeH);
+            if (cellSize < 10) cellSize = 10;
+            if (cellSize > 40) cellSize = 40;
+            
+            const fontSize = Math.max(8, Math.floor(cellSize * 0.6));
+            
+            container.style.gridTemplateColumns = `repeat(${totalCols}, ${cellSize}px)`;
+            container.style.gridTemplateRows = `repeat(${totalRows}, ${cellSize}px)`;
+            container.style.width = `${totalCols * cellSize}px`;
+            container.style.height = `${totalRows * cellSize}px`;
+
+            // --- RENDER CELLS ---
+            for (let r = 0; r < totalRows; r++) {
+                for (let c = 0; c < totalCols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.style.fontSize = `${fontSize}px`;
+
+                    // Zone 1: Top-Left Corner (Empty)
+                    if (r < maxColHints && c < maxRowHints) {
+                        cell.className += ' hint';
+                        cell.style.background = 'black'; 
+                    }
+                    // Zone 2: Top Column Hints
+                    else if (r < maxColHints && c >= maxRowHints) {
+                        cell.className += ' hint';
+                        const pc = c - maxRowHints;
+                        const clues = colClues[pc] || [];
+                        const offset = maxColHints - clues.length;
+                        if (r >= offset) {
+                            const clueIndex = r - offset;
+                            cell.innerText = clues[clueIndex];
+                        }
+                        if (r === maxColHints - 1) cell.style.borderBottom = '2px solid black';
+                        if ((pc + 1) % 5 === 0 && pc !== pWidth - 1) cell.style.borderRight = '2px solid black';
+                    }
+                    // Zone 3: Left Row Hints
+                    else if (r >= maxColHints && c < maxRowHints) {
+                        cell.className += ' hint';
+                        const pr = r - maxColHints;
+                        const clues = rowClues[pr] || [];
+                        const offset = maxRowHints - clues.length;
+                        if (c >= offset) {
+                            const clueIndex = c - offset;
+                            cell.innerText = clues[clueIndex];
+                        }
+                        if (c === maxRowHints - 1) cell.style.borderRight = '2px solid black';
+                        if ((pr + 1) % 5 === 0 && pr !== pHeight - 1) cell.style.borderBottom = '2px solid black';
+                    }
+                    // Zone 4: Playable Grid
+                    else {
+                        cell.className += ' playable';
+                        const pr = r - maxColHints;
+                        const pc = c - maxRowHints;
+                        const idx = pr * pWidth + pc;
+
+                        if ((pc + 1) % 5 === 0 && pc !== pWidth - 1) cell.classList.add('thick-right');
+                        if ((pr + 1) % 5 === 0 && pr !== pHeight - 1) cell.classList.add('thick-bottom');
+
+                        const val = currentGrid[idx];
+                        if (val === 1) cell.classList.add('filled');
+                        if (val === 2) cell.classList.add('crossed');
+
+                        cell.onmousedown = (e) => handleInput(idx, e);
+                        cell.oncontextmenu = (e) => e.preventDefault();
+                    }
+
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        // --- GAMEPLAY ---
+        function setTool(tool) {
+            currentTool = tool;
+            document.getElementById('btn-fill').classList.remove('active');
+            document.getElementById('btn-mark').classList.remove('active');
+            document.getElementById(`btn-${tool}`).classList.add('active');
+        }
+
+        function handleInput(idx, event) {
+            event.preventDefault();
+            
+            let action = currentTool;
+            if (event.button === 2) action = 'mark';
+
+            const currentVal = currentGrid[idx];
+            let newVal = currentVal;
+
+            if (action === 'fill') {
+                newVal = (currentVal === 1) ? 0 : 1;
+            } else {
+                newVal = (currentVal === 2) ? 0 : 2;
+            }
+
+            currentGrid[idx] = newVal;
+            
+            const playables = document.querySelectorAll('.cell.playable');
+            if (playables[idx]) {
+                const cell = playables[idx];
+                cell.classList.remove('filled', 'crossed');
+                if (newVal === 1) cell.classList.add('filled');
+                if (newVal === 2) cell.classList.add('crossed');
+            }
+
+            saveProgress();
+        }
+
+        function checkWin(manual) {
+            const width = currentPuzzle.width;
+            const height = currentPuzzle.height;
+            const rowClues = currentPuzzle.rows;
+            const colClues = currentPuzzle.columns;
+            
+            for (let r = 0; r < height; r++) {
+                let line = [];
+                for (let c = 0; c < width; c++) {
+                    line.push(currentGrid[r * width + c] === 1 ? 1 : 0);
+                }
+                if (!validateLine(line, rowClues[r])) {
+                    if (manual) showMsg("Incorrect", `Row ${r+1} does not match the clues.`);
+                    return;
+                }
+            }
+            
+            for (let c = 0; c < width; c++) {
+                let line = [];
+                for (let r = 0; r < height; r++) {
+                    line.push(currentGrid[r * width + c] === 1 ? 1 : 0);
+                }
+                if (!validateLine(line, colClues[c])) {
+                    if (manual) showMsg("Incorrect", `Column ${c+1} does not match the clues.`);
+                    return;
+                }
+            }
+
+            progress[currentPuzzle.id].solved = true;
+            saveProgress();
+            document.getElementById('win-modal').style.display = 'flex';
+        }
+        
+        function validateLine(line, clues) {
+            let runs = [];
+            let count = 0;
+            for (let val of line) {
+                if (val === 1) count++;
+                else if (count > 0) { runs.push(count); count = 0; }
+            }
+            if (count > 0) runs.push(count);
+            
+            if (runs.length === 0 && (!clues || clues.length === 0)) return true;
+            if (!clues) return false;
+            
+            if (runs.length !== clues.length) return false;
+            for (let i = 0; i < clues.length; i++) {
+                if (runs[i] !== clues[i]) return false;
+            }
+            return true;
+        }
+
+        // --- MESSAGE MODAL ---
+        function showMsg(title, msg) {
+            document.getElementById('msg-title').innerText = title;
+            document.getElementById('msg-body').innerText = msg;
+            document.getElementById('msg-modal').style.display = 'flex';
+        }
+
+        function closeMsgModal() {
+            document.getElementById('msg-modal').style.display = 'none';
+        }
+
+        // --- PROGRESS SYNC ---
+        function loadLocalProgress() {
+            const saved = localStorage.getItem('rekindle_picross_progress');
+            if (saved) progress = JSON.parse(saved);
+        }
+
+        function loadCloudProgress() {
+            db.collection('users').doc(currentUser.uid).collection('apps').doc('picross')
+                .get().then((doc) => {
+                    if (doc.exists) progress = doc.data().progress || {};
+                    else loadLocalProgress();
+                });
+        }
+
+        function saveProgress() {
+            if (currentPuzzle) {
+                progress[currentPuzzle.id] = {
+                    solved: progress[currentPuzzle.id]?.solved || false,
+                    grid: currentGrid
+                };
+            }
+            localStorage.setItem('rekindle_picross_progress', JSON.stringify(progress));
+            
+            if (currentUser) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    db.collection('users').doc(currentUser.uid).collection('apps').doc('picross').set({
+                        progress: progress
+                    }, { merge: true });
+                }, 2000);
+            }
+        }
+
+    </script>
+</body>
+</html>
