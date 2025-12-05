@@ -1,6 +1,6 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: "\U0001F41E Report a bug"
+about: Use this template to report a problem with the current code.
 title: ''
 labels: ''
 assignees: ''
