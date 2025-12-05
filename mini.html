@@ -24,31 +24,17 @@
 
         body {
             image-rendering: -webkit-crisp-edges;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -o-crisp-edges;
             image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            -ms-interpolation-mode: nearest-neighbor;
-            background-repeat: repeat;
-            background-position: top left;
-
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            background-repeat: repeat;
-            background-position: top left;
-
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            background-repeat: repeat;
-            background-position: top left;
-
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 20px;
             height: 100vh;
             overflow: hidden;
-            background-color: #e5e5e5;
+            background-color: #e5e5e5; /* Fallback color */
+            
+            /* Background Image Support */
+            background-repeat: repeat;
+            background-position: top left;
             
             display: flex;
             flex-direction: column;
@@ -68,7 +54,7 @@
             height: auto;
             max-height: 98vh;
             width: 98%;
-            max-width: 600px; /* Narrower for Mini */
+            max-width: 600px;
             position: relative;
         }
 
@@ -153,7 +139,7 @@
         }
 
         .clue-list-group {
-            width: 48%; /* Ensure two columns fit */
+            width: 48%;
             text-align: left;
         }
 
@@ -173,7 +159,7 @@
             gap: 0;
             border: 4px solid black;
             width: 100%; 
-            max-width: 400px; /* Constrain width so cells are big */
+            max-width: 400px;
             background: black;
             margin-bottom: 15px;
             box-sizing: border-box;
@@ -185,7 +171,6 @@
             font-weight: bold; cursor: pointer; text-transform: uppercase;
             width: 100%; height: 100%;
             user-select: none;
-            /* Default font size for 5x5 grid (will be adjusted in JS) */
             font-size: 2.2rem;
         }
 
@@ -300,7 +285,7 @@
     </div>
 
     <script>
-        // --- FIREBASE CONFIG ---
+        // --- FIREBASE CONFIG (Placeholder) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
@@ -318,13 +303,13 @@
         let currentPuzzle = null;
         let gridState = []; 
         let selectedIndex = -1;
-        let direction = 'across'; 
+        let direction = 'Across'; // Case matches JSON "Across" / "Down"
         let currentUser = null;
         let saveTimer = null;
         
         // --- INIT ---
         window.onload = () => {
-            loadWallpaper();
+            loadWallpaper(); // Call wallpaper loading on startup
             initKeyboard();
             
             auth.onAuthStateChanged(user => {
@@ -349,7 +334,7 @@
             if(img) document.body.style.backgroundImage = img;
             if(size) document.body.style.backgroundSize = size;
         }
-        
+
         function resizeGrid() {
             const container = document.getElementById('grid-container');
             if (container) {
@@ -363,6 +348,7 @@
         async function loadProgress() {
             let data = null;
             
+            // Try cloud first if logged in
             if (currentUser) {
                 try {
                     const doc = await db.collection('users').doc(currentUser.uid).collection('apps').doc('mini_crossword').get();
@@ -372,6 +358,7 @@
                 } catch(e) { console.error("Cloud load error", e); }
             }
             
+            // Try local if no cloud data
             if (!data) {
                 const local = localStorage.getItem('mini_crossword_progress');
                 if (local) {
@@ -416,22 +403,16 @@
         }
 
         function restoreGame() {
-            // Check if it's a 5x5 puzzle (our target format)
-            if (currentPuzzle.rows !== 5 || currentPuzzle.cols !== 5) {
-                console.warn("Restored puzzle is not 5x5. Starting new game.");
-                newGame();
-                return;
-            }
-            
             renderGrid();
             renderClueList();
             
             // Find first playable square
-            const start = gridState.findIndex((c, i) => c === '' && currentPuzzle.grid[i] !== '.');
+            const start = gridState.findIndex(c => true);
             if (start !== -1) selectCell(start);
             else selectCell(0);
+            
             document.getElementById('clue-bar').innerText = "Game Resumed";
-            updateUI(); // Ensure clue displays
+            updateUI();
         }
 
         // --- GAME LOGIC ---
@@ -445,14 +426,16 @@
                 // Fetch from local JSON file
                 const res = await fetch('mini.json');
                 if (!res.ok) throw new Error("Failed to load mini.json");
-                const collection = await res.json();
-                const puzzles = collection.puzzles || [];
                 
-                if (puzzles.length === 0) throw new Error("No puzzles found in collection.");
+                // The JSON is an array of puzzle objects
+                const puzzles = await res.json();
+                
+                if (!puzzles || puzzles.length === 0) throw new Error("No puzzles found.");
                 
                 // Pick a random puzzle
-                const rawData = puzzles[Math.floor(Math.random() * puzzles.length)];
-                loadPuzzle(rawData);
+                const rawPuzzleData = puzzles[Math.floor(Math.random() * puzzles.length)];
+                
+                loadPuzzle(rawPuzzleData);
                 
             } catch (e) {
                 console.error(e);
@@ -461,61 +444,65 @@
         }
 
         function loadPuzzle(data) {
+            // Transform the data format from mini.json into a usable state
+            // Structure expected from mini.json: { id: 123, clues: [ {number: 1, direction: "Across", clue: "...", answer: "WORD"}, ... ] }
+            
+            // Initialize 5x5 grid
+            const rows = 5;
+            const cols = 5;
+            const totalCells = rows * cols;
+            
+            // Build the solution grid and clue mapping
+            let solutionGrid = new Array(totalCells).fill('');
+            let clueMap = { Across: {}, Down: {} };
+            let numMap = new Array(totalCells).fill(0);
+
+            data.clues.forEach(item => {
+                const dir = item.direction; // "Across" or "Down"
+                const num = item.number;
+                
+                // Save clue text
+                clueMap[dir][num] = item.clue;
+
+                // Place answer in grid (assuming standard 5x5 logic where 1A is Row 1, 2A is Row 2)
+                if (dir === "Across") {
+                    const rowIdx = num - 1; // 1-based to 0-based
+                    const ans = item.answer.toUpperCase();
+                    if(rowIdx < rows) {
+                        for(let c=0; c<cols; c++) {
+                            const gridIdx = rowIdx * cols + c;
+                            solutionGrid[gridIdx] = ans[c] || '';
+                            // Mark the number at the start of the row
+                            if(c === 0) numMap[gridIdx] = num;
+                        }
+                    }
+                } else if (dir === "Down") {
+                    // For down clues, we primarily rely on Across to fill letters, 
+                    // but we need to mark numbers on top row
+                    const colIdx = num - 1;
+                    if(colIdx < cols) {
+                        const gridIdx = colIdx; // Top row index
+                        numMap[gridIdx] = num; 
+                    }
+                }
+            });
+
             currentPuzzle = {
-                rows: data.size.rows,
-                cols: data.size.cols,
-                // The grid property in mini.json is a continuous string (e.g., "AGENDMOTOR...")
-                // Since there are no black squares, we use this directly as the solution.
-                grid: data.grid.split(''), 
-                clues: { across: {}, down: {} },
-                nums: Array(data.size.rows * data.size.cols).fill(0) // Initialize nums array
+                id: data.id,
+                rows: rows,
+                cols: cols,
+                solution: solutionGrid,
+                clues: clueMap,
+                nums: numMap
             };
             
-            // Reconstruct Clues and Gridnums
-            let clueNum = 1;
-            let gridIndex = 0;
-            
-            // Handle Across Clues (simple sequential numbers 1-5 for 5x5)
-            for (const [key, value] of Object.entries(data.clues.across)) {
-                 const num = parseInt(key); // Should be 1 through 5
-                 currentPuzzle.clues.across[num] = value.clue;
-                 
-                 // Since it's a dense 5x5 grid, numbers are only needed for the start of the word (first cell of the row/col)
-                 if (value.row !== undefined && value.col !== undefined) {
-                     gridIndex = value.row * currentPuzzle.cols + value.col;
-                     currentPuzzle.nums[gridIndex] = num;
-                 }
-            }
-            
-            // Handle Down Clues (We must infer these because mini.json omits them)
-            // For a dense 5x5 grid, every cell (0,0) to (0,4) must start a down clue.
-            for (let c = 0; c < currentPuzzle.cols; c++) {
-                 // Check if the top cell already has a number from the across clues
-                 if (currentPuzzle.nums[c] === 0) {
-                     currentPuzzle.nums[c] = clueNum;
-                 } else {
-                     clueNum = currentPuzzle.nums[c];
-                 }
-                 
-                 // Down answers are just the vertical letters
-                 const answer = [];
-                 for (let r = 0; r < currentPuzzle.rows; r++) {
-                     answer.push(currentPuzzle.grid[r * currentPuzzle.cols + c]);
-                 }
-                 
-                 currentPuzzle.clues.down[clueNum] = `(Down clue for ${answer.join('')})`;
-                 clueNum++;
-            }
-
-
-            gridState = new Array(currentPuzzle.rows * currentPuzzle.cols).fill('');
+            gridState = new Array(totalCells).fill('');
             
             saveProgress();
             renderGrid();
             renderClueList();
             
-            const start = currentPuzzle.grid.findIndex(c => c !== '.');
-            if (start !== -1) selectCell(start);
+            selectCell(0);
         }
 
         function renderGrid() {
@@ -534,26 +521,22 @@
             const fontSize = '2.2rem';
             const numSize = '0.7rem';
 
-            for (let i = 0; i < currentPuzzle.grid.length; i++) {
+            for (let i = 0; i < currentPuzzle.solution.length; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.id = `cell-${i}`;
                 cell.style.fontSize = fontSize;
                 
-                // Assuming mini-crosswords have no black squares based on data structure
-                // But keeping compatibility logic just in case
-                if (currentPuzzle.grid[i] === '.') {
-                    cell.classList.add('black');
-                } else {
-                    const num = currentPuzzle.nums[i];
-                    if (num && num !== 0) {
-                        cell.innerHTML = `<span class="cell-num" style="font-size:${numSize}">${num}</span>`;
-                    }
-                    const content = document.createElement('span');
-                    content.innerText = gridState[i] || '';
-                    cell.appendChild(content);
-                    cell.onclick = () => handleCellClick(i);
+                const num = currentPuzzle.nums[i];
+                if (num && num !== 0) {
+                    cell.innerHTML = `<span class="cell-num" style="font-size:${numSize}">${num}</span>`;
                 }
+
+                const content = document.createElement('span');
+                content.innerText = gridState[i] || '';
+                cell.appendChild(content);
+                cell.onclick = () => handleCellClick(i);
+
                 container.appendChild(cell);
             }
             
@@ -566,22 +549,23 @@
             acrossContainer.innerHTML = '<h4>ACROSS</h4>';
             downContainer.innerHTML = '<h4>DOWN</h4>';
             
-            const acrossClues = currentPuzzle.clues.across;
-            const downClues = currentPuzzle.clues.down;
+            const acrossClues = currentPuzzle.clues.Across;
+            const downClues = currentPuzzle.clues.Down;
 
-            for (const num in acrossClues) {
+            // Sort keys numerically
+            Object.keys(acrossClues).sort((a,b)=>a-b).forEach(num => {
                 const div = document.createElement('div');
                 div.className = 'clue-item';
                 div.innerHTML = `<b>${num}.</b> ${acrossClues[num]}`;
                 acrossContainer.appendChild(div);
-            }
+            });
 
-            for (const num in downClues) {
+            Object.keys(downClues).sort((a,b)=>a-b).forEach(num => {
                 const div = document.createElement('div');
                 div.className = 'clue-item';
                 div.innerHTML = `<b>${num}.</b> ${downClues[num]}`;
                 downContainer.appendChild(div);
-            }
+            });
         }
 
         function initKeyboard() {
@@ -610,15 +594,13 @@
 
         // --- INTERACTION ---
         function selectCell(index) {
-            if (currentPuzzle.grid[index] === '.') return;
             selectedIndex = index;
             updateUI();
         }
 
         function handleCellClick(index) {
-            if (currentPuzzle.grid[index] === '.') return;
             if (index === selectedIndex) {
-                direction = direction === 'across' ? 'down' : 'across';
+                direction = direction === 'Across' ? 'Down' : 'Across';
             } else {
                 selectedIndex = index;
             }
@@ -641,10 +623,18 @@
             const selEl = document.getElementById(`cell-${selectedIndex}`);
             if(selEl) selEl.classList.add('selected');
 
-            const startIdx = indices[0];
-            const num = currentPuzzle.nums[startIdx];
-            const clueText = currentPuzzle.clues[direction][num] || "(No Clue)";
-            document.getElementById('clue-bar').innerText = `${num} ${direction.toUpperCase()}: ${clueText}`;
+            // Find clue number based on the first index of the active word
+            let startIdx = indices[0];
+            // In this specific JSON structure, the number corresponds to row+1 or col+1
+            let clueNum = 0;
+            if(direction === 'Across') {
+                clueNum = Math.floor(startIdx / 5) + 1;
+            } else {
+                clueNum = (startIdx % 5) + 1;
+            }
+
+            const clueText = currentPuzzle.clues[direction][clueNum] || "(No Clue)";
+            document.getElementById('clue-bar').innerText = `${clueNum} ${direction.toUpperCase()}: ${clueText}`;
         }
 
         function getActiveWordIndices(idx, dir) {
@@ -654,22 +644,11 @@
             const r = Math.floor(idx / cols);
             const c = idx % cols;
 
-            if (dir === 'across') {
-                let startC = c;
-                while (startC > 0 && currentPuzzle.grid[r * cols + (startC - 1)] !== '.') startC--;
-                let currC = startC;
-                while (currC < cols && currentPuzzle.grid[r * cols + currC] !== '.') {
-                    indices.push(r * cols + currC);
-                    currC++;
-                }
+            // Since it's a 5x5 dense grid, Across is always the full row, Down is always full column
+            if (dir === 'Across') {
+                for(let i=0; i<cols; i++) indices.push(r * cols + i);
             } else {
-                let startR = r;
-                while (startR > 0 && currentPuzzle.grid[(startR - 1) * cols + c] !== '.') startR--;
-                let currR = startR;
-                while (currR < rows && currentPuzzle.grid[currR * cols + c] !== '.') {
-                    indices.push(currR * cols + c);
-                    currR++;
-                }
+                for(let i=0; i<rows; i++) indices.push(i * cols + c);
             }
             return indices;
         }
@@ -694,32 +673,27 @@
             const cols = currentPuzzle.cols;
             const total = currentPuzzle.rows * cols;
             let next = selectedIndex;
-            let safety = 0;
-
-            do {
-                if (direction === 'across') next += step;
-                else next += (step * cols);
-                
-                if (next < 0 || next >= total) {
-                    // Wrap to start of current word if stepped off edge
-                    const currentIndices = getActiveWordIndices(selectedIndex, direction);
-                    if (step === 1) next = currentIndices[0]; // Wrap to start if going past end
-                    if (step === -1) next = currentIndices[currentIndices.length - 1]; // Wrap to end if going past start
-                    break;
-                }
-                safety++;
-            } while (safety < 100 && currentPuzzle.grid[next] === '.');
-
-            if (currentPuzzle.grid[next] !== '.') {
-                selectedIndex = next;
-                updateUI();
+            
+            // Simple movement logic for 5x5 grid
+            if (direction === 'Across') {
+                next += step;
+                // Boundary check for rows
+                const rowOld = Math.floor(selectedIndex / cols);
+                const rowNew = Math.floor(next / cols);
+                if (rowNew !== rowOld || next < 0 || next >= total) return; 
+            } else {
+                next += (step * cols);
+                if (next < 0 || next >= total) return;
             }
+
+            selectedIndex = next;
+            updateUI();
         }
 
         function renderContent() {
             gridState.forEach((char, i) => {
                 const cell = document.getElementById(`cell-${i}`);
-                if (!cell || cell.classList.contains('black')) return;
+                if (!cell) return;
                 
                 let span = cell.querySelector('span:not(.cell-num)');
                 if (!span) {
@@ -739,15 +713,12 @@
 
             for(let i=0; i<gridState.length; i++) {
                 const userChar = gridState[i];
-                const solutionChar = currentPuzzle.grid[i];
-
-                if (solutionChar === '.') continue;
+                const solutionChar = currentPuzzle.solution[i];
 
                 if (!userChar) {
                     isFull = false;
                 } else {
                     isEmpty = false;
-                    // Mini puzzles are typically upper case only
                     if (userChar.toUpperCase() !== solutionChar.toUpperCase()) {
                         hasError = true;
                     }
@@ -768,10 +739,7 @@
                 clearSave();
             }
             setTimeout(() => {
-                 // Restore clue after msg
                  if(bar.style.backgroundColor !== "black") {
-                     bar.style.backgroundColor = "black";
-                     bar.style.color = "white";
                      updateUI();
                  }
             }, 2000);
@@ -780,17 +748,39 @@
         function solveSelectedWord() {
             if (!currentPuzzle || selectedIndex === -1) return;
             
+            // 1. Fill current word
             const indices = getActiveWordIndices(selectedIndex, direction);
             indices.forEach(idx => {
-                if (currentPuzzle.grid[idx] !== '.') {
-                    gridState[idx] = currentPuzzle.grid[idx];
-                }
+                gridState[idx] = currentPuzzle.solution[idx];
             });
             saveProgress();
             renderContent();
-            
-            // Move to next word (simplified)
-            moveSelection(1);
+
+            // 2. Move to next word (smart navigation)
+            if (direction === 'Across') {
+                const currentRow = Math.floor(selectedIndex / 5);
+                if (currentRow < 4) {
+                    // Go to start of next row
+                    selectedIndex = (currentRow + 1) * 5;
+                } else {
+                    // Wrap to Down, col 1
+                    direction = 'Down';
+                    selectedIndex = 0;
+                }
+            } else {
+                const currentCol = selectedIndex % 5;
+                if (currentCol < 4) {
+                    // Go to top of next column
+                    selectedIndex = currentCol + 1;
+                } else {
+                    // Wrap to Across, row 1
+                    direction = 'Across';
+                    selectedIndex = 0;
+                }
+            }
+
+            // 3. Update Visuals
+            updateUI();
         }
         
         // --- NEW GAME MODAL ---
