@@ -169,6 +169,33 @@
             display: flex;
             flex-direction: column;
         }
+        
+        /* FILTER BAR */
+        .filter-bar {
+            display: flex;
+            padding: 8px;
+            border-bottom: 1px solid #ccc;
+            background: #f9f9f9;
+            gap: 10px;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .filter-btn {
+            background: white;
+            border: 1px solid #999;
+            padding: 4px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 12px;
+        }
+
+        .filter-btn.active {
+            background: black;
+            color: white;
+            border-color: black;
+            font-weight: bold;
+        }
 
         .article {
             padding: 15px;
@@ -182,6 +209,18 @@
 
         .article:last-child { border-bottom: none; }
         .article:active { background: #f0f0f0; }
+        
+        /* Read State Styling */
+        .article.read .article-title {
+            color: #666;
+            font-weight: normal;
+        }
+        .article.read .article-snippet {
+            color: #999;
+        }
+        .article.read {
+            background: #fafafa;
+        }
 
         .article-content {
             flex: 1;
@@ -233,6 +272,25 @@
             filter: grayscale(100%) contrast(120%);
         }
 
+        /* LIST FOOTER CONTROLS */
+        .list-footer-controls {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #ccc;
+            margin-top: auto; /* Push to bottom of list content */
+            background: #f9f9f9;
+        }
+
+        .wide-btn {
+            width: 100%;
+            max-width: 300px;
+            padding: 12px;
+            font-size: 0.9rem;
+        }
+
         /* VIEW: SOURCES (MANAGE) */
         #view-sources {
             display: none;
@@ -278,6 +336,10 @@
             padding: 4px 8px;
             font-size: 0.75rem;
             box-shadow: 1px 1px 0 black;
+        }
+        
+        .read-toggle-btn {
+            min-width: 100px;
         }
 
         .source-item {
@@ -376,11 +438,21 @@
             border-bottom: 2px solid black;
             background: #eee;
         }
+        
+        .modal-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
 
         .modal-title {
             font-weight: bold;
             font-size: 0.9rem;
             text-transform: uppercase;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            max-width: 150px;
         }
 
         .close-btn {
@@ -446,10 +518,16 @@
             
             <!-- HEADLINES -->
             <div id="view-headlines">
-                <div class="loading-msg">Welcome. Add sources to begin.</div>
+                <div class="filter-bar">
+                    <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn" id="filter-unread" onclick="setFilter('unread')">Unread</button>
+                </div>
+                <div id="articles-container">
+                    <div class="loading-msg">Welcome. Add sources to begin.</div>
+                </div>
             </div>
             
-            <div class="refresh-float" onclick="fetchAllFeeds()" title="Refresh">↻</div>
+            <div class="refresh-float" onclick="resetAndFetch()" title="Refresh">↻</div>
 
             <!-- SOURCES -->
             <div id="view-sources">
@@ -482,8 +560,9 @@
             <div class="article-view-box">
                 <div class="modal-header">
                     <span class="modal-title">Reader</span>
-                    <div style="display:flex; gap:10px;">
-                        <button class="sys-btn small" onclick="openExternal()">Open Externally</button>
+                    <div class="modal-controls">
+                        <button class="sys-btn small read-toggle-btn" id="read-toggle" onclick="toggleReadStatusInModal()">Mark Unread</button>
+                        <button class="sys-btn small" onclick="openExternal()">Open Ext</button>
                         <button class="close-btn" onclick="closeArticleModal()">X</button>
                     </div>
                 </div>
@@ -499,6 +578,18 @@
                 <div class="modal-buttons">
                     <button class="sys-btn" onclick="confirmDelete()">Remove</button>
                     <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MARK READ CONFIRMATION MODAL -->
+        <div id="mark-read-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Mark All Read?</h3>
+                <p>This will mark all currently visible articles as read.</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="confirmMarkAllRead()">Yes</button>
+                    <button class="sys-btn" onclick="closeModal('mark-read-modal')">Cancel</button>
                 </div>
             </div>
         </div>
@@ -526,16 +617,22 @@
         let articlesCache = [];
         let currentArticleUrl = "";
         let feedToDeleteId = null;
+        let readItems = new Set(); // Store read article URLs
+        let filterMode = 'all'; // 'all' or 'unread'
+        let saveTimer = null;
+        let fetchCount = 10; // Items per source to fetch
 
         // --- INIT ---
         window.onload = () => {
             loadWallpaper();
+            loadReadStatus();
             
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
                     document.getElementById('status-bar').innerText = "Synced: " + user.email;
                     loadCloudFeeds();
+                    loadCloudReadStatus(); // Attempt to sync read status if we were doing that
                 } else {
                     document.getElementById('status-bar').innerText = "Guest Mode (Local)";
                     loadLocalFeeds();
@@ -565,16 +662,108 @@
             const refreshBtn = document.querySelector('.refresh-float');
             refreshBtn.style.display = viewName === 'headlines' ? 'flex' : 'none';
 
-            if (viewName === 'headlines' && articlesCache.length === 0) {
-                fetchAllFeeds();
+            if (viewName === 'headlines') {
+                // Reset fetch count when switching to headlines view for fresh start?
+                // No, user might want to keep reading.
+                if (articlesCache.length === 0) resetAndFetch();
+            }
+        }
+        
+        function setFilter(mode) {
+            filterMode = mode;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`filter-${mode}`).classList.add('active');
+            renderArticles();
+        }
+
+        // --- READ STATUS MGMT ---
+        function loadReadStatus() {
+            try {
+                const stored = JSON.parse(localStorage.getItem('rss_read_items'));
+                if (Array.isArray(stored)) {
+                    readItems = new Set(stored);
+                }
+            } catch(e) {
+                readItems = new Set();
             }
         }
 
-        // --- DATA MGMT ---
+        function saveReadStatus() {
+            const array = Array.from(readItems);
+            localStorage.setItem('rss_read_items', JSON.stringify(array));
+            
+            // Simple Cloud Sync for read status
+            if (currentUser) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    // Store as a single document array to avoid write costs of individual docs
+                    // Limit size to prevent document bloat (keep last 500 read items)
+                    let saveArray = array;
+                    if (saveArray.length > 500) saveArray = saveArray.slice(saveArray.length - 500);
+                    
+                    db.collection('users').doc(currentUser.uid).collection('settings').doc('rss_read_status').set({
+                        urls: saveArray
+                    }, { merge: true });
+                }, 2000);
+            }
+        }
+        
+        function loadCloudReadStatus() {
+             db.collection('users').doc(currentUser.uid).collection('settings').doc('rss_read_status').get().then(doc => {
+                 if (doc.exists && doc.data().urls) {
+                     const cloudUrls = doc.data().urls;
+                     // Merge
+                     cloudUrls.forEach(url => readItems.add(url));
+                     saveReadStatus(); // Sync back merged to local
+                     renderArticles(); // Refresh UI
+                 }
+             });
+        }
+
+        function markAsRead(url) {
+            if(!url) return;
+            readItems.add(url);
+            saveReadStatus();
+        }
+
+        function markAsUnread(url) {
+            if(!url) return;
+            readItems.delete(url);
+            saveReadStatus();
+        }
+        
+        function toggleReadStatusInModal() {
+            if (!currentArticleUrl) return;
+            
+            const btn = document.getElementById('read-toggle');
+            if (readItems.has(currentArticleUrl)) {
+                markAsUnread(currentArticleUrl);
+                btn.innerText = "Mark Read";
+            } else {
+                markAsRead(currentArticleUrl);
+                btn.innerText = "Mark Unread";
+            }
+            // Refresh background list
+            renderArticles();
+        }
+
+        function openMarkReadModal() {
+            document.getElementById('mark-read-modal').style.display = 'flex';
+        }
+
+        function confirmMarkAllRead() {
+            articlesCache.forEach(a => readItems.add(a.link));
+            saveReadStatus();
+            
+            closeModal('mark-read-modal');
+            renderArticles();
+        }
+
+        // --- FEED DATA MGMT ---
         function loadLocalFeeds() {
             feeds = JSON.parse(localStorage.getItem('rss_feeds')) || [];
             renderSources();
-            if (feeds.length > 0) fetchAllFeeds();
+            if (feeds.length > 0) resetAndFetch();
         }
 
         function loadCloudFeeds() {
@@ -585,9 +774,9 @@
                         feeds.push({ id: doc.id, ...doc.data() });
                     });
                     renderSources();
-                    if (feeds.length > 0) fetchAllFeeds();
+                    if (feeds.length > 0) resetAndFetch();
                     else {
-                        document.getElementById('view-headlines').innerHTML = '<div class="loading-msg">No feeds subscribed. Go to Sources to add some.</div>';
+                        document.getElementById('articles-container').innerHTML = '<div class="loading-msg">No feeds subscribed. Go to Sources to add some.</div>';
                     }
                 });
         }
@@ -603,7 +792,7 @@
                 feeds.push({ id: Date.now().toString(), name: name, url: url });
                 localStorage.setItem('rss_feeds', JSON.stringify(feeds));
                 renderSources();
-                fetchAllFeeds();
+                resetAndFetch();
             }
         }
 
@@ -622,7 +811,7 @@
                 feeds = feeds.filter(f => f.id !== id);
                 localStorage.setItem('rss_feeds', JSON.stringify(feeds));
                 renderSources();
-                fetchAllFeeds();
+                resetAndFetch();
             }
             closeModal('delete-modal');
             feedToDeleteId = null;
@@ -685,19 +874,59 @@
         }
 
         // --- FETCHING & RENDERING NEWS ---
+        
+        function resetAndFetch() {
+            fetchCount = 10;
+            fetchAllFeeds();
+        }
+        
         async function fetchAllFeeds() {
-            const container = document.getElementById('view-headlines');
+            const container = document.getElementById('articles-container');
+            const loadBtn = document.getElementById('load-more-btn');
+            
+            if (loadBtn) {
+                loadBtn.disabled = true;
+                loadBtn.innerText = "Loading...";
+            }
+
             if(feeds.length === 0) {
                 container.innerHTML = '<div class="loading-msg">No feeds subscribed.</div>';
                 return;
             }
 
-            container.innerHTML = '<div class="loading-msg">Fetching updates...</div>';
-            articlesCache = [];
+            if (fetchCount === 10 && articlesCache.length === 0) {
+                container.innerHTML = '<div class="loading-msg">Fetching updates...</div>';
+            }
 
-            // Fetch in parallel
-            const promises = feeds.map(feed => fetchFeed(feed));
-            await Promise.all(promises);
+            // Use a temp cache to collect new results
+            let newArticlesCache = [];
+
+            try {
+                // Fetch in parallel
+                const promises = feeds.map(feed => fetchFeed(feed, newArticlesCache));
+                await Promise.all(promises);
+            } catch (e) {
+                console.error("Fetch error", e);
+            }
+
+            // SAFETY CHECK: If load more failed (0 items), don't wipe existing list
+            if (fetchCount > 10 && newArticlesCache.length === 0) {
+                console.warn("Load More failed. Restoring previous state.");
+                fetchCount = Math.max(10, fetchCount - 10); // Revert count
+                
+                // Notify user via status bar
+                const statusEl = document.getElementById('status-bar');
+                const oldText = statusEl.innerText;
+                statusEl.innerText = "Unable to load more articles.";
+                setTimeout(() => statusEl.innerText = oldText, 3000);
+
+                // Re-render existing list to reset button state
+                renderArticles();
+                return;
+            }
+
+            // Update cache
+            articlesCache = newArticlesCache;
 
             // Sort by date desc
             articlesCache.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
@@ -705,8 +934,10 @@
             renderArticles();
         }
 
-        async function fetchFeed(feed) {
-            const api = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url);
+        async function fetchFeed(feed, targetArray) {
+            // Request more items if available by using count parameter
+            // Add cache buster time to avoid stale data if we just increased count
+            const api = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url) + '&count=' + fetchCount;
             
             try {
                 const res = await fetch(api);
@@ -739,7 +970,7 @@
                             }
                         }
 
-                        articlesCache.push({
+                        targetArray.push({
                             source: feed.name,
                             title: item.title,
                             link: item.link,
@@ -755,20 +986,36 @@
         }
 
         function renderArticles() {
-            const container = document.getElementById('view-headlines');
+            const container = document.getElementById('articles-container');
             container.innerHTML = '';
+            
+            // Filter articles
+            const filtered = articlesCache.filter(a => {
+                if (filterMode === 'unread') {
+                    return !readItems.has(a.link);
+                }
+                return true;
+            });
 
-            if (articlesCache.length === 0) {
-                container.innerHTML = '<div class="loading-msg">No articles found. Check your feed URLs.</div>';
+            if (filtered.length === 0) {
+                if (filterMode === 'unread' && articlesCache.length > 0) {
+                     container.innerHTML = '<div class="loading-msg">All caught up!</div>';
+                } else if (articlesCache.length === 0) {
+                     container.innerHTML = '<div class="loading-msg">No articles found. Check your feed URLs.</div>';
+                } else {
+                     container.innerHTML = '<div class="loading-msg">No articles match filter.</div>';
+                }
                 return;
             }
 
-            articlesCache.forEach(article => {
+            // Display All (No limit slicing anymore)
+            filtered.forEach(article => {
                 const date = new Date(article.pubDate);
                 const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const isRead = readItems.has(article.link);
 
                 const div = document.createElement('div');
-                div.className = 'article';
+                div.className = `article ${isRead ? 'read' : ''}`;
                 div.onclick = () => openArticle(article.link);
                 
                 let imgHtml = '';
@@ -787,6 +1034,43 @@
                 `;
                 container.appendChild(div);
             });
+
+            // FOOTER CONTROLS
+            const footer = document.createElement('div');
+            footer.className = 'list-footer-controls';
+            
+            // Container for side-by-side buttons
+            const btnGroup = document.createElement('div');
+            btnGroup.style.display = 'flex';
+            btnGroup.style.gap = '10px';
+            btnGroup.style.width = '100%';
+            btnGroup.style.justifyContent = 'center';
+
+            // Always show Load More button to allow fetching deeper into history
+            const moreBtn = document.createElement('button');
+            moreBtn.className = 'sys-btn wide-btn';
+            moreBtn.id = 'load-more-btn';
+            moreBtn.innerText = `Load More`;
+            moreBtn.style.flex = '1';
+            moreBtn.onclick = loadMore;
+            btnGroup.appendChild(moreBtn);
+
+            if (filtered.length > 0) {
+                 const markBtn = document.createElement('button');
+                 markBtn.className = 'sys-btn wide-btn';
+                 markBtn.innerText = 'Mark All Read';
+                 markBtn.style.flex = '1';
+                 markBtn.onclick = openMarkReadModal;
+                 btnGroup.appendChild(markBtn);
+            }
+            
+            footer.appendChild(btnGroup);
+            container.appendChild(footer);
+        }
+        
+        function loadMore() {
+            fetchCount += 10;
+            fetchAllFeeds();
         }
 
         function stripHtml(html) {
@@ -799,8 +1083,18 @@
         // --- MODAL READER ---
         async function openArticle(url) {
             currentArticleUrl = url;
+            
+            // Mark as Read
+            markAsRead(url);
+            // Update UI in background so it shows as read when closed
+            renderArticles();
+            
             const modal = document.getElementById('article-modal');
             const frame = document.getElementById('article-frame');
+            const btn = document.getElementById('read-toggle');
+            
+            // Set button text correctly
+            btn.innerText = "Mark Unread";
             
             modal.style.display = 'flex';
             // Show loading state
