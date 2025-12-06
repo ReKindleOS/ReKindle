@@ -1,10 +1,13 @@
 // 1. Version Bump
-const CACHE_NAME = 'rekindle-os-v5';
+const CACHE_NAME = 'rekindle-os-v7';
 
 // 2. Clean URLs in Cache List (Removed .html from apps)
 const ASSETS_TO_CACHE = [
     './',
-    './index',
+    './index',  
+    './donate.svg',
+    './logo.svg',
+/* 
     './privacy',
     './manifest.json',
     './icons.js',
@@ -13,7 +16,6 @@ const ASSETS_TO_CACHE = [
     // Core System Apps
     './settings',
     './browser',
-    './privacy',
     // Productivity
     './tasks',
     './calendar',
@@ -22,9 +24,9 @@ const ASSETS_TO_CACHE = [
     './quicktodo',
     './pomodoro',
     './streak',
-    './habittracker',
     './flashcards',
     // Tools
+    './mindmap',
     './calculator',
     './converter',
     './clocks',
@@ -50,10 +52,10 @@ const ASSETS_TO_CACHE = [
     './napkin',
     './kindlechat',
     './standardebooks',
+    './libby',
+    './sheetmusic',
     // Games
     './wordle',
-    './connections',
-    './spellingbee',
     './crossword',
     './sudoku',
     './solitaire',
@@ -73,11 +75,17 @@ const ASSETS_TO_CACHE = [
     './nerdle',
     './words',
     './breathing',
+    './checkers',
+    './codebreaker',
+    './mini',
+    './nonograms',
     // Multiplayer
     './2pchess',
     './2pbattleships',
     './2pconnect4',
-    './2ptictactoe'
+    './2ptictactoe',
+    './2pcheckers'
+*/    
 ];
 
 // Helper to clean redirected responses (Fixes Safari/Chrome errors)
