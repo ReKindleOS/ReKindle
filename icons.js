@@ -254,7 +254,6 @@ const APPS = [
         id: 'checkers', 
         name: 'Checkers', 
         cat: 'games',
-        beta: true,
         icon: '<circle cx="16" cy="16" r="10" fill="white" stroke="black" stroke-width="2"/>' 
     },
 	{ 
@@ -302,8 +301,7 @@ const APPS = [
     },
     { 
         id: 'nerdle', 
-        name: 'Nerdle', 
-        beta: true,        
+        name: 'Nerdle',      
         cat: 'games', 
         icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><text x="16" y="20" font-size="9" font-family="monospace" text-anchor="middle">1+2=3</text>'
     },
@@ -311,7 +309,6 @@ const APPS = [
         id: 'nonograms', 
         name: 'Nonograms', 
         cat: 'games',
-        beta: true,
         icon: '<rect x="6" y="6" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><line x1="11" y1="6" x2="11" y2="26"/><line x1="21" y1="6" x2="21" y2="26"/><line x1="6" y1="11" x2="26" y2="11"/><line x1="6" y1="21" x2="26" y2="21"/>'
     },
     { 
@@ -380,7 +377,6 @@ const APPS = [
         id: '2pcheckers', 
         name: 'Checkers 2P', 
         cat: 'two_player',
-        beta: true,
         icon: '<circle cx="14" cy="18" r="7" fill="white" stroke="black" stroke-width="2"/><circle cx="20" cy="14" r="7" fill="black" stroke="black" stroke-width="2"/>' 
     },
     { 
