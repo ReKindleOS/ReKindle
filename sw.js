@@ -1,10 +1,11 @@
 // 1. Version Bump
-const CACHE_NAME = 'rekindle-os-v4';
+const CACHE_NAME = 'rekindle-os-v5';
 
 // 2. Clean URLs in Cache List (Removed .html from apps)
 const ASSETS_TO_CACHE = [
     './',
-    './index.html',
+    './index',
+    './privacy',
     './manifest.json',
     './icons.js',
     './logo.svg',
@@ -21,6 +22,8 @@ const ASSETS_TO_CACHE = [
     './quicktodo',
     './pomodoro',
     './streak',
+    './habittracker',
+    './flashcards',
     // Tools
     './calculator',
     './converter',
@@ -49,6 +52,8 @@ const ASSETS_TO_CACHE = [
     './standardebooks',
     // Games
     './wordle',
+    './connections',
+    './spellingbee',
     './crossword',
     './sudoku',
     './solitaire',
