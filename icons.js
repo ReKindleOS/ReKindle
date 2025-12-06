@@ -164,6 +164,14 @@ const APPS = [
         desc: 'Free reading!',
 		icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10"/><line x1="10" y1="14" x2="20" y2="14"/><line x1="10" y1="18" x2="20" y2="18"/>'
 	},
+    { 
+        id: 'epub', 
+        name: 'ePub', 
+        cat: 'lifestyle', 
+        beta: true,         
+        desc: 'Add books from a URL',
+        icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><path d="M15 12 v8 M11 16 h8" stroke="black" stroke-width="2" fill="none"/>' 
+    },
     {
         id: 'standardebooks',
         name: 'Standard eBooks',

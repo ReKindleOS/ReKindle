@@ -34,6 +34,7 @@ const ASSETS_TO_CACHE = [
     './chat',
     // Lifestyle & Reading
     './reader',
+    './epub',
     './books',
     './rssreader',
     './newspaper',

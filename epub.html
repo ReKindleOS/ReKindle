@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Add Book</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 STYLE (Copied from reader.html) */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Georgia", serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px black;
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+            width: 95%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            position: relative;
+            flex-shrink: 0;
+            font-family: "Helvetica Neue", sans-serif;
+        }
+
+        .title-text { font-weight: bold; background: white; padding: 0 15px; z-index: 1; }
+        .title-stripes {
+            position: absolute; top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            z-index: 0;
+        }
+
+        .close-box {
+            position: absolute; left: 10px; width: 18px; height: 18px;
+            border: 2px solid black; background: white; z-index: 2;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-family: sans-serif; font-size: 0.9rem; line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 2px solid black;
+            background: #eee;
+            font-family: sans-serif;
+        }
+
+        .sys-btn {
+            background: white; border: 2px solid black; padding: 4px 12px;
+            font-weight: bold; cursor: pointer; box-shadow: 2px 2px 0 black; font-size: 0.85rem;
+        }
+        .sys-btn:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        #content-area {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .manual-add-box {
+            border: 2px solid black;
+            padding: 15px;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 500px;
+            margin: 20px auto;
+        }
+
+        .manual-add-box h3 { margin: 0 0 10px 0; font-size: 1.2rem; }
+        .manual-add-box p { margin: 0 0 15px 0; font-size: 0.9rem; line-height: 1.5; }
+
+        input[type="text"], input[type="url"] {
+            width: calc(100% - 20px);
+            padding: 8px; border: 2px solid black; font-family: inherit; font-size: 1rem;
+        }
+
+        #loading-indicator, .modal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: none; justify-content: center; align-items: center;
+            z-index: 50; flex-direction: column; gap: 10px; text-align: center; padding: 20px;
+        }
+        .modal-box {
+            background: white; border: 2px solid black; box-shadow: 8px 8px 0 black;
+            padding: 20px; width: 300px; text-align: center;
+        }
+        .modal-buttons { display: flex; justify-content: center; gap: 10px; margin-top: 15px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="location.href='index'">X</div>
+            <span class="title-text">Add Book from URL</span>
+        </div>
+
+        <div class="toolbar">
+            <button class="sys-btn" onclick="location.href='reader.html'">My Library</button>
+        </div>
+
+        <div id="content-area">
+            <div class="manual-add-box">
+                <h3>Add a Book to Your Library</h3>
+                <p>
+                    This tool adds any ePub book to your library from a direct download URL.<br><br>
+                    Finding a valid <code>.epub</code> link can be tricky. This is usually easiest on a computer's web browser. Look for public domain libraries like <a href="https://www.gutenberg.org/" target="_blank">Project Gutenberg</a>. Once you find a book, right-click its ePub download link and select "Copy Link Address".
+                </p>
+                <input type="url" id="book-url" placeholder="Paste ePub URL here...">
+                <input type="text" id="book-title" placeholder="Book Title...">
+                <input type="text" id="book-author" placeholder="Author Name...">
+                <button class="sys-btn" style="align-self: flex-start;" onclick="manualAdd()">Add to Library</button>
+            </div>
+        </div>
+
+        <!-- LOADING OVERLAY -->
+        <div id="loading-indicator">
+            <div id="loading-msg">Processing...</div>
+            <button id="loading-close" class="sys-btn" style="display:none;" onclick="document.getElementById('loading-indicator').style.display='none'">Close</button>
+        </div>
+
+        <!-- SUCCESS MODAL -->
+        <div id="success-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3>Success!</h3>
+                <p>The book has been added to your library.</p>
+                <div class="modal-buttons">
+                    <button class="sys-btn" onclick="closeModal('success-modal')">OK</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- STATE ---
+        let currentUser = null;
+        let cloudBooks = [];
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            auth.onAuthStateChanged(user => {
+                if(user) {
+                    currentUser = user;
+                    loadCloudLibrary();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const img = localStorage.getItem('rekindle_bg_image');
+            const size = localStorage.getItem('rekindle_bg_size');
+            if(img) {
+                document.body.style.backgroundImage = img;
+                if(size) document.body.style.backgroundSize = size;
+            }
+        }
+
+        async function loadCloudLibrary() {
+            if (!currentUser) return;
+            const snapshot = await db.collection('users').doc(currentUser.uid).collection('library').get();
+            snapshot.forEach(doc => {
+                cloudBooks.push({ ...doc.data(), docId: doc.id });
+            });
+        }
+
+        // --- HELPER: POLYFILL ARRAYBUFFER ---
+        function blobToArrayBuffer(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(blob);
+            });
+        }
+
+        // --- UI HELPERS ---
+        function showLoading(msg) {
+            const ind = document.getElementById('loading-indicator');
+            document.getElementById('loading-msg').innerText = msg;
+            document.getElementById('loading-close').style.display = 'none';
+            ind.style.display = 'flex';
+        }
+
+        function showLoadingError(msg) {
+            document.getElementById('loading-msg').innerText = "Error: " + msg;
+            document.getElementById('loading-close').style.display = 'inline-block';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function showSuccessModal() {
+            document.getElementById('success-modal').style.display = 'flex';
+        }
+
+        // --- ADD BOOK LOGIC ---
+
+        function manualAdd() {
+            const url = document.getElementById('book-url').value.trim();
+            const title = document.getElementById('book-title').value.trim();
+            const author = document.getElementById('book-author').value.trim();
+
+            if (!url || !title) {
+                alert("Please provide at least a URL and a Title.");
+                return;
+            }
+
+            fetchAndSaveBook(url, title, author || 'Unknown', true).then(success => {
+                if(success) {
+                    showSuccessModal();
+                    // Clear inputs
+                    document.getElementById('book-url').value = '';
+                    document.getElementById('book-title').value = '';
+                    document.getElementById('book-author').value = '';
+                }
+            });
+        }
+
+        // This function is a copy from reader.html, designed to be self-contained.
+        async function fetchAndSaveBook(url, title, author, addToCloud = true) {
+            showLoading(`Downloading ${title}...`);
+            await new Promise(r => setTimeout(r, 100));
+
+            try {
+                let blob = null;
+                // Proxy Strategy
+                try {
+                    const proxyUrl = "https://corsproxy.io/?" + encodeURIComponent(url);
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error("Status " + res.status);
+                    blob = await res.blob();
+                } catch(e1) {
+                    console.log("Primary proxy failed, attempting backup...");
+                    try {
+                        const backupUrl = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url);
+                        const res2 = await fetch(backupUrl);
+                        if (!res2.ok) throw new Error("Fetch failed");
+                        blob = await res2.blob();
+                    } catch(e2) {
+                        const finalUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+                        const res3 = await fetch(finalUrl);
+                        if (!res3.ok) throw new Error("Final Fetch failed");
+                        blob = await res3.blob();
+                    }
+                }
+
+                if (!blob || blob.size === 0) throw new Error("Empty file received from proxy.");
+
+                const buffer = await blobToArrayBuffer(blob);
+                const key = `book_${Date.now()}`;
+                
+                await localforage.setItem(key, buffer);
+                
+                const newEntry = { 
+                    title: title, 
+                    author: author || 'Unknown', 
+                    url: url,
+                    key: key, 
+                    date: Date.now(),
+                    cfi: null
+                };
+                
+                let index = await localforage.getItem('library_index') || [];
+                index.push(newEntry);
+                await localforage.setItem('library_index', index);
+                
+                if (addToCloud && currentUser) {
+                    const existing = cloudBooks.find(b => b.url === url);
+                    if (!existing) {
+                        await db.collection('users').doc(currentUser.uid).collection('library').add({
+                            title: title,
+                            author: author || 'Unknown',
+                            url: url,
+                            cfi: null,
+                            added: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                }
+
+                document.getElementById('loading-indicator').style.display = 'none';
+                return true;
+
+            } catch(e) {
+                showLoadingError(e.message);
+                return false;
+            }
+        }
+
+    </script>
+</body>
+</html>
