@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Codebreaker</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+            width: 95%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .screen {
+            display: none;
+            flex-grow: 1;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: white;
+        }
+        
+        .screen.active {
+            display: flex;
+        }
+
+        /* MENU SCREEN */
+        #screen-menu {
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #fafafa;
+            box-sizing: border-box;
+        }
+
+        .logo-area { text-align: center; margin-bottom: 30px; }
+        .logo-area h1 { font-size: 3rem; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
+        .logo-area p { margin: 5px 0 0 0; font-style: italic; color: #666; }
+
+        .difficulty-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .menu-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #ccc;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            transition: transform 0.1s;
+        }
+        .menu-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #ccc;
+            background: black;
+            color: white;
+        }
+
+        /* GAME SCREEN */
+        #screen-game {
+            padding: 10px;
+            box-sizing: border-box;
+            justify-content: space-between;
+        }
+
+        .game-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eee;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .icon-btn {
+            border: 2px solid black;
+            background: white;
+            min-width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            padding: 0 10px;
+        }
+        #guesses-left {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: bold;
+        }
+        .header-btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        .icon-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+
+        #game-board {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column-reverse; /* Guesses from bottom up */
+            gap: 5px;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+
+        .guess-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 5px;
+            border: 2px solid transparent;
+        }
+        .guess-row.active {
+            border-color: #000;
+            background: #f0f0f0;
+        }
+
+        .guess-pegs {
+            display: flex;
+            gap: 5px;
+        }
+
+        .peg {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: white;
+        }
+        .guess-row.active .peg {
+            border-color: #000;
+        }
+
+        .feedback-pegs {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px;
+            border-left: 2px solid #ccc;
+            padding-left: 10px;
+            width: 40px;
+            height: 40px;
+        }
+
+        .feedback-peg {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid #000;
+            background: white;
+        }
+        .feedback-peg.black {
+            background: black;
+        }
+
+        .pegs-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            /* Offset to the right to visually center the guess pegs */
+            transform: translateX(25px); /* (feedback pegs width (40px) + gap (10px)) / 2 */
+        }
+
+        #input-area {
+            border-top: 2px solid black;
+            padding-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .input-numbers {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .input-btn {
+            padding: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: 2px solid black;
+            background: white;
+            box-shadow: 2px 2px 0 black;
+            cursor: pointer;
+        }
+        .input-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+        .input-btn.submit {
+            grid-column: span 2;
+            background: #ddd;
+        }
+        .input-btn.delete {
+            background: #ddd;
+            grid-column-start: 2;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
+            max-width: 90%;
+        }
+        .modal-box h2 { margin-top: 0; }
+        .modal-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            margin-top: 20px;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+        }
+        .modal-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+        .modal-box .modal-btn + .modal-btn {
+            margin-left: 10px;
+        }
+        #auth-status {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            font-size: 0.7rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Codebreaker</span>
+        </div>
+
+        <!-- MENU SCREEN -->
+        <div id="screen-menu" class="screen active">
+            <div class="logo-area">
+                <h1>Codebreaker</h1>
+                <p>Crack the Secret Code</p>
+            </div>
+            
+            <div class="difficulty-container">
+                <button class="menu-btn" onclick="selectDifficulty('easy')">Easy <span>4 Pegs, 6 Numbers</span></button>
+                <button class="menu-btn" onclick="selectDifficulty('medium')">Medium <span>4 Pegs, 8 Numbers</span></button>
+                <button class="menu-btn" onclick="selectDifficulty('hard')">Hard <span>5 Pegs, 8 Numbers</span></button>
+            </div>
+            <div id="auth-status">Local Mode</div>
+        </div>
+
+        <!-- GAME SCREEN -->
+        <div id="screen-game" class="screen">
+            <div class="game-header">
+                <button class="icon-btn" onclick="showMenu()">←</button>
+                <span id="guesses-left">Guesses Left: 10</span>
+                <div class="header-btn-group">
+                    <button class="icon-btn" onclick="showInstructions()">?</button>
+                    <button class="icon-btn" onclick="confirmNewGame()">New</button>
+                </div>
+            </div>
+            <div id="game-board">
+                <!-- Guesses will be injected here -->
+            </div>
+            <div id="input-area">
+                <div id="input-numbers" class="input-numbers">
+                    <!-- Number buttons injected here -->
+                </div>
+                <div class="input-numbers">
+                    <button class="input-btn delete" onclick="handleInput('del')">DEL</button>
+                    <button class="input-btn submit" onclick="submitGuess()">SUBMIT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WIN/LOSE MODAL -->
+    <div id="result-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 id="result-title">YOU WON!</h2>
+            <p id="result-body">You cracked the code!</p>
+            <p>Code: <b id="secret-code-display"></b></p>
+            <button class="modal-btn" onclick="showMenu()">Main Menu</button>
+        </div>
+    </div>
+    
+    <!-- INSTRUCTIONS MODAL -->
+    <div id="instructions-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>How to Play</h2>
+            <p style="text-align: left;">
+                Guess the secret code. After each guess, you'll get feedback:
+                <br><br>
+                - <b>Black Peg:</b> Correct number in the correct position.
+                <br>
+                - <b>White Peg:</b> Correct number in the wrong position.
+                <br><br>
+                The code does not contain duplicate numbers. Good luck!
+            </p>
+            <button class="modal-btn" onclick="closeModal('instructions-modal')">OK</button>
+        </div>
+    </div>
+
+    <!-- NEW GAME CONFIRM MODAL -->
+    <div id="new-game-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>New Game</h2>
+            <p>Start a new game? Your current progress will be lost.</p>
+            <button class="modal-btn" onclick="startNewGameFromModal()">Yes, Start New</button>
+            <button class="modal-btn" onclick="closeModal('new-game-modal')">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- DOM ELEMENTS ---
+        const gameBoard = document.getElementById('game-board');
+        const inputNumbers = document.getElementById('input-numbers');
+        const guessesLeftDisplay = document.getElementById('guesses-left');
+
+        // --- GAME CONFIG ---
+        const DIFFICULTIES = {
+            easy:   { pegs: 4, options: 6, guesses: 10 },
+            medium: { pegs: 4, options: 8, guesses: 12 },
+            hard:   { pegs: 5, options: 8, guesses: 12 }
+        };
+
+        let state = {};
+        let currentUser = null;
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            loadWallpaper();
+            auth.onAuthStateChanged(user => {
+                currentUser = user;
+                document.getElementById('auth-status').innerText = user ? `Synced: ${user.email}` : "Guest Mode";
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            if(wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
+        }
+
+        // --- NAVIGATION & GAME SETUP ---
+        function showMenu() {
+            document.getElementById('screen-game').classList.remove('active');
+            document.getElementById('screen-menu').classList.add('active');
+            closeModal('result-modal');
+        }
+
+        function selectDifficulty(level) {
+            const savedState = localStorage.getItem(getStorageKey(level));
+            if (savedState) {
+                state = JSON.parse(savedState);
+                setupGameUI();
+            } else {
+                startNewGame(level);
+            }
+        }
+
+        function confirmNewGame() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function startNewGameFromModal() {
+            startNewGame(state.level);
+            closeModal('new-game-modal');
+        }
+
+        function startNewGame(level) {
+            const config = DIFFICULTIES[level];
+            state = {
+                level: level,
+                secretCode: generateCode(config.pegs, config.options),
+                guesses: [],
+                feedback: [],
+                currentGuess: [],
+                activeRow: 0,
+                maxGuesses: config.guesses,
+                pegCount: config.pegs,
+                optionsCount: config.options
+            };
+            
+            setupGameUI();
+            saveGame();
+        }
+        
+        function generateCode(pegs, options) {
+            let code = [];
+            let available = Array.from({ length: options }, (_, i) => i + 1);
+            for (let i = 0; i < pegs; i++) {
+                const randIndex = Math.floor(Math.random() * available.length);
+                code.push(available.splice(randIndex, 1)[0]);
+            }
+            return code;
+        }
+
+        function setupGameUI() {
+            document.getElementById('screen-menu').classList.remove('active');
+            document.getElementById('screen-game').classList.add('active');
+            
+            // Setup input buttons
+            const inputNumbersEl = document.getElementById('input-numbers');
+            inputNumbersEl.innerHTML = '';
+
+            if (state.level === 'easy') {
+                inputNumbersEl.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            } else {
+                inputNumbersEl.style.gridTemplateColumns = 'repeat(4, 1fr)';
+            }
+
+            for (let i = 1; i <= state.optionsCount; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'input-btn';
+                btn.innerText = i;
+                btn.onclick = () => handleInput(i);
+                inputNumbersEl.appendChild(btn);
+            }
+            
+            renderBoard();
+        }
+
+        // --- RENDERING ---
+        function renderBoard(preserveScroll = false) {
+            const scrollPos = gameBoard.scrollTop;
+            gameBoard.innerHTML = '';
+            guessesLeftDisplay.innerText = `Guesses: ${state.maxGuesses - state.activeRow}`;
+
+            for (let i = 0; i < state.maxGuesses; i++) {
+                const row = document.createElement('div');
+                row.className = 'guess-row';
+                if (i === state.activeRow) row.classList.add('active');
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pegs-wrapper';
+
+                // Guess Pegs
+                const guessPegs = document.createElement('div');
+                guessPegs.className = 'guess-pegs';
+                for (let p = 0; p < state.pegCount; p++) {
+                    const peg = document.createElement('div');
+                    peg.className = 'peg';
+                    if (i === state.activeRow) {
+                        peg.innerText = state.currentGuess[p] || '';
+                    } else if (state.guesses[i]) {
+                        peg.innerText = state.guesses[i][p] || '';
+                    }
+                    guessPegs.appendChild(peg);
+                }
+
+                // Feedback Pegs
+                const feedbackPegs = document.createElement('div');
+                feedbackPegs.className = 'feedback-pegs';
+                const fb = state.feedback[i];
+                if (fb) {
+                    for (let j = 0; j < fb.black; j++) feedbackPegs.innerHTML += '<div class="feedback-peg black"></div>';
+                    for (let j = 0; j < fb.white; j++) feedbackPegs.innerHTML += '<div class="feedback-peg"></div>';
+                }
+
+                wrapper.appendChild(guessPegs);
+                wrapper.appendChild(feedbackPegs);
+                row.appendChild(wrapper);
+                gameBoard.appendChild(row);
+            }
+            if (preserveScroll) {
+                gameBoard.scrollTop = scrollPos;
+            } else {
+                gameBoard.scrollTop = 0; // Show latest guess
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function handleInput(num) {
+            if (num === 'del') {
+                state.currentGuess.pop();
+            } else if (state.currentGuess.length < state.pegCount) {
+                state.currentGuess.push(num);
+            }
+            renderBoard(true);
+        }
+
+        function submitGuess() {
+            if (state.currentGuess.length !== state.pegCount) return;
+
+            const feedback = calculateFeedback(state.currentGuess);
+            state.guesses.push([...state.currentGuess]);
+            state.feedback.push(feedback);
+
+            // Check for win
+            if (feedback.black === state.pegCount) {
+                renderBoard();
+                showResult(true);
+                return;
+            }
+
+            state.activeRow++;
+            state.currentGuess = [];
+
+            // Check for loss
+            if (state.activeRow >= state.maxGuesses) {
+                renderBoard();
+                showResult(false);
+                return;
+            }
+            
+            renderBoard();
+            saveGame();
+        }
+
+        function calculateFeedback(guess) {
+            let black = 0;
+            let white = 0;
+            const secret = [...state.secretCode];
+            const tempGuess = [...guess];
+            
+            // First pass for black pegs (correct position)
+            for (let i = tempGuess.length - 1; i >= 0; i--) {
+                if (tempGuess[i] === secret[i]) {
+                    black++;
+                    secret.splice(i, 1);
+                    tempGuess.splice(i, 1);
+                }
+            }
+
+            // Second pass for white pegs (correct number, wrong position)
+            for (let i = 0; i < tempGuess.length; i++) {
+                const foundIndex = secret.indexOf(tempGuess[i]);
+                if (foundIndex !== -1) {
+                    white++;
+                    secret.splice(foundIndex, 1);
+                }
+            }
+            return { black, white };
+        }
+
+        // --- MODALS & ENDGAME ---
+        function showResult(isWin) {
+            document.getElementById('result-title').innerText = isWin ? "YOU WON!" : "GAME OVER";
+            document.getElementById('result-body').innerText = isWin ? "You cracked the code!" : "You ran out of guesses.";
+            document.getElementById('secret-code-display').innerText = state.secretCode.join(' ');
+            document.getElementById('result-modal').style.display = 'flex';
+            clearSavedGame(state.level);
+        }
+
+        function showInstructions() {
+            document.getElementById('instructions-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // --- DATA PERSISTENCE ---
+        function getStorageKey(level) {
+            const keyPrefix = currentUser ? `codebreaker_${currentUser.uid}` : 'codebreaker_guest';
+            return `${keyPrefix}_${level}`;
+        }
+
+        function saveGame() {
+            if (state.secretCode) {
+                localStorage.setItem(getStorageKey(state.level), JSON.stringify(state));
+            }
+        }
+        
+        function clearSavedGame(level) {
+            localStorage.removeItem(getStorageKey(level));
+        }
+
+    </script>
+</body>
+</html>

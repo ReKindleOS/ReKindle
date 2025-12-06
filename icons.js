@@ -271,6 +271,12 @@ const APPS = [
         icon: '<path d="M22 26 H10 V23 H22 V26 M12 23 L13 15 C12 13 11 11 12 9 C13 5 17 4 20 5 C22 6 23 8 23 8 L21 12 L21 23 H12" fill="black" stroke="black" stroke-width="1" stroke-linejoin="round"/>' // <-- This icon is now a King/Queen (Black Piece)
     },      
     { 
+        id: 'codebreaker',
+        name: 'Codebreaker',
+        cat: 'games',
+        icon: '<rect x="6" y="6" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="black"/><circle cx="20" cy="12" r="3" fill="none" stroke="black" stroke-width="1.5"/><circle cx="12" cy="20" r="3" fill="none" stroke="black" stroke-width="1.5"/><circle cx="20" cy="20" r="3" fill="black"/>'
+    },
+    { 
         id: 'crossword', 
         name: 'Crossword', 
         cat: 'games', 
