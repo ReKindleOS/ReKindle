@@ -50,7 +50,6 @@
             height: 100vh;
             overflow: hidden;
             background-color: #e5e5e5;
-            /* Background managed by settings */
             
             display: flex;
             flex-direction: column;
@@ -60,14 +59,13 @@
             box-sizing: border-box;
         }
 
-        /* WINDOW FRAME - Smaller to show wallpaper */
+        /* WINDOW FRAME */
         .window {
             background: white;
             border: 2px solid black;
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            /* Reduced height/width to ensure wallpaper visibility */
             height: 90vh; 
             width: 90vw;
             max-width: 800px;
@@ -102,7 +100,7 @@
             font-size: 1.1rem;
         }
 
-        /* CLOSE BUTTON (HOME) */
+        /* CLOSE BUTTON */
         .close-box {
             position: absolute;
             left: 10px;
@@ -174,12 +172,11 @@
             justify-content: center;
             width: 100%;
             min-height: 0;
-            overflow: hidden; /* Prevent spillover */
+            overflow: hidden;
         }
 
         /* CHESS BOARD */
         #board {
-            /* Size set by JS */
             border: 4px solid black;
             display: grid;
             grid-template-columns: repeat(8, 1fr);
@@ -201,7 +198,6 @@
         .square.light { background-color: var(--board-light); }
         .square.dark { background-color: var(--board-dark); }
 
-        /* Selection & Moves */
         .square.selected {
             box-shadow: inset 0 0 0 4px black;
         }
@@ -210,7 +206,6 @@
             background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.1) 5px, rgba(0,0,0,0.1) 10px);
         }
 
-        /* UNICODE PIECES */
         .piece {
             width: 100%;
             height: 100%;
@@ -279,17 +274,17 @@
             border-bottom: 1px solid #ccc;
         }
 
-        /* New Game Form */
         .modal-form label {
             display: block;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             font-weight: bold;
+            text-align: left;
         }
         
         .modal-form select {
             width: 100%;
             padding: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             font-size: 1rem;
             border: 2px solid black;
         }
@@ -310,8 +305,7 @@
             <div id="status-bar">White to move</div>
             
             <div id="board-container">
-                <div id="board">
-                    </div>
+                <div id="board"></div>
             </div>
 
             <div class="controls">
@@ -325,11 +319,17 @@
         <div class="modal-box">
             <h2>New Game</h2>
             <div class="modal-form">
-                <label>AI Lookahead (Depth)</label>
+                <label>Play As</label>
+                <select id="color-select">
+                    <option value="w">White</option>
+                    <option value="b">Black</option>
+                </select>
+
+                <label>Difficulty</label>
                 <select id="difficulty-select">
-                    <option value="1">1 (Easy/Fast)</option>
+                    <option value="1">1 (Easy)</option>
                     <option value="2" selected>2 (Normal)</option>
-                    <option value="3">3 (Hard/Slow)</option>
+                    <option value="3">3 (Hard)</option>
                 </select>
             </div>
             <div style="display:flex; gap:10px;">
@@ -342,15 +342,9 @@
     <div id="stats-modal" class="modal-overlay" onclick="closeStats()">
         <div class="modal-box" onclick="event.stopPropagation()">
             <h2>Record</h2>
-            <div class="stat-row">
-                <span>Wins:</span> <span id="stat-wins">0</span>
-            </div>
-            <div class="stat-row">
-                <span>Losses:</span> <span id="stat-losses">0</span>
-            </div>
-            <div class="stat-row">
-                <span>Draws:</span> <span id="stat-draws">0</span>
-            </div>
+            <div class="stat-row"><span>Wins:</span> <span id="stat-wins">0</span></div>
+            <div class="stat-row"><span>Losses:</span> <span id="stat-losses">0</span></div>
+            <div class="stat-row"><span>Draws:</span> <span id="stat-draws">0</span></div>
             <button class="game-btn" style="margin-top:15px;" onclick="closeStats()">Close</button>
         </div>
     </div>
@@ -376,12 +370,14 @@
         let isThinking = false;
         let gameActive = true;
         let currentUser = null;
-        let aiDepth = 2; // Default
+        
+        // Player settings
+        let aiDepth = 2; 
+        let playerColor = 'w'; // 'w' or 'b'
+        let aiColor = 'b';     // Opposite of player
 
-        // Stats
         let stats = { wins: 0, losses: 0, draws: 0 };
 
-        // UNICODE PIECES
         const PIECES = {
             'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
             'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
@@ -398,11 +394,9 @@
                 } else {
                     loadLocalStats();
                 }
-                // Auto open new game modal on first load if board is empty/fresh
                 openNewGameModal();
             });
             
-            // Initial render
             resizeBoard();
         };
 
@@ -449,16 +443,27 @@
 
         function startGame() {
             const depthSel = document.getElementById('difficulty-select');
+            const colorSel = document.getElementById('color-select');
+            
             aiDepth = parseInt(depthSel.value);
+            playerColor = colorSel.value;
+            aiColor = playerColor === 'w' ? 'b' : 'w';
             
             game = new Chess();
             selectedSquare = null;
             isThinking = false;
             gameActive = true;
-            document.getElementById('status-bar').innerText = "White to move";
             
             closeNewGameModal();
             renderBoard();
+            checkStatus();
+
+            // If Computer is White, make first move
+            if (aiColor === 'w') {
+                isThinking = true;
+                document.getElementById('status-bar').innerText = "Thinking...";
+                setTimeout(makeComputerMove, 500);
+            }
         }
 
         // --- STATS LOGIC ---
@@ -469,11 +474,8 @@
         function loadStats() {
             db.collection('users').doc(currentUser.uid).collection('apps').doc('chess')
             .get().then((doc) => {
-                if (doc.exists) {
-                    stats = doc.data();
-                } else {
-                    loadLocalStats();
-                }
+                if (doc.exists) stats = doc.data();
+                else loadLocalStats();
             });
         }
 
@@ -487,11 +489,9 @@
         function recordGameEnd(result) {
             if (!gameActive) return;
             gameActive = false;
-
             if (result === 'win') stats.wins++;
             else if (result === 'loss') stats.losses++;
             else if (result === 'draw') stats.draws++;
-
             saveStats();
         }
 
@@ -512,10 +512,35 @@
             board.innerHTML = '';
             const position = game.board();
 
-            // Always render White at bottom for single player
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    const squareName = String.fromCharCode(97 + c) + (8 - r);
+            // Determine board orientation
+            // If Player is White: Render 0..7 (Rank 8 at top)
+            // If Player is Black: Render 7..0 (Rank 1 at top)
+            // Standard chess.js array: [0]=Rank8, [7]=Rank1
+            
+            let rows = [];
+            if (playerColor === 'w') {
+                for(let i=0; i<8; i++) rows.push(i); // 0 to 7
+            } else {
+                for(let i=7; i>=0; i--) rows.push(i); // 7 to 0
+            }
+            
+            let cols = [];
+            if (playerColor === 'w') {
+                for(let i=0; i<8; i++) cols.push(i); // a to h
+            } else {
+                for(let i=7; i>=0; i--) cols.push(i); // h to a
+            }
+
+            for (let r of rows) {
+                for (let c of cols) {
+                    // Calculate square name: chess.js board is always from White's perspective logic
+                    // board[0][0] is a8.
+                    // r is the row index in the internal array (0=Rank8, 7=Rank1)
+                    // c is the col index (0=a, 7=h)
+                    
+                    const rank = 8 - r;
+                    const file = String.fromCharCode(97 + c);
+                    const squareName = file + rank;
                     const squareData = position[r][c];
                     
                     const div = document.createElement('div');
@@ -524,7 +549,6 @@
                     
                     if (selectedSquare === squareName) div.classList.add('selected');
                     
-                    // History highlight
                     const history = game.history({ verbose: true });
                     if (history.length > 0) {
                         const last = history[history.length - 1];
@@ -551,15 +575,15 @@
         function handleSquareClick(square) {
             if (!gameActive || isThinking) return;
 
-            // Player can only select White pieces
+            // Only allow selecting player's own pieces
             const piece = game.get(square);
-            if (piece && piece.color === 'w') {
+            if (piece && piece.color === playerColor) {
                 selectedSquare = square;
                 renderBoard();
                 return;
             }
 
-            // Move
+            // If a square is selected, try to move
             if (selectedSquare) {
                 try {
                     const move = game.move({
@@ -576,11 +600,9 @@
                         if (!game.game_over()) {
                             isThinking = true;
                             document.getElementById('status-bar').innerText = "Thinking...";
-                            // Delay to allow UI to update before blocking with calculation
                             setTimeout(makeComputerMove, 100);
                         }
                     } else {
-                        // Invalid move, deselect if clicked empty square or enemy
                         selectedSquare = null;
                         renderBoard();
                     }
@@ -593,30 +615,35 @@
 
         // --- AI (Minimax) ---
         
-        // Simple Material Evaluation
-        // Black (AI) maximizes score. White (Player) minimizes score.
-        // Black pieces positive, White pieces negative.
+        // Material values: Black pieces positive, White pieces negative
         const pieceValues = {
             'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 900,
             'P': -10, 'N': -30, 'B': -30, 'R': -50, 'Q': -90, 'K': -900
         };
 
+        // Returns absolute score (Black - White)
         function evaluateBoard(gameObj) {
             let total = 0;
             gameObj.board().forEach(row => {
                 row.forEach(piece => {
                     if (piece) {
                         let val = pieceValues[piece.type] || 0;
-                        if (piece.color === 'w') val = -val; // White pieces are negative
+                        if (piece.color === 'w') val = -val; 
                         total += val;
                     }
                 });
             });
             return total;
         }
+        
+        // Returns score relative to AI (positive is good for AI)
+        function getRelativeEval(gameObj) {
+            const absScore = evaluateBoard(gameObj);
+            return aiColor === 'b' ? absScore : -absScore;
+        }
 
         function makeComputerMove() {
-            // Use Minimax to find best move
+            // Minimax returns move object
             const bestMove = getBestMove(game, aiDepth);
             if (bestMove) {
                 game.move(bestMove);
@@ -630,15 +657,15 @@
         function getBestMove(gameObj, depth) {
             const moves = gameObj.moves();
             let bestMove = null;
-            let bestValue = -99999; // AI is Black, trying to maximize
+            let bestValue = -Infinity; // We always want to maximize relative score
 
-            // Randomize moves to avoid predictable play on equal evaluations
+            // Randomize to avoid identical games
             moves.sort(() => Math.random() - 0.5);
 
             for (let i = 0; i < moves.length; i++) {
                 gameObj.move(moves[i]);
-                // Minimax call: IsMaximizing = false (Next turn is White/Player)
-                let boardValue = minimax(gameObj, depth - 1, -100000, 100000, false);
+                // AI just moved. Next turn is Player (Minimizer relative to AI)
+                let boardValue = minimax(gameObj, depth - 1, -Infinity, Infinity, false);
                 gameObj.undo();
 
                 if (boardValue > bestValue) {
@@ -649,15 +676,16 @@
             return bestMove;
         }
 
-        function minimax(gameObj, depth, alpha, beta, isMaximizingPlayer) {
+        function minimax(gameObj, depth, alpha, beta, isAiTurn) {
             if (depth === 0 || gameObj.game_over()) {
-                return evaluateBoard(gameObj);
+                return getRelativeEval(gameObj);
             }
 
             const moves = gameObj.moves();
 
-            if (isMaximizingPlayer) { // Black (AI)
-                let maxEval = -100000;
+            if (isAiTurn) {
+                // AI Turn: Maximize Relative Score
+                let maxEval = -Infinity;
                 for (let i = 0; i < moves.length; i++) {
                     gameObj.move(moves[i]);
                     let eval = minimax(gameObj, depth - 1, alpha, beta, false);
@@ -667,8 +695,9 @@
                     if (beta <= alpha) break;
                 }
                 return maxEval;
-            } else { // White (Player)
-                let minEval = 100000;
+            } else {
+                // Player Turn: Minimize Relative Score
+                let minEval = Infinity;
                 for (let i = 0; i < moves.length; i++) {
                     gameObj.move(moves[i]);
                     let eval = minimax(gameObj, depth - 1, alpha, beta, true);
@@ -683,32 +712,53 @@
 
         function checkStatus() {
             if (game.in_checkmate()) {
-                const winner = game.turn() === 'w' ? "Black" : "White";
-                document.getElementById('status-bar').innerText = `Checkmate! ${winner} wins.`;
-                recordGameEnd(winner === "White" ? 'win' : 'loss');
+                const winnerColor = game.turn() === 'w' ? 'Black' : 'White';
+                const winResult = (winnerColor.toLowerCase() === playerColor.toLowerCase()) ? 'win' : 'loss';
+                document.getElementById('status-bar').innerText = `Checkmate! ${winnerColor} wins.`;
+                recordGameEnd(winResult);
             } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
                 document.getElementById('status-bar').innerText = "Draw!";
                 recordGameEnd('draw');
             } else {
-                document.getElementById('status-bar').innerText = game.turn() === 'w' ? "White to move" : "Black to move";
-                if (game.in_check()) document.getElementById('status-bar').innerText += " (Check)";
+                const turn = game.turn() === 'w' ? "White" : "Black";
+                let status = `${turn} to move`;
+                if (game.in_check()) status += " (Check)";
+                document.getElementById('status-bar').innerText = status;
             }
         }
 
         function undoMove() {
-            if(!gameActive && !game.game_over()) return;
+            if (!gameActive) return;
             
-            // Undo AI
-            game.undo();
-            // Undo Player
-            game.undo();
+            // We need to undo AI move then Player move (2 steps)
+            // Unless AI hasn't moved yet (e.g. start of game or player is Black and moved first)
             
-            gameActive = true; 
-            isThinking = false;
+            // Actually, just undo until it's player's turn
+            // But simple 2-step undo usually works
+            
+            // If player is White:
+            // Move 1 (P), Move 2 (AI). Undo -> Undo AI, Undo P.
+            // If player is Black:
+            // Move 1 (AI), Move 2 (P). Undo -> Undo P, Undo AI.
+            
+            // Check if history has at least 2 moves to undo a full round
+            // OR if player just moved and AI is thinking (prevent undo during think)
+            if (isThinking) return;
+
+            const history = game.history();
+            if (history.length >= 2) {
+                game.undo(); // Undo AI
+                game.undo(); // Undo Player
+            } else if (history.length === 1 && playerColor === 'w') {
+                 // Special case: AI moved first (if Black), Player hasn't moved? No.
+                 // If Player is White, AI is Black. AI moves second.
+                 // If history is 1, Player moved, AI hasn't moved yet.
+                 game.undo();
+            }
+            
             selectedSquare = null;
-            
             renderBoard();
-            document.getElementById('status-bar').innerText = "White to move";
+            checkStatus();
         }
 
     </script>
