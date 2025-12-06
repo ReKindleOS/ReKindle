@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rekindle-kill-switch-v2';
+const CACHE_NAME = 'rekindle-kill-switch-v3';
 
 self.addEventListener('install', (event) => {
     // Force this service worker to become the active one immediately
