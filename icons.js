@@ -238,6 +238,14 @@ const APPS = [
         cat: 'lifestyle', 
         icon: '<circle cx="16" cy="16" r="14"/><text x="16" y="23" font-size="22" text-anchor="middle" stroke="none" fill="black" font-weight="bold">W</text>' 
     },
+    {
+        id: 'sheetmusic',
+        name: 'Sheet Music',
+        cat: 'lifestyle',
+        beta: true,          
+        desc: 'Browse a library of public domain scores.',
+        icon: '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h8V3h-8z"/>'
+    },
 
     // --- GAMES ---
     { 
@@ -380,6 +388,14 @@ const APPS = [
         icon: '<rect x="6" y="6" width="8" height="8"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' // Adjusted icon to be distinct
     },
 
+    { 
+        id: 'hiddenfolk', 
+        name: 'Hidden Folk', 
+        cat: 'games', 
+        beta: true,
+        desc: 'Find objects in detailed art.',
+        icon: '<circle cx="16" cy="14" r="8"/><line x1="22" y1="20" x2="28" y2="26"/><path d="M10 14c.5-1 1-1.5 2-2 M20 15c-1-1-2-1.5-3-1.5 M15 18c1 1 2 .5 3 0" fill="none" stroke-linecap="round"/>' 
+    },
     // --- TWO PLAYER GAMES ---
     { 
         id: '2pbattleships', 

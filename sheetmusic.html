@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sheet Music</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <!-- OpenSheetMusicDisplay for rendering MusicXML -->
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.3/build/opensheetmusicdisplay.min.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS (from index.html) */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+        }
+
+        body {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 450px;
+            height: fit-content;
+            max-height: 95vh;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 15px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .tab-nav {
+            display: flex;
+            gap: 5px;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+        }
+
+        .tab-btn {
+            flex-grow: 1;
+            padding: 8px;
+            border: 2px solid black;
+            background: white;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .tab-btn.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+        }
+
+        .search-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+    align-items: center;
+    margin-bottom: 15px;
+        }
+
+        .results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 200px;
+            max-height: 50vh;
+            overflow-y: auto;
+            border: 2px solid black;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ccc;
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+
+        .list-item-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .list-item-title {
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: black;
+        }
+        .list-item-title:hover {
+            text-decoration: underline;
+        }
+
+        .list-btn {
+            border: 1px solid black;
+            background: white;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 0.8rem;
+        }
+        .list-btn:active {
+            background: black;
+            color: white;
+        }
+
+        .info-text { text-align: center; padding: 20px; color: #666; }
+
+        /* SCORE VIEWER MODAL */
+        .score-viewer-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .score-viewer-window {
+            width: 95%;
+            height: 95%;
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #osmd-container {
+            flex-grow: 1;
+            overflow: auto;
+            padding: 10px;
+        }
+
+        /* Style OSMD cursor */
+        .osmd-cursor {
+            background-color: rgba(0, 0, 0, 0.2) !important;
+        }
+        #score-loading {
+            text-align: center; padding: 40px; font-size: 1.2rem;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Sheet Music</span>
+        </div>
+
+        <div class="window-content">
+            <div id="score-list" class="results-list">
+                <p class="info-text">Loading music library...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Score Viewer Modal -->
+    <div id="score-viewer" class="score-viewer-overlay">
+        <div class="score-viewer-window">
+            <div class="title-bar">
+                <div class="title-stripes"></div>
+                <div class="close-box" onclick="closeScoreViewer()">X</div>
+                <span id="score-title" class="title-text">Sheet Music</span>
+            </div>
+            <div id="score-loading">Loading score...</div>
+            <div id="osmd-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let osmd;
+
+        const scoreListContainer = document.getElementById('score-list');
+
+        window.onload = function() {
+            loadWallpaper();
+            loadScores();
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if(wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
+        }
+
+        const ALL_SCORES = [
+            // Bach
+            { composer: 'Bach', title: 'Air on the G String', url: 'https://musetrainer.github.io/library/scores/J._S._Bach_-_Air_on_the_G_String_Piano_arrangement.mxl' },
+            { composer: 'Bach', title: 'Minuet in G Major, BWV Anh. 114', url: 'https://musetrainer.github.io/library/scores/Bach_Minuet_in_G_Major_BWV_Anh._114.mxl' },
+            { composer: 'Bach', title: 'Toccata and Fugue in D Minor', url: 'https://musetrainer.github.io/library/scores/Bach_Toccata_and_Fugue_in_D_Minor_Piano_solo.mxl' },
+            { composer: 'Bach', title: 'Prelude in C Major, BWV 846', url: 'https://musetrainer.github.io/library/scores/Prelude_I_in_C_major_BWV_846_-_Well_Tempered_Clavier_First_Book.mxl' },
+            { composer: 'Bach', title: 'Prelude in C Minor, BWV 847', url: 'https://musetrainer.github.io/library/scores/Prelude_No._2_BWV_847_in_C_Minor.mxl' },
+            { composer: 'Bach', title: 'Little Fugue in G Minor', url: 'https://musetrainer.github.io/library/scores/G_Minor_Bach.mxl' },
+            // Beethoven
+            { composer: 'Beethoven', title: 'Symphony No. 5, 1st Mvt', url: 'https://musetrainer.github.io/library/scores/Beethoven_Symphony_No._5_1st_movement_Piano_solo.mxl' },
+            { composer: 'Beethoven', title: 'Danse Villageoise', url: 'https://musetrainer.github.io/library/scores/DANSE_VILLAGEOISE_Beethoven.mxl' },
+            { composer: 'Beethoven', title: 'Für Elise', url: 'https://musetrainer.github.io/library/scores/Fur_Elise.mxl' },
+            { composer: 'Beethoven', title: 'Moonlight Sonata, 1st Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_1st_Movement.mxl' },
+            { composer: 'Beethoven', title: 'Moonlight Sonata, 3rd Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_3rd_Movement.mxl' },
+            { composer: 'Beethoven', title: 'Pathetique Sonata, 2nd Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._8_Pathetique_2nd_Movement.mxl' },
+            { composer: 'Beethoven', title: 'Ode to Joy (Easy)', url: 'https://raw.githubusercontent.com/musetrainer/library/master/scores/Ode_to_Joy_Easy_variation.mxl' },
+            // Brahms
+            { composer: 'Brahms', title: 'Hungarian Dance No. 5', url: 'https://musetrainer.github.io/library/scores/Hungarian_Dance_No_5_in_G_Minor.mxl' },
+            // Chopin
+            { composer: 'Chopin', title: 'Ballade No. 1 in G minor', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Ballade_no._1_in_G_minor_Op._23.mxl' },
+            { composer: 'Chopin', title: 'Nocturne, Op. 9 No. 1', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op._9_No._1.mxl' },
+            { composer: 'Chopin', title: 'Nocturne, Op. 9 No. 2', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op_9_No_2_E_Flat_Major.mxl' },
+            { composer: 'Chopin', title: 'Nocturne No. 20 in C# minor', url: 'https://musetrainer.github.io/library/scores/Nocturne_No._20_in_C_Minor.mxl' },
+            { composer: 'Chopin', title: 'Prélude, Op. 28 No. 4', url: 'https://musetrainer.github.io/library/scores/Prlude_Opus_28_No._4_in_E_Minor__Chopin.mxl' },
+            { composer: 'Chopin', title: 'Waltz, Op. 64 No. 2', url: 'https://musetrainer.github.io/library/scores/Waltz_Opus_64_No._2_in_C_Minor.mxl' },
+            { composer: 'Chopin', title: 'Waltz in A Minor', url: 'https://musetrainer.github.io/library/scores/Waltz_in_A_MinorChopin.mxl' },
+            // Debussy
+            { composer: 'Debussy', title: 'Arabesque No. 1', url: 'https://musetrainer.github.io/library/scores/Arabesque_L._66_No._1_in_E_Major.mxl' },
+            { composer: 'Debussy', title: 'Clair de Lune', url: 'https://musetrainer.github.io/library/scores/Clair_de_Lune__Debussy.mxl' },
+            // Handel
+            { composer: 'Handel', title: 'Passacaglia', url: 'https://musetrainer.github.io/library/scores/Passacaglia.mxl' },
+            // Joplin
+            { composer: 'Joplin', title: 'Maple Leaf Rag', url: 'https://musetrainer.github.io/library/scores/Maple_Leaf_Rag_Scott_Joplin.mxl' },
+            { composer: 'Joplin', title: 'The Entertainer', url: 'https://musetrainer.github.io/library/scores/The_Entertainer_-_Scott_Joplin.mxl' },
+            // Liszt
+            { composer: 'Liszt', title: 'La Campanella', url: 'https://musetrainer.github.io/library/scores/La_Campanella_-_Grandes_Etudes_de_Paganini_No._3_-_Franz_Liszt.mxl' },
+            { composer: 'Liszt', title: 'Liebestraum No. 3', url: 'https://musetrainer.github.io/library/scores/Liebestraum_No._3_in_A_Major.mxl' },
+            // Mozart
+            { composer: 'Mozart', title: 'Lacrimosa', url: 'https://musetrainer.github.io/library/scores/Lacrimosa_-_Requiem.mxl' },
+            { composer: 'Mozart', title: 'Rondo alla Turca', url: 'https://musetrainer.github.io/library/scores/Piano_Sonata_No._11_K._331_3rd_Movement_Rondo_alla_Turca.mxl' },
+            { composer: 'Mozart', title: 'Sonata No. 16, K. 545 (Allegro)', url: 'https://musetrainer.github.io/library/scores/Mozart_-_Piano_Sonata_No._16_-_Allegro.mxl' },
+            { composer: 'Mozart', title: '12 Variations on "Twinkle Twinkle"', url: 'https://musetrainer.github.io/library/scores/12_Variations_of_Twinkle_Twinkle_Little_Star.mxl' },
+            // Pachelbel
+            { composer: 'Pachelbel', title: 'Canon in D', url: 'https://musetrainer.github.io/library/scores/Canon_in_D.mxl' },
+            // Paul de Senneville
+            { composer: 'Paul de Senneville', title: "Mariage d'Amour", url: 'https://musetrainer.github.io/library/scores/Mariage_dAmour.mxl' },
+            // Rimsky-Korsakov
+            { composer: 'Rimsky-Korsakov', title: 'Flight of the Bumblebee', url: 'https://musetrainer.github.io/library/scores/Flight_of_the_Bumblebee.mxl' },
+            // Satie
+            { composer: 'Satie', title: 'Gymnopédie No. 1', url: 'https://musetrainer.github.io/library/scores/Gymnopdie_No._1__Satie.mxl' },
+            { composer: 'Satie', title: 'Gnossienne No. 1', url: 'https://musetrainer.github.io/library/scores/Gnossienne_No._1.mxl' },
+            // Schubert
+            { composer: 'Schubert', title: 'Ave Maria', url: 'https://musetrainer.github.io/library/scores/Ave_Maria_D839_-_Schubert_-_Solo_Piano_Arrg..mxl' },
+            { composer: 'Schubert', title: 'Serenade (Ständchen)', url: 'https://musetrainer.github.io/library/scores/Schubert_Serenade_-_Standchen_-_By_Lizst.mxl' },
+            // Tchaikovsky
+            { composer: 'Tchaikovsky', title: 'Dance of the Sugar Plum Fairy', url: 'https://musetrainer.github.io/library/scores/Dance_of_the_sugar_plum_fairy.mxl' },
+            { composer: 'Tchaikovsky', title: 'Swan Lake', url: 'https://musetrainer.github.io/library/scores/Swan_Lake.mxl' },
+            { composer: 'Tchaikovsky', title: 'Waltz of the Flowers', url: 'https://musetrainer.github.io/library/scores/Waltz_of_the_Flowers.mxl' },
+            // Traditional
+            { composer: 'Traditional', title: 'Bella Ciao', url: 'https://musetrainer.github.io/library/scores/Bella_Ciao.mxl' },
+            { composer: 'Traditional', title: 'Carol of the Bells', url: 'https://musetrainer.github.io/library/scores/Carol_of_the_Bells.mxl' },
+            { composer: 'Traditional', title: 'Greensleeves', url: 'https://musetrainer.github.io/library/scores/Greensleeves_for_Piano_easy_and_beautiful.mxl' },
+            { composer: 'Traditional', title: 'Happy Birthday', url: 'https://musetrainer.github.io/library/scores/Happy_Birthday_To_You_Piano.mxl' },
+        ];
+
+        function loadScores() {
+            scoreListContainer.innerHTML = ''; // Clear loading message
+            
+            // Create a mutable copy to sort
+            const allScores = [...ALL_SCORES];
+            allScores.sort((a, b) => a.composer.localeCompare(b.composer) || a.title.localeCompare(b.title));
+            
+            displayScores(allScores);
+        }
+
+        function displayScores(scores) {
+            scoreListContainer.innerHTML = '';
+            if (!scores || scores.length === 0) {
+                scoreListContainer.innerHTML = '<p class="info-text">No scores found.</p>';
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            scores.forEach(score => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+
+                const link = document.createElement('a');
+                link.href = '#'; // Link is decorative, button handles action
+                link.target = '_blank';
+                link.className = 'list-item-title';
+                link.textContent = `${score.title} - ${score.composer}`;
+                link.onclick = (e) => e.preventDefault();
+
+                const button = document.createElement('button');
+                button.className = 'list-btn';
+                button.textContent = 'View';
+                
+                button.addEventListener('click', () => {
+                    viewScore(score.url, score.title);
+                });
+
+                const buttonWrapper = document.createElement('div');
+                buttonWrapper.className = 'list-item-buttons';
+                buttonWrapper.appendChild(button);
+
+                div.appendChild(link);
+                div.appendChild(buttonWrapper);
+                fragment.appendChild(div);
+            });
+            scoreListContainer.appendChild(fragment);
+        }
+
+        function openScoreViewer() {
+            document.getElementById('score-viewer').style.display = 'flex';
+        }
+
+        function closeScoreViewer() {
+            document.getElementById('score-viewer').style.display = 'none';
+            // Clear the container to free up memory
+            document.getElementById('osmd-container').innerHTML = '';
+            osmd = null;
+        }
+
+        async function viewScore(url, title) {
+            openScoreViewer();
+            document.getElementById('score-title').innerText = title;
+            const loadingDiv = document.getElementById('score-loading');
+            const osmdContainer = document.getElementById('osmd-container');
+            
+            loadingDiv.style.display = 'block';
+            loadingDiv.innerText = 'Loading score...';
+            osmdContainer.innerHTML = ''; // Clear previous score
+
+            try {
+                const scoreData = url; // GitHub raw URLs are CORS-friendly
+
+                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(osmdContainer, { autoResize: true, backend: "svg", drawTitle: true });
+                await osmd.load(scoreData);
+                loadingDiv.style.display = 'none';
+                osmd.render();
+            } catch (error) {
+                console.error("Error rendering score:", error);
+                loadingDiv.innerText = `Error: Could not load score. ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
