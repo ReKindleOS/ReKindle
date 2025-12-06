@@ -225,6 +225,13 @@ const APPS = [
         desc: 'Stay in the know',
         icon: '<circle cx="6" cy="26" r="3" fill="black"/><path d="M6 18 A 8 8 0 0 1 14 26 M6 10 A 16 16 0 0 1 22 26" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>' 
     },
+    {
+        id: 'mindmap',
+        name: 'Mindmap',
+        icon: '<path d="M16 4a4 4 0 100 8a4 4 0 100-8zM8 20a4 4 0 100 8a4 4 0 100-8zM24 20a4 4 0 100 8a4 4 0 100-8zM16 8v12M16 20L8 24M16 20L24 24"/>',
+        cat: 'tools',     
+        desc: 'Visually organize your ideas.'
+    },
     { 
         id: 'napkin', 
         name: 'Sketchpad', 
@@ -388,14 +395,7 @@ const APPS = [
         icon: '<rect x="6" y="6" width="8" height="8"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' // Adjusted icon to be distinct
     },
 
-    { 
-        id: 'hiddenfolk', 
-        name: 'Hidden Folk', 
-        cat: 'games', 
-        beta: true,
-        desc: 'Find objects in detailed art.',
-        icon: '<circle cx="16" cy="14" r="8"/><line x1="22" y1="20" x2="28" y2="26"/><path d="M10 14c.5-1 1-1.5 2-2 M20 15c-1-1-2-1.5-3-1.5 M15 18c1 1 2 .5 3 0" fill="none" stroke-linecap="round"/>' 
-    },
+
     // --- TWO PLAYER GAMES ---
     { 
         id: '2pbattleships', 

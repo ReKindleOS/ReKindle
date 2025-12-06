@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mindmap</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            /* ... standard body styles ... */
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT / CANVAS CONTAINER */
+        .window-content {
+            flex-grow: 1;
+            position: relative;
+            background-color: #fafafa;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: grab;
+        }
+        
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* ZOOM CONTROLS */
+        .zoom-controls {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .zoom-btn {
+            background: white;
+            border: 2px solid black;
+            width: 35px;
+            height: 35px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .zoom-btn:active { background: black; color: white; transform: translate(2px, 2px); box-shadow: none; }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: fixed; /* Use fixed to cover the whole viewport */
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); 
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 350px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            margin: 15px 0;
+            border: 2px solid black;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Mindmap</span>
+            
+            <div class="controls">
+                <button class="sys-btn" id="edit-btn" onclick="toggleEditMode()">Edit</button>
+                <button class="sys-btn" onclick="resetView()">Center</button>
+            </div>
+        </div>
+
+        <div class="window-content" id="canvas-container">
+            <canvas id="mindmap-canvas"></canvas>
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomIn()">+</button>
+                <button class="zoom-btn" onclick="zoomOut()">-</button>
+            </div>
+        </div>
+        <div id="status-bar">Double-click to add a node.</div>
+    </div>
+
+    <div id="node-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 id="modal-title" style="margin-top:0; border-bottom: 2px solid black; padding-bottom:10px;">Node Text</h2>
+            <input type="text" id="node-text-input" class="modal-input" placeholder="Enter text...">
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="handleModalOk()">OK</button>
+                <button class="sys-btn" onclick="closeModal('node-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Firebase Config ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- Canvas & State ---
+        const canvas = document.getElementById('mindmap-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusBar = document.getElementById('status-bar');
+
+        // Polyfill for ctx.roundRect if not supported
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+                if (w < 2 * r) r = w / 2;
+                if (h < 2 * r) r = h / 2;
+                this.beginPath();
+                this.moveTo(x + r, y);
+                this.arcTo(x + w, y, x + w, y + h, r);
+                this.arcTo(x + w, y + h, x, y + h, r);
+                this.arcTo(x, y + h, x, y, r);
+                this.arcTo(x, y, x + w, y, r);
+                this.closePath();
+            };
+        }
+
+        let nodes = [];
+        let links = [];
+        let currentUser = null;
+        let saveTimer = null;
+
+        let panOffset = { x: 0, y: 0 };
+        let zoom = 1;
+        let isPanning = false;
+        let lastPanPoint = { x: 0, y: 0 };
+        
+        let isEditMode = false;
+        let selectedNodeId = null;
+        let draggedNodeId = null;
+        let isDragging = false;
+        
+        let connectStartNodeId = null;
+
+        let activeNodeForModal = null;
+        let newNodePosition = null;
+
+        // --- Init ---
+        window.onload = () => {
+            loadWallpaper();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupEventListeners();
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    statusBar.innerText = "Synced: " + user.email;
+                    loadData();
+                } else {
+                    statusBar.innerText = "Guest Mode (Local)";
+                    loadData();
+                }
+            });
+        };
+        
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if(wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
+        }
+
+        // --- Data ---
+        function loadData() {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('apps').doc('mindmap').get().then(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        nodes = data.nodes || [];
+                        links = data.links || [];
+                        panOffset = data.panOffset || { x: 0, y: 0 };
+                        zoom = data.zoom || 1;
+                    } else {
+                        loadLocalData();
+                    }
+                    render();
+                });
+            } else {
+                loadLocalData();
+                render();
+            }
+        }
+        
+        function loadLocalData() {
+            const data = JSON.parse(localStorage.getItem('rekindle_mindmap'));
+            if (data) {
+                nodes = data.nodes || [];
+                links = data.links || [];
+                panOffset = data.panOffset || { x: 0, y: 0 };
+                zoom = data.zoom || 1;
+            } else {
+                // Default starting node
+                const container = document.getElementById('canvas-container');
+                nodes = [{ id: Date.now(), x: container.clientWidth / 2, y: container.clientHeight / 2, text: 'Central Idea', width: 120, height: 40 }];
+            }
+        }
+
+        function saveData() {
+            const data = { nodes, links, panOffset, zoom };
+            if (currentUser) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    db.collection('users').doc(currentUser.uid).collection('apps').doc('mindmap').set(data);
+                }, 1000);
+            } else {
+                localStorage.setItem('rekindle_mindmap', JSON.stringify(data));
+            }
+        }
+
+        // --- Canvas & Drawing ---
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = container.clientWidth * dpr;
+            canvas.height = container.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            render();
+        }
+
+        // --- Icon Drawing Helpers ---
+        function drawIconContainer(x, y, radius) {
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawXSymbol(x, y, size) {
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - size / 2, y - size / 2);
+            ctx.lineTo(x + size / 2, y + size / 2);
+            ctx.moveTo(x + size / 2, y - size / 2);
+            ctx.lineTo(x - size / 2, y + size / 2);
+            ctx.stroke();
+        }
+
+        function drawPlusSymbol(x, y, size) {
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - size / 2, y);
+            ctx.lineTo(x + size / 2, y);
+            ctx.moveTo(x, y - size / 2);
+            ctx.lineTo(x, y + size / 2);
+            ctx.stroke();
+        }
+        
+        function getWrappedLines(context, text, maxWidth) {
+            const words = text.split(' ');
+            let line = '';
+            let lines = [];
+            if (!text) return lines;
+
+            for (let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = context.measureText(testLine);
+                const testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    lines.push(line.trim());
+                    line = words[n] + ' ';
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line.trim());
+            return lines;
+        }
+
+        function drawNodeIcons(node) {
+            const iconRadius = 8;
+            const symbolSize = iconRadius; // Size of the + and X symbols
+
+            // Delete Icon (Top Left)
+            const delX = node.x - node.width / 2;
+            const delY = node.y - node.height / 2;
+            drawIconContainer(delX, delY, iconRadius);
+            drawXSymbol(delX, delY, symbolSize);
+
+            // Add Link Icon (Bottom Right)
+            const addX = node.x + node.width / 2;
+            const addY = node.y + node.height / 2;
+            drawIconContainer(addX, addY, iconRadius);
+            drawPlusSymbol(addX, addY, symbolSize);
+        }
+
+        function drawLinkIcons(link) {
+            const fromNode = nodes.find(n => n.id === link.from), toNode = nodes.find(n => n.id === link.to);
+            if (!fromNode || !toNode) return;
+            const midX = (fromNode.x + toNode.x) / 2, midY = (fromNode.y + toNode.y) / 2, iconRadius = 8;
+            drawIconContainer(midX, midY, iconRadius);
+            drawXSymbol(midX, midY, iconRadius);
+        }
+
+        function render() {
+            ctx.fillStyle = '#fafafa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(panOffset.x, panOffset.y);
+            ctx.scale(zoom, zoom);
+
+            // Draw links
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 2;
+            links.forEach(link => { // Draw links first
+                const fromNode = nodes.find(n => n.id === link.from);
+                const toNode = nodes.find(n => n.id === link.to);
+                if (fromNode && toNode) {
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    ctx.stroke();
+                }
+            });
+
+            // Draw link icons if in edit mode
+            if (isEditMode) {
+                links.forEach(drawLinkIcons);
+            }
+
+
+            // Draw nodes
+            nodes.forEach(node => {
+                const maxWidth = 200;
+                const lineHeight = 18;
+                const padding = 20;
+
+                ctx.font = 'bold 14px Geneva, Verdana, sans-serif';
+                const lines = getWrappedLines(ctx, node.text, maxWidth);
+                const textBlockHeight = lines.length * lineHeight;
+
+                let maxLineWidth = 0;
+                lines.forEach(line => {
+                    const lineWidth = ctx.measureText(line).width;
+                    if (lineWidth > maxLineWidth) {
+                        maxLineWidth = lineWidth;
+                    }
+                });
+                node.width = maxLineWidth + padding;
+                node.height = textBlockHeight + padding - (lineHeight / 2);
+                
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                
+                if (node.id === selectedNodeId) {
+                    ctx.fillStyle = 'black';
+                }
+                if (isEditMode && connectStartNodeId && node.id === connectStartNodeId) {
+                    ctx.strokeStyle = 'blue';
+                    ctx.lineWidth = 3;
+                }
+
+                ctx.beginPath();
+                ctx.roundRect(node.x - node.width / 2, node.y - node.height / 2, node.width, node.height, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = (node.id === selectedNodeId) ? 'white' : 'black';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                const startTextY = node.y - (textBlockHeight / 2) + (lineHeight / 2);
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.fillText(lines[i], node.x, startTextY + (i * lineHeight));
+                }
+                
+                // Draw node icons if in edit mode
+                if (isEditMode) {
+                    drawNodeIcons(node);
+                }
+            });
+
+            ctx.restore();
+        }
+        
+        // --- Modal Functions ---
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+            const input = document.getElementById('node-text-input');
+            input.focus();
+            input.select();
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+            document.getElementById('node-text-input').value = '';
+            activeNodeForModal = null;
+            newNodePosition = null;
+        }
+
+        function handleModalOk() {
+            const newText = document.getElementById('node-text-input').value;
+
+            if (activeNodeForModal) { // Editing
+                if (newText !== null) {
+                    activeNodeForModal.text = newText;
+                }
+            } else if (newNodePosition) { // Creating a new node
+                if (newText) { // Don't create a new node if text is empty
+                    const newNode = { id: Date.now(), x: newNodePosition.x, y: newNodePosition.y, text: newText };
+                    nodes.push(newNode);
+
+                    // --- AUTO-CONNECT LOGIC ---
+                    if (nodes.length > 1) {
+                        let nearestNode = null;
+                        let minDistance = Infinity;
+
+                        // Find the nearest node to the new one
+                        nodes.forEach(node => {
+                            if (node.id === newNode.id) return; // Don't compare to itself
+                            const dist = Math.sqrt(Math.pow(node.x - newNode.x, 2) + Math.pow(node.y - newNode.y, 2));
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                nearestNode = node;
+                            }
+                        });
+
+                        if (nearestNode) addLink(newNode.id, nearestNode.id);
+                    }
+                }
+            }
+            
+            closeModal('node-modal');
+            render();
+            saveData();
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            canvas.addEventListener('pointerdown', onPointerDown);
+            canvas.addEventListener('pointermove', onPointerMove);
+            canvas.addEventListener('pointerup', onPointerUp);
+            canvas.addEventListener('dblclick', onDblClick);
+            canvas.addEventListener('wheel', onWheel, { passive: false });
+            document.getElementById('node-text-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleModalOk();
+                if (e.key === 'Escape') closeModal('node-modal');
+            });
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('edit-btn');
+            btn.classList.toggle('active', isEditMode);
+            btn.innerText = isEditMode ? 'Done' : 'Edit';
+            
+            // Reset connection state when exiting edit mode
+            if (!isEditMode) {
+                connectStartNodeId = null;
+                statusBar.innerText = 'Double-click to add a node.';
+            } else {
+                statusBar.innerText = 'Click icons to delete or connect.';
+            }
+            
+            render();
+        }
+
+        function startConnection(nodeId) {
+            if (connectStartNodeId === nodeId) { // Clicked the same plus again
+                connectStartNodeId = null;
+                statusBar.innerText = 'Click icons to delete or connect.';
+            } else {
+                connectStartNodeId = nodeId;
+                statusBar.innerText = 'Click another node to connect to.';
+            }
+            render();
+        }
+
+        function onPointerDown(e) {
+            const pos = getCanvasPoint(e.clientX, e.clientY);
+
+            if (isEditMode) {
+                const iconRadius = 8;
+
+                // Check node icons first
+                for (let i = nodes.length - 1; i >= 0; i--) {
+                    const node = nodes[i];
+                    
+                    // Delete Icon (Top Left)
+                    const delX = node.x - node.width / 2;
+                    const delY = node.y - node.height / 2;
+                    if (Math.hypot(pos.x - delX, pos.y - delY) < iconRadius) {
+                        deleteNode(node.id);
+                        return;
+                    }
+
+                    // Add Link Icon (Bottom Right)
+                    const addX = node.x + node.width / 2;
+                    const addY = node.y + node.height / 2;
+                    if (Math.hypot(pos.x - addX, pos.y - addY) < iconRadius) {
+                        startConnection(node.id);
+                        return;
+                    }
+                }
+
+                // Check link delete icons
+                for (const link of links) {
+                    const fromNode = nodes.find(n => n.id === link.from);
+                    const toNode = nodes.find(n => n.id === link.to);
+                    if (fromNode && toNode) {
+                        const midX = (fromNode.x + toNode.x) / 2;
+                        const midY = (fromNode.y + toNode.y) / 2;
+                        if (Math.hypot(pos.x - midX, pos.y - midY) < iconRadius) {
+                            deleteLink(link);
+                            return;
+                        }
+                    }
+                }
+
+                // Handle connecting nodes
+                if (connectStartNodeId) {
+                    const clickedNode = getNodeAt(pos.x, pos.y);
+                    if (clickedNode && clickedNode.id !== connectStartNodeId) {
+                        addLink(connectStartNodeId, clickedNode.id);
+                        connectStartNodeId = null;
+                        statusBar.innerText = 'Click icons to delete or connect.';
+                        render();
+                    }
+                }
+                return; // Prevent panning/dragging in edit mode
+            }
+
+            // --- Default Mode ---
+            const clickedNode = getNodeAt(pos.x, pos.y);
+            if (clickedNode) {
+                isDragging = true;
+                draggedNodeId = clickedNode.id;
+                selectedNodeId = clickedNode.id;
+            } else {
+                isPanning = true;
+                canvas.style.cursor = 'grabbing';
+                selectedNodeId = null;
+            }
+            lastPanPoint = { x: e.clientX, y: e.clientY };
+            render();
+        }
+
+        function onPointerMove(e) {
+            if (isDragging && draggedNodeId) {
+                const pos = getCanvasPoint(e.clientX, e.clientY);
+                const node = nodes.find(n => n.id === draggedNodeId);
+                node.x = pos.x;
+                node.y = pos.y;
+                render();
+            } else if (isPanning) {
+                const dx = e.clientX - lastPanPoint.x;
+                const dy = e.clientY - lastPanPoint.y;
+                panOffset.x += dx;
+                panOffset.y += dy;
+                lastPanPoint = { x: e.clientX, y: e.clientY };
+                render();
+            }
+        }
+
+        function onPointerUp() {
+            if (isDragging) saveData();
+            if (isPanning) saveData();
+            isDragging = false;
+            isPanning = false;
+            draggedNodeId = null;
+            canvas.style.cursor = 'grab';
+        }
+
+        function onDblClick(e) {
+            if (isEditMode) return;
+
+            const pos = getCanvasPoint(e.clientX, e.clientY);
+            const clickedNode = getNodeAt(pos.x, pos.y);
+            
+            const modalTitle = document.getElementById('modal-title');
+            const modalInput = document.getElementById('node-text-input');
+
+            if (clickedNode) {
+                activeNodeForModal = clickedNode;
+                modalTitle.innerText = "Edit Node";
+                modalInput.value = clickedNode.text;
+            } else {
+                newNodePosition = pos;
+                modalTitle.innerText = "New Node";
+                modalInput.value = "";
+                modalInput.placeholder = "Enter text...";
+            }
+            openModal('node-modal');
+        }
+        
+        function onWheel(e) {
+            e.preventDefault();
+            const pos = getCanvasPoint(e.clientX, e.clientY, false); // Don't transform point for zoom origin
+            const zoomFactor = 1.1;
+            const wheel = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+
+            panOffset.x = (panOffset.x - pos.x) * wheel + pos.x;
+            panOffset.y = (panOffset.y - pos.y) * wheel + pos.y;
+            zoom *= wheel;
+            
+            render();
+            saveData();
+        }
+
+        // --- Helpers ---
+        function getCanvasPoint(x, y, transform = true) {
+            const rect = canvas.getBoundingClientRect();
+            const point = {
+                x: x - rect.left,
+                y: y - rect.top
+            };
+            if (transform) {
+                point.x = (point.x - panOffset.x) / zoom;
+                point.y = (point.y - panOffset.y) / zoom;
+            }
+            return point;
+        }
+
+        function getNodeAt(x, y) {
+            // Iterate backwards to select top-most node
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                if (x > node.x - node.width / 2 && x < node.x + node.width / 2 &&
+                    y > node.y - node.height / 2 && y < node.y + node.height / 2) {
+                    return node;
+                }
+            }
+            return null;
+        }
+        
+        function deleteNode(nodeId) {
+            if (!nodeId) return;
+            nodes = nodes.filter(n => n.id !== nodeId);
+            links = links.filter(l => l.from !== nodeId && l.to !== nodeId);
+            if (selectedNodeId === nodeId) selectedNodeId = null;
+            if (connectStartNodeId === nodeId) {
+                connectStartNodeId = null;
+                statusBar.innerText = 'Click icons to delete or connect.';
+            }
+            render();
+            saveData();
+        }
+
+        function deleteLink(linkToDelete) {
+            links = links.filter(l => !(l.from === linkToDelete.from && l.to === linkToDelete.to));
+            render();
+            saveData();
+        }
+        
+        function addLink(fromId, toId) {
+            const exists = links.some(l => (l.from === fromId && l.to === toId) || (l.from === toId && l.to === fromId));
+            if (!exists) {
+                links.push({ from: fromId, to: toId });
+                saveData();
+            }
+        }
+        
+        function resetView() {
+            if (nodes.length === 0) {
+                panOffset = { x: 0, y: 0 };
+                zoom = 1;
+                render();
+                saveData();
+                return;
+            }
+
+            // Ensure node sizes are up-to-date for accurate bounding box
+            const maxWidth = 200;
+            const lineHeight = 18;
+            const padding = 35;
+            ctx.font = 'bold 14px Geneva, Verdana, sans-serif';
+            nodes.forEach(node => {
+                const lines = getWrappedLines(ctx, node.text, maxWidth);
+                const textBlockHeight = lines.length * lineHeight;
+
+                let maxLineWidth = 0;
+                lines.forEach(line => {
+                    const lineWidth = ctx.measureText(line).width;
+                    if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+                });
+
+                node.width = maxLineWidth + padding;
+                node.height = textBlockHeight + padding - (lineHeight / 2);
+            });
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            nodes.forEach(node => {
+                minX = Math.min(minX, node.x - node.width / 2);
+                minY = Math.min(minY, node.y - node.height / 2);
+                maxX = Math.max(maxX, node.x + node.width / 2);
+                maxY = Math.max(maxY, node.y + node.height / 2);
+            });
+
+            const boundsWidth = maxX - minX;
+            const boundsHeight = maxY - minY;
+            const boundsCenterX = minX + boundsWidth / 2;
+            const boundsCenterY = minY + boundsHeight / 2;
+
+            const container = document.getElementById('canvas-container');
+            const canvasWidth = container.clientWidth;
+            const canvasHeight = container.clientHeight;
+            
+            const zoomX = boundsWidth > 0 ? (canvasWidth - padding * 2) / boundsWidth : Infinity;
+            const zoomY = boundsHeight > 0 ? (canvasHeight - padding * 2) / boundsHeight : Infinity;
+
+            zoom = Math.min(zoomX, zoomY, 1);
+            if (!isFinite(zoom)) zoom = 1;
+
+            panOffset.x = (canvasWidth / 2) - (boundsCenterX * zoom);
+            panOffset.y = (canvasHeight / 2) - (boundsCenterY * zoom);
+
+            render();
+            saveData();
+        }
+
+        function zoomIn() {
+            applyZoom('in');
+        }
+
+        function zoomOut() {
+            applyZoom('out');
+        }
+
+        function applyZoom(direction) {
+            const container = document.getElementById('canvas-container');
+            const pos = { x: container.clientWidth / 2, y: container.clientHeight / 2 };
+            const zoomFactor = 1.2;
+            const wheel = direction === 'in' ? zoomFactor : 1 / zoomFactor;
+
+            panOffset.x = (panOffset.x - pos.x) * wheel + pos.x;
+            panOffset.y = (panOffset.y - pos.y) * wheel + pos.y;
+            zoom *= wheel;
+            
+            render();
+            saveData();
+        }
+
+    </script>
+</body>
+</html>
