@@ -646,6 +646,8 @@
         let roomToDeleteId = null;
         let unsubscribeMsg = null;
         let unsubscribeRooms = null;
+        let oldestMsgDoc = null; // For pagination
+        let isLoadingMore = false; // For pagination
         
         // --- Reaction Keys (Simplified to match the new constant button action) ---
         const FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
@@ -680,7 +682,7 @@
             initAsciiPicker(); // Initialize the ASCII picker
             
             // Check Auth
-            auth.onAuthStateChanged(user => {
+            auth.onAuthStateChanged(async (user) => {
                 if (user) {
                     currentUser = user;
                     currentUsername = user.email.split('@')[0];
@@ -688,6 +690,7 @@
                     document.getElementById('active-input').style.display = 'flex';
                     document.getElementById('locked-input').style.display = 'none';
                     
+                    await cleanupEmptyChats();
                     loadRooms();
                 } else {
                     currentUser = null;
@@ -721,6 +724,9 @@
                     picker.classList.remove('open');
                 }
             });
+
+            // Scroll to top to load more messages
+            document.getElementById('chat-history').addEventListener('scroll', handleScroll);
         };
 
         function loadWallpaper() {
@@ -772,7 +778,39 @@
             });
         }
         
-        // --- ROOM LOGIC (Unchanged) ---
+        // --- ROOM LOGIC ---
+
+        async function cleanupEmptyChats() {
+            if (!currentUsername) return;
+            try {
+                const roomsQuery = await db.collection('rooms')
+                    .where('participants', 'array-contains', currentUsername)
+                    .where('type', '==', 'dm')
+                    .get();
+
+                const cleanupPromises = [];
+                roomsQuery.forEach(doc => {
+                    const roomData = doc.data();
+                    // Don't clean up chats with ukiyo
+                    if (roomData.participants.includes('ukiyo')) {
+                        return;
+                    }
+
+                    const messagesRef = db.collection('rooms').doc(doc.id).collection('messages');
+                    const promise = messagesRef.limit(1).get().then(messageSnap => {
+                        if (messageSnap.empty) {
+                            // This room is empty, remove user from it.
+                            return db.collection('rooms').doc(doc.id).update({
+                                participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
+                            });
+                        }
+                    });
+                    cleanupPromises.push(promise);
+                });
+                await Promise.all(cleanupPromises);
+            } catch (e) { console.error("Error during empty chat cleanup:", e); }
+        }
+
         function loadRooms() {
             if (unsubscribeRooms) unsubscribeRooms();
 
@@ -902,36 +940,98 @@
             loadMessages();
         }
 
-        // --- MESSAGE LOGIC ---
+        // --- MESSAGE LOGIC (with pagination) ---
+
+        async function handleScroll() {
+            const historyEl = document.getElementById('chat-history');
+            if (historyEl.scrollTop === 0 && !isLoadingMore && oldestMsgDoc) {
+                isLoadingMore = true;
+                const oldScrollHeight = historyEl.scrollHeight;
+
+                try {
+                    const querySnapshot = await db.collection('rooms').doc(currentRoomId).collection('messages')
+                        .orderBy('timestamp', 'desc')
+                        .startAfter(oldestMsgDoc)
+                        .limit(25)
+                        .get();
+
+                    if (!querySnapshot.empty) {
+                        oldestMsgDoc = querySnapshot.docs[querySnapshot.docs.length - 1]; // New oldest message
+                        
+                        querySnapshot.docs.reverse().forEach(doc => {
+                            renderMessage(doc.data(), doc.id, true); // Prepend messages
+                        });
+
+                        // Restore scroll position
+                        historyEl.scrollTop = historyEl.scrollHeight - oldScrollHeight;
+                    }
+                } catch (e) {
+                    console.error("Error loading more messages:", e);
+                } finally {
+                    isLoadingMore = false;
+                }
+            }
+        }
+
+        function listenForNewMessages(lastVisible) {
+            if (unsubscribeMsg) unsubscribeMsg();
+            
+            let query = db.collection('rooms').doc(currentRoomId).collection('messages')
+                .orderBy('timestamp', 'asc');
+
+            // If there are existing messages, listen for new ones after the last one we fetched.
+            // Otherwise, just listen for any new messages from now.
+            if (lastVisible) {
+                query = query.startAfter(lastVisible);
+            } else {
+                query = query.where('timestamp', '>', new Date());
+            }
+
+            unsubscribeMsg = query.onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const history = document.getElementById('chat-history');
+                        // Auto-scroll only if user is near the bottom
+                        const isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                        renderMessage(change.doc.data(), change.doc.id);
+                        if(isScrolledToBottom) {
+                            history.scrollTop = history.scrollHeight;
+                        }
+                    }
+                });
+            }, (error) => { console.error("Error listening for new messages:", error); });
+        }
+
         function loadMessages() {
             if (unsubscribeMsg) unsubscribeMsg();
+            oldestMsgDoc = null;
+            isLoadingMore = false;
 
             const history = document.getElementById('chat-history');
             history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
 
-            unsubscribeMsg = db.collection('rooms').doc(currentRoomId).collection('messages')
+            db.collection('rooms').doc(currentRoomId).collection('messages')
                 .orderBy('timestamp', 'asc')
                 .limitToLast(50)
-                .onSnapshot((snapshot) => {
+                .get()
+                .then(snapshot => {
                     history.innerHTML = ''; 
-                    
                     if (snapshot.empty) {
                         history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
-                        return;
+                        oldestMsgDoc = null;
+                    } else {
+                        snapshot.forEach(doc => renderMessage(doc.data(), doc.id));
+                        history.scrollTop = history.scrollHeight;
+                        oldestMsgDoc = snapshot.docs[0];
                     }
-
-                    snapshot.forEach((doc) => {
-                        renderMessage(doc.data(), doc.id);
-                    });
-                    
-                    history.scrollTop = history.scrollHeight;
-                }, (error) => {
-                    console.error("Error:", error);
+                    listenForNewMessages(snapshot.docs[snapshot.docs.length - 1]);
+                }).catch(error => {
+                    console.error("Error getting initial messages:", error);
                     history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
                 });
         }
 
-        function renderMessage(msg, msgId) {
+        function renderMessage(msg, msgId, prepend = false) {
             const history = document.getElementById('chat-history');
             const div = document.createElement('div');
             
@@ -1054,7 +1154,11 @@
                 if (reactionBar.children.length > 0) div.appendChild(reactionBar);
             }
 
-            history.appendChild(div);
+            if (prepend) {
+                history.prepend(div);
+            } else {
+                history.appendChild(div);
+            }
         }
 
         async function sendMessage() {
@@ -1065,17 +1169,33 @@
             if (!currentUser) return;
 
             inputEl.value = '';
-            
+
             const messageData = {
                 user: currentUsername,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 text: text // Text can include newlines for ASCII art
             };
             
+            const roomRef = db.collection('rooms').doc(currentRoomId);
+
             try {
-                await db.collection('rooms').doc(currentRoomId).collection('messages').add(messageData);
+                // Add the message first
+                await roomRef.collection('messages').add(messageData);
+
+                // Then, check if we need to "activate" the room for other users
+                const roomDoc = await roomRef.get();
+                if (roomDoc.exists) {
+                    const roomData = roomDoc.data();
+                    // If it's a DM that hasn't been activated yet
+                    if (roomData.type === 'dm' && roomData.intendedParticipants && roomData.participants.length < roomData.intendedParticipants.length) {
+                        // Add all intended participants to the main participants list
+                        await roomRef.update({
+                            participants: roomData.intendedParticipants
+                        });
+                    }
+                }
+
             } catch(e) {
-                // Replaced with custom modal in larger app context
                 console.error("Error sending message:", e);
             }
         }
@@ -1179,21 +1299,31 @@
             
             if (!usersInput) return alert("Please add at least one username.");
 
-            let participants = usersInput.split(',').map(u => u.trim());
-            participants.push(currentUsername); 
+            let otherParticipants = usersInput.split(',').map(u => u.trim());
+            let allParticipants = [...otherParticipants, currentUsername]; 
             
-            const roomName = nameInput || participants.filter(u => u !== currentUsername).join(", ");
+            const isGroup = allParticipants.length > 2;
+            const roomName = nameInput || otherParticipants.join(", ");
 
             try {
-                await db.collection('rooms').add({
+                const roomData = {
                     name: roomName,
-                    participants: participants,
-                    type: participants.length > 2 ? 'group' : 'dm',
+                    participants: isGroup ? allParticipants : [currentUsername], // Only add creator for DMs
+                    type: isGroup ? 'group' : 'dm',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                };
+
+                // For DMs, store the full participant list to be activated on first message
+                if (!isGroup) {
+                    roomData.intendedParticipants = allParticipants;
+                }
+
+                const newRoomRef = await db.collection('rooms').add(roomData);
+                
+                // Switch to the new room so the creator can send the first message
+                switchRoom(newRoomRef.id, roomName);
                 closeModal();
             } catch(e) {
-                // Replaced with custom modal in larger app context
                 console.error("Error creating room:", e);
             }
         }
