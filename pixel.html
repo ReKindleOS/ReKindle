@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* GAME AREA */
+        .game-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+        }
+
+        #canvas-container {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        #pixel-canvas {
+            border: 2px solid black;
+            background: white;
+            cursor: pointer;
+            image-rendering: pixelated;
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+        
+        button.active {
+            background: black;
+            color: white;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: fixed; /* Use fixed to cover viewport */
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(229, 229, 229, 0.8); /* Match body bg with transparency */
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 320px;
+            text-align: center;
+        }
+        
+        .modal-box h3 {
+            margin-top: 0;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="grid-size-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="grid-size-modal-title">Change Grid Size?</h3>
+            <p style="margin-bottom:20px;" id="grid-size-modal-text">Switch to a different grid size?</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" id="grid-size-confirm-btn">Yes</button>
+                <button class="sys-btn" onclick="closeModal('grid-size-modal')">No</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clear-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Clear Canvas?</h3>
+            <p style="margin-bottom:20px;">Are you sure you want to clear the canvas? This cannot be undone.</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="confirmClear()">Yes</button>
+                <button class="sys-btn" onclick="closeModal('clear-modal')">No</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Pixel</span>
+        </div>
+        
+        <div class="game-content">
+            <div id="canvas-container">
+                <canvas id="pixel-canvas"></canvas>
+            </div>
+            <div class="controls">
+                <button id="pen-btn" class="active" onclick="setTool('pen')">Pen</button>
+                <button id="eraser-btn" onclick="setTool('eraser')">Eraser</button>
+                <div style="width:10px;"></div>
+                <button id="size-16" onclick="setGridSize(16)">16x16</button>
+                <button id="size-32" class="active" onclick="setGridSize(32)">32x32</button>
+                <button id="size-64" onclick="setGridSize(64)">64x64</button>
+                <div style="width:10px;"></div>
+                <button onclick="clearGrid()">Clear</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+        const canvas = document.getElementById('pixel-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+
+        let gridSize = 32;
+        let cellSize;
+        let grid;
+        let currentTool = 'pen';
+        let isDrawing = false;
+        
+        // Firebase variables
+        let db, auth, currentUser = null;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // --- MODAL FUNCTIONS ---
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // --- GRID & DRAWING ---
+        function createGrid(size) {
+            return new Array(size).fill(null).map(() => new Array(size).fill(0));
+        }
+
+        async function setup(load = true) {
+            const containerSize = container.clientWidth;
+            const canvasSize = Math.floor(containerSize / gridSize) * gridSize;
+            
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            cellSize = canvas.width / gridSize;
+            
+            grid = createGrid(gridSize);
+            if (load) {
+                await loadDrawing();
+            }
+            drawGrid();
+            if (!load) {
+                saveDrawing(); // Save the new empty state
+            }
+        }
+
+        function drawGrid() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'black';
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    if (grid[r][c] === 1) ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+                }
+            }
+            if (cellSize > 4) {
+                ctx.strokeStyle = '#eee';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= gridSize; i++) {
+                    ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, canvas.height); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(canvas.width, i * cellSize); ctx.stroke();
+                }
+            }
+        }
+
+        function handleDraw(event) {
+            event.preventDefault();
+            const x = event.clientX - canvas.getBoundingClientRect().left;
+            const y = event.clientY - canvas.getBoundingClientRect().top;
+            const col = Math.floor(x / cellSize);
+            const row = Math.floor(y / cellSize);
+
+            if (col >= 0 && col < gridSize && row >= 0 && row < gridSize) {
+                const newValue = currentTool === 'pen' ? 1 : 0;
+                if (grid[row][col] !== newValue) { grid[row][col] = newValue; drawGrid(); }
+            }
+        }
+
+        function startDrawing(e) { isDrawing = true; handleDraw(e); }
+        function moveDrawing(e) { if (isDrawing) handleDraw(e); }
+        function stopDrawing() {
+            if (isDrawing) { isDrawing = false; saveDrawing(); }
+        }
+
+        // --- CONTROLS ---
+        function setTool(tool) {
+            currentTool = tool;
+            document.getElementById('pen-btn').classList.toggle('active', tool === 'pen');
+            document.getElementById('eraser-btn').classList.toggle('active', tool === 'eraser');
+        }
+
+        function setGridSize(size) {
+            if (gridSize === size) return;
+            const confirmBtn = document.getElementById('grid-size-confirm-btn');
+            document.getElementById('grid-size-modal-text').innerText = `Switch to ${size}x${size} grid?`;
+            confirmBtn.onclick = () => confirmSetGridSize(size);
+            openModal('grid-size-modal');
+        }
+
+        function confirmSetGridSize(size) {
+            gridSize = size;
+            localStorage.setItem('pixel_art_last_size', size);
+            document.querySelectorAll('.controls button[id^="size-"]').forEach(b => b.classList.remove('active'));
+            document.getElementById(`size-${size}`).classList.add('active');
+            setup(); // Re-setup and load art for the new size
+            closeModal('grid-size-modal');
+        }
+
+        function clearGrid() {
+            openModal('clear-modal');
+        }
+
+        function confirmClear() {
+            grid = createGrid(gridSize);
+            drawGrid();
+            saveDrawing();
+            closeModal('clear-modal');
+        }
+
+        // --- DATA PERSISTENCE ---
+        function saveDrawing() {
+            const key = `pixel_art_${gridSize}`;
+            const data = JSON.stringify(grid);
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('pixel_art').doc(String(gridSize))
+                    .set({ gridData: data })
+                    .catch(error => {
+                        console.error("Error saving to Firebase, falling back to local storage.", error);
+                        localStorage.setItem(key, data);
+                    });
+            } else {
+                localStorage.setItem(key, data);
+            }
+        }
+
+        async function loadDrawing() {
+            const key = `pixel_art_${gridSize}`;
+
+            if (currentUser) {
+                try {
+                    const doc = await db.collection('users').doc(currentUser.uid).collection('pixel_art').doc(String(gridSize)).get();
+                    if (doc.exists && doc.data().gridData) {
+                        grid = JSON.parse(doc.data().gridData);
+                        localStorage.setItem(key, doc.data().gridData); // Sync to local for offline
+                    } else {
+                        const localData = localStorage.getItem(key);
+                        if (localData) {
+                            grid = JSON.parse(localData);
+                            saveDrawing(); // Upload to cloud
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error loading from Firebase, falling back to local storage.", error);
+                    const localData = localStorage.getItem(key);
+                    if (localData) grid = JSON.parse(localData);
+                }
+            } else {
+                const localData = localStorage.getItem(key);
+                if (localData) grid = JSON.parse(localData);
+            }
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            loadWallpaper();
+            
+            const lastSize = localStorage.getItem('pixel_art_last_size');
+            if (lastSize && [16, 32, 64].includes(parseInt(lastSize))) {
+                gridSize = parseInt(lastSize);
+            }
+            document.querySelectorAll('.controls button[id^="size-"]').forEach(b => b.classList.remove('active'));
+            document.getElementById(`size-${gridSize}`).classList.add('active');
+
+            
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+
+            auth.onAuthStateChanged(user => {
+                currentUser = user;
+                setup(); // Initial setup after auth state is known
+            });
+
+            canvas.addEventListener('pointerdown', startDrawing);
+            canvas.addEventListener('pointermove', moveDrawing);
+            canvas.addEventListener('pointerup', stopDrawing);
+            canvas.addEventListener('pointerleave', stopDrawing);
+        };
+        
+        window.onresize = setup;
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if(wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
+        }
+</script>
+</body>
+</html>
