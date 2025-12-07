@@ -246,6 +246,14 @@ const APPS = [
         beta: true,          
         icon: '<path d="M22 6 L26 10 L14 22 L10 22 L10 18 Z"/><line x1="19" y1="9" x2="23" y2="13"/><path d="M10 22 L6 26"/>' 
     },
+    {
+        id: 'pixel',
+        name: 'Pixel',
+        cat: 'lifestyle',
+        beta: true,
+        desc: 'A 1-bit pixel art canvas.',
+        icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="1"/><rect x="6" y="6" width="6" height="6" fill="black"/><rect x="20" y="10" width="6" height="6" fill="black"/><rect x="12" y="18" width="6" height="6" fill="black"/>'
+    },
     { 
         id: 'wikipedia', 
         name: 'Wikipedia', 
@@ -382,6 +390,13 @@ const APPS = [
         name: 'Blocks', 
         cat: 'games', 
         icon: '<path d="M6 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/><path d="M16 20 h10 v10 h-10 z" fill="black" stroke="none"/><path d="M16 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/>' 
+    },
+    {
+        id: 'life',
+        name: 'Life',
+        icon: '<path d="M16 8 h4 v4 h-4z M20 12 h4 v4 h-4z M12 16 h4 v4 h-4z M16 16 h4 v4 h-4z M20 16 h4 v4 h-4z" fill="currentColor"/>',
+        cat: 'games',
+        desc: "Conway's cellular automaton. A classic toy that creates fascinating patterns.",
     },
     { 
         id: 'wordsearch', 
