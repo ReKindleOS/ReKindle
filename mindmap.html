@@ -123,6 +123,91 @@
             font-size: 0.8rem;
         }
 
+        /* TOOLBAR */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            border-bottom: 2px solid black;
+            background: #f5f5f5;
+            flex-shrink: 0;
+        }
+
+        .toolbar-left, .toolbar-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* LIBRARY MODAL */
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 20px;
+            padding: 10px;
+            max-height: 60vh;
+            overflow-y: auto;
+            background: #eee;
+            border: 2px solid black;
+            min-height: 200px;
+        }
+
+        .mindmap-preview {
+            border: 2px solid black;
+            background: white;
+            box-shadow: 2px 2px 0 black;
+            display: flex;
+            flex-direction: column;
+            min-height: 150px;
+            position: relative;
+        }
+
+        .mindmap-preview:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .mindmap-preview-canvas {
+            flex-grow: 1;
+            background-color: #fafafa;
+            cursor: pointer;
+            width: 100%;
+            height: 120px;
+        }
+
+        .mindmap-preview-footer {
+            padding: 5px 8px;
+            border-top: 2px solid black;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        .mindmap-preview-title {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mindmap-preview-delete-btn {
+            background: #ffcccc;
+            border: 2px solid black;
+            padding: 2px 6px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 1px 1px 0 black;
+            font-size: 0.7rem;
+        }
+        .mindmap-preview-delete-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
         .sys-btn.active {
             background: black;
             color: white;
@@ -226,9 +311,15 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Mindmap</span>
-            
-            <div class="controls">
+            <span class="title-text" id="mindmap-title">Mindmap</span>
+        </div>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button class="sys-btn" onclick="showLibrary()">Library</button>
+                <button class="sys-btn" onclick="newMindmap()">New</button>
+            </div>
+            <div class="toolbar-right">
                 <button class="sys-btn" id="edit-btn" onclick="toggleEditMode()">Edit</button>
                 <button class="sys-btn" onclick="resetView()">Center</button>
             </div>
@@ -251,6 +342,30 @@
             <div style="display:flex; justify-content:center; gap:10px;">
                 <button class="sys-btn" onclick="handleModalOk()">OK</button>
                 <button class="sys-btn" onclick="closeModal('node-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="library-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 80%; max-width: 700px;">
+            <h2 style="margin-top:0; border-bottom: 2px solid black; padding-bottom:10px;">My Mindmaps</h2>
+            <div id="library-grid" class="library-grid">
+                <!-- Mindmap previews will be injected here -->
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top: 20px;">
+                <button class="sys-btn" onclick="closeModal('library-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="margin-top:0;">Confirm Deletion</h2>
+            <p>Are you sure you want to delete the mindmap "<span id="delete-map-name"></span>"?</p>
+            <p style="font-size: 0.8rem; color: #555;">This action cannot be undone.</p>
+            <div style="display:flex; justify-content:center; gap:10px; margin-top: 20px;">
+                <button class="sys-btn" onclick="executeDelete()">Delete</button>
+                <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
             </div>
         </div>
     </div>
@@ -305,25 +420,36 @@
         let isDragging = false;
         
         let connectStartNodeId = null;
+        let mindmapId = null;
 
         let activeNodeForModal = null;
         let newNodePosition = null;
+        let mapIdToDelete = null;
 
         // --- Init ---
         window.onload = () => {
             loadWallpaper();
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            mindmapId = urlParams.get('id');
+
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             setupEventListeners();
 
             auth.onAuthStateChanged(user => {
+                currentUser = user;
                 if (user) {
-                    currentUser = user;
                     statusBar.innerText = "Synced: " + user.email;
-                    loadData();
                 } else {
                     statusBar.innerText = "Guest Mode (Local)";
+                }
+
+                if (mindmapId) {
                     loadData();
+                } else {
+                    // No mindmap ID in URL, show the library by default
+                    showLibrary();
                 }
             });
         };
@@ -336,9 +462,23 @@
         }
 
         // --- Data ---
+        function updateTitle() {
+            const titleElement = document.getElementById('mindmap-title');
+            if (nodes.length > 0 && nodes[0] && nodes[0].text) {
+                let title = nodes[0].text;
+                if (title === 'Double tap to edit') {
+                    titleElement.innerText = 'Untitled';
+                } else {
+                    titleElement.innerText = title;
+                }
+            } else {
+                titleElement.innerText = 'Mindmap';
+            }
+        }
+
         function loadData() {
             if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('apps').doc('mindmap').get().then(doc => {
+                db.collection('users').doc(currentUser.uid).collection('mindmaps').doc(mindmapId).get().then(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         nodes = data.nodes || [];
@@ -346,18 +486,25 @@
                         panOffset = data.panOffset || { x: 0, y: 0 };
                         zoom = data.zoom || 1;
                     } else {
-                        loadLocalData();
+                        // New map for this user, create default node
+                        const container = document.getElementById('canvas-container');
+                        nodes = [{ id: Date.now(), x: container.clientWidth / 2, y: container.clientHeight / 2, text: 'Double tap to edit', width: 120, height: 40 }];
+                        links = [];
+                        panOffset = { x: 0, y: 0 };
+                        zoom = 1;
                     }
+                    updateTitle();
                     render();
                 });
             } else {
                 loadLocalData();
+                updateTitle();
                 render();
             }
         }
         
         function loadLocalData() {
-            const data = JSON.parse(localStorage.getItem('rekindle_mindmap'));
+            const data = JSON.parse(localStorage.getItem('rekindle_mindmap_' + mindmapId));
             if (data) {
                 nodes = data.nodes || [];
                 links = data.links || [];
@@ -366,19 +513,27 @@
             } else {
                 // Default starting node
                 const container = document.getElementById('canvas-container');
-                nodes = [{ id: Date.now(), x: container.clientWidth / 2, y: container.clientHeight / 2, text: 'Central Idea', width: 120, height: 40 }];
+                nodes = [{ id: Date.now(), x: container.clientWidth / 2, y: container.clientHeight / 2, text: 'Double tap to edit', width: 120, height: 40 }];
+                links = [];
+                panOffset = { x: 0, y: 0 };
+                zoom = 1;
             }
         }
 
         function saveData() {
+            // Don't save if it's just the default, unedited node.
+            if (nodes.length === 1 && links.length === 0 && nodes[0].text === 'Double tap to edit') {
+                return;
+            }
+
             const data = { nodes, links, panOffset, zoom };
             if (currentUser) {
                 clearTimeout(saveTimer);
                 saveTimer = setTimeout(() => {
-                    db.collection('users').doc(currentUser.uid).collection('apps').doc('mindmap').set(data);
+                    db.collection('users').doc(currentUser.uid).collection('mindmaps').doc(mindmapId).set(data);
                 }, 1000);
             } else {
-                localStorage.setItem('rekindle_mindmap', JSON.stringify(data));
+                localStorage.setItem('rekindle_mindmap_' + mindmapId, JSON.stringify(data));
             }
         }
 
@@ -557,24 +712,38 @@
         // --- Modal Functions ---
         function openModal(modalId) {
             document.getElementById(modalId).style.display = 'flex';
-            const input = document.getElementById('node-text-input');
-            input.focus();
-            input.select();
+            if (modalId === 'node-modal') {
+                const input = document.getElementById('node-text-input');
+                input.focus();
+                input.select();
+            }
         }
 
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
-            document.getElementById('node-text-input').value = '';
-            activeNodeForModal = null;
-            newNodePosition = null;
+            if (modalId === 'node-modal') {
+                document.getElementById('node-text-input').value = '';
+                activeNodeForModal = null;
+                newNodePosition = null;
+            } else if (modalId === 'delete-modal') {
+                mapIdToDelete = null;
+            }
         }
 
         function handleModalOk() {
             const newText = document.getElementById('node-text-input').value;
 
+            if (!mindmapId && !newNodePosition) {
+                // This can happen if the modal is open while a map is deleted in the background
+                return;
+            }
             if (activeNodeForModal) { // Editing
                 if (newText !== null) {
                     activeNodeForModal.text = newText;
+                    // If editing the first node, update the mindmap title
+                    if (nodes.length > 0 && activeNodeForModal.id === nodes[0].id) {
+                        updateTitle();
+                    }
                 }
             } else if (newNodePosition) { // Creating a new node
                 if (newText) { // Don't create a new node if text is empty
@@ -604,6 +773,219 @@
             closeModal('node-modal');
             render();
             saveData();
+        }
+
+        function newMindmap() {
+            const newId = 'map-' + Date.now() + Math.random().toString(36).substring(2, 7);
+            window.location.href = window.location.pathname + '?id=' + newId;
+        }
+
+        function showLibrary() {
+            const libraryGrid = document.getElementById('library-grid');
+            libraryGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">Loading...</p>';
+            openModal('library-modal');
+
+            const maps = [];
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('mindmaps').get().then(querySnapshot => {
+                    querySnapshot.forEach(doc => {
+                        const data = doc.data();
+                        let title = data.nodes && data.nodes.length > 0 && data.nodes[0].text ? data.nodes[0].text : 'Untitled';
+                        if (title === 'Double tap to edit') title = 'Untitled';
+                        maps.push({ id: doc.id, title: title, data: data });
+                    });
+                    renderLibrary(maps);
+                }).catch(error => {
+                    libraryGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">Error loading mindmaps.</p>';
+                    console.error("Error getting documents: ", error);
+                });
+            } else {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('rekindle_mindmap_')) {
+                        const mindmapId = key.replace('rekindle_mindmap_', '');
+                        try {
+                            const data = JSON.parse(localStorage.getItem(key));
+                            let title = data.nodes && data.nodes.length > 0 && data.nodes[0].text ? data.nodes[0].text : 'Untitled';
+                            if (title === 'Double tap to edit') title = 'Untitled';
+                            maps.push({ id: mindmapId, title: title, data: data });
+                        } catch (e) {
+                            console.error('Could not parse mindmap data from local storage for key:', key);
+                        }
+                    }
+                }
+                renderLibrary(maps);
+            }
+        }
+
+        function renderLibrary(maps) {
+            const libraryGrid = document.getElementById('library-grid');
+            libraryGrid.innerHTML = ''; // Clear
+
+            if (maps.length === 0) {
+                libraryGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">No mindmaps found. Click "New" to create one!</p>';
+                return;
+            }
+
+            maps.sort((a, b) => a.title.localeCompare(b.title));
+
+            maps.forEach(map => {
+                const previewContainer = document.createElement('div');
+                previewContainer.className = 'mindmap-preview';
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'mindmap-preview-canvas';
+                canvas.onclick = () => openMindmap(map.id);
+
+                const footer = document.createElement('div');
+                footer.className = 'mindmap-preview-footer';
+
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'mindmap-preview-title';
+                titleSpan.innerText = map.title;
+                titleSpan.title = map.title; // Tooltip for long titles
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'mindmap-preview-delete-btn';
+                deleteBtn.innerText = 'Delete';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevent opening the map
+                    confirmDeleteMindmap(map.id, map.title);
+                };
+
+                footer.appendChild(titleSpan);
+                footer.appendChild(deleteBtn);
+
+                previewContainer.appendChild(canvas);
+                previewContainer.appendChild(footer);
+                
+                libraryGrid.appendChild(previewContainer);
+
+                // Use a timeout to ensure the canvas is in the DOM before drawing
+                setTimeout(() => drawMindmapPreview(canvas, map.data), 0);
+            });
+        }
+
+        function drawMindmapPreview(canvas, mapData) {
+            if (!canvas || !mapData || !mapData.nodes || mapData.nodes.length === 0) {
+                return;
+            }
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const nodes = mapData.nodes;
+            const links = mapData.links || [];
+
+            // 1. Calculate bounds
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            nodes.forEach(node => {
+                const nodeWidth = node.width || 120;
+                const nodeHeight = node.height || 40;
+                minX = Math.min(minX, node.x - nodeWidth / 2);
+                minY = Math.min(minY, node.y - nodeHeight / 2);
+                maxX = Math.max(maxX, node.x + nodeWidth / 2);
+                maxY = Math.max(maxY, node.y + nodeHeight / 2);
+            });
+
+            const boundsWidth = maxX - minX;
+            const boundsHeight = maxY - minY;
+            const boundsCenterX = minX + boundsWidth / 2;
+            const boundsCenterY = minY + boundsHeight / 2;
+
+            // 2. Calculate scale and offset
+            const padding = 10;
+            const canvasWidth = canvas.clientWidth;
+            const canvasHeight = canvas.clientHeight;
+
+            let zoom = 1;
+            if (boundsWidth > 0 && boundsHeight > 0) {
+                const zoomX = (canvasWidth - padding * 2) / boundsWidth;
+                const zoomY = (canvasHeight - padding * 2) / boundsHeight;
+                zoom = Math.min(zoomX, zoomY);
+            }
+
+            const panOffsetX = (canvasWidth / 2) - (boundsCenterX * zoom);
+            const panOffsetY = (canvasHeight / 2) - (boundsCenterY * zoom);
+
+            // 3. Draw
+            ctx.fillStyle = '#fafafa';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            ctx.save();
+            ctx.translate(panOffsetX, panOffsetY);
+            ctx.scale(zoom, zoom);
+
+            // Draw links
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 2;
+            links.forEach(link => {
+                const fromNode = nodes.find(n => n.id === link.from);
+                const toNode = nodes.find(n => n.id === link.to);
+                if (fromNode && toNode) {
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    ctx.stroke();
+                }
+            });
+
+            // Draw nodes
+            nodes.forEach((node, index) => {
+                const nodeWidth = node.width || 120;
+                const nodeHeight = node.height || 40;
+                
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'black';
+                ctx.fillStyle = (index === 0) ? 'black' : 'white';
+                
+                ctx.beginPath();
+                ctx.roundRect(node.x - nodeWidth / 2, node.y - nodeHeight / 2, nodeWidth, nodeHeight, 8 / zoom);
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            ctx.restore();
+        }
+
+        function confirmDeleteMindmap(id, title) {
+            mapIdToDelete = id;
+            document.getElementById('delete-map-name').innerText = title;
+            openModal('delete-modal');
+        }
+
+        function executeDelete() {
+            if (!mapIdToDelete) return;
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('mindmaps').doc(mapIdToDelete).delete().then(() => {
+                    console.log("Document successfully deleted!");
+                    refreshLibraryAfterDelete();
+                }).catch(error => {
+                    console.error("Error removing document: ", error);
+                    closeModal('delete-modal');
+                });
+            } else {
+                localStorage.removeItem('rekindle_mindmap_' + mapIdToDelete);
+                refreshLibraryAfterDelete();
+            }
+        }
+
+        function refreshLibraryAfterDelete() {
+            // If the deleted map is the one currently open, redirect to the library view
+            if (mindmapId === mapIdToDelete) {
+                window.location.href = window.location.pathname;
+            } else {
+                closeModal('delete-modal');
+                showLibrary(); // Refresh the library view
+            }
+        }
+
+        function openMindmap(id) {
+            window.location.href = window.location.pathname + '?id=' + id;
         }
 
         // --- Event Listeners ---
