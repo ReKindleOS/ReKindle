@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teleprompter</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            height: 90vh;
+            max-width: 800px;
+            position: relative;
+        }
+        
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+        }
+
+        /* VIEWS */
+        .view {
+            flex-grow: 1;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .view.active {
+            display: flex;
+        }
+
+        /* LIST VIEW */
+        #list-view {
+            padding: 0;
+            overflow-y: auto;
+        }
+        
+        .explainer {
+            padding: 20px;
+            background: #eee;
+            border-bottom: 2px solid black;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .note-item {
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .note-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* TELEPROMPTER VIEW */
+        #teleprompter-view {
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: white;
+            color: black;
+        }
+        
+        #teleprompter-view.inverted {
+            background: black;
+            color: white;
+        }
+
+        #teleprompter-text {
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            line-height: 1.2;
+        }
+        
+        .nav-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 50%;
+            z-index: 10;
+            cursor: pointer;
+        }
+        
+        #prev-zone { left: 0; }
+        #next-zone { right: 0; }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="window" id="main-window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div id="teleprompter-back-control" style="display: none; position: absolute; left: 40px; z-index: 2;">
+                <button class="sys-btn" onclick="showListView()">Back</button>
+            </div>
+            <span class="title-text">Teleprompter</span>
+            <div class="controls" id="teleprompter-controls" style="display:none;">
+                <button class="sys-btn" onclick="toggleInvert()">Invert</button>
+                <button class="sys-btn" onclick="toggleFullScreen()">Full Screen</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <!-- LIST VIEW -->
+            <div id="list-view" class="view active">
+                <div class="explainer">Select a note to begin. Add notes from the Notes app; they will be shown here line-by-line.</div>
+                <div id="notes-container">
+                    <div style="padding:20px; text-align:center; color:#666;">Loading notes...</div>
+                </div>
+            </div>
+
+            <!-- TELEPROMPTER VIEW -->
+            <div id="teleprompter-view" class="view">
+                <div id="prev-zone" class="nav-zone" onclick="goPrevLine()"></div>
+                <div id="next-zone" class="nav-zone" onclick="goNextLine()"></div>
+                <p id="teleprompter-text">Line text goes here.</p>
+            </div>
+        </div>
+        <div id="status-bar">Local Mode</div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let notes = [];
+        let currentUser = null;
+        let currentNoteLines = [];
+        let currentLineIndex = 0;
+        let isInverted = false;
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+            window.addEventListener('resize', resizeText);
+            
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    loadCloudNotes();
+                    loadInversionSetting();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalNotes();
+                    loadInversionSetting();
+                }
+            });
+        };
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if(wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if(wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // --- DATA MANAGEMENT ---
+        function loadLocalNotes() {
+            notes = JSON.parse(localStorage.getItem('rekindle_notes')) || [];
+            renderNoteList();
+        }
+
+        function loadCloudNotes() {
+            db.collection('users').doc(currentUser.uid).collection('notes')
+                .orderBy('updated', 'desc')
+                .onSnapshot((snapshot) => {
+                    notes = [];
+                    snapshot.forEach(doc => {
+                        let data = doc.data();
+                        data.id = doc.id;
+                        notes.push(data);
+                    });
+                    renderNoteList();
+                }, (error) => {
+                    console.error("Error getting notes: ", error);
+                    document.getElementById('status-bar').innerText = "Sync Error. Using Local.";
+                    loadLocalNotes();
+                });
+        }
+
+        function loadInversionSetting() {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('teleprompter').get().then(doc => {
+                    if (doc.exists && doc.data().inverted === true) {
+                        isInverted = true;
+                        document.getElementById('teleprompter-view').classList.add('inverted');
+                    }
+                }).catch(error => console.error("Error loading inversion setting: ", error));
+            } else {
+                if (localStorage.getItem('rekindle_teleprompter_inverted') === 'true') {
+                    isInverted = true;
+                    document.getElementById('teleprompter-view').classList.add('inverted');
+                }
+            }
+        }
+
+        function saveInversionState() {
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('teleprompter').set({ inverted: isInverted }, { merge: true });
+            } else {
+                localStorage.setItem('rekindle_teleprompter_inverted', isInverted);
+            }
+        }
+
+        // --- UI LOGIC ---
+        function resizeText() {
+            const container = document.getElementById('teleprompter-view');
+            const textElement = document.getElementById('teleprompter-text');
+            
+            if (!container.classList.contains('active') || !textElement || !textElement.innerText) {
+                return;
+            }
+
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            const maxWidth = containerWidth - 40; // Account for 20px padding on each side
+            const maxHeight = containerHeight - 40;
+
+            let fontSize = 300; // Start with a large font size
+            textElement.style.fontSize = fontSize + 'px';
+
+            // Loop until the text fits within the container's height, allowing it to wrap.
+            while (textElement.scrollHeight > maxHeight && fontSize > 10) {
+                fontSize--;
+                textElement.style.fontSize = fontSize + 'px';
+            }
+        }
+
+        function renderNoteList() {
+            const container = document.getElementById('notes-container');
+            container.innerHTML = '';
+
+            if (notes.length === 0) {
+                container.innerHTML = '<div style="padding:40px; text-align:center; font-style:italic;">No notes found.</div>';
+                return;
+            }
+
+            notes.forEach(note => {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+                div.innerText = note.title || 'Untitled Note';
+                div.onclick = () => startTeleprompter(note.id);
+                container.appendChild(div);
+            });
+        }
+
+        function startTeleprompter(noteId) {
+            const note = notes.find(n => n.id === noteId);
+            if (!note || !note.content) {
+                currentNoteLines = ["(This note is empty)"];
+            } else {
+                currentNoteLines = note.content.split('\\n').join('\n').split('\n').filter(line => line.trim() !== '');
+                if (currentNoteLines.length === 0) {
+                    currentNoteLines = ["(No lines found in this note)"];
+                }
+            }
+            
+            currentLineIndex = 0;
+            
+            document.getElementById('list-view').classList.remove('active');
+            document.getElementById('teleprompter-view').classList.add('active');
+            document.getElementById('teleprompter-controls').style.display = 'flex';
+            document.getElementById('teleprompter-back-control').style.display = 'block';
+            displayCurrentLine();
+        }
+
+        function showListView() {
+            document.getElementById('teleprompter-view').classList.remove('active');
+            document.getElementById('list-view').classList.add('active');
+            document.getElementById('teleprompter-controls').style.display = 'none';
+            document.getElementById('teleprompter-back-control').style.display = 'none';
+        }
+
+        function displayCurrentLine() {
+            const textElement = document.getElementById('teleprompter-text');
+            if (currentNoteLines.length > 0) {
+                textElement.innerText = currentNoteLines[currentLineIndex];
+            } else {
+                textElement.innerText = "";
+            }
+            resizeText();
+        }
+
+        function goNextLine() {
+            if (currentLineIndex < currentNoteLines.length - 1) {
+                currentLineIndex++;
+                displayCurrentLine();
+            }
+        }
+
+        function goPrevLine() {
+            if (currentLineIndex > 0) {
+                currentLineIndex--;
+                displayCurrentLine();
+            }
+        }
+        
+        function toggleInvert() {
+            isInverted = !isInverted;
+            document.getElementById('teleprompter-view').classList.toggle('inverted');
+            saveInversionState();
+        }
+        
+        function toggleFullScreen() {
+            document.getElementById('main-window').classList.toggle('fullscreen');
+            // Use a minimal timeout to allow the browser to reflow before resizing text.
+            setTimeout(resizeText, 10);
+        }
+
+    </script>
+</body>
+</html>

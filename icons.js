@@ -102,6 +102,13 @@ const APPS = [
         cat: 'tools', 
         icon: '<rect x="6" y="4" width="20" height="24"/><polyline points="9 10 11 12 15 8" fill="none" stroke="black"/><line x1="18" y1="10" x2="22" y2="10"/><polyline points="9 18 11 20 15 16" fill="none" stroke="black"/><line x1="18" y1="18" x2="22" y2="18"/>' 
     },
+    {
+    id: 'teleprompter',
+    name: 'Teleprompter',
+    icon: '<path d="M16 18 L 12 28 H 20 Z M10 12 H 22 V 18 H 10 Z M8 4 H 24 V 12 H 8 Z M10 6 H 22 M10 9 H 22" />',
+    cat: 'tools',
+    desc: 'Display notes line-by-line for speeches or practice.'
+    },
     { 
         id: 'quicktodo', 
         name: 'Quick ToDo', 
