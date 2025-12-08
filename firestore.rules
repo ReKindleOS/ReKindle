@@ -1,0 +1,96 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isValidUsername(username) {
+      // Username must be a string between 1 and 30 characters
+      // and must not contain characters that can be used for XSS.
+      return username is string &&
+             username.size() > 0 &&
+             username.size() <= 30 &&
+             !username.matches('[<>&\'"]');
+    }
+
+    function isValidText(text) {
+      // A basic check for message content to prevent HTML injection.
+      return text is string &&
+             text.size() > 0 &&
+             text.size() <= 1000 && // Limit message length
+             !text.matches('[<>]'); // Block basic HTML tags
+    }
+
+    // --- Collection Rules ---
+
+    // 1. USER PRIVATE DATA (e.g., settings, notes)
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. KINDLECHAT
+    match /rooms/{roomId} {
+      allow read: if request.auth != null;
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        // Secure create: Validate username and message text for safety.
+        allow create: if request.auth != null &&
+                        request.resource.data.user == request.auth.token.email.split('@')[0] &&
+                        isValidText(request.resource.data.text);
+        allow update, delete: if false;
+      }
+    }
+
+    // 3. TETRIS LEADERBOARD
+    match /leaderboard_tetris/{userId} {
+      // Allow any authenticated user to read a specific score document.
+      allow get: if request.auth != null;
+      // Secure write: user must be authenticated, own the document,
+      // and provide a valid username and score.
+      allow write: if request.auth != null &&
+                      request.auth.uid == userId &&
+                      isValidUsername(request.resource.data.username) &&
+                      request.resource.data.score is number;
+    }
+    match /leaderboard_tetris {
+      // Allow any authenticated user to query the collection for the leaderboard.
+      allow list: if request.auth != null;
+    }
+
+    // 4. SNAKE LEADERBOARD
+    match /leaderboard_snake/{userId} {
+      allow get: if request.auth != null;
+      // Secure write: user must be authenticated, own the document,
+      // and provide a valid username and score.
+      allow write: if request.auth != null &&
+                      request.auth.uid == userId &&
+                      isValidUsername(request.resource.data.username) &&
+                      request.resource.data.score is number;
+    }
+    match /leaderboard_snake {
+      // Allow any authenticated user to query the collection for the leaderboard.
+      allow list: if request.auth != null;
+    }
+
+    // 5. WORDS (Multiplayer Game)
+    match /word_games/{gameId} {
+      allow read: if request.auth != null;
+      // Secure write: Validate incoming data on create/update.
+      // User must be one of the players, and names must be valid.
+      allow write: if request.auth != null &&
+                      (request.resource.data.p1_uid == request.auth.uid ||
+                       request.resource.data.p2_uid == request.auth.uid) &&
+                      isValidUsername(request.resource.data.p1_name) &&
+                      // p2_name can be null when a game is created, so only validate if it exists.
+                      (request.resource.data.p2_name == null || isValidUsername(request.resource.data.p2_name));
+    }
+
+    // 6. FREEWRITE
+    match /freewrite_sessions/{sessionId} {
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.ownerId;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+    }
+  }
+}
