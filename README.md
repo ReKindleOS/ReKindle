@@ -110,6 +110,38 @@ ReKindle uses Google Firebase for user authentication and storing app data (like
 1.  Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project.
 2.  **Authentication:** Go to **Build > Authentication** and enable the **Email/Password** sign-in method.
 3.  **Database:** Go to **Build > Firestore Database** and create a database. Set the security rules to allow authenticated users to read/write their own data.
+
+    *Example `firestore.rules` configuration:*
+    ```
+    rules_version = '2';
+
+    service cloud.firestore {
+      match /databases/{database}/documents {
+
+        // Allow users to manage their own private data (notes, settings, etc.)
+        match /users/{userId}/{document=**} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        // Rules for a public chat app like KindleChat
+        match /rooms/{roomId}/{document=**} {
+          allow read, write: if request.auth != null;
+        }
+
+        // Rules for a single-player leaderboard where users can only write their own score
+        match /leaderboard_snake/{userId} {
+          allow read: if true;
+          allow write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        // Rules for a multiplayer game where any authenticated user can make a move
+        match /word_games/{gameId} {
+          allow read, write: if request.auth != null;
+        }
+      }
+    }
+    ```
+
 4.  **Web App:** In Project Overview, click the Web icon (`</>`) to register an app. Copy the `firebaseConfig` object provided.
 5.  **Update Code:** Replace the `const firebaseConfig = { ... }` block in **all** app HTML files (e.g., `index.html`, `notes.html`, `todo.html`, etc.) with your own configuration.
 
