@@ -473,6 +473,28 @@
             });
         };
 
+        // Helper to HTML-escape text
+        function escapeHTML(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        // Helper to sanitize background image URLs from localStorage
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) {
+                return imageString;
+            }
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                    return imageString;
+                }
+            }
+            return '';
+        }
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
@@ -480,7 +502,7 @@
                 document.body.style.backgroundImage = wallpaperImg;
             }
             if(wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
+                document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
             }
         }
 
@@ -560,8 +582,8 @@
                     gameId = foundGame.id;
                     const data = foundGame.data();
                     const updates = {
-                        p2_uid: currentUser.uid,
-                        p2_name: currentUsername, 
+                        p2_uid: currentUser.uid, // UID is safe
+                        p2_name: escapeHTML(currentUsername), // CRITICAL: Sanitize username
                         status: 'active',
                         lastActive: firebase.firestore.FieldValue.serverTimestamp()
                     };
@@ -572,7 +594,7 @@
                     const newBag = shuffleBag(BAG_DISTRIBUTION.split(''));
                     const p1Tiles = newBag.splice(0, 7);
                     const p2Tiles = newBag.splice(0, 7);
-                    const newGame = {
+                    const newGame = { // New game creation
                         p1_uid: currentUser.uid,
                         p1_name: currentUsername,
                         p2_uid: null,
@@ -667,7 +689,7 @@
              try {
                 await db.collection('rooms').doc('general').collection('messages').add({
                     text: `words:${newGameId}`, // Custom format: <game>:<gameId>
-                    user: currentUsername,
+                    user: escapeHTML(currentUsername), // CRITICAL: Sanitize username
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     is_game_link: true
                 });
@@ -975,7 +997,7 @@
 
             if (isP1) {
                 updates.p1_rack = newRack;
-                updates.p1_score = gameData.p1_score + movePoints;
+                updates.p1_score = gameData.p1_score + movePoints; // Score is numeric, safe
             } else {
                 updates.p2_rack = newRack;
                 updates.p2_score = gameData.p2_score + movePoints;
