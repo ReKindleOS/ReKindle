@@ -214,7 +214,7 @@
         .btn-right { grid-column: 3; grid-row: 2; }
 
         /* MODALS */
-        #game-over, #leaderboard-modal {
+        #game-over, #leaderboard-modal, #start-game-modal {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
@@ -305,6 +305,12 @@
             <button class="sys-btn" onclick="resetGame()">Retry</button>
         </div>
 
+        <div id="start-game-modal" style="display: block;">
+            <h2>Ready to Play?</h2>
+            <!-- Button is disabled until initGame is fully complete -->
+            <button class="sys-btn" onclick="startGame()" disabled>Loading...</button>
+        </div>
+
         <div id="leaderboard-modal">
             <h3>Top Snakes</h3>
             <div class="lb-list" id="lb-content">
@@ -325,7 +331,11 @@
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
 
-        firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app(); // if already initialized, use that one
+        }
         const db = firebase.firestore();
         const auth = firebase.auth();
 
@@ -351,30 +361,55 @@
         let inputQueue = [];
 
         // --- INIT ---
-        window.onload = () => {
+        // Use pageshow to handle bfcache restores
+        window.addEventListener('pageshow', function(event) {
+            // The 'persisted' property is true if the page was from the bfcache
+            // We want to re-initialize in either case.
+            initializePage();
+        });
+
+        function initializePage() {
+            // FIX: Check for existing user immediately, don't rely only on the listener.
+            // This prevents a race condition when restoring from bfcache.
+            const onAuthReady = new Promise((resolve) => {
+                if (auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email.split('@')[0];
+                    return resolve();
+                }
+                const unsubscribe = auth.onAuthStateChanged(user => {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email.split('@')[0];
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(() => {
+                initGame(); // Initialize the game only after auth is confirmed.
+            });
+        }
+
+        function initGame() {
             loadWallpaper();
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
-            
-            // Fix: Wait for auth before setting username
-            auth.onAuthStateChanged(user => {
-                if(user) {
-                    uid = user.uid;
-                    // FIX: Ensure we get correct username from Auth or LocalStorage updated by index
-                    let storedName = localStorage.getItem('rekindle_username');
-                    if (!storedName && user.email) {
-                        storedName = user.email.split('@')[0];
-                    }
-                    username = storedName || "Guest";
-                }
-                loadPersonalHighScore();
-            });
-            
-            // Keyboard listener
             document.addEventListener('keydown', (e) => handleInput(e.key));
             
+            // Load high score and only then enable the start button.
+            loadPersonalHighScore().then(() => {
+                const startButton = document.querySelector('#start-game-modal .sys-btn');
+                startButton.disabled = false;
+                startButton.innerText = "Start Game";
+            });
+        }
+
+        function startGame() {
+            document.getElementById('start-game-modal').style.display = 'none';
             resetGame();
-        };
+        }
 
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
@@ -383,7 +418,8 @@
                 document.body.style.backgroundImage = wallpaperImg;
             }
             if(wallpaperSize) {
-                document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
+                // REMOVED: sanitizeBackgroundImage wrapper
+                document.body.style.backgroundSize = wallpaperSize;
             }
         }
 
@@ -426,13 +462,21 @@
             }
         }
 
+        // Helper to prevent XSS from usernames in the database
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
         // --- LEADERBOARD UI ---
         async function openLeaderboard() {
             const modal = document.getElementById('leaderboard-modal');
-            const list = document.getElementById('lb-content');
             modal.style.display = 'block';
-            
-            if (uid) {
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...'; // Set loading state on open
+
+            const user = auth.currentUser;
+            if (user) {
                 try {
                     const snapshot = await db.collection('leaderboard_snake')
                         .orderBy('score', 'desc')
@@ -444,23 +488,22 @@
                     
                     snapshot.forEach(doc => {
                         const data = doc.data();
-                        const isMe = (doc.id === uid);
+                        const isMe = (doc.id === user.uid);
                         const div = document.createElement('div');
                         div.className = `lb-row ${isMe ? 'me' : ''}`;
 
                         const rankSpan = document.createElement('span');
-                        rankSpan.textContent = `${rank}. ${data.username}`;
-
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
                         const scoreSpan = document.createElement('span');
                         scoreSpan.textContent = data.score;
 
                         div.appendChild(rankSpan);
                         div.appendChild(scoreSpan);
-
                         list.appendChild(div);
                         rank++;
                     });
                 } catch(e) {
+                    console.error("Error loading leaderboard:", e);
                     list.innerHTML = "Error loading scores.";
                 }
             } else {
