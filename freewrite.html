@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreeWrite</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --kindle-font: "Bookerly", "Georgia", serif;
+            --ui-font: "Geneva", "Verdana", sans-serif;
+        }
+
+        body {
+            font-family: var(--ui-font);
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+
+            /* Pixel Art Rendering */
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            height: 90vh;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* FOR MONITOR MODE: FULL SCREEN WINDOW */
+        .window.full-monitor {
+            width: 100%;
+            height: 100vh;
+            max-width: none;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+            margin: -20px;
+            /* Counteract body padding */
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* SYSTEM BUTTON */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 1rem;
+            font-family: var(--ui-font);
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .sys-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* CONTENT VIEWS */
+        .view-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* LANDING VIEW */
+        #landing-view {
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .landing-options {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        /* KEYBOARD VIEW */
+        #keyboard-view {
+            display: none;
+        }
+
+        .info-bar {
+            background: #eee;
+            border-bottom: 2px solid black;
+            padding: 10px;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .code-box {
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 1.1rem;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+        }
+
+        #title-input {
+            width: 100%;
+            border: none;
+            border-bottom: 2px solid black;
+            font-family: var(--ui-font);
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 10px;
+            box-sizing: border-box;
+            outline: none;
+            background: #fff;
+        }
+
+        #editor-wrapper {
+
+            flex-grow: 1;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            resize: none;
+            font-family: var(--kindle-font);
+            font-size: 1.3rem;
+            line-height: 1.5;
+            outline: none;
+            flex-grow: 1;
+            /* Expand to fill space */
+        }
+
+        /* CONNECT VIEW */
+        #connect-view {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .connect-input {
+            font-size: 2rem;
+            text-align: center;
+            letter-spacing: 5px;
+            border: 2px solid black;
+            padding: 10px;
+            width: 200px;
+            font-family: "Courier New", monospace;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        /* MONITOR VIEW */
+        #monitor-view {
+            display: none;
+            padding: 40px;
+            /* Kindle margins */
+            overflow-y: auto;
+            background: white;
+        }
+
+        #paper {
+            font-family: var(--kindle-font);
+            font-size: 2rem;
+            /* Big for Kindle */
+            line-height: 1.4;
+            max-width: 900px;
+            margin: 0 auto;
+            white-space: pre-wrap;
+        }
+
+        /* CURSOR */
+        #cursor-caret {
+            display: inline-block;
+            width: 12px;
+            height: 1.8rem;
+            background: black;
+            vertical-align: text-bottom;
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+        }
+
+        /* MODALS */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window" id="main-window">
+        <!-- TITLE BAR -->
+        <div class="title-bar" id="app-title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="tryExit()">X</div>
+            <span class="title-text">FreeWrite</span>
+        </div>
+
+        <!-- VIEW 1: LANDING -->
+        <div id="landing-view" class="view-content">
+            <h1 style="font-family:var(--kindle-font);">FreeWrite</h1>
+            <div class="landing-options">
+                <button class="sys-btn" onclick="startHost()">Start Writing<br><span
+                        style="font-size:0.7rem; font-weight:normal;">(Phone / Host)</span></button>
+                <button class="sys-btn" onclick="startMonitor()">Connect Display<br><span
+                        style="font-size:0.7rem; font-weight:normal;">(Kindle / Monitor)</span></button>
+            </div>
+        </div>
+
+        <!-- VIEW 2: KEYBOARD (HOST) -->
+        <div id="keyboard-view" class="view-content">
+            <div class="info-bar">
+                <span>Session: <span id="host-code" class="code-box">...</span></span>
+                <span id="sync-indicator">Ready</span>
+            </div>
+            <div id="editor-wrapper">
+                <input type="text" id="title-input" placeholder="Untitled Story" oninput="handleInput()">
+                <textarea id="input-area" placeholder="Type here..." oninput="handleInput()"></textarea>
+            </div>
+        </div>
+
+        <!-- VIEW 3: CONNECT (MONITOR SETUP) -->
+        <div id="connect-view" class="view-content">
+            <h2>Enter Code</h2>
+            <input type="text" id="connect-code-input" class="connect-input" maxlength="6" placeholder="000000">
+            <div style="display:flex; gap:10px;">
+                <button class="sys-btn" onclick="connectToSession()">Connect</button>
+                <button class="sys-btn" onclick="location.reload()">Back</button>
+            </div>
+        </div>
+
+        <!-- VIEW 4: MONITOR (PAPER) -->
+        <div id="monitor-view" class="view-content">
+            <!-- Content injected here -->
+            <h1 id="paper-title" style="text-align:center; margin-bottom: 1rem; display:none;"></h1>
+            <div id="paper"></div>
+        </div>
+
+    </div>
+
+    <!-- GENERIC MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-title">Alert</h3>
+            <p id="modal-text">Message</p>
+            <button class="sys-btn" onclick="closeModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- SCRIPT -->
+    <script>
+        // --- CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- STATE ---
+        let sessionId = null;
+        let currentUser = null;
+        let typeTimer = null;
+        let sessionRef = null; // Ref for Monitor Sync
+        let noteRef = null;    // Ref for Persistent Storage
+
+        // --- AUTH ---
+        auth.onAuthStateChanged(user => { currentUser = user; });
+
+        // --- NAVIGATION ---
+        function switchView(viewId) {
+            document.querySelectorAll('.view-content').forEach(el => el.style.display = 'none');
+            document.getElementById(viewId).style.display = (viewId === 'landing-view' || viewId === 'connect-view') ? 'flex' : 'block';
+        }
+
+        function tryExit() {
+            window.location.href = 'index';
+        }
+
+        // --- WALLPAPER LOGIC ---
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
+            }
+        }
+
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) {
+                return imageString;
+            }
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                    return imageString;
+                }
+            }
+            return '';
+        }
+
+        // --- MODAL UTILS ---
+        function showModal(title, text) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-text').innerText = text;
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        // --- HOST LOGIC ---
+        async function startHost() {
+            if (!currentUser) {
+                showModal("Access Denied", "Please log in to system first.");
+                return;
+            }
+
+            sessionId = Math.floor(100000 + Math.random() * 900000).toString();
+            document.getElementById('host-code').innerText = sessionId;
+            switchView('keyboard-view');
+
+            // 1. Create Cloud Session (Ephemeral / Sync)
+            sessionRef = db.collection('freewrite_sessions').doc(sessionId);
+            await sessionRef.set({
+                ownerId: currentUser.uid,
+                title: "",
+                content: "",
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            // 2. Create Persistent Note Reference
+            // We create a new ID immediately so we know where to save
+            noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
+
+            // Initial save to reserve the spot (optional, but good for "Created At")
+            await noteRef.set({
+                title: "",
+                content: "",
+                updated: Date.now()
+            });
+
+            // Clean up on unload
+            window.onbeforeunload = () => {
+                // optional cleanup
+            };
+        }
+
+        function handleInput() {
+            const title = document.getElementById('title-input').value;
+            const text = document.getElementById('input-area').value;
+            const indicator = document.getElementById('sync-indicator');
+
+            indicator.innerText = "•";
+
+            // DEBOUNCE: 50ms for near-instant feel
+            clearTimeout(typeTimer);
+            typeTimer = setTimeout(() => {
+                syncText(title, text);
+            }, 50);
+        }
+
+        async function syncText(title, text) {
+            if (!sessionRef || !noteRef) return;
+            try {
+                const now = Date.now();
+
+                // 1. Update Monitor Session
+                const p1 = sessionRef.update({
+                    title: title,
+                    content: text,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // 2. Update Persistent Note
+                const p2 = noteRef.set({
+                    title: title,
+                    content: text,
+                    updated: now
+                }, { merge: true });
+
+                await Promise.all([p1, p2]);
+                document.getElementById('sync-indicator').innerText = "Saved";
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // --- MONITOR LOGIC ---
+        function startMonitor() {
+            switchView('connect-view');
+        }
+
+        function connectToSession() {
+            const code = document.getElementById('connect-code-input').value.trim();
+            if (code.length !== 6) return showModal("Error", "Invalid Code");
+
+            sessionId = code;
+            switchView('monitor-view');
+
+            // Listen for changes
+            db.collection('freewrite_sessions').doc(sessionId)
+                .onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        renderPaper(data.title, data.content);
+                    }
+                });
+        }
+
+        function renderPaper(title, text) {
+            const paper = document.getElementById('paper');
+            const titleEl = document.getElementById('paper-title');
+
+            if (title) {
+                titleEl.textContent = title;
+                titleEl.style.display = 'block';
+            } else {
+                titleEl.style.display = 'none';
+            }
+
+            paper.innerText = text;
+
+            // Append visual cursor
+            const cursor = document.createElement('span');
+            cursor.id = 'cursor-caret';
+            paper.appendChild(cursor);
+
+            // Auto scroll
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        // Init
+        loadWallpaper();
+        document.getElementById('landing-view').style.display = 'flex';
+
+    </script>
+</body>
+
+</html>
