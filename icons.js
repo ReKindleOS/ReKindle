@@ -145,7 +145,7 @@ const APPS = [
     },
     {
         id: 'freewrite',
-        name: 'FreeWrite',
+        name: 'AirType',
         cat: 'tools',
         featured: true,
         featuredOrder: 5,
