@@ -11,6 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -208,19 +209,34 @@
             position: relative;
         }
 
-        /* LANDING VIEW */
-        #landing-view {
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+        /* NOTE LIST VIEW (Replaces Landing) */
+        #note-list-view {
+            overflow-y: auto;
+            align-items: stretch;
+            /* List items take full width */
         }
 
-        .landing-options {
+        .note-item {
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
             display: flex;
-            flex-direction: column;
-            gap: 20px;
-            width: 80%;
-            max-width: 300px;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .note-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        .note-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .note-date {
+            font-size: 0.8rem;
+            color: #666;
         }
 
         /* KEYBOARD VIEW */
@@ -350,8 +366,15 @@
             border: 2px solid black;
             box-shadow: 8px 8px 0 black;
             padding: 20px;
-            width: 300px;
+            width: 350px;
             text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
         }
 
         @keyframes blink {
@@ -381,20 +404,20 @@
             <div class="app-controls">
                 <button class="mini-btn" onclick="changeFontSize(-2)">A-</button>
                 <button class="mini-btn" onclick="changeFontSize(2)">A+</button>
-                <button class="mini-btn" onclick="toggleFullScreen()">⛶</button>
+                <button class="mini-btn" onclick="toggleFullScreen()"><svg viewBox="0 0 24 24" width="14" height="14"
+                        style="stroke:black; fill:none; stroke-width:3;">
+                        <path d="M4 4h16v16H4z M4 4l16 16 M20 4L4 20" />
+                    </svg></button>
             </div>
         </div>
 
-        <!-- VIEW 1: LANDING -->
-        <div id="landing-view" class="view-content">
-            <h1 style="font-family:var(--kindle-font);">AirType</h1>
-            <div class="landing-options">
-                <button class="sys-btn" onclick="startHost()">Start Writing<br><span
-                        style="font-size:0.7rem; font-weight:normal;">(Phone / Host)</span></button>
-                <button class="sys-btn" onclick="startMonitor()">Connect Manually<br><span
-                        style="font-size:0.7rem; font-weight:normal;">(Enter Code)</span></button>
-                <button class="sys-btn" onclick="startMonitorQR()">Connect w/ Scan<br><span
-                        style="font-size:0.7rem; font-weight:normal;">(Show QR Code)</span></button>
+        <!-- VIEW 1: NOTE LIST (DEFAULT) -->
+        <div id="note-list-view" class="view-content">
+            <div style="padding:10px; border-bottom:1px solid #ccc; background:#f9f9f9;">
+                <button class="sys-btn" style="width:100%;" onclick="handleNewNote()">+ New Note</button>
+            </div>
+            <div id="note-list-container">
+                <div style="padding:20px; text-align:center; color:#666;">Loading notes...</div>
             </div>
         </div>
 
@@ -421,7 +444,16 @@
             </div>
         </div>
 
+        <!-- VIEW 3C: SCANNER VIEW -->
+        <div id="scanner-view" class="view-content"
+            style="display:none; flex-direction:column; align-items:center; justify-content:center;">
+            <h2>Scan QR Code</h2>
+            <div id="reader" style="width:300px; height:300px; border:2px solid black;"></div>
+            <button class="sys-btn" style="margin-top:20px;" onclick="stopScanner()">Cancel</button>
+        </div>
+
         <!-- VIEW 3B: QR CONNECT SETUP -->
+        <!-- This is now used as an overlay or switched view for Tablets/Monitors -->
         <div id="qr-setup-view" class="view-content"
             style="display:none; align-items:center; justify-content:center; flex-direction:column; gap:20px; text-align:center;">
             <h2>Scan to Connect</h2>
@@ -444,10 +476,12 @@
 
     <!-- GENERIC MODAL -->
     <div id="modal-overlay">
-        <div class="modal-box">
+        <div class="modal-box" id="modal-content">
             <h3 id="modal-title">Alert</h3>
             <p id="modal-text">Message</p>
-            <button class="sys-btn" onclick="closeModal()">OK</button>
+            <div class="modal-buttons" id="modal-actions">
+                <button class="sys-btn" onclick="closeModal()">OK</button>
+            </div>
         </div>
     </div>
 
@@ -473,14 +507,28 @@
         let sessionRef = null; // Ref for Monitor Sync
         let noteRef = null;    // Ref for Persistent Storage
         let baseFontSize = 32; // Default 2rem = 32px approx, keep track in px for easier math
+        let notes = [];
+        let html5QrCode = null;
+        let selectedNoteData = null; // Store note data when clicked
+        let userDeviceType = null;   // 'Phone' or 'Tablet'
 
-        // --- AUTH ---
-        auth.onAuthStateChanged(user => { currentUser = user; });
+        // --- AUTH & INIT ---
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+            if (user) {
+                loadCloudNotes();
+            } else {
+                // Show guest/local notes if needed? Or just empty.
+                renderNoteList();
+            }
+        });
 
         // --- NAVIGATION ---
         function switchView(viewId) {
             document.querySelectorAll('.view-content').forEach(el => el.style.display = 'none');
-            document.getElementById(viewId).style.display = (viewId === 'landing-view' || viewId === 'connect-view' || viewId === 'qr-setup-view') ? 'flex' : 'block';
+            // Flex for everything centered, Block for Paper/Notes
+            const flexViews = ['connect-view', 'qr-setup-view', 'scanner-view'];
+            document.getElementById(viewId).style.display = flexViews.includes(viewId) ? 'flex' : 'block';
         }
 
         function tryExit() {
@@ -514,14 +562,180 @@
         }
 
         // --- MODAL UTILS ---
-        function showModal(title, text) {
+        function showModal(title, text, buttonsHtml) {
             document.getElementById('modal-title').innerText = title;
             document.getElementById('modal-text').innerText = text;
+            if (buttonsHtml) {
+                document.getElementById('modal-actions').innerHTML = buttonsHtml;
+            } else {
+                document.getElementById('modal-actions').innerHTML = '<button class="sys-btn" onclick="closeModal()">OK</button>';
+            }
             document.getElementById('modal-overlay').style.display = 'flex';
         }
 
         function closeModal() {
             document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        // --- DEVICE DETECTION & ENTRY FLOW ---
+
+        function showStartupDetection() {
+            // Detect Device Suggestion
+            const width = window.innerWidth;
+            const isPhone = width < 600;
+            const suggestedType = isPhone ? "Phone" : "Tablet";
+
+            // Show Detection Modal
+            const btnYes = `<button class="sys-btn" onclick="onStartupConfirmed('${suggestedType}')">Yes</button>`;
+            const btnNo = `<button class="sys-btn" onclick="onStartupConfirmed('${isPhone ? 'Tablet' : 'Phone'}')">No, it's a ${isPhone ? 'Tablet' : 'Phone'}</button>`;
+
+            showModal("Device Detected", `We think you're on a ${suggestedType}. Is that correct?`, `${btnYes} ${btnNo}`);
+        }
+
+        function onStartupConfirmed(type) {
+            userDeviceType = type;
+            closeModal();
+            if (type === 'Phone') {
+                showPhoneOptions();
+            }
+            // Tablet just stays on Note List
+        }
+
+        // Triggered by Note Click or New Note
+        function initEntryFlow(noteData = null) {
+            selectedNoteData = noteData; // Null means New Note
+
+            if (!userDeviceType) {
+                // Should not happen if flow is correct, but fallback
+                showStartupDetection();
+                return;
+            }
+
+            if (userDeviceType === 'Tablet') {
+                // Tablet logic: Immediate QR
+                startMonitorQR();
+            } else {
+                // Phone logic: Scan or Code
+                showPhoneOptions();
+            }
+        }
+
+        function showPhoneOptions() {
+            // Host Mode Options
+            const btnEnter = `<button class="sys-btn" onclick="closeModal(); startMonitor();">Enter Code</button>`; // Reusing logic but naming it Enter Code
+            const btnScan = `<button class="sys-btn" onclick="closeModal(); startScanFlow();">Scan QR Code</button>`;
+
+            showModal("Connect to Display", "How do you want to connect?", `${btnEnter} ${btnScan}`);
+        }
+
+        function startScanFlow() {
+            switchView('scanner-view');
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Handle the scanned code
+            // Expected format: URL?mode=host&session=ID or just URL
+            // Or maybe just the session ID if we want to be simple?
+            // The generator makes a full URL. Let's parse it.
+
+            stopScanner(false); // Stop scanning, but DO NOT navigate away yet
+
+            try {
+                const url = new URL(decodedText);
+                const session = url.searchParams.get('session');
+                if (session) {
+                    startHostWithId(session);
+                } else {
+                    showModal("Error", "Invalid QR Code format.");
+                }
+            } catch (e) {
+                // Maybe it's just the ID?
+                if (decodedText.length === 6 && !isNaN(decodedText)) {
+                    startHostWithId(decodedText);
+                } else {
+                    showModal("Error", "Could not parse QR Code.");
+                }
+            }
+        }
+
+
+
+        function stopScanner(shouldNavigateHome = true) {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    if (shouldNavigateHome) switchView('note-list-view');
+                }).catch(err => {
+                    console.log("Failed to stop scanner", err);
+                    if (shouldNavigateHome) switchView('note-list-view');
+                });
+            } else {
+                if (shouldNavigateHome) switchView('note-list-view');
+            }
+        }
+
+        // --- NOTE LIST LOGIC ---
+        function loadCloudNotes() {
+            db.collection('users').doc(currentUser.uid).collection('notes')
+                .orderBy('updated', 'desc')
+                .onSnapshot((snapshot) => {
+                    notes = [];
+                    snapshot.forEach(doc => {
+                        let data = doc.data();
+                        data.id = doc.id;
+                        notes.push(data);
+                    });
+                    renderNoteList();
+                }, (error) => {
+                    console.error("Error getting notes: ", error);
+                    // document.getElementById('status-bar').innerText = "Sync Error. Using Local.";
+                });
+        }
+
+        function renderNoteList() {
+            const container = document.getElementById('note-list-container');
+            container.innerHTML = '';
+            if (notes.length === 0) {
+                container.innerHTML = '<div style="padding:40px; text-align:center; font-style:italic;">No notes found.</div>';
+                return;
+            }
+
+            notes.forEach(note => {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+
+                const title = note.title || 'Untitled Note';
+                const date = note.updated ? new Date(note.updated).toLocaleDateString() : '';
+
+                div.innerHTML = `
+                    <span class="note-title">${title}</span>
+                    <span class="note-date">${date}</span>
+                `;
+                div.onclick = () => handleNoteClick(note);
+                container.appendChild(div);
+            });
+        }
+
+        function handleNewNote() {
+            initEntryFlow(null);
+        }
+
+        function handleNoteClick(note) {
+            initEntryFlow(note);
+        }
+
+        function openNote(note) {
+            // Logic to actually open the note (called after connection or if we were doing solo - but we removed solo option for now per request?)
+            // Wait, the prompt says "remove write solo". So they MUST connect?
+            // If they are on Phone and connect, we load this note into the input.
+            // If they are on Tablet and start Monitor, we technically display this note?
+            // Let's assume after connection established, we load the content.
+
+            // For now, let's keep the load logic in startHost/Monitor flow
         }
 
         // --- HOST LOGIC ---
@@ -537,23 +751,44 @@
 
             // 1. Create Cloud Session (Ephemeral / Sync)
             sessionRef = db.collection('freewrite_sessions').doc(sessionId);
+
+            // Pre-populate if note selected
+            let initialTitle = "";
+            let initialContent = "";
+            let originalNoteId = null;
+
+            if (selectedNoteData) {
+                initialTitle = selectedNoteData.title || "";
+                initialContent = selectedNoteData.content || "";
+                originalNoteId = selectedNoteData.id;
+
+                // Also Update Input Fields locally
+                document.getElementById('title-input').value = initialTitle;
+                document.getElementById('input-area').value = initialContent;
+
+                // Set noteRef to existing note
+                noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc(selectedNoteData.id);
+            } else {
+                // New Note
+                noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
+            }
+
             await sessionRef.set({
                 ownerId: currentUser.uid,
-                title: "",
-                content: "",
+                title: initialTitle,
+                content: initialContent,
+                originalNoteId: originalNoteId,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             });
 
-            // 2. Create Persistent Note Reference
-            // We create a new ID immediately so we know where to save
-            noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
-
-            // Initial save to reserve the spot (optional, but good for "Created At")
-            await noteRef.set({
-                title: "",
-                content: "",
-                updated: Date.now()
-            });
+            // Initial save to reserve the spot (if new)
+            if (!selectedNoteData) {
+                await noteRef.set({
+                    title: "",
+                    content: "",
+                    updated: Date.now()
+                });
+            }
 
             // Clean up on unload
             window.onbeforeunload = () => {
@@ -575,19 +810,47 @@
             document.getElementById('host-code').innerText = sessionId;
             switchView('keyboard-view');
 
-            // 1. Create/Connect Cloud Session
+            // 1. Fetch Cloud Session
             sessionRef = db.collection('freewrite_sessions').doc(sessionId);
 
-            // Check if exists, if so, load it? For now just overwrite/connect
-            await sessionRef.set({
-                ownerId: currentUser.uid,
-                title: "",
-                content: "",
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }); // Merge true so we don't wipe if monitor created it first
+            try {
+                const doc = await sessionRef.get();
+                let initialTitle = "";
+                let initialContent = "";
+                let linkedNoteId = null;
 
-            // 2. Persistent Note
-            noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
+                if (doc.exists) {
+                    const data = doc.data();
+                    initialTitle = data.title || "";
+                    initialContent = data.content || "";
+                    linkedNoteId = data.originalNoteId || null;
+                }
+
+                // Update Local UI
+                document.getElementById('title-input').value = initialTitle;
+                document.getElementById('input-area').value = initialContent;
+
+                // 2. Set Up Data
+                // If we found a linked note, use it.
+                if (linkedNoteId) {
+                    noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc(linkedNoteId);
+                } else {
+                    // No linked note? Create new one or leaving it detached?
+                    // Let's create new to be safe.
+                    noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
+                }
+
+                // 3. Update Session with OUR ownership (maintain content)
+                await sessionRef.set({
+                    ownerId: currentUser.uid,
+                    status: 'connected', // Signal to Tablet to switch view
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+            } catch (e) {
+                console.error("Error joining session", e);
+                showModal("Error", "Could not join session.");
+            }
         }
 
         function handleInput() {
@@ -597,11 +860,11 @@
 
             indicator.innerText = "•";
 
-            // DEBOUNCE: 50ms for near-instant feel
+            // DEBOUNCE: 10ms for instant feel
             clearTimeout(typeTimer);
             typeTimer = setTimeout(() => {
                 syncText(title, text);
-            }, 50);
+            }, 10);
         }
 
         async function syncText(title, text) {
@@ -642,6 +905,13 @@
             const code = document.getElementById('connect-code-input').value.trim();
             if (code.length !== 6) return showModal("Error", "Invalid Code");
 
+            // BUG FIX: If user is on Phone, "Connect" means "Enter Host Mode with this Code"
+            if (userDeviceType === 'Phone') {
+                startHostWithId(code);
+                return;
+            }
+
+            // Tablet/Monitor Logic
             sessionId = code;
             switchView('monitor-view');
 
@@ -713,23 +983,56 @@
         }
 
         // Init & URL Handling
-        loadWallpaper();
+        window.onload = () => {
+            loadWallpaper();
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const modeParam = urlParams.get('mode');
-        const sessionParam = urlParams.get('session');
+            // Check URL Params for direct Host link (e.g. Scanned via Native Cam)
+            const urlParams = new URLSearchParams(window.location.search);
+            const modeParam = urlParams.get('mode');
+            const sessionParam = urlParams.get('session');
 
-        if (modeParam === 'host' && sessionParam) {
-            // Auto-start host
-            // note: auth might take a sec, startHostWithId handles wait
-            startHostWithId(sessionParam);
-        } else {
-            document.getElementById('landing-view').style.display = 'flex';
-        }
+            if (modeParam === 'host' && sessionParam) {
+                // Detected Direct Link
+                // We don't have a specific note selected, so treat as New Note in this session?
+                // Or just start host?
+                startHostWithId(sessionParam);
+            } else {
+                // Show Startup Detection immediately
+                showStartupDetection();
+            }
+        };
 
         // QR Monitor Logic
         function startMonitorQR() {
-            sessionId = Math.floor(100000 + Math.random() * 900000).toString();
+            // Need to set session ID first
+            if (!sessionId) {
+                sessionId = Math.floor(100000 + Math.random() * 900000).toString();
+            }
+
+            // Push content and ID to session
+            if (selectedNoteData) {
+                db.collection('freewrite_sessions').doc(sessionId).set({
+                    ownerId: currentUser.uid,
+                    title: selectedNoteData.title || "",
+                    content: selectedNoteData.content || "",
+                    status: "waiting", // Wait for phone
+                    originalNoteId: selectedNoteData.id, // PASS ID FOR SYNC
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                // Also render it locally just in case execution is fast
+                renderPaper(selectedNoteData.title, selectedNoteData.content);
+            } else {
+                // Ensure blank session is created so Host can join safely
+                db.collection('freewrite_sessions').doc(sessionId).set({
+                    ownerId: currentUser.uid,
+                    title: "",
+                    content: "",
+                    status: "waiting", // Wait for phone
+                    originalNoteId: null,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+
             switchView('qr-setup-view');
 
             document.getElementById('qr-session-code').innerText = sessionId;
@@ -739,6 +1042,8 @@
             const baseUrl = window.location.href.split('?')[0];
             const connectUrl = `${baseUrl}?mode=host&session=${sessionId}`;
 
+            // Clear prev
+            document.getElementById("qrcode").innerHTML = "";
             new QRCode(document.getElementById("qrcode"), {
                 text: connectUrl,
                 width: 128,
@@ -751,9 +1056,27 @@
                     if (doc.exists) {
                         const data = doc.data();
                         // If content starts appearing, switch to monitor view
-                        if (data.content || data.title) {
+                        // If we already had content (from note), we might want to stay on QR view
+                        // until *someone else* connects?
+                        // Actually, if we are Monitor, we want to show QR until user dismisses it or until "connected"?
+                        // The user said "show QR code screen straight away".
+                        // So let's detecting "connection" is hard without a presence system.
+                        // Let's just let them manually cancel to view the paper, OR
+                        // if content *changes*?
+
+                        // For now, keep existing logic: if content exists, show monitor.
+                        // BUT if we just pushed content ourselves, this will trigger immediately.
+                        // So we might skip showing QR code if we have content?
+                        // So we should show QR code even if content exists.
+                        // Let's NOT auto-switch to monitor-view unless we really want to.
+                        // Added a "Cancel" button in QR view to see paper.
+
+                        // FIX: Always render to keep synced
+                        renderPaper(data.title, data.content);
+
+                        // FIX: Switch to monitor view if status becomes connected
+                        if (data.status === 'connected') {
                             switchView('monitor-view');
-                            renderPaper(data.title, data.content);
                         }
                     }
                 });
