@@ -10,6 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -142,6 +143,53 @@
             color: white;
             transform: translate(2px, 2px);
             box-shadow: none;
+        }
+
+        /* MINI BTN for Title Bar */
+        .mini-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+            font-family: var(--ui-font);
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mini-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* APP CONTROLS (Right side of Title Bar) */
+        .app-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            gap: 5px;
+        }
+
+        /* FULL SCREEN TOGGLE (Keeps border, removes body padding) */
+        .window.fullscreen-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            z-index: 2000;
+            box-shadow: none;
+            border: 2px solid black;
+            box-sizing: border-box;
         }
 
         .sys-btn:disabled {
@@ -328,6 +376,13 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="tryExit()">X</div>
             <span class="title-text">AirType</span>
+
+            <!-- GLOBAL APP CONTROLS -->
+            <div class="app-controls">
+                <button class="mini-btn" onclick="changeFontSize(-2)">A-</button>
+                <button class="mini-btn" onclick="changeFontSize(2)">A+</button>
+                <button class="mini-btn" onclick="toggleFullScreen()">⛶</button>
+            </div>
         </div>
 
         <!-- VIEW 1: LANDING -->
@@ -336,8 +391,10 @@
             <div class="landing-options">
                 <button class="sys-btn" onclick="startHost()">Start Writing<br><span
                         style="font-size:0.7rem; font-weight:normal;">(Phone / Host)</span></button>
-                <button class="sys-btn" onclick="startMonitor()">Connect Display<br><span
-                        style="font-size:0.7rem; font-weight:normal;">(Kindle / Monitor)</span></button>
+                <button class="sys-btn" onclick="startMonitor()">Connect Manually<br><span
+                        style="font-size:0.7rem; font-weight:normal;">(Enter Code)</span></button>
+                <button class="sys-btn" onclick="startMonitorQR()">Connect w/ Scan<br><span
+                        style="font-size:0.7rem; font-weight:normal;">(Show QR Code)</span></button>
             </div>
         </div>
 
@@ -346,6 +403,7 @@
             <div class="info-bar">
                 <span>Session: <span id="host-code" class="code-box">...</span></span>
                 <span id="sync-indicator">Ready</span>
+                <span id="ping-ticker" style="font-size: 0.8rem; color: #666; margin-left:10px;"></span>
             </div>
             <div id="editor-wrapper">
                 <input type="text" id="title-input" placeholder="Untitled Story" oninput="handleInput()">
@@ -361,6 +419,18 @@
                 <button class="sys-btn" onclick="connectToSession()">Connect</button>
                 <button class="sys-btn" onclick="location.reload()">Back</button>
             </div>
+        </div>
+
+        <!-- VIEW 3B: QR CONNECT SETUP -->
+        <div id="qr-setup-view" class="view-content"
+            style="display:none; align-items:center; justify-content:center; flex-direction:column; gap:20px; text-align:center;">
+            <h2>Scan to Connect</h2>
+            <div id="qrcode" style="padding:10px; background:white; border:2px solid black;"></div>
+            <p style="font-family:var(--kindle-font); max-width:300px;">Scan this with your phone to start writing
+                immediately.</p>
+            <div style="font-size:1.5rem; font-family:'Courier New'; font-weight:bold; letter-spacing:2px;"
+                id="qr-session-code"></div>
+            <button class="sys-btn" onclick="location.reload()">Cancel</button>
         </div>
 
         <!-- VIEW 4: MONITOR (PAPER) -->
@@ -397,11 +467,12 @@
         const auth = firebase.auth();
 
         // --- STATE ---
-        let sessionId = null;
         let currentUser = null;
+        let sessionId = null;
         let typeTimer = null;
         let sessionRef = null; // Ref for Monitor Sync
         let noteRef = null;    // Ref for Persistent Storage
+        let baseFontSize = 32; // Default 2rem = 32px approx, keep track in px for easier math
 
         // --- AUTH ---
         auth.onAuthStateChanged(user => { currentUser = user; });
@@ -409,7 +480,7 @@
         // --- NAVIGATION ---
         function switchView(viewId) {
             document.querySelectorAll('.view-content').forEach(el => el.style.display = 'none');
-            document.getElementById(viewId).style.display = (viewId === 'landing-view' || viewId === 'connect-view') ? 'flex' : 'block';
+            document.getElementById(viewId).style.display = (viewId === 'landing-view' || viewId === 'connect-view' || viewId === 'qr-setup-view') ? 'flex' : 'block';
         }
 
         function tryExit() {
@@ -490,6 +561,35 @@
             };
         }
 
+        async function startHostWithId(id) {
+            if (!currentUser) {
+                // Wait for auth if not ready, or just alert?
+                // Simple retry logic for auto-connect
+                if (!currentUser) {
+                    setTimeout(() => startHostWithId(id), 500);
+                    return;
+                }
+            }
+
+            sessionId = id;
+            document.getElementById('host-code').innerText = sessionId;
+            switchView('keyboard-view');
+
+            // 1. Create/Connect Cloud Session
+            sessionRef = db.collection('freewrite_sessions').doc(sessionId);
+
+            // Check if exists, if so, load it? For now just overwrite/connect
+            await sessionRef.set({
+                ownerId: currentUser.uid,
+                title: "",
+                content: "",
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }); // Merge true so we don't wipe if monitor created it first
+
+            // 2. Persistent Note
+            noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
+        }
+
         function handleInput() {
             const title = document.getElementById('title-input').value;
             const text = document.getElementById('input-area').value;
@@ -524,7 +624,10 @@
                 }, { merge: true });
 
                 await Promise.all([p1, p2]);
+                await Promise.all([p1, p2]);
+                const latency = Date.now() - now;
                 document.getElementById('sync-indicator').innerText = "Saved";
+                document.getElementById('ping-ticker').innerText = `${latency}ms`;
             } catch (e) {
                 console.error(e);
             }
@@ -571,13 +674,90 @@
             paper.appendChild(cursor);
 
             // Auto scroll
+            // Auto scroll
             window.scrollTo(0, document.body.scrollHeight);
         }
 
-        // Init
-        loadWallpaper();
-        document.getElementById('landing-view').style.display = 'flex';
+        // --- UTILS ---
+        function changeFontSize(delta) {
+            // Apply to Paper (Monitor)
+            const paper = document.getElementById('paper');
+            const paperSize = parseFloat(window.getComputedStyle(paper).fontSize);
+            const newPaperSize = paperSize + delta;
+            if (newPaperSize > 10 && newPaperSize < 100) {
+                paper.style.fontSize = newPaperSize + 'px';
+            }
 
+            // Apply to Input Area (Host)
+            const input = document.getElementById('input-area');
+            const inputSize = parseFloat(window.getComputedStyle(input).fontSize);
+            const newInputSize = inputSize + delta;
+
+            if (newInputSize > 10 && newInputSize < 100) {
+                input.style.fontSize = newInputSize + 'px';
+            }
+
+            // Save preference (using paper size as reference for restoration)
+            localStorage.setItem('rekindle_freewrite_fontsize', newPaperSize);
+        }
+
+        function toggleFullScreen() {
+            // CSS Class toggle method per request ("keep border, remove padding")
+            document.getElementById('main-window').classList.toggle('fullscreen-mode');
+        }
+
+        // Restore Font Size
+        const savedSize = localStorage.getItem('rekindle_freewrite_fontsize');
+        if (savedSize) {
+            document.getElementById('paper').style.fontSize = savedSize + 'px';
+        }
+
+        // Init & URL Handling
+        loadWallpaper();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const modeParam = urlParams.get('mode');
+        const sessionParam = urlParams.get('session');
+
+        if (modeParam === 'host' && sessionParam) {
+            // Auto-start host
+            // note: auth might take a sec, startHostWithId handles wait
+            startHostWithId(sessionParam);
+        } else {
+            document.getElementById('landing-view').style.display = 'flex';
+        }
+
+        // QR Monitor Logic
+        function startMonitorQR() {
+            sessionId = Math.floor(100000 + Math.random() * 900000).toString();
+            switchView('qr-setup-view');
+
+            document.getElementById('qr-session-code').innerText = sessionId;
+
+            // Generate QR
+            // URL format: [BaseURL]?mode=host&session=[ID]
+            const baseUrl = window.location.href.split('?')[0];
+            const connectUrl = `${baseUrl}?mode=host&session=${sessionId}`;
+
+            new QRCode(document.getElementById("qrcode"), {
+                text: connectUrl,
+                width: 128,
+                height: 128
+            });
+
+            // Start listening immediately as Monitor
+            db.collection('freewrite_sessions').doc(sessionId)
+                .onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        // If content starts appearing, switch to monitor view
+                        if (data.content || data.title) {
+                            switchView('monitor-view');
+                            renderPaper(data.title, data.content);
+                        }
+                    }
+                });
+        }
     </script>
 </body>
 
