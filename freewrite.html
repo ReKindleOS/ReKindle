@@ -174,7 +174,8 @@
             position: absolute;
             right: 10px;
             z-index: 2;
-            display: flex;
+            display: none;
+            /* Hidden by default (Phone) */
             gap: 5px;
         }
 
@@ -401,13 +402,10 @@
             <span class="title-text">AirType</span>
 
             <!-- GLOBAL APP CONTROLS -->
-            <div class="app-controls">
+            <div class="app-controls" id="top-controls">
                 <button class="mini-btn" onclick="changeFontSize(-2)">A-</button>
                 <button class="mini-btn" onclick="changeFontSize(2)">A+</button>
-                <button class="mini-btn" onclick="toggleFullScreen()"><svg viewBox="0 0 24 24" width="14" height="14"
-                        style="stroke:black; fill:none; stroke-width:3;">
-                        <path d="M4 4h16v16H4z M4 4l16 16 M20 4L4 20" />
-                    </svg></button>
+                <button class="mini-btn" onclick="toggleFullScreen()">Full Screen</button>
             </div>
         </div>
 
@@ -504,6 +502,7 @@
         let currentUser = null;
         let sessionId = null;
         let typeTimer = null;
+        let saveTimer = null; // Separate timer for cloud save
         let sessionRef = null; // Ref for Monitor Sync
         let noteRef = null;    // Ref for Persistent Storage
         let baseFontSize = 32; // Default 2rem = 32px approx, keep track in px for easier math
@@ -529,6 +528,12 @@
             // Flex for everything centered, Block for Paper/Notes
             const flexViews = ['connect-view', 'qr-setup-view', 'scanner-view'];
             document.getElementById(viewId).style.display = flexViews.includes(viewId) ? 'flex' : 'block';
+
+            // Show controls ONLY in Monitor View
+            const controls = document.getElementById('top-controls');
+            if (controls) {
+                controls.style.display = (viewId === 'monitor-view') ? 'flex' : 'none';
+            }
         }
 
         function tryExit() {
@@ -543,7 +548,8 @@
                 document.body.style.backgroundImage = wallpaperImg;
             }
             if (wallpaperSize) {
-                document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
+                // BUG FIX: Do NOT sanitize size, it's not a URL
+                document.body.style.backgroundSize = wallpaperSize;
             }
         }
 
@@ -860,39 +866,51 @@
 
             indicator.innerText = "•";
 
-            // DEBOUNCE: 10ms for instant feel
+            // DEBOUNCE: 10ms for instant monitor update
             clearTimeout(typeTimer);
             typeTimer = setTimeout(() => {
-                syncText(title, text);
+                updateSession(title, text);
             }, 10);
+
+            // DEBOUNCE: 2000ms for persistent cloud save (reduce write pressure)
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+                saveToCloud(title, text);
+            }, 2000);
         }
 
-        async function syncText(title, text) {
-            if (!sessionRef || !noteRef) return;
+        async function updateSession(title, text) {
+            if (!sessionRef) return;
             try {
-                const now = Date.now();
-
-                // 1. Update Monitor Session
-                const p1 = sessionRef.update({
+                // 1. Update Monitor Session (Fast)
+                await sessionRef.update({
                     title: title,
                     content: text,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                // No specific UI feedback for this, it just happens
+            } catch (e) {
+                console.error("Session sync error", e);
+            }
+        }
 
-                // 2. Update Persistent Note
-                const p2 = noteRef.set({
+        async function saveToCloud(title, text) {
+            if (!noteRef) return;
+            try {
+                const now = Date.now();
+                // 2. Update Persistent Note (Slow/Batched)
+                await noteRef.set({
                     title: title,
                     content: text,
                     updated: now
                 }, { merge: true });
 
-                await Promise.all([p1, p2]);
-                await Promise.all([p1, p2]);
                 const latency = Date.now() - now;
                 document.getElementById('sync-indicator').innerText = "Saved";
                 document.getElementById('ping-ticker').innerText = `${latency}ms`;
             } catch (e) {
-                console.error(e);
+                console.error("Save error", e);
+                document.getElementById('sync-indicator').innerText = "Save Error";
             }
         }
 
