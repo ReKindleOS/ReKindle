@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chess</title>
-    
+
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 
     <style>
@@ -20,7 +21,7 @@
             --shadow: 4px 4px 0px #000000;
             --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
             --board-light: #ffffff;
-            --board-dark: #a0a0a0; 
+            --board-dark: #a0a0a0;
         }
 
         body {
@@ -50,7 +51,7 @@
             height: 100vh;
             overflow: hidden;
             background-color: #e5e5e5;
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -66,7 +67,7 @@
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            height: 90vh; 
+            height: 90vh;
             width: 90vw;
             max-width: 800px;
             position: relative;
@@ -87,7 +88,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -134,12 +138,15 @@
             box-shadow: 2px 2px 0 black;
         }
 
-        .close-box:active, .stats-btn:active {
+        .close-box:active,
+        .stats-btn:active {
             background: black;
             color: white;
             transform: translate(1px, 1px);
             box-shadow: none;
         }
+
+
 
         /* WINDOW CONTENT */
         .window-content {
@@ -195,15 +202,20 @@
             overflow: hidden;
         }
 
-        .square.light { background-color: var(--board-light); }
-        .square.dark { background-color: var(--board-dark); }
+        .square.light {
+            background-color: var(--board-light);
+        }
+
+        .square.dark {
+            background-color: var(--board-dark);
+        }
 
         .square.selected {
             box-shadow: inset 0 0 0 4px black;
         }
 
         .square.last-move {
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.1) 5px, rgba(0,0,0,0.1) 10px);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0, 0, 0, 0.1) 5px, rgba(0, 0, 0, 0.1) 10px);
         }
 
         .piece {
@@ -214,7 +226,7 @@
             align-items: center;
             pointer-events: none;
             line-height: 1;
-            padding-bottom: 5%; 
+            padding-bottom: 5%;
         }
 
         /* CONTROLS */
@@ -250,8 +262,11 @@
         .modal-overlay {
             display: none;
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.9);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
             z-index: 100;
             align-items: center;
             justify-content: center;
@@ -280,7 +295,7 @@
             font-weight: bold;
             text-align: left;
         }
-        
+
         .modal-form select {
             width: 100%;
             padding: 8px;
@@ -288,9 +303,9 @@
             font-size: 1rem;
             border: 2px solid black;
         }
-
     </style>
 </head>
+
 <body>
 
     <div class="window">
@@ -303,7 +318,7 @@
 
         <div class="window-content">
             <div id="status-bar">White to move</div>
-            
+
             <div id="board-container">
                 <div id="board"></div>
             </div>
@@ -349,6 +364,8 @@
         </div>
     </div>
 
+
+
     <script>
         // --- FIREBASE CONFIG ---
         const firebaseConfig = {
@@ -365,14 +382,51 @@
         const db = firebase.firestore();
 
         // --- CONFIG ---
+        // let game = new CheckersGame(); // Removed incorrect line
         let game = new Chess();
         let selectedSquare = null;
         let isThinking = false;
         let gameActive = true;
         let currentUser = null;
-        
+        let moveCount = 0; // For E-ink refresh logic
+
+        function flashRefresh() {
+            const board = document.getElementById('board');
+            if (!board) return;
+
+            const rect = board.getBoundingClientRect();
+            const flash = document.createElement('div');
+
+            flash.style.position = 'fixed';
+            flash.style.top = rect.top + 'px';
+            flash.style.left = rect.left + 'px';
+            flash.style.width = rect.width + 'px';
+            flash.style.height = rect.height + 'px';
+            flash.style.backgroundColor = 'black';
+            flash.style.zIndex = '9999';
+            flash.style.pointerEvents = 'none';
+            flash.style.opacity = '1'; // Start visible immediately (Hard Flash)
+
+            document.body.appendChild(flash);
+
+            // Force reflow
+            void flash.offsetWidth;
+
+            setTimeout(() => {
+                if (flash.parentNode) flash.parentNode.removeChild(flash);
+            }, 500); // Hold for 500ms then remove
+        }
+
+        function clearSaveAndRestart() {
+            localStorage.removeItem('chess_state');
+            // reset logic handled by openNewGameModal effectively or user can click New Game
+            // actually startGame resets everything.
+            document.getElementById('new-game-modal').style.display = 'none'; // Close to reset UI
+            openNewGameModal(); // Re-open properly
+        }
+
         // Player settings
-        let aiDepth = 2; 
+        let aiDepth = 2;
         let playerColor = 'w'; // 'w' or 'b'
         let aiColor = 'b';     // Opposite of player
 
@@ -386,7 +440,7 @@
         // --- INIT ---
         window.onload = () => {
             loadWallpaper();
-            
+
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
@@ -394,9 +448,23 @@
                 } else {
                     loadLocalStats();
                 }
-                openNewGameModal();
+
+                if (loadGame()) {
+                    closeNewGameModal();
+                    renderBoard();
+                    checkStatus();
+
+                    // Resume AI thought if needed
+                    if (gameActive && game.turn() === aiColor.charAt(0)) {
+                        isThinking = true;
+                        document.getElementById('status-bar').innerText = "Thinking... (Resuming)";
+                        setTimeout(makeComputerMove, 500);
+                    }
+                } else {
+                    openNewGameModal();
+                }
             });
-            
+
             resizeBoard();
         };
 
@@ -405,10 +473,10 @@
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if(wallpaperImg) {
+            if (wallpaperImg) {
                 document.body.style.backgroundImage = wallpaperImg;
             }
-            if(wallpaperSize) {
+            if (wallpaperSize) {
                 document.body.style.backgroundSize = wallpaperSize;
             }
         }
@@ -416,15 +484,15 @@
         function resizeBoard() {
             const container = document.getElementById('board-container');
             const board = document.getElementById('board');
-            
+
             if (container && board) {
                 const availWidth = container.clientWidth;
                 const availHeight = container.clientHeight;
-                const size = Math.min(availWidth, availHeight) * 0.95; 
-                
+                const size = Math.min(availWidth, availHeight) * 0.95;
+
                 board.style.width = size + 'px';
                 board.style.height = size + 'px';
-                
+
                 const fontSize = size / 9;
                 const squares = document.querySelectorAll('.square');
                 squares.forEach(sq => sq.style.fontSize = fontSize + 'px');
@@ -444,19 +512,28 @@
         function startGame() {
             const depthSel = document.getElementById('difficulty-select');
             const colorSel = document.getElementById('color-select');
-            
+
             aiDepth = parseInt(depthSel.value);
             playerColor = colorSel.value;
             aiColor = playerColor === 'w' ? 'b' : 'w';
-            
+
             game = new Chess();
             selectedSquare = null;
             isThinking = false;
             gameActive = true;
-            
+            moveCount = 0;
+
+            // Allow manual set
+            aiDepth = parseInt(depthSel.value);
+            playerColor = colorSel.value;
+            aiColor = playerColor === 'w' ? 'b' : 'w';
+
             closeNewGameModal();
             renderBoard();
             checkStatus();
+
+            // Save initial state
+            saveGame();
 
             // If Computer is White, make first move
             if (aiColor === 'w') {
@@ -466,6 +543,33 @@
             }
         }
 
+        function saveGame() {
+            const state = {
+                fen: game.fen(),
+                playerColor: playerColor,
+                aiColor: aiColor,
+                aiDepth: aiDepth,
+                gameActive: gameActive
+            };
+            localStorage.setItem('chess_state', JSON.stringify(state));
+        }
+
+        function loadGame() {
+            try {
+                const saved = localStorage.getItem('chess_state');
+                if (saved) {
+                    const state = JSON.parse(saved);
+                    game = new Chess(state.fen);
+                    playerColor = state.playerColor;
+                    aiColor = state.aiColor;
+                    aiDepth = state.aiDepth;
+                    gameActive = state.gameActive;
+                    return true;
+                }
+            } catch (e) { console.error(e); }
+            return false;
+        }
+
         // --- STATS LOGIC ---
         function loadLocalStats() {
             stats = JSON.parse(localStorage.getItem('chess_stats')) || { wins: 0, losses: 0, draws: 0 };
@@ -473,10 +577,10 @@
 
         function loadStats() {
             db.collection('users').doc(currentUser.uid).collection('apps').doc('chess')
-            .get().then((doc) => {
-                if (doc.exists) stats = doc.data();
-                else loadLocalStats();
-            });
+                .get().then((doc) => {
+                    if (doc.exists) stats = doc.data();
+                    else loadLocalStats();
+                });
         }
 
         function saveStats() {
@@ -516,19 +620,19 @@
             // If Player is White: Render 0..7 (Rank 8 at top)
             // If Player is Black: Render 7..0 (Rank 1 at top)
             // Standard chess.js array: [0]=Rank8, [7]=Rank1
-            
+
             let rows = [];
             if (playerColor === 'w') {
-                for(let i=0; i<8; i++) rows.push(i); // 0 to 7
+                for (let i = 0; i < 8; i++) rows.push(i); // 0 to 7
             } else {
-                for(let i=7; i>=0; i--) rows.push(i); // 7 to 0
+                for (let i = 7; i >= 0; i--) rows.push(i); // 7 to 0
             }
-            
+
             let cols = [];
             if (playerColor === 'w') {
-                for(let i=0; i<8; i++) cols.push(i); // a to h
+                for (let i = 0; i < 8; i++) cols.push(i); // a to h
             } else {
-                for(let i=7; i>=0; i--) cols.push(i); // h to a
+                for (let i = 7; i >= 0; i--) cols.push(i); // h to a
             }
 
             for (let r of rows) {
@@ -537,18 +641,18 @@
                     // board[0][0] is a8.
                     // r is the row index in the internal array (0=Rank8, 7=Rank1)
                     // c is the col index (0=a, 7=h)
-                    
+
                     const rank = 8 - r;
                     const file = String.fromCharCode(97 + c);
                     const squareName = file + rank;
                     const squareData = position[r][c];
-                    
+
                     const div = document.createElement('div');
                     const isLight = (r + c) % 2 === 0;
                     div.className = `square ${isLight ? 'light' : 'dark'}`;
-                    
+
                     if (selectedSquare === squareName) div.classList.add('selected');
-                    
+
                     const history = game.history({ verbose: true });
                     if (history.length > 0) {
                         const last = history[history.length - 1];
@@ -596,12 +700,16 @@
                         selectedSquare = null;
                         renderBoard();
                         checkStatus();
-                        
+
                         if (!game.game_over()) {
                             isThinking = true;
                             document.getElementById('status-bar').innerText = "Thinking...";
                             setTimeout(makeComputerMove, 100);
                         }
+                        saveGame();
+
+                        moveCount++;
+                        if (moveCount % 10 === 0) setTimeout(flashRefresh, 300);
                     } else {
                         selectedSquare = null;
                         renderBoard();
@@ -614,7 +722,7 @@
         }
 
         // --- AI (Minimax) ---
-        
+
         // Material values: Black pieces positive, White pieces negative
         const pieceValues = {
             'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 900,
@@ -628,14 +736,14 @@
                 row.forEach(piece => {
                     if (piece) {
                         let val = pieceValues[piece.type] || 0;
-                        if (piece.color === 'w') val = -val; 
+                        if (piece.color === 'w') val = -val;
                         total += val;
                     }
                 });
             });
             return total;
         }
-        
+
         // Returns score relative to AI (positive is good for AI)
         function getRelativeEval(gameObj) {
             const absScore = evaluateBoard(gameObj);
@@ -648,10 +756,15 @@
             if (bestMove) {
                 game.move(bestMove);
             }
-            
+
             isThinking = false;
             renderBoard();
             checkStatus();
+
+            moveCount++;
+            if (moveCount % 10 === 0) setTimeout(flashRefresh, 300);
+
+            saveGame();
         }
 
         function getBestMove(gameObj, depth) {
@@ -729,18 +842,18 @@
 
         function undoMove() {
             if (!gameActive) return;
-            
+
             // We need to undo AI move then Player move (2 steps)
             // Unless AI hasn't moved yet (e.g. start of game or player is Black and moved first)
-            
+
             // Actually, just undo until it's player's turn
             // But simple 2-step undo usually works
-            
+
             // If player is White:
             // Move 1 (P), Move 2 (AI). Undo -> Undo AI, Undo P.
             // If player is Black:
             // Move 1 (AI), Move 2 (P). Undo -> Undo P, Undo AI.
-            
+
             // Check if history has at least 2 moves to undo a full round
             // OR if player just moved and AI is thinking (prevent undo during think)
             if (isThinking) return;
@@ -750,17 +863,19 @@
                 game.undo(); // Undo AI
                 game.undo(); // Undo Player
             } else if (history.length === 1 && playerColor === 'w') {
-                 // Special case: AI moved first (if Black), Player hasn't moved? No.
-                 // If Player is White, AI is Black. AI moves second.
-                 // If history is 1, Player moved, AI hasn't moved yet.
-                 game.undo();
+                // Special case: AI moved first (if Black), Player hasn't moved? No.
+                // If Player is White, AI is Black. AI moves second.
+                // If history is 1, Player moved, AI hasn't moved yet.
+                game.undo();
             }
-            
+
             selectedSquare = null;
             renderBoard();
             checkStatus();
+            saveGame();
         }
 
     </script>
 </body>
+
 </html>
