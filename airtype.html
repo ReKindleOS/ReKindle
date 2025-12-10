@@ -510,15 +510,34 @@
         let html5QrCode = null;
         let selectedNoteData = null; // Store note data when clicked
         let userDeviceType = null;   // 'Phone' or 'Tablet'
+        let initialJoinAttempted = false;
 
         // --- AUTH & INIT ---
         auth.onAuthStateChanged(user => {
             currentUser = user;
+
+            // Check for join intent (URL params)
+            const urlParams = new URLSearchParams(window.location.search);
+            const modeParam = urlParams.get('mode');
+            const sessionParam = urlParams.get('session');
+            const isJoining = (modeParam === 'host' && sessionParam);
+
             if (user) {
                 loadCloudNotes();
+
+                // If we are joining via URL and haven't done so yet
+                if (isJoining && !initialJoinAttempted) {
+                    initialJoinAttempted = true;
+                    startHostWithId(sessionParam);
+                }
             } else {
-                // Show guest/local notes if needed? Or just empty.
                 renderNoteList();
+
+                // If we are supposed to be joining but are not logged in
+                if (isJoining && !initialJoinAttempted) {
+                    initialJoinAttempted = true;
+                    showModal("Login Required", "You must be logged in to join a session.");
+                }
             }
         });
 
@@ -1036,18 +1055,16 @@
         window.onload = () => {
             loadWallpaper();
 
-            // Check URL Params for direct Host link (e.g. Scanned via Native Cam)
+            // Check URL Params for direct Host link
             const urlParams = new URLSearchParams(window.location.search);
             const modeParam = urlParams.get('mode');
             const sessionParam = urlParams.get('session');
 
             if (modeParam === 'host' && sessionParam) {
-                // Detected Direct Link
-                // We don't have a specific note selected, so treat as New Note in this session?
-                // Or just start host?
-                startHostWithId(sessionParam);
+                // Do nothing here. Authentication listener will handle the join
+                // once the user state is confirmed.
             } else {
-                // Show Startup Detection immediately
+                // Show Startup Detection immediately if not joining
                 showStartupDetection();
             }
         };
