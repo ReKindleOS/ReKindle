@@ -279,6 +279,14 @@ const APPS = [
         desc: 'Browse a library of public domain scores.',
         icon: '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h8V3h-8z"/>'
     },
+    {
+        id: 'chords',
+        name: 'Chords',
+        cat: 'lifestyle',
+        beta: true,
+        desc: 'Search and save guitar tabs.',
+        icon: '<path d="M10 22 V 6 L 26 2 V 18 M 10 6 L 26 2" fill="none" stroke="black" stroke-width="2"/><ellipse cx="7" cy="22" rx="3.5" ry="2.5" fill="black" transform="rotate(-30, 7, 22)"/><ellipse cx="23" cy="18" rx="3.5" ry="2.5" fill="black" transform="rotate(-30, 23, 18)"/>'
+    },
 
     // --- GAMES ---
     {

@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chords</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            height: 90vh;
+            max-width: 800px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .sys-btn.active-tab {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+        }
+
+        /* VIEWS */
+        .view-panel {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .view-panel.active {
+            display: flex;
+        }
+
+        /* SEARCH BAR */
+        .search-container {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .search-input {
+            flex-grow: 1;
+            border: 2px solid black;
+            padding: 5px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        /* LISTS */
+        .song-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+
+        .song-item {
+            padding: 15px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .song-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        .song-item:active {
+            background: black;
+            color: white;
+        }
+
+        .song-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .song-artist {
+            font-size: 0.9rem;
+            font-style: italic;
+            margin-left: 10px;
+        }
+
+        /* CHORD SHEET */
+        .chord-sheet-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 20px;
+            background: white;
+            font-family: "Courier New", monospace;
+            white-space: pre-wrap;
+            font-size: 1rem;
+            /* Better readability */
+            line-height: 1.5;
+        }
+
+        .chord-toolbar {
+            padding: 8px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            background: #eee;
+            flex-shrink: 0;
+            align-items: center;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .loading-msg {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- HEADER -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Chords</span>
+            <div class="controls">
+                <button id="tab-library" class="sys-btn active-tab" onclick="switchTab('library')">Library</button>
+                <button id="tab-search" class="sys-btn" onclick="switchTab('search')">Search</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+
+            <!-- LIBRARY VIEW -->
+            <div id="view-library" class="view-panel active">
+                <div class="song-list" id="library-list">
+                    <div class="loading-msg">Loading Library...</div>
+                </div>
+            </div>
+
+            <!-- SEARCH VIEW -->
+            <div id="view-search" class="view-panel">
+                <div class="search-container">
+                    <input type="text" id="search-input" class="search-input" placeholder="Song or Artist..."
+                        onkeypress="handleEnter(event)">
+                    <button class="sys-btn" onclick="searchSongs()">Go</button>
+                </div>
+                <div class="song-list" id="search-view-container">
+                    <div class="loading-msg" style="display:none;" id="search-loading">Searching...</div>
+                    <div class="loading-msg" id="search-placeholder">Enter a search term above.</div>
+                    <div id="search-results"></div>
+                </div>
+            </div>
+
+            <!-- SONG DETAIL VIEW -->
+            <div id="view-song" class="view-panel">
+                <div class="chord-toolbar">
+                    <button class="sys-btn" onclick="goBack()">← Back</button>
+                    <span id="detail-title"
+                        style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 50%;"></span>
+                    <button id="btn-save" class="sys-btn" onclick="toggleSaveCurrent()">Save</button>
+                </div>
+                <div id="detail-content" class="chord-sheet-container"></div>
+            </div>
+
+        </div>
+        <div id="status-bar">Ready</div>
+    </div>
+
+    <script>
+        // CONFIG
+        const WORKER_URL = "https://chords.timjarnott.workers.dev";
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // INIT FIREBASE
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // STATE
+        let currentUser = null;
+        let savedSongs = [];
+        let currentView = 'library'; // library, search, song
+        let lastView = 'library'; // for back button
+        let currentSong = null; // Currently viewing song object
+
+        window.onload = () => {
+            loadWallpaper();
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    syncLibrary();
+                } else {
+                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    loadLocalLibrary();
+                }
+            });
+        };
+
+        // --- NAVIGATION ---
+
+        function switchTab(tab) {
+            currentView = tab;
+            lastView = tab; // Reset history pivot
+
+            // Buttons
+            document.querySelectorAll('.controls .sys-btn').forEach(b => b.classList.remove('active-tab'));
+            if (tab === 'library') document.getElementById('tab-library').classList.add('active-tab');
+            if (tab === 'search') document.getElementById('tab-search').classList.add('active-tab');
+
+            // Panels
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('view-' + tab).classList.add('active');
+
+            if (tab === 'library') renderLibrary();
+        }
+
+        function openSong(song) {
+            currentSong = song;
+            lastView = currentView; // Remember where we came from
+
+            // UI
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('view-song').classList.add('active');
+
+            // Set Title
+            document.getElementById('detail-title').innerText = `${song.title} - ${song.artist}`;
+
+            // Set Content state
+            const contentEl = document.getElementById('detail-content');
+            contentEl.innerHTML = '<div class="loading-msg">Loading...</div>';
+
+            updateSaveButton();
+
+            // Check if we have content cached (if saved)
+            if (song.content) {
+                renderChordSheet(song.content);
+            } else {
+                fetchSongContent(song.url);
+            }
+        }
+
+        function goBack() {
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('view-' + lastView).classList.add('active');
+            currentSong = null;
+        }
+
+        // --- SEARCH API ---
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') searchSongs();
+        }
+
+        async function searchSongs() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+
+            const listEl = document.getElementById('search-results');
+            listEl.innerHTML = '';
+            document.getElementById('search-loading').style.display = 'block';
+            document.getElementById('search-placeholder').style.display = 'none';
+
+            try {
+                const response = await fetch(`${WORKER_URL}?cmd=search&q=${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Network error');
+                const data = await response.json();
+
+                renderSearchResults(data);
+            } catch (err) {
+                listEl.innerHTML = `<div class="loading-msg" style="color:red">Error: ${err.message}</div>`;
+            } finally {
+                document.getElementById('search-loading').style.display = 'none';
+            }
+        }
+
+        async function fetchSongContent(url) {
+            try {
+                const response = await fetch(`${WORKER_URL}?cmd=get&url=${encodeURIComponent(url)}`);
+                if (!response.ok) throw new Error("Fetch failed");
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                // Update current song object so we can save it with content later
+                if (currentSong) currentSong.content = data.content;
+
+                renderChordSheet(data.content);
+            } catch (err) {
+                document.getElementById('detail-content').innerHTML = `
+                    <div style="padding:20px; text-align:center;">
+                        <p style="color:red; font-weight:bold;">Error loading tab</p>
+                        <p>${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // --- RENDERING ---
+
+        function renderSearchResults(songs) {
+            const listEl = document.getElementById('search-results');
+            listEl.innerHTML = '';
+
+            if (!songs || songs.length === 0) {
+                listEl.innerHTML = '<div class="loading-msg">No results found.</div>';
+                return;
+            }
+
+            songs.forEach(song => {
+                const div = document.createElement('div');
+                div.className = 'song-item';
+                div.innerHTML = `
+                    <span class="song-title">${song.title}</span>
+                    <span class="song-artist">${song.artist}</span>
+                `;
+                div.onclick = () => openSong(song);
+                listEl.appendChild(div);
+            });
+        }
+
+        function renderLibrary() {
+            const listEl = document.getElementById('library-list');
+            listEl.innerHTML = '';
+
+            if (savedSongs.length === 0) {
+                listEl.innerHTML = `
+                    <div class="loading-msg">
+                        Your library is empty.<br>
+                        Click "Search" to find songs.
+                    </div>`;
+                return;
+            }
+
+            // Sort by Title
+            savedSongs.sort((a, b) => a.title.localeCompare(b.title));
+
+            savedSongs.forEach(song => {
+                const div = document.createElement('div');
+                div.className = 'song-item';
+                div.innerHTML = `
+                    <span class="song-title">${song.title}</span>
+                    <span class="song-artist">${song.artist}</span>
+                `;
+                div.onclick = () => openSong(song);
+                listEl.appendChild(div);
+            });
+        }
+
+        function renderChordSheet(text) {
+            // Basic formatting for chords if needed, but <pre> usually handles it
+            document.getElementById('detail-content').innerText = text;
+        }
+
+        function updateSaveButton() {
+            const btn = document.getElementById('btn-save');
+            const isSaved = savedSongs.some(s => s.url === currentSong.url); // Use URL as unique key
+
+            if (isSaved) {
+                btn.innerText = "Remove";
+                btn.style.backgroundColor = "#ddd";
+            } else {
+                btn.innerText = "Save";
+                btn.style.backgroundColor = "white";
+            }
+        }
+
+        // --- DATA PERSISTENCE ---
+
+        function loadLocalLibrary() {
+            try {
+                savedSongs = JSON.parse(localStorage.getItem('rekindle_chords')) || [];
+            } catch (e) { savedSongs = []; }
+            renderLibrary();
+        }
+
+        function syncLibrary() {
+            db.collection('users').doc(currentUser.uid).collection('chords')
+                .orderBy('addedAt', 'desc')
+                .onSnapshot((snapshot) => {
+                    savedSongs = [];
+                    snapshot.forEach(doc => {
+                        savedSongs.push(doc.data());
+                    });
+                    if (currentView === 'library') renderLibrary();
+                    if (currentSong) updateSaveButton();
+                }, (error) => {
+                    console.error(error);
+                    document.getElementById('status-bar').innerText = "Sync Error.";
+                });
+        }
+
+        function toggleSaveCurrent() {
+            if (!currentSong) return;
+            const isSaved = savedSongs.some(s => s.url === currentSong.url);
+
+            if (isSaved) {
+                // REMOVE
+                if (!currentUser) {
+                    savedSongs = savedSongs.filter(s => s.url !== currentSong.url);
+                    localStorage.setItem('rekindle_chords', JSON.stringify(savedSongs));
+                    updateSaveButton();
+                } else {
+                    // Firestore Remove (Needs ID... we used URL as key? No, we need a doc ID)
+                    // We need to query for the doc with this URL to delete it, 
+                    // or we should use encoded URL as Doc ID.
+                    const docId = btoa(currentSong.url).replace(/\//g, '_').replace(/\+/g, '-').replace(/=/g, '');
+                    db.collection('users').doc(currentUser.uid).collection('chords').doc(docId).delete()
+                        .then(() => updateSaveButton())
+                        .catch(e => alert("Error removing: " + e));
+                }
+            } else {
+                // SAVE
+                const songToSave = {
+                    title: currentSong.title,
+                    artist: currentSong.artist || "Unknown",
+                    url: currentSong.url,
+                    source: currentSong.source || "web",
+                    content: currentSong.content || "", // Save content if we have it
+                    addedAt: Date.now()
+                };
+
+                if (!currentUser) {
+                    savedSongs.push(songToSave);
+                    localStorage.setItem('rekindle_chords', JSON.stringify(savedSongs));
+                    updateSaveButton();
+                } else {
+                    const docId = btoa(currentSong.url).replace(/\//g, '_').replace(/\+/g, '-').replace(/=/g, '');
+                    db.collection('users').doc(currentUser.uid).collection('chords').doc(docId).set(songToSave)
+                        .then(() => updateSaveButton())
+                        .catch(e => alert("Error saving: " + e));
+                }
+            }
+        }
+
+        // --- WALLPAPER UTILS ---
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) return imageString;
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http') || url.startsWith('/')) && !url.includes('javascript:')) return imageString;
+            }
+            return '';
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if (wallpaperSize) document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
+        }
+
+    </script>
+</body>
+
+</html>
