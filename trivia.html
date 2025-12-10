@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trivia</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        /* SYSTEM 7 / E-INK AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            image-rendering: -webkit-optimize-contrast;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Background managed by JS */
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            max-width: 500px;
+            max-height: 90vh;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* STATS BUTTON */
+        .stats-btn {
+            position: absolute;
+            right: 10px;
+            height: 20px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+            padding: 0 5px;
+            text-transform: uppercase;
+        }
+
+        .stats-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 20px;
+        }
+
+        /* APP ELEMENTS */
+        h1,
+        h2,
+        h3 {
+            margin-top: 0;
+            text-align: center;
+        }
+
+        /* Controls */
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+        }
+
+        select,
+        button {
+            font-size: 1rem;
+            font-family: inherit;
+            padding: 8px 12px;
+            border: 2px solid black;
+            background: white;
+            color: black;
+            width: 100%;
+            box-sizing: border-box;
+            appearance: none;
+            border-radius: 0;
+            /* Reset */
+        }
+
+        select {
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23000000%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 12px;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        button {
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: none;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            border-style: dotted;
+            box-shadow: none;
+        }
+
+        /* Views */
+        .view {
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .view.active {
+            display: flex;
+        }
+
+        /* Question Screen */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .category-tag {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            opacity: 0.6;
+            text-align: center;
+        }
+
+        .question-text {
+            font-size: 1.2rem;
+            line-height: 1.4;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0 20px 0;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .option-btn {
+            text-align: left;
+            position: relative;
+            padding-left: 15px;
+        }
+
+        .option-btn.correct {
+            background-color: black;
+            color: white;
+            border-color: black;
+            box-shadow: none;
+        }
+
+        .option-btn.wrong {
+            text-decoration: line-through;
+            opacity: 0.5;
+            box-shadow: none;
+        }
+
+        /* Result Screen */
+        .score-display {
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 120px;
+            height: 120px;
+            border: 4px solid black;
+            border-radius: 50%;
+            margin: 10px auto;
+        }
+
+        .score-label {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        /* STATS MODAL */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            border: 1px solid black;
+            padding: 10px;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .stat-val {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 120px;
+            border: 2px solid black;
+            margin-bottom: 20px;
+            background: #fafafa;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .chart-container svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #000;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Mobile adjustments */
+        @media (min-width: 600px) {
+            .options-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <!-- Home Button -->
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Trivia</span>
+            <!-- Stats Button -->
+            <div class="stats-btn" onclick="openStats()">Stats</div>
+        </div>
+
+        <div class="window-content">
+
+            <!-- START SCREEN -->
+            <div id="start-view" class="view active">
+                <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; gap: 20px;">
+                    <div>
+                        <label for="category-select">Category</label>
+                        <select id="category-select">
+                            <option value="">Any Category</option>
+                            <!-- Filled via JS -->
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="difficulty-select">Difficulty</label>
+                        <select id="difficulty-select">
+                            <option value="">Any Difficulty</option>
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="type-select">Type</label>
+                        <select id="type-select">
+                            <option value="">Any Type</option>
+                            <option value="multiple">Multiple Choice</option>
+                            <option value="boolean">True / False</option>
+                        </select>
+                    </div>
+
+                    <div id="loading-categories" style="text-align: center; font-size: 0.8rem; height: 20px;">
+                        Loading categories...
+                    </div>
+                </div>
+
+                <div style="margin-top: auto;">
+                    <button id="start-btn" onclick="startGame()">Start Game</button>
+                    <!-- <button class="sys-btn" onclick="injectFakeData()" style="margin-top:10px;">Dev: Inject Data</button> -->
+                </div>
+            </div>
+
+            <!-- GAME SCREEN -->
+            <div id="game-view" class="view">
+                <div class="hud">
+                    <span id="progress-text">Q 1/10</span>
+                    <span id="score-text">Score: 0</span>
+                </div>
+
+                <div id="question-container" style="flex-grow:1; display:flex; flex-direction:column;">
+                    <div id="category-display" class="category-tag">General</div>
+
+                    <div id="question-text" class="question-text">Loading...</div>
+
+                    <div id="options-container" class="options-grid">
+                        <!-- Buttons injected here -->
+                    </div>
+
+                    <div id="loading-spinner" class="spinner" style="display: none;"></div>
+                </div>
+
+                <div id="next-btn-container" style="display: none; height: 50px;">
+                    <button onclick="nextQuestion()">Next Question</button>
+                </div>
+            </div>
+
+            <!-- RESULT SCREEN -->
+            <div id="result-view" class="view">
+                <div
+                    style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                    <h2>Game Over</h2>
+
+                    <div class="score-display">
+                        <span id="final-score">8</span>
+                        <span class="score-label">Score</span>
+                    </div>
+
+                    <h3 id="feedback-text" style="font-style:italic;">Great Job!</h3>
+                </div>
+
+                <button onclick="initApp()">Play Again</button>
+            </div>
+
+        </div>
+
+        <!-- STATS MODAL -->
+        <div id="stats-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 style="border-bottom: 2px solid black; padding-bottom:10px; margin-bottom:15px;">Statistics</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-val" id="stat-all">--</div>
+                        <div class="stat-label">All Time</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-val" id="stat-year">--</div>
+                        <div class="stat-label">Last Year</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-val" id="stat-month">--</div>
+                        <div class="stat-label">Last Month</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-val" id="stat-week">--</div>
+                        <div class="stat-label">Last Week</div>
+                    </div>
+                </div>
+
+                <h4 style="margin:0 0 10px 0; text-align:left;">Performance History</h4>
+                <div class="chart-container" id="chart-container">
+                    <!-- SVG injected here -->
+                </div>
+
+                <button onclick="closeStats()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // State
+        let categories = [];
+        let currentQuestions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let isAnswering = false;
+        let sessionToken = null;
+        let gameHistory = JSON.parse(localStorage.getItem('rekindle_trivia_stats')) || [];
+        let currentUser = null;
+
+        // Consts
+        const QUESTION_COUNT = 10;
+        const API_BASE = 'https://opentdb.com';
+
+        // Elements
+        const views = {
+            start: document.getElementById('start-view'),
+            game: document.getElementById('game-view'),
+            result: document.getElementById('result-view')
+        };
+        const categorySelect = document.getElementById('category-select');
+        const difficultySelect = document.getElementById('difficulty-select');
+        const typeSelect = document.getElementById('type-select');
+
+        // Init
+        window.addEventListener('DOMContentLoaded', () => {
+            loadWallpaper();
+            initApp();
+            fetchCategories();
+            fetchSessionToken();
+
+            // Auth Listener
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    loadCloudStats();
+                } else {
+                    currentUser = null;
+                }
+            });
+        });
+
+        // --- CLOUD SYNC ---
+        function loadCloudStats() {
+            if (!currentUser) return;
+
+            db.collection('users').doc(currentUser.uid).collection('apps').doc('trivia')
+                .get().then((doc) => {
+                    if (doc.exists) {
+                        const cloudHistory = doc.data().history || [];
+                        // Merge strategies? For now, let's just prefer cloud if it has more data, or merge uniques.
+                        // Simple merge: Concat and dedupe by timestamp (assuming no two games end exact same ms)
+                        // Actually, simpler: Cloud is truth. If local has new games, we should have pushed them.
+                        // But if we just logged in, we might have local games not in cloud.
+
+                        // Merge:
+                        const combined = [...gameHistory, ...cloudHistory];
+                        // Dedupe by timestamp
+                        const uniqueMap = new Map();
+                        combined.forEach(item => uniqueMap.set(item.timestamp, item));
+                        gameHistory = Array.from(uniqueMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+                        localStorage.setItem('rekindle_trivia_stats', JSON.stringify(gameHistory));
+                        saveCloudStats(); // Sync back the merged list
+                    } else {
+                        // First sync, push local to cloud
+                        saveCloudStats();
+                    }
+                }).catch((error) => {
+                    console.error("Error syncing stats:", error);
+                });
+        }
+
+        function saveCloudStats() {
+            if (!currentUser) return;
+            db.collection('users').doc(currentUser.uid).collection('apps').doc('trivia').set({
+                history: gameHistory,
+                lastUpdated: Date.now()
+            });
+        }
+
+        // --- WALLPAPER LOADER ---
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) {
+                return imageString;
+            }
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                    return imageString;
+                }
+            }
+            return '';
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
+            }
+        }
+
+        function showView(viewName) {
+            Object.values(views).forEach(el => el.classList.remove('active'));
+            views[viewName].classList.add('active');
+        }
+
+        async function initApp() {
+            showView('start');
+            score = 0;
+            currentQuestionIndex = 0;
+            currentQuestions = [];
+        }
+
+        // --- STATS SYSTEM ---
+
+        function openStats() {
+            calculateStats();
+            renderChart();
+            document.getElementById('stats-modal').style.display = 'flex';
+        }
+
+        function closeStats() {
+            document.getElementById('stats-modal').style.display = 'none';
+        }
+
+        function saveGameStats() {
+            const record = {
+                timestamp: Date.now(),
+                score: score,
+                total: currentQuestions.length,
+                percent: (score / currentQuestions.length)
+            };
+            gameHistory.push(record);
+            localStorage.setItem('rekindle_trivia_stats', JSON.stringify(gameHistory));
+
+            // Sync to cloud
+            saveCloudStats();
+        }
+
+        function calculateStats() {
+            const now = Date.now();
+            const oneDay = 24 * 60 * 60 * 1000;
+
+            function getAvg(msAgo) {
+                const filtered = msAgo === 'all'
+                    ? gameHistory
+                    : gameHistory.filter(g => (now - g.timestamp) < msAgo);
+
+                if (filtered.length === 0) return "--";
+
+                // Calculate win/loss ratio ? Or % correct?
+                // "Win/loss ratio" usually means wins / losses. In trivia, maybe Avg Score %?
+                // User asked for "Win/loss ratio". Let's define "Win" as > 50% for now?
+                // Or just show Avg Score % which is more meaninful for Trivia.
+                // Let's stick to Avg Score % but label it clearly.
+                // If user explicitly wants W/L:
+                // Let's assume Win = >= 70% or something.
+                // Actually, let's display Average Score %. It's unambiguous.
+
+                const totalPercent = filtered.reduce((acc, curr) => acc + curr.percent, 0);
+                return Math.round((totalPercent / filtered.length) * 100) + "%";
+            }
+
+            document.getElementById('stat-all').textContent = getAvg('all');
+            document.getElementById('stat-year').textContent = getAvg(365 * oneDay);
+            document.getElementById('stat-month').textContent = getAvg(30 * oneDay);
+            document.getElementById('stat-week').textContent = getAvg(7 * oneDay);
+        }
+
+        function renderChart() {
+            const container = document.getElementById('chart-container');
+            if (gameHistory.length < 2) {
+                container.innerHTML = '<div style="width:100%; text-align:center; align-self:center; font-style:italic; font-size:0.8rem; color:#888;">Not enough data</div>';
+                return;
+            }
+
+            // Use last 20 games for the graph to keep it readable
+            const data = gameHistory.slice(-20).map(g => g.percent * 100);
+
+            const width = 100;
+            const height = 100;
+            const max = 100;
+            const min = 0;
+
+            const points = data.map((val, index) => {
+                const x = (index / (data.length - 1)) * width;
+                const y = height - (val / 100) * height; // Scale 0-100 to height
+                return `${x},${y}`;
+            }).join(" ");
+
+            const svg = `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <!-- Grid lines -->
+                <line x1="0" y1="25" x2="100" y2="25" stroke="#eee" stroke-width="1" vector-effect="non-scaling-stroke" />
+                <line x1="0" y1="50" x2="100" y2="50" stroke="#ccc" stroke-width="1" vector-effect="non-scaling-stroke" />
+                <line x1="0" y1="75" x2="100" y2="75" stroke="#eee" stroke-width="1" vector-effect="non-scaling-stroke" />
+
+                <!-- Data line -->
+                <polyline points="${points}" fill="none" stroke="black" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
+            </svg>
+        `;
+
+            container.innerHTML = svg;
+        }
+
+        async function fetchSessionToken() {
+            if (sessionToken) return; // already have one
+            try {
+                const res = await fetch(`${API_BASE}/api_token.php?command=request`);
+                const data = await res.json();
+                if (data.response_code === 0) {
+                    sessionToken = data.token;
+                }
+            } catch (e) {
+                console.error("Failed to get session token", e);
+            }
+        }
+
+        async function fetchCategories() {
+            const loadingEl = document.getElementById('loading-categories');
+            loadingEl.style.visibility = 'visible';
+            loadingEl.textContent = "Loading categories...";
+            try {
+                const res = await fetch(`${API_BASE}/api_category.php`);
+                const data = await res.json();
+                categories = data.trivia_categories.sort((a, b) => a.name.localeCompare(b.name));
+
+                // Populate select
+                categorySelect.innerHTML = '<option value="">Any Category</option>';
+                categories.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat.id;
+                    opt.textContent = cat.name;
+                    categorySelect.appendChild(opt);
+                });
+                loadingEl.style.visibility = 'hidden';
+            } catch (e) {
+                console.error("Failed to fetch categories", e);
+                loadingEl.textContent = "Failed to load categories";
+            }
+        }
+
+        async function startGame() {
+            const cat = categorySelect.value;
+            const diff = difficultySelect.value;
+            const type = typeSelect.value;
+
+            // Build URL
+            let url = `${API_BASE}/api.php?amount=${QUESTION_COUNT}`;
+            if (cat) url += `&category=${cat}`;
+            if (diff) url += `&difficulty=${diff}`;
+            if (type) url += `&type=${type}`;
+            if (sessionToken) url += `&token=${sessionToken}`;
+
+            // Show game view (loading state)
+            showView('game');
+            document.getElementById('question-text').textContent = "Loading questions...";
+            document.getElementById('options-container').innerHTML = '';
+            document.getElementById('loading-spinner').style.display = 'block';
+            document.getElementById('next-btn-container').style.display = 'none';
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+
+                // Handle token reset if needed (response code 3 or 4)
+                if (data.results.length === 0 && (data.response_code === 3 || data.response_code === 4)) {
+                    // Token exhausted, request new one
+                    if (sessionToken) {
+                        // Reset token logic
+                        await fetch(`${API_BASE}/api_token.php?command=reset&token=${sessionToken}`);
+                        // Then retry the original fetch
+                        const retryRes = await fetch(url);
+                        const retryData = await retryRes.json();
+                        if (retryData.results && retryData.results.length > 0) {
+                            currentQuestions = retryData.results;
+                            setupGame();
+                            return;
+                        }
+                    }
+                }
+
+                if (data.results && data.results.length > 0) {
+                    currentQuestions = data.results;
+                    setupGame();
+                } else {
+                    alert("No questions found for these settings. Try different options.");
+                    initApp();
+                }
+            } catch (e) {
+                console.error("Error starting game", e);
+                alert("Error fetching questions. Please check connection.");
+                initApp();
+            } finally {
+                document.getElementById('loading-spinner').style.display = 'none';
+            }
+        }
+
+        function setupGame() {
+            currentQuestionIndex = 0;
+            score = 0;
+            renderQuestion();
+        }
+
+        function renderQuestion() {
+            const q = currentQuestions[currentQuestionIndex];
+            isAnswering = true;
+
+            // HUD
+            document.getElementById('progress-text').textContent = `Q ${currentQuestionIndex + 1}/${currentQuestions.length}`;
+            document.getElementById('score-text').textContent = `Score: ${score}`;
+            document.getElementById('category-display').textContent = q.category;
+
+            // Content
+            document.getElementById('question-text').innerHTML = q.question; // API returns HTML entities
+
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            document.getElementById('next-btn-container').style.display = 'none';
+
+            // Mix answers
+            let answers = [...q.incorrect_answers, q.correct_answer];
+            // Shuffle if multiple choice
+            if (q.type === 'multiple') {
+                answers = shuffleArray(answers);
+            } else {
+                // Sort Boolean: True, False
+                answers.sort((a, b) => (a === "True" ? -1 : 1));
+            }
+
+            answers.forEach(ans => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.innerHTML = ans; // contains entities
+                btn.onclick = () => handleAnswer(ans, q.correct_answer, btn);
+                container.appendChild(btn);
+            });
+        }
+
+        function handleAnswer(selected, correct, btnElement) {
+            if (!isAnswering) return;
+            isAnswering = false;
+
+            const isCorrect = selected === correct;
+            if (isCorrect) score++;
+
+            // Visual feedback
+            const buttons = document.querySelectorAll('.option-btn');
+            buttons.forEach(btn => {
+                btn.disabled = true; // disable all
+                if (btn.innerHTML === correct) {
+                    btn.classList.add('correct');
+                } else if (btn === btnElement && !isCorrect) {
+                    btn.classList.add('wrong');
+                }
+            });
+
+            // Show Next button
+            const nextContainer = document.getElementById('next-btn-container');
+            nextContainer.style.display = 'block';
+
+            // Update score immediately
+            document.getElementById('score-text').textContent = `Score: ${score}`;
+
+            // Auto-scroll to bottom if needed on small screens
+            // setTimeout(() => {
+            //      nextContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // }, 100);
+        }
+
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < currentQuestions.length) {
+                renderQuestion();
+            } else {
+                endGame();
+            }
+        }
+
+        function endGame() {
+            showView('result');
+            document.getElementById('final-score').textContent = `${score}/${currentQuestions.length}`;
+
+            const percent = score / currentQuestions.length;
+            let feedback = "Play Again?";
+            if (percent === 1) feedback = "Perfect Score!";
+            else if (percent >= 0.8) feedback = "Excellent!";
+            else if (percent >= 0.5) feedback = "Good Job!";
+            else feedback = "Better luck next time!";
+
+            document.getElementById('feedback-text').textContent = feedback;
+
+            saveGameStats();
+        }
+
+        // Dev Tool: Inject Fake Data
+        /*
+        function injectFakeData() {
+            const fakeHistory = [];
+            const now = Date.now();
+            const oneDay = 24 * 60 * 60 * 1000;
+
+            for(let i=0; i<30; i++) {
+                 fakeHistory.push({
+                     timestamp: now - (i * oneDay),
+                     score: Math.floor(Math.random() * 10),
+                     total: 10,
+                     percent: Math.random()
+                 });
+            }
+            gameHistory = fakeHistory.reverse();
+            localStorage.setItem('rekindle_trivia_stats', JSON.stringify(gameHistory));
+            alert('Injected 30 days of data');
+        }
+        */
+
+        // Utils
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+    </script>
+
+</body>
+
+</html>
