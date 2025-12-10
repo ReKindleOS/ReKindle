@@ -144,7 +144,7 @@ const APPS = [
         icon: '<rect x="6" y="4" width="20" height="24"/><text x="16" y="22" font-size="14" text-anchor="middle" stroke="none" fill="black" font-family="serif" font-weight="bold">Az</text>'
     },
     {
-        id: 'freewrite',
+        id: 'airtype',
         name: 'AirType',
         cat: 'tools',
         featured: true,
