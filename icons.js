@@ -257,14 +257,14 @@ const APPS = [
         beta: true,
         icon: '<path d="M22 6 L26 10 L14 22 L10 22 L10 18 Z"/><line x1="19" y1="9" x2="23" y2="13"/><path d="M10 22 L6 26"/>'
     },
-    /*     {
-            id: 'pixel',
-            name: 'Pixel',
-            cat: 'lifestyle',
-            beta: true,
-            desc: 'A 1-bit pixel art canvas.',
-            icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="1"/><rect x="6" y="6" width="6" height="6" fill="black"/><rect x="20" y="10" width="6" height="6" fill="black"/><rect x="12" y="18" width="6" height="6" fill="black"/>'
-        }, */
+    {
+        id: 'pixel',
+        name: 'Pixel',
+        cat: 'tools',
+        beta: true,
+        desc: 'A 1-bit pixel art canvas.',
+        icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="2"/><rect x="8" y="8" width="4" height="4" fill="black"/><rect x="20" y="12" width="4" height="4" fill="black"/><rect x="12" y="20" width="4" height="4" fill="black"/>'
+    },
     {
         id: 'wikipedia',
         name: 'Wikipedia',
