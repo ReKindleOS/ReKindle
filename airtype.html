@@ -815,7 +815,10 @@
                 // Wait for auth if not ready, or just alert?
                 // Simple retry logic for auto-connect
                 if (!currentUser) {
-                    setTimeout(() => startHostWithId(id), 500);
+                    // One retry? No, let's just show modal if not logged in.
+                    // But auth might assume async. Let's give it a short moment or check if auth is indeterminate.
+                    // For now, if null, show LOGIN REQUIRED.
+                    showModal("Login Required", "You must be logged in to join a session.");
                     return;
                 }
             }
@@ -832,12 +835,23 @@
                 let initialTitle = "";
                 let initialContent = "";
                 let linkedNoteId = null;
+                let sessionOwner = null;
 
                 if (doc.exists) {
                     const data = doc.data();
                     initialTitle = data.title || "";
                     initialContent = data.content || "";
                     linkedNoteId = data.originalNoteId || null;
+                    sessionOwner = data.ownerId;
+                }
+
+                // CHECK OWNERSHIP
+                if (sessionOwner && sessionOwner !== currentUser.uid) {
+                    showModal("Account Mismatch", "This device is logged into a different account than the monitor.");
+                    // Invalidate session ref so we don't sync
+                    sessionRef = null;
+                    // Go back?
+                    return;
                 }
 
                 // Update Local UI
@@ -948,6 +962,14 @@
                 .onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
+
+                        // CHECK ACCOUNT MISMATCH (If user logs in or session changes owner)
+                        if (currentUser && data.ownerId && data.ownerId !== currentUser.uid) {
+                            showModal("Account Mismatch", "The connected device is using a different account.");
+                            // Maybe disconnect?
+                            return;
+                        }
+
                         renderPaper(data.title, data.content);
                     }
                 });
@@ -1083,6 +1105,13 @@
                 .onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
+
+                        // CHECK ACCOUNT MISMATCH (If user logs in or session changes owner)
+                        if (currentUser && data.ownerId && data.ownerId !== currentUser.uid) {
+                            showModal("Account Mismatch", "The connected device is using a different account.");
+                            return;
+                        }
+
                         // If content starts appearing, switch to monitor view
                         // If we already had content (from note), we might want to stay on QR view
                         // until *someone else* connects?
