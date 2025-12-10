@@ -415,12 +415,29 @@
         </div>
     </div>
 
+    <!-- SUCCESS MODAL -->
+    <div id="success-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Posted!</h3>
+            <p style="margin-bottom:20px;">Your art has been posted to KindleChat.</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="closeModal('success-modal')">OK</button>
+            </div>
+        </div>
+    </div>
+
     <div class="window">
         <!-- SHARED TITLE BAR -->
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="handleCloseButton()">X</div>
             <span class="title-text">Pixel</span>
+            <!-- Contextual Back Button -->
+            <div id="back-to-chat-btn" class="close-box"
+                style="left:auto; right:10px; width:auto; padding:0 8px; font-weight:normal; display:none;"
+                onclick="window.location.href='kindlechat'">
+                Back to Chat
+            </div>
         </div>
 
         <!-- GALLERY SCREEN -->
@@ -459,6 +476,9 @@
                     <button id="eraser-btn" onclick="setTool('eraser')">Eraser</button>
                     <div style="width:10px;"></div>
                     <button onclick="clearGrid()">Clear</button>
+                    <div style="width:10px;"></div>
+                    <button class="sys-btn" style="padding: 8px 10px; font-size: 0.8rem; margin-top:0;"
+                        onclick="postToPixelChat()">Post to KindleChat</button>
                 </div>
             </div>
         </div>
@@ -524,7 +544,46 @@
 
             // Prevent context menu
             canvas.oncontextmenu = (e) => e.preventDefault();
+
+            // Check for source param
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('source') === 'kindlechat') {
+                const backBtn = document.getElementById('back-to-chat-btn');
+                if (backBtn) backBtn.style.display = 'flex';
+            }
         };
+
+        async function postToPixelChat() {
+            if (!currentUser) return alert("You must be logged in to post.");
+
+            // Get data URL from the pixel canvas only (no grid)
+            const dataUrl = canvas.toDataURL('image/png');
+
+            try {
+                // Ensure PixelChat room exists or at least we can write to it
+                // We just write to the collection 'rooms/pixelchat/messages'
+                // The KindleChat client handles the room list inclusion regardless of document existence, 
+                // but creating the room doc is good practice if missing.
+
+                const roomRef = db.collection('rooms').doc('general');
+
+                // Optional: Ensure validation exists
+                // await roomRef.set({ name: 'PixelChat', type: 'group' }, { merge: true });
+
+                await roomRef.collection('messages').add({
+                    user: currentUser.email.split('@')[0],
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    text: document.getElementById('drawing-title').value || "Pixel Art",
+                    pixel_art: dataUrl,
+                    is_pixel_art: true
+                });
+
+                openModal('success-modal');
+            } catch (e) {
+                console.error("Error posting:", e);
+                alert("Failed to post. Check console.");
+            }
+        }
 
         window.onresize = () => {
             if (currentDrawingId) setupCanvas(false); // Resize canvas if in editor
