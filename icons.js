@@ -168,7 +168,7 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 4,
-        desc: 'Even more exclusive than iMessage',
+        desc: 'Now with PixelChat!',
         icon: '<rect x="4" y="6" width="24" height="16"/><path d="M8 22 L8 28 L14 22"/>'
     },
     {
