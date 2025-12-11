@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tower of Hanoi</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-repeat: repeat;
+            background-position: top left;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            max-height: 98vh;
+            width: 95vw;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            flex-grow: 1;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        #status-bar {
+            border-bottom: 2px solid black;
+            padding: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1rem;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-left: 15px;
+            padding-right: 15px;
+            background: white;
+        }
+
+        .reset-box {
+            position: absolute;
+            right: 10px;
+            padding: 2px 8px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .reset-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .btn-row button {
+            width: auto;
+            flex: 1;
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 6px 6px 0 black;
+            padding: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        button {
+            margin: 10px 0;
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            width: 100%;
+            display: block;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .diff-select {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .diff-select button {
+            width: 60px;
+            margin: 5px;
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+        .lb-tabs {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .lb-tab {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .lb-tab:active,
+        .lb-tab.active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .scores-box {
+            position: absolute;
+            right: 55px;
+            padding: 2px 8px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .scores-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Tower of Hanoi</span>
+            <div class="scores-box" onclick="openLeaderboard()">Scores</div>
+            <div class="reset-box" onclick="showResetModal()">Reset</div>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">
+                <span id="moves-label">Moves: 0</span>
+                <span id="min-label">Min: 7</span>
+            </div>
+            <canvas id="game-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="start-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>New Game</h2>
+            <p>Select Number of Disks</p>
+            <div class="diff-select">
+                <button onclick="startGame(3)">3</button>
+                <button onclick="startGame(4)">4</button>
+                <button onclick="startGame(5)">5</button>
+                <button onclick="startGame(6)">6</button>
+                <button onclick="startGame(7)">7</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2>You Won!</h2>
+            <p id="game-over-msg"></p>
+            <button onclick="showStartModal()">Play Again</button>
+        </div>
+    </div>
+
+    <div id="reset-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2>Reset Game?</h2>
+            <p>Are you sure you want to reset the current game?</p>
+            <div class="btn-row">
+                <button onclick="hideResetModal()">Cancel</button>
+                <button onclick="confirmReset()">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="leaderboard-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2 id="lb-title">Top Scores</h2>
+            <div class="lb-list" id="lb-content">Loading...</div>
+            <button onclick="closeLeaderboard()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app();
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // User Data
+        let uid = null;
+        let username = "Guest";
+
+        // --- CONSTANTS ---
+        const PEGS = [0, 1, 2];
+
+        // --- STATE ---
+        let canvas = document.getElementById('game-canvas');
+        let ctx = canvas.getContext('2d');
+        let width, height;
+
+        let numDisks = 3;
+        let stacks = [[], [], []]; // 0: Left, 1: Center, 2: Right
+        let moves = 0;
+        let selectedPeg = -1; // -1 if nothing selected, 0-2 if picking source
+        let minMoves = 0;
+        let isWin = false;
+
+        // --- INIT ---
+        function init() {
+            window.addEventListener('resize', resize);
+
+            // Load Background
+            const bg = localStorage.getItem('rekindle_bg_image');
+            const bgSize = localStorage.getItem('rekindle_bg_size');
+            if (bg) {
+                document.body.style.backgroundImage = bg;
+                document.body.style.backgroundSize = bgSize || 'auto';
+            }
+
+            // Auth State Listener
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    uid = user.uid;
+                    username = user.email.split('@')[0];
+                }
+            });
+
+            // Mouse/Touch Events
+            canvas.addEventListener('mousedown', handleInput);
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleInput(e.touches[0]);
+            }, { passive: false });
+
+            // Ensure fonts load etc before first draw if needed, but resize calls draw
+            // A short delay helps on some mobile browsers to get correct container dims
+            setTimeout(resize, 0);
+            showStartModal();
+        }
+
+        function showStartModal() {
+            document.getElementById('start-modal').style.display = 'flex';
+            document.getElementById('game-over-modal').style.display = 'none';
+            document.getElementById('reset-modal').style.display = 'none';
+        }
+
+        function showResetModal() {
+            if (isWin) return; // No need to reset if already won
+            document.getElementById('reset-modal').style.display = 'flex';
+        }
+
+        function hideResetModal() {
+            document.getElementById('reset-modal').style.display = 'none';
+        }
+
+        function confirmReset() {
+            hideResetModal();
+            // Reset with current number of disks
+            startGame(numDisks);
+        }
+
+        // --- LEADERBOARD ---
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function openLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'flex';
+            document.getElementById('lb-title').textContent = `Top Scores (${numDisks} Disks)`;
+            loadLeaderboard(numDisks);
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'none';
+        }
+
+        async function loadLeaderboard(difficulty) {
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...';
+
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    const snapshot = await db.collection(`leaderboard_hanoi_${difficulty}`)
+                        .orderBy('moves', 'asc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerHTML = 'No scores yet!';
+                        return;
+                    }
+
+                    let rank = 1;
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
+                        const movesSpan = document.createElement('span');
+                        movesSpan.textContent = `${data.moves} moves`;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(movesSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerHTML = "Error loading scores.";
+                }
+            } else {
+                list.innerHTML = "Log in to see scores.";
+            }
+        }
+
+        async function saveBestMoves(difficulty, movesCount) {
+            if (!uid) return;
+
+            try {
+                const docRef = db.collection(`leaderboard_hanoi_${difficulty}`).doc(uid);
+                const doc = await docRef.get();
+
+                // Only save if this is a new best (fewer moves)
+                if (!doc.exists || movesCount < doc.data().moves) {
+                    await docRef.set({
+                        username: username,
+                        moves: movesCount,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            } catch (e) {
+                console.error("Error saving score:", e);
+            }
+        }
+
+        function startGame(n) {
+            numDisks = n;
+            minMoves = Math.pow(2, n) - 1;
+            moves = 0;
+            isWin = false;
+            selectedPeg = -1;
+
+            // Initialize Stacks
+            stacks = [[], [], []];
+            for (let i = n; i >= 1; i--) {
+                stacks[0].push(i);
+            }
+
+            document.getElementById('start-modal').style.display = 'none';
+            updateDiffDisplay();
+            draw();
+        }
+
+        function resize() {
+            // Get parent size
+            const parent = canvas.parentElement;
+            width = parent.clientWidth;
+
+            // Calculate target height (maintain nice aspect ratio, e.g. 3:2)
+            height = width * 0.6;
+
+            // Constrain to available screen space
+            // Window is max 98vh. UI is approx 80px (Title 35 + Status 45 approx)
+            const availableH = (window.innerHeight * 0.98) - 80;
+            if (height > availableH) {
+                height = availableH;
+            }
+
+            // Enhance resolution for retina displays
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+
+            // Adjust CSS size
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+
+            draw();
+        }
+
+        function updateDiffDisplay() {
+            document.getElementById('moves-label').innerText = `Moves: ${moves}`;
+            document.getElementById('min-label').innerText = `Min: ${minMoves}`;
+        }
+
+        // --- LOGIC ---
+        function handleInput(e) {
+            if (isWin) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            // Determine which peg was clicked
+            // Divide width into 3 zones
+            const pegWidth = width / 3;
+            let pegIndex = Math.floor(x / pegWidth);
+            if (pegIndex < 0) pegIndex = 0;
+            if (pegIndex > 2) pegIndex = 2;
+
+            if (selectedPeg === -1) {
+                // Attempt to pick up
+                if (stacks[pegIndex].length > 0) {
+                    selectedPeg = pegIndex;
+                }
+            } else {
+                // Attempt to drop
+                if (selectedPeg === pegIndex) {
+                    // Deselect if same peg clicked
+                    selectedPeg = -1;
+                } else {
+                    attemptMove(selectedPeg, pegIndex);
+                }
+            }
+            draw();
+        }
+
+        function attemptMove(from, to) {
+            const disk = stacks[from][stacks[from].length - 1];
+            const targetStack = stacks[to];
+            const topTarget = targetStack.length > 0 ? targetStack[targetStack.length - 1] : Infinity;
+
+            if (disk < topTarget) {
+                // Valid move
+                stacks[from].pop();
+                stacks[to].push(disk);
+                moves++;
+                selectedPeg = -1;
+                updateDiffDisplay();
+                checkWin();
+            } else {
+                // Invalid move - maybe flash or just deselect?
+                // For now, simple deselect logic or switch selection
+                // "Can't place bigger on smaller"
+                // Let's just switch selection if they clicked a valid source, else deselect
+                if (targetStack.length > 0 && targetStack[targetStack.length - 1] < disk) {
+                    // Clicked a peg with a smaller top disk. 
+                    // User might be trying to select that peg new source?
+                    // Actually, simplified: always switch selection to 'to' if it has disks?
+                    // Standard behaviour: Invalid move just does nothing or deselects.
+                    // Let's deselect to indicate valid source but invalid dest.
+                    selectedPeg = -1;
+                } else {
+                    // Move completely impossible (should be covered above)
+                    selectedPeg = -1;
+                }
+            }
+        }
+
+        function checkWin() {
+            // All disks on Peg 2 (index 2, rightmost) working?
+            // Usually target is peg 2 or 1. Let's say Peg 2.
+            if (stacks[2].length === numDisks) {
+                isWin = true;
+                saveBestMoves(numDisks, moves);
+                setTimeout(() => {
+                    document.getElementById('game-over-msg').innerText = `Completed in ${moves} moves!`;
+                    document.getElementById('game-over-modal').style.display = 'flex';
+                }, 200);
+            }
+        }
+
+        // --- DRAWING ---
+        function draw() {
+            // Clear
+            ctx.clearRect(0, 0, width, height);
+
+            // Settings
+            const pegX = [width / 6, width / 2, 5 * width / 6];
+            const bottomY = height * 0.8;
+            const pegHeight = height * 0.4;
+            const pegThickness = 10;
+            const baseThickness = 10;
+
+            // Draw Base
+            ctx.fillStyle = 'black';
+            ctx.fillRect(20, bottomY, width - 40, baseThickness);
+
+            // Draw Pegs
+            for (let i = 0; i < 3; i++) {
+                ctx.fillStyle = 'black';
+                const x = pegX[i] - pegThickness / 2;
+                const y = bottomY - pegHeight;
+                ctx.fillRect(x, y, pegThickness, pegHeight);
+            }
+
+            // Draw Disks
+            // Max width of a disk approx 1/3 width minus padding
+            const maxDiskWidth = (width / 3) - 20;
+            const minDiskWidth = 40;
+            const diskHeight = 25;
+
+            for (let p = 0; p < 3; p++) {
+                const stack = stacks[p];
+                for (let i = 0; i < stack.length; i++) {
+                    const diskSize = stack[i]; // 1 to numDisks
+                    // Calculate width
+                    // disk 1 = min, disk num = max
+                    // interpolation
+                    let wDisk;
+                    if (numDisks === 1) wDisk = minDiskWidth;
+                    else {
+                        // Linear map: 1 -> min, numDisks -> max
+                        wDisk = minDiskWidth + (maxDiskWidth - minDiskWidth) * ((diskSize - 1) / (numDisks - 1));
+                    }
+
+                    // X center is pegX[p]
+                    const x = pegX[p] - wDisk / 2;
+                    // Y: stack up from bottom
+                    const y = bottomY - (i + 1) * diskHeight;
+
+                    // Selected logic
+                    // If this is the top disk of the selected peg, draw it floating
+                    let isFloating = false;
+                    let drawY = y;
+                    if (p === selectedPeg && i === stack.length - 1) {
+                        isFloating = true;
+                        drawY = Math.max(bottomY - pegHeight - 40, height * 0.2); // Hover above peg
+                    }
+
+                    // Stroke
+                    ctx.fillStyle = 'white';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 2;
+
+                    ctx.fillRect(x, drawY, wDisk, diskHeight);
+                    ctx.strokeRect(x, drawY, wDisk, diskHeight);
+
+                    // Draw Label (optional) or decoration
+                    // Simple stripe
+                    /* ctx.fillStyle = 'black';
+                     ctx.fillRect(x + 2, drawY + diskHeight/2 - 1, wDisk - 4, 2);*/
+
+                    if (isFloating) {
+                        // Draw shadow indicator on peg?
+                        // arrow?
+                        ctx.beginPath();
+                        ctx.moveTo(pegX[p], drawY + diskHeight + 5);
+                        ctx.lineTo(pegX[p] - 5, drawY + diskHeight + 10);
+                        ctx.lineTo(pegX[p] + 5, drawY + diskHeight + 10);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Draw Selection Highlight (Arrow over peg?)
+            if (selectedPeg !== -1) {
+                // Maybe highlight the peg base?
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
