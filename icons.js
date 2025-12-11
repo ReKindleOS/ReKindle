@@ -51,7 +51,6 @@ const APPS = [
         id: 'maps',
         name: 'Maps',
         cat: 'tools',
-        beta: true,
         icon: '<path d="M4 8 L10 4 L22 8 L28 4 V24 L22 28 L10 24 L4 28 Z"/><line x1="10" y1="4" x2="10" y2="24"/><line x1="22" y1="8" x2="22" y2="28"/>'
     },
     {
@@ -113,9 +112,6 @@ const APPS = [
         id: 'quicktodo',
         name: 'Quick ToDo',
         cat: 'tools',
-        beta: true,
-        featured: true,
-        featuredOrder: 2,
         desc: 'Handwritten, sync-able todos!',
         icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/>'
     },
@@ -168,7 +164,7 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 4,
-        desc: 'Now with PixelChat!',
+        desc: 'Now with more pixels!',
         icon: '<rect x="4" y="6" width="24" height="16"/><path d="M8 22 L8 28 L14 22"/>'
     },
     {
@@ -181,10 +177,19 @@ const APPS = [
         icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10"/><line x1="10" y1="14" x2="20" y2="14"/><line x1="10" y1="18" x2="20" y2="18"/>'
     },
     {
+        id: 'interactive',
+        name: 'Interactive Reader',
+        cat: 'lifestyle',
+        beta: true,
+        featured: true,
+        featuredOrder: 2,
+        desc: 'Choose Your Own Adventure',
+        icon: '<path d="M6 4 h18 v24 h-18 z" fill="none" stroke="black" stroke-width="2"/><line x1="6" y1="4" x2="4" y2="6"/><line x1="4" y1="6" x2="4" y2="28"/><line x1="4" y1="28" x2="6" y2="26"/><path d="M10 16 L21 16 M18 13 L21 16 L18 19" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 8 M14 9 L18 8 L17 11" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 24 M14 23 L18 24 L17 21" stroke="black" stroke-width="1.5" fill="none"/>'
+    },
+    {
         id: 'epub',
         name: 'ePub',
         cat: 'lifestyle',
-        beta: true,
         desc: 'Add books from a URL',
         icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><path d="M15 12 v8 M11 16 h8" stroke="black" stroke-width="2" fill="none"/>'
     },
@@ -254,14 +259,12 @@ const APPS = [
         id: 'napkin',
         name: 'Sketchpad',
         cat: 'lifestyle',
-        beta: true,
         icon: '<path d="M22 6 L26 10 L14 22 L10 22 L10 18 Z"/><line x1="19" y1="9" x2="23" y2="13"/><path d="M10 22 L6 26"/>'
     },
     {
         id: 'pixel',
         name: 'Pixel',
         cat: 'tools',
-        beta: true,
         desc: 'A 1-bit pixel art canvas.',
         icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="2"/><rect x="8" y="8" width="4" height="4" fill="black"/><rect x="20" y="12" width="4" height="4" fill="black"/><rect x="12" y="20" width="4" height="4" fill="black"/>'
     },
@@ -275,7 +278,6 @@ const APPS = [
         id: 'sheetmusic',
         name: 'Sheet Music',
         cat: 'lifestyle',
-        beta: true,
         desc: 'Browse a library of public domain scores.',
         icon: '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h8V3h-8z"/>'
     },
@@ -294,6 +296,13 @@ const APPS = [
         name: 'Trivia',
         cat: 'games',
         icon: '<path d="M16 26c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-24C11.5 2 8 5.5 8 10h4c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.9-1.2 3.6-2.9 4.3L15 15.6V18h2v-1.7l2.8-1.5C21.7 13.7 24 11.2 24 10c0-4.5-3.5-8-8-8z"/>'
+    },
+    {
+        id: 'pool',
+        name: 'Pool',
+        cat: 'games',
+        beta: true,
+        icon: '<circle cx="16" cy="16" r="14" fill="none" stroke="black" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" text-anchor="middle" fill="black">8</text>'
     },
     {
         id: '2048',
@@ -344,6 +353,18 @@ const APPS = [
         icon: '<line x1="8" y1="28" x2="8" y2="4"/><line x1="8" y1="4" x2="20" y2="4"/><line x1="20" y1="4" x2="20" y2="8"/>'
     },
     {
+        id: 'hanoi',
+        name: 'Tower of Hanoi',
+        cat: 'games',
+        icon: '<rect x="6" y="24" width="20" height="2" fill="black"/><rect x="8" y="20" width="16" height="4" fill="white" stroke="black" stroke-width="2"/><rect x="10" y="16" width="12" height="4" fill="white" stroke="black" stroke-width="2"/><rect x="12" y="12" width="8" height="4" fill="white" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'lightsout',
+        name: 'Lights Out',
+        cat: 'games',
+        icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="2"/><rect x="14" y="14" width="4" height="4" fill="black"/><rect x="14" y="6" width="4" height="4" fill="black"/><rect x="14" y="22" width="4" height="4" fill="black"/><rect x="6" y="14" width="4" height="4" fill="black"/><rect x="22" y="14" width="4" height="4" fill="black"/>'
+    },
+    {
         id: 'jigsaw',
         name: 'Jigsaw',
         cat: 'games',
@@ -365,7 +386,6 @@ const APPS = [
         id: 'mini',
         name: 'Mini Crossword',
         cat: 'games',
-        beta: true,
         icon: '<rect x="6" y="6" width="20" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="6" y="6" width="8" height="8" fill="black"/><rect x="18" y="18" width="8" height="8" fill="black"/>'
     },
     {
