@@ -407,6 +407,72 @@
                 grid-template-columns: 1fr 1fr;
             }
         }
+
+        /* LEADERBOARD STYLES */
+        .lb-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .lb-tab {
+            flex: 1;
+            padding: 6px 4px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            border: 2px solid black;
+            background: white;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .lb-tab.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+        }
+
+        .lb-tab:active {
+            background: black;
+            color: white;
+        }
+
+        .leaderboard-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 2px solid black;
+            margin-bottom: 15px;
+        }
+
+        .lb-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 10px;
+            border-bottom: 1px solid #ccc;
+            font-size: 0.85rem;
+        }
+
+        .lb-entry:last-child {
+            border-bottom: none;
+        }
+
+        .lb-rank {
+            font-weight: bold;
+            width: 25px;
+        }
+
+        .lb-name {
+            flex-grow: 1;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .lb-score {
+            font-weight: bold;
+            margin-left: 10px;
+        }
     </style>
 </head>
 
@@ -420,6 +486,8 @@
             <span class="title-text">Trivia</span>
             <!-- Stats Button -->
             <div class="stats-btn" onclick="openStats()">Stats</div>
+            <!-- Leaderboard Button -->
+            <div class="stats-btn" style="right: 60px;" onclick="openLeaderboard()">Top</div>
         </div>
 
         <div class="window-content">
@@ -538,6 +606,26 @@
                 </div>
 
                 <button onclick="closeStats()">Close</button>
+            </div>
+        </div>
+
+        <!-- LEADERBOARD MODAL -->
+        <div id="leaderboard-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 style="border-bottom: 2px solid black; padding-bottom:10px; margin-bottom:15px;">Leaderboard</h2>
+
+                <div class="lb-tabs">
+                    <button class="lb-tab active" onclick="setLeaderboardPeriod('all')">All</button>
+                    <button class="lb-tab" onclick="setLeaderboardPeriod('year')">Year</button>
+                    <button class="lb-tab" onclick="setLeaderboardPeriod('month')">Month</button>
+                    <button class="lb-tab" onclick="setLeaderboardPeriod('week')">Week</button>
+                </div>
+
+                <div id="leaderboard-list" class="leaderboard-list">
+                    <div style="padding:20px; text-align:center; font-style:italic;">Loading...</div>
+                </div>
+
+                <button onclick="closeLeaderboard()">Close</button>
             </div>
         </div>
     </div>
@@ -769,6 +857,129 @@
             container.innerHTML = svg;
         }
 
+        // --- LEADERBOARD SYSTEM ---
+        let currentLeaderboardPeriod = 'all';
+
+        function openLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'flex';
+            loadLeaderboard();
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'none';
+        }
+
+        function setLeaderboardPeriod(period) {
+            currentLeaderboardPeriod = period;
+            // Update tab UI
+            document.querySelectorAll('.lb-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            loadLeaderboard();
+        }
+
+        async function loadLeaderboard() {
+            const container = document.getElementById('leaderboard-list');
+            container.innerHTML = '<div style="padding:20px; text-align:center; font-style:italic;">Loading...</div>';
+
+            if (!currentUser) {
+                container.innerHTML = '<div style="padding:20px; text-align:center;">Log in to see leaderboard</div>';
+                return;
+            }
+
+            try {
+                // Calculate timestamp cutoff
+                const now = Date.now();
+                const oneDay = 24 * 60 * 60 * 1000;
+                let cutoff = 0;
+                if (currentLeaderboardPeriod === 'year') cutoff = now - (365 * oneDay);
+                else if (currentLeaderboardPeriod === 'month') cutoff = now - (30 * oneDay);
+                else if (currentLeaderboardPeriod === 'week') cutoff = now - (7 * oneDay);
+
+                let query = db.collection('leaderboard_trivia');
+                if (cutoff > 0) {
+                    query = query.where('lastUpdated', '>=', cutoff);
+                }
+
+                const snapshot = await query.get();
+
+                if (snapshot.empty) {
+                    container.innerHTML = '<div style="padding:20px; text-align:center; font-style:italic;">No entries yet</div>';
+                    return;
+                }
+
+                // Calculate averages and sort
+                const entries = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.gameCount > 0) {
+                        entries.push({
+                            username: data.username || 'Unknown',
+                            avg: (data.totalPercent / data.gameCount) * 100,
+                            games: data.gameCount
+                        });
+                    }
+                });
+
+                entries.sort((a, b) => b.avg - a.avg);
+
+                // Render
+                if (entries.length === 0) {
+                    container.innerHTML = '<div style="padding:20px; text-align:center; font-style:italic;">No entries yet</div>';
+                    return;
+                }
+
+                container.innerHTML = entries.slice(0, 20).map((entry, i) => `
+                    <div class="lb-entry">
+                        <span class="lb-rank">${i + 1}.</span>
+                        <span class="lb-name">${escapeHTML(entry.username)}</span>
+                        <span class="lb-score">${Math.round(entry.avg)}%</span>
+                    </div>
+                `).join('');
+
+            } catch (e) {
+                console.error("Error loading leaderboard:", e);
+                container.innerHTML = '<div style="padding:20px; text-align:center;">Error loading</div>';
+            }
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        async function submitToLeaderboard() {
+            if (!currentUser) return;
+
+            const percent = score / currentQuestions.length;
+            const username = currentUser.email ? currentUser.email.split('@')[0] : 'Anonymous';
+
+            try {
+                const docRef = db.collection('leaderboard_trivia').doc(currentUser.uid);
+                const doc = await docRef.get();
+
+                if (doc.exists) {
+                    // Update existing record
+                    const data = doc.data();
+                    await docRef.update({
+                        totalPercent: data.totalPercent + percent,
+                        gameCount: data.gameCount + 1,
+                        lastUpdated: Date.now()
+                    });
+                } else {
+                    // Create new record
+                    await docRef.set({
+                        username: username,
+                        totalPercent: percent,
+                        gameCount: 1,
+                        lastUpdated: Date.now()
+                    });
+                }
+            } catch (e) {
+                console.error("Error submitting to leaderboard:", e);
+            }
+        }
+
         async function fetchSessionToken() {
             if (sessionToken) return; // already have one
             try {
@@ -957,6 +1168,7 @@
             document.getElementById('feedback-text').textContent = feedback;
 
             saveGameStats();
+            submitToLeaderboard();
         }
 
         // Dev Tool: Inject Fake Data
