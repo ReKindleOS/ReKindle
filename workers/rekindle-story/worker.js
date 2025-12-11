@@ -835,6 +835,79 @@ export default {
         restoredState = interpreter.deserialize(new Uint8Array(savedStateBuffer));
       }
 
+
+      // --- FILTER LOGIC ---
+      function filterRepeats(history, newText) {
+        if (!history || !newText) return newText;
+
+        // Strategy: 
+        // 1. Look at the new text line by line.
+        // 2. If the *start* of the new text matches the *most recent* block of history (conceptually), 
+        //    or more simply, if the new text *begins* with lines that are already present in the history.
+        // 3. However, history is HTML (with <br> and tags), newText is raw string from Z-machine.
+        //    We need to be careful. 
+
+        // Actually, the new output buffer is just text here. the history is HTML.
+        // Let's strip tags from history for comparison? Expensive.
+        // OR: We check if the *previous* turn output same content?
+        // Game loops often print: "LOCATION\nDescription...\n> COMMAND\nLOCATION\nDescription..."
+        // If we just moved, we want the description.
+        // But some games print "STATUS LINE" every turn.
+
+        // SIMPLE FILTER:
+        // Split newText into paragraphs/lines.
+        // If a paragraph/line ALREADY EXISTS in the history (loose check), suppress it?
+        // No, that would hide "You are in a forest" if you revisit.
+
+        // User request: "same block of text is sent at the top of each response... filtered after it is sent the first time"
+        // This implies likely a status line.
+        // Heuristic: If the First Line of output is identical to the First Line of the *Previous Turn's Output*, hide it.
+        // But we don't store "Previous Turn Output" cleanly, just a blob of HTML.
+
+        // Let's try:
+        // Use a regex to find the last text block in history.
+
+        // BETTER HEURISTIC (Safe):
+        // If the new text STARTS with a block that is ALREADY at the very end of the history (before the prompt),
+        // it duplication.
+        // BUT, checking the *User Request* again: "repeated paragraphs are hidden in subsequent messages"
+        // This sounds like a static header.
+
+        // Implementation:
+        // Store a set of "seen header lines" in state? No, stateless.
+        // Scan history for the *exact same line*.
+
+        const lines = newText.split('\n');
+        let startIndex = 0;
+
+        // We only filter the leading block. Once we print something, we stop filtering.
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line.length < 3) continue; // Don't filter empty/short lines
+
+          // Check if this line appears in history (robust check)
+          // We replace HTML entities in check because history has them
+          const escapedLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+          // If history contains this line, we *might* want to skip it.
+          // BUT only if it's "at the top".
+          if (history.includes(escapedLine)) {
+            // Verify it's not a common word like "You can see:"
+            // Allow skipping.
+            startIndex = i + 1;
+          } else {
+            // Found a new line! Stop filtering.
+            break;
+          }
+        }
+
+        // Reconstruct
+        if (startIndex > 0) {
+          return lines.slice(startIndex).join('\n').trimStart();
+        }
+        return newText;
+      }
+
       // --- EXECUTION ---
       let outputBuffer = "";
 
@@ -857,6 +930,11 @@ export default {
         outputBuffer += `\n[System Error: ${e.message}]`;
       }
 
+
+      // Filter Repetitive Headers
+      // We do this BEFORE formatting to HTML, so we compare Clean Text vs (Implicitly checked) History
+      outputBuffer = filterRepeats(historyLog, outputBuffer);
+
       // Format new output
       const formattedOutput = outputBuffer
         .replace(/&/g, '&amp;')
@@ -866,7 +944,13 @@ export default {
 
       // Append to history
       if (formattedOutput) {
-        historyLog += `\n<div class="turn"><p><strong>&gt; ${cmd || 'start'}</strong></p>${formattedOutput}</div>`;
+        if (cmd) {
+          historyLog += `\n<div class="turn"><p><strong>&gt; ${cmd}</strong></p>${formattedOutput}</div>`;
+        } else {
+          // No command (e.g. start/load/resume), just append output without prompt
+          historyLog += `\n<div class="turn">${formattedOutput}</div>`;
+        }
+
         // Truncate to avoid exploding size (keep last 50k chars approx)
         if (historyLog.length > 50000) {
           historyLog = historyLog.substring(historyLog.length - 50000);
