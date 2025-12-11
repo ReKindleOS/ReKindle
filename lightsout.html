@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lights Out</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+            image-rendering: -webkit-optimize-contrast;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            max-height: 98vh;
+            width: 95vw;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .scores-box {
+            position: absolute;
+            right: 10px;
+            padding: 2px 8px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .scores-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            flex-grow: 1;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        #status-bar {
+            border-bottom: 2px solid black;
+            padding: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1rem;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            padding-left: 15px;
+            padding-right: 15px;
+            background: white;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 6px 6px 0 black;
+            padding: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        button {
+            margin: 10px 0;
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            width: 100%;
+            display: block;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .action-row button {
+            width: auto;
+            flex: 1;
+        }
+
+        /* Leaderboard Styles */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+        .lb-tabs {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .lb-tab {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .lb-tab:active,
+        .lb-tab.active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Lights Out</span>
+            <div class="scores-box" onclick="openLeaderboard()">Scores</div>
+        </div>
+
+        <div id="status-bar">
+            <span id="moves-label">Moves: 0</span>
+            <span onclick="showStartModal()" style="cursor:pointer; text-decoration: underline;">New Game</span>
+        </div>
+
+        <div style="text-align: center; padding: 10px; font-weight: bold; border-bottom: 2px solid black;">
+            Turn all the lights off! (black)
+        </div>
+
+        <div class="window-content" style="padding: 10px;">
+            <canvas id="game-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="start-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>New Game</h2>
+            <p>Select Difficulty</p>
+            <div class="action-row">
+                <button onclick="startGame(3)">Easy</button>
+                <button onclick="startGame(4)">Med</button>
+                <button onclick="startGame(5)">Hard</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2>Congratulations!</h2>
+            <p id="game-over-msg"></p>
+            <button onclick="showStartModal()">Play Again</button>
+        </div>
+    </div>
+
+    <div id="leaderboard-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2>Leaderboard</h2>
+            <div class="lb-tabs">
+                <div class="lb-tab active" onclick="loadLeaderboard(3)">Easy</div>
+                <div class="lb-tab" onclick="loadLeaderboard(4)">Med</div>
+                <div class="lb-tab" onclick="loadLeaderboard(5)">Hard</div>
+            </div>
+            <div class="lb-list" id="lb-content">
+                Loading...
+            </div>
+            <button onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app();
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // User Data
+        let uid = null;
+        let username = "Guest";
+        let personalBests = {}; // { 3: 10, 4: 15, 5: 25 } etc.
+
+        // --- STATE ---
+        let canvas = document.getElementById('game-canvas');
+        let ctx = canvas.getContext('2d');
+        let width, height;
+        let cellSize;
+        let grid = [];
+        let moves = 0;
+        let isWin = false;
+        let gridSize = 5;
+        let currentLeaderboardDifficulty = 3;
+
+        // --- INIT ---
+        window.addEventListener('pageshow', function (event) {
+            initializePage();
+        });
+
+        function initializePage() {
+            const onAuthReady = new Promise((resolve) => {
+                if (auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email.split('@')[0];
+                    return resolve();
+                }
+                const unsubscribe = auth.onAuthStateChanged(user => {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email.split('@')[0];
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(() => {
+                init();
+            });
+        }
+
+        function init() {
+            loadWallpaper();
+            window.addEventListener('resize', resize);
+
+            // Mouse/Touch Events
+            canvas.addEventListener('mousedown', handleInput);
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleInput(e.touches[0]);
+            }, { passive: false });
+
+            // Load personal bests
+            loadPersonalBests();
+
+            // Show start modal instead of immediate start
+            showStartModal();
+        }
+
+        async function loadPersonalBests() {
+            if (!uid) return;
+            for (const diff of [3, 4, 5]) {
+                try {
+                    const doc = await db.collection(`leaderboard_lightsout_${diff}`).doc(uid).get();
+                    if (doc.exists) {
+                        personalBests[diff] = doc.data().moves;
+                    }
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        function showStartModal() {
+            document.getElementById('start-modal').style.display = 'flex';
+            document.getElementById('game-over-modal').style.display = 'none';
+            document.getElementById('leaderboard-modal').style.display = 'none';
+        }
+
+        function startGame(size) {
+            gridSize = size;
+            moves = 0;
+            isWin = false;
+            document.getElementById('start-modal').style.display = 'none';
+            document.getElementById('game-over-modal').style.display = 'none';
+
+            // Initialize Grid
+            grid = [];
+            for (let r = 0; r < gridSize; r++) {
+                let row = [];
+                for (let c = 0; c < gridSize; c++) {
+                    row.push(0); // 0 = off, 1 = on
+                }
+                grid.push(row);
+            }
+
+            // Simulate random moves to create a solvable puzzle
+            const randomMoves = (size * 3) + Math.floor(Math.random() * 10);
+            for (let i = 0; i < randomMoves; i++) {
+                const r = Math.floor(Math.random() * gridSize);
+                const c = Math.floor(Math.random() * gridSize);
+                toggle(r, c);
+            }
+
+            // Reset moves count
+            moves = 0;
+            resize();
+            updateStatus();
+            draw();
+        }
+
+        function resize() {
+            const win = document.querySelector('.window');
+            const availWidth = win.clientWidth - 20;
+            const uiHeight = 35 + 35 + 45;
+            const availHeight = window.innerHeight - uiHeight - 20;
+            const size = Math.min(availWidth, availHeight);
+
+            width = size;
+            height = size;
+            if (!gridSize) gridSize = 5;
+            cellSize = width / gridSize;
+
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+
+            draw();
+        }
+
+        function updateStatus() {
+            document.getElementById('moves-label').innerText = `Moves: ${moves}`;
+        }
+
+        function toggle(r, c) {
+            grid[r][c] = 1 - grid[r][c];
+            if (r > 0) grid[r - 1][c] = 1 - grid[r - 1][c];
+            if (r < gridSize - 1) grid[r + 1][c] = 1 - grid[r + 1][c];
+            if (c > 0) grid[r][c - 1] = 1 - grid[r][c - 1];
+            if (c < gridSize - 1) grid[r][c + 1] = 1 - grid[r][c + 1];
+        }
+
+        function handleInput(e) {
+            if (isWin) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const c = Math.floor(x / cellSize);
+            const r = Math.floor(y / cellSize);
+
+            if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+                toggle(r, c);
+                moves++;
+                updateStatus();
+                draw();
+                checkWin();
+            }
+        }
+
+        function checkWin() {
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    if (grid[r][c] === 1) return;
+                }
+            }
+
+            // Win!
+            isWin = true;
+            saveScore(gridSize, moves);
+            setTimeout(() => {
+                document.getElementById('game-over-msg').innerText = `Cleared in ${moves} moves!`;
+                document.getElementById('game-over-modal').style.display = 'flex';
+            }, 200);
+        }
+
+        async function saveScore(difficulty, moveCount) {
+            if (!uid) return;
+
+            const currentBest = personalBests[difficulty];
+            if (currentBest && moveCount >= currentBest) return; // Not a new best
+
+            // Save to Cloud
+            try {
+                await db.collection(`leaderboard_lightsout_${difficulty}`).doc(uid).set({
+                    username: username,
+                    moves: moveCount,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                personalBests[difficulty] = moveCount;
+            } catch (e) { console.error("Error saving score:", e); }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            if (!gridSize) return;
+
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const x = c * cellSize;
+                    const y = r * cellSize;
+                    const isOn = grid[r][c] === 1;
+
+                    ctx.fillStyle = isOn ? 'white' : 'black';
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                    ctx.strokeRect(x, y, cellSize, cellSize);
+
+                    if (isOn) {
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(x + cellSize * 0.45, y + cellSize * 0.45, cellSize * 0.1, cellSize * 0.1);
+                    } else {
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(x + cellSize * 0.2, y + cellSize * 0.2, cellSize * 0.2, cellSize * 0.2);
+                    }
+                }
+            }
+        }
+
+        // --- LEADERBOARD ---
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function openLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'flex';
+            loadLeaderboard(currentLeaderboardDifficulty);
+        }
+
+        async function loadLeaderboard(difficulty) {
+            currentLeaderboardDifficulty = difficulty;
+
+            // Update active tab
+            document.querySelectorAll('.lb-tab').forEach((tab, idx) => {
+                tab.classList.remove('active');
+                if ((idx === 0 && difficulty === 3) || (idx === 1 && difficulty === 4) || (idx === 2 && difficulty === 5)) {
+                    tab.classList.add('active');
+                }
+            });
+
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...';
+
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    const snapshot = await db.collection(`leaderboard_lightsout_${difficulty}`)
+                        .orderBy('moves', 'asc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    let rank = 1;
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
+                        const movesSpan = document.createElement('span');
+                        movesSpan.textContent = `${data.moves} moves`;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(movesSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+
+                    if (rank === 1) {
+                        list.innerHTML = 'No scores yet!';
+                    }
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerHTML = "Error loading scores.";
+                }
+            } else {
+                list.innerHTML = "Log in to see global scores.";
+            }
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+    </script>
+</body>
+
+</html>
