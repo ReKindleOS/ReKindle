@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pool</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-repeat: repeat;
+            background-position: top left;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: auto;
+            height: auto;
+            max-height: 98vh;
+            /* Limit height to screen */
+            max-width: 500px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            flex-grow: 1;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* LAYERING: Game (Static) at bottom, UI (Dynamic) on top */
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            touch-action: none;
+            box-shadow: 0 0 0 2px black;
+            /* Border around game area */
+        }
+
+        #game-canvas {
+            z-index: 1;
+        }
+
+        #ui-canvas {
+            z-index: 2;
+            pointer-events: auto;
+        }
+
+        /* UI catches input */
+
+        #status-bar {
+            position: relative;
+            z-index: 3;
+            border-bottom: 2px solid black;
+            padding: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1rem;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            padding-left: 15px;
+            padding-right: 15px;
+            background: white;
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 6px 6px 0 black;
+            padding: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        button {
+            margin: 10px 0;
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            width: 100%;
+            display: block;
+        }
+
+        button:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">8-Ball</span>
+        </div>
+
+        <div id="status-bar">
+            <span id="player-turn">Player</span>
+            <span id="target-info">Open Table</span>
+        </div>
+        <div class="window-content">
+            <!-- Separate Canvases for Optimization -->
+            <canvas id="game-canvas"></canvas>
+            <canvas id="ui-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="start-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>New Game</h2>
+            <p>Select Difficulty</p>
+            <button onclick="startGame('easy')">Easy</button>
+            <button onclick="startGame('medium')">Medium</button>
+            <button onclick="startGame('hard')">Hard</button>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h2 id="game-over-title">Game Over</h2>
+            <p id="game-over-msg"></p>
+            <button onclick="showStartModal()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        // Pure Black & White for E-ink
+        const COLORS = {
+            bg: '#ffffff',
+            rail: '#000000',
+            pocket: '#000000',
+            ballSolid: '#000000',
+            ballStripe: '#ffffff',
+            ballTextSolid: '#ffffff',
+            ballTextStripe: '#ffffff',
+            aimLine: '#000000'
+        };
+
+        // Physics constants tuned for 16ms steps
+        const FRICTION = 0.97;
+        const WALL_BOUNCE = 0.7;
+        const MIN_VELOCITY = 0.2;
+        const POCKET_RADIUS_FACTOR = 0.065;
+        const BALL_RADIUS_FACTOR = 0.04;
+
+        // --- PHYSICS LOOP CONFIG ---
+        const PHYS_STEP = 16;
+        let accumulator = 0;
+        let lastTime = 0;
+
+        // --- STATE ---
+        const gCanvas = document.getElementById('game-canvas');
+        const uCanvas = document.getElementById('ui-canvas');
+        const gCtx = gCanvas.getContext('2d', { alpha: false });
+        const uCtx = uCanvas.getContext('2d');
+
+        let width, height;
+
+        let balls = [];
+        let cueBallIndex = 0;
+
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragCurrent = { x: 0, y: 0 };
+
+        let isMoving = false;
+        let turn = 'player';
+        let difficulty = 'medium';
+
+        // 8-Ball Rule State
+        let playerGroup = null; // 'solids', 'stripes', or null (open)
+        let cueBallPotted = false;
+        let firstHitBall = null;
+        let turnPottedBalls = []; // Track balls potted in current turn
+
+        // --- CLASSES ---
+        class Ball {
+            constructor(x, y, id) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.id = id;
+                this.potted = false;
+            }
+
+            get radius() { return width * BALL_RADIUS_FACTOR; }
+
+            get group() {
+                if (this.id === 0) return 'cue';
+                if (this.id === 8) return '8ball';
+                if (this.id <= 7) return 'solids';
+                return 'stripes';
+            }
+
+            draw(ctx) {
+                if (this.potted) return;
+                const r = this.radius;
+
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+
+                if (this.id === 0) {
+                    // Cue
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#000000';
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (this.group === 'solids' || this.group === '8ball') {
+                    // Solids/8-ball: Black Circle
+                    ctx.fillStyle = '#000000';
+                    ctx.strokeStyle = '#000000';
+                    ctx.fill();
+
+                    // Number
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(this.id, this.x, this.y);
+                } else {
+                    // Stripes: White circle, Black Stripe
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#000000';
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Stripe
+                    ctx.beginPath();
+                    ctx.rect(this.x - r + 3, this.y - 4, (r * 2) - 6, 8);
+                    ctx.fillStyle = '#000000';
+                    ctx.fill();
+
+                    // Number
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(this.id, this.x, this.y);
+                }
+            }
+
+            update() {
+                if (this.potted) return;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+                if (Math.abs(this.vx) < MIN_VELOCITY) this.vx = 0;
+                if (Math.abs(this.vy) < MIN_VELOCITY) this.vy = 0;
+
+                const railW = 15;
+                const r = this.radius;
+                if (this.x < railW + r) { this.x = railW + r; this.vx *= -WALL_BOUNCE; }
+                else if (this.x > width - railW - r) { this.x = width - railW - r; this.vx *= -WALL_BOUNCE; }
+                if (this.y < railW + r) { this.y = railW + r; this.vy *= -WALL_BOUNCE; }
+                else if (this.y > height - railW - r) { this.y = height - railW - r; this.vy *= -WALL_BOUNCE; }
+            }
+        }
+
+        // --- INIT ---
+        function init() {
+            window.addEventListener('resize', resize);
+
+            uCanvas.addEventListener('mousedown', startDrag);
+            uCanvas.addEventListener('mousemove', moveDrag);
+            uCanvas.addEventListener('mouseup', endDrag);
+            uCanvas.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+            uCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrag(e.touches[0]); });
+            uCanvas.addEventListener('touchend', endDrag);
+
+            loadWallpaper();
+
+            // Initial Resize to set globals
+            resize();
+
+            showStartModal();
+        }
+
+        function showStartModal() {
+            document.getElementById('start-modal').style.display = 'flex';
+            document.getElementById('game-over-modal').style.display = 'none';
+            isMoving = false;
+            drawGame();
+        }
+
+        function startGame(diff) {
+            difficulty = diff;
+            document.getElementById('start-modal').style.display = 'none';
+            resetGame();
+        }
+
+        function resize() {
+            // Calculate max available space in the WINDOW viewport
+            // Chrome height = TitleBar (35) + StatusBar (34 approx) + Borders (4) + Padding (12) ~ 85px
+            // We want to fit the game into window.innerWidth/Height
+
+            const chromeH = 110;
+            const chromeW = 8; // Borders
+
+            const maxW = Math.min(window.innerWidth - 20, 500) - chromeW;
+            const maxH = (window.innerHeight - 20) - chromeH;
+
+            // Enforce 1:2 Ratio fitting into maxW/maxH
+            let w, h;
+
+            if (maxW / maxH > 0.5) {
+                // Available space is wider -> Height is limit
+                h = maxH;
+                w = h * 0.5;
+            } else {
+                // Available space is taller -> Width is limit
+                w = maxW;
+                h = w * 2;
+            }
+
+            w = Math.floor(w);
+            if (w % 2 !== 0) w--;
+            h = w * 2;
+
+            // Update Globals
+            width = w; height = h;
+
+            gCanvas.width = width; gCanvas.height = height;
+            uCanvas.width = width; uCanvas.height = height;
+
+            // Resize the actual element to match
+            gCanvas.style.width = width + 'px'; gCanvas.style.height = height + 'px';
+            uCanvas.style.width = width + 'px'; uCanvas.style.height = height + 'px';
+
+            // Force Window width to match game + chrome
+            // This makes the window shrink-wrap the game
+            const win = document.querySelector('.window');
+            const content = document.querySelector('.window-content');
+
+            if (win) win.style.width = (width + chromeW) + 'px';
+            if (content) {
+                content.style.height = height + 'px';
+                content.style.flexGrow = '0'; // Don't let it grow arbitrarily
+            }
+
+            if (balls.length > 0) drawGame();
+        }
+
+        function resetGame() {
+            balls = [];
+            turn = 'player';
+            playerGroup = null; // Open
+            uCtx.clearRect(0, 0, width, height);
+
+            const r = width * BALL_RADIUS_FACTOR;
+            const d = r * 2.05;
+            const rackX = width / 2;
+            const rackY = height * 0.25;
+
+            // 8-Ball Rack (15 balls)
+            // Vertical Orientation: Cue Ball is at Bottom (High Y), shooting Up (Low Y).
+            // Therefore, Apex (Ball 1) must be at the BOTTOM of the rack (Highest Y in rack).
+            // The Base (Row 5) must be at the TOP (Lowest Y in rack).
+
+            // We confusingly used 'rackY' as the top anchor. Let's keep rackY as the top-most point (Base of triangle).
+            // Row 5 (Base): y = rackY
+            // Row 4: y = rackY + d
+            // ...
+            // Row 1 (Apex): y = rackY + 4d
+
+            const pattern = [
+                // Row 1 (Apex - Closest to Shooter/CueBall) -> Index 4 (Bottom of rack cluster)
+                { r: 4, c: 0, id: 1 },
+
+                // Row 2 -> Index 3
+                { r: 3, c: -0.55, id: 9 }, { r: 3, c: 0.55, id: 2 },
+
+                // Row 3 (8-ball center) -> Index 2
+                { r: 2, c: -1.1, id: 10 }, { r: 2, c: 0, id: 8 }, { r: 2, c: 1.1, id: 3 },
+
+                // Row 4 -> Index 1
+                { r: 1, c: -1.65, id: 11 }, { r: 1, c: -0.55, id: 7 }, { r: 1, c: 0.55, id: 14 }, { r: 1, c: 1.65, id: 4 },
+
+                // Row 5 (Base - Furthest from Shooter) -> Index 0 (Top of rack cluster)
+                { r: 0, c: -2.2, id: 5 }, { r: 0, c: -1.1, id: 13 }, { r: 0, c: 0, id: 15 }, { r: 0, c: 1.1, id: 6 }, { r: 0, c: 2.2, id: 12 }
+            ];
+
+            pattern.forEach(p => {
+                balls.push(new Ball(rackX + p.c * d, rackY + p.r * d, p.id));
+            });
+
+            balls.push(new Ball(width / 2, height * 0.75, 0)); // Cue
+            cueBallIndex = balls.length - 1;
+
+            isMoving = false;
+            cueBallPotted = false;
+
+            updateStatus();
+            drawGame();
+        }
+
+        function updateStatus() {
+            const pl = document.getElementById('player-turn');
+            const tg = document.getElementById('target-info');
+
+            let turnText = turn === 'player' ? "Your Turn" : "CPU Turn";
+
+            // Determine groups
+            let pG = playerGroup ? (playerGroup === 'solids' ? "Solids" : "Stripes") : "Open";
+            let cG = playerGroup ? (playerGroup === 'solids' ? "Stripes" : "Solids") : "Open";
+
+            // Show current turn's group
+            let currentGroup = turn === 'player' ? pG : cG;
+            pl.innerText = `${turnText} (${currentGroup})`;
+
+            tg.innerText = playerGroup ? `You are ${pG}` : "Table Open";
+        }
+
+        // --- INPUT ---
+        function startDrag(pos) {
+            if (isMoving || turn !== 'player') return;
+            const rect = uCanvas.getBoundingClientRect();
+            const x = pos.clientX - rect.left;
+            const y = pos.clientY - rect.top;
+            const cue = balls[cueBallIndex];
+
+            isDragging = true;
+            dragStart = { x: cue.x, y: cue.y };
+            dragCurrent = { x, y };
+            drawUI();
+        }
+
+        function moveDrag(pos) {
+            if (!isDragging) return;
+            const rect = uCanvas.getBoundingClientRect();
+            dragCurrent.x = pos.clientX - rect.left;
+            dragCurrent.y = pos.clientY - rect.top;
+            drawUI();
+        }
+
+        function endDrag() {
+            if (!isDragging) return;
+            isDragging = false;
+            uCtx.clearRect(0, 0, width, height);
+
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const power = Math.hypot(dx, dy);
+
+            if (power > 10) {
+                shoot(balls[cueBallIndex], dx, dy, power);
+            }
+        }
+
+        function shoot(ball, dx, dy, power) {
+            const maxPower = 200;
+            const scale = Math.min(power, maxPower) / 8;
+            const angle = Math.atan2(dy, dx);
+            ball.vx = Math.cos(angle) * scale;
+            ball.vy = Math.sin(angle) * scale;
+
+            firstHitBall = null;
+            turnPottedBalls = [];
+            isMoving = true;
+            lastTime = 0;
+            accumulator = 0;
+            requestAnimationFrame(loop);
+        }
+
+        // --- AI ---
+        function aiTurn() {
+            uCtx.clearRect(0, 0, width, height);
+
+            setTimeout(() => {
+                if (turn !== 'cpu' || isMoving) return;
+                const cue = balls[cueBallIndex];
+
+                // AI Target Logic
+                let myGroup = playerGroup ? (playerGroup === 'solids' ? 'stripes' : 'solids') : null;
+                let targets = [];
+
+                if (!myGroup) {
+                    // Open table: target any solid/stripe
+                    targets = balls.filter(b => b.group === 'solids' || b.group === 'stripes');
+                } else {
+                    // Target own group
+                    targets = balls.filter(b => b.group === myGroup && !b.potted);
+                    // If cleared, target 8
+                    if (targets.length === 0) targets = balls.filter(b => b.id === 8);
+                }
+
+                // Filter potted
+                targets = targets.filter(b => !b.potted);
+
+                if (targets.length === 0) return; // Weird state
+
+                const pockets = getPockets();
+                let bestShot = null;
+                let bestScore = -Infinity;
+
+                // Evaluate shots
+                targets.forEach(target => {
+                    for (let p of pockets) {
+                        const tx = p.x - target.x, ty = p.y - target.y;
+                        const distTP = Math.hypot(tx, ty);
+
+                        // Ghost ball
+                        const nx = tx / distTP, ny = ty / distTP;
+                        const ghostX = target.x - (nx * (target.radius * 2));
+                        const ghostY = target.y - (ny * (target.radius * 2));
+                        const cx = ghostX - cue.x, cy = ghostY - cue.y;
+
+                        // Simple score: distance + randomness
+                        const score = 100 - distTP;
+
+                        // Line of sight check strictly? Na, expensive. 
+
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestShot = { dx: cx, dy: cy, power: Math.min(distTP * 1.5 + 50, 150) };
+                        }
+                    }
+                });
+
+                if (bestShot) {
+                    let errorRad = (difficulty === 'easy' ? 0.2 : (difficulty === 'medium' ? 0.05 : 0.01));
+                    const angle = Math.atan2(bestShot.dy, bestShot.dx) + (Math.random() - 0.5) * errorRad;
+                    shoot(cue, Math.cos(angle) * bestShot.power, Math.sin(angle) * bestShot.power, bestShot.power);
+                } else {
+                    // Fallback
+                    shoot(cue, 0, -1, 100);
+                }
+            }, 1000);
+        }
+
+        function getPockets() {
+            const railW = 15;
+            // Vertical Table:
+            // 4 Corners: Top-Left, Top-Right, Bottom-Left, Bottom-Right
+            // 2 Side Pockets: Middle-Left, Middle-Right
+            return [
+                { x: railW, y: railW },             // Top-Left
+                { x: width - railW, y: railW },     // Top-Right
+                { x: railW, y: height / 2 },        // Middle-Left
+                { x: width - railW, y: height / 2 },// Middle-Right
+                { x: railW, y: height - railW },    // Bottom-Left
+                { x: width - railW, y: height - railW } // Bottom-Right
+            ];
+        }
+
+        // --- PHYSICS LOOP ---
+        function loop(timestamp) {
+            if (!isMoving) { lastTime = 0; return; }
+
+            if (!lastTime) lastTime = timestamp;
+            let dt = timestamp - lastTime;
+            lastTime = timestamp;
+            if (dt > 100) dt = 100;
+
+            accumulator += dt;
+            while (accumulator >= PHYS_STEP) {
+                updatePhysics();
+                accumulator -= PHYS_STEP;
+                if (!isMoving) break;
+            }
+
+            drawGame();
+
+            if (isMoving) {
+                requestAnimationFrame(loop);
+            } else {
+                // STOPPED
+                handleTurnEnd();
+            }
+        }
+
+        function updatePhysics() {
+            let energy = 0;
+            balls.forEach(b => { b.update(); energy += Math.abs(b.vx) + Math.abs(b.vy); });
+
+            for (let i = 0; i < balls.length; i++)
+                for (let j = i + 1; j < balls.length; j++) handleCollision(balls[i], balls[j]);
+
+            const pockets = getPockets();
+            const pR = width * POCKET_RADIUS_FACTOR;
+            balls.forEach(b => {
+                if (b.potted) return;
+                for (let p of pockets) {
+                    if (Math.hypot(b.x - p.x, b.y - p.y) < pR) {
+                        b.potted = true; b.vx = 0; b.vy = 0;
+                        if (b.id === 0) cueBallPotted = true;
+                        else turnPottedBalls.push(b);
+                    }
+                }
+            });
+
+            if (energy < 0.1) { isMoving = false; balls.forEach(b => { b.vx = 0; b.vy = 0 }); }
+        }
+
+        function handleCollision(b1, b2) {
+            if (b1.potted || b2.potted) return;
+            const dx = b2.x - b1.x, dy = b2.y - b1.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < b1.radius + b2.radius) {
+                if (!firstHitBall) {
+                    if (b1.id === 0) firstHitBall = b2;
+                    else if (b2.id === 0) firstHitBall = b1;
+                }
+                const angle = Math.atan2(dy, dx), sin = Math.sin(angle), cos = Math.cos(angle);
+                const v1 = { x: b1.vx * cos + b1.vy * sin, y: b1.vy * cos - b1.vx * sin };
+                const v2 = { x: b2.vx * cos + b2.vy * sin, y: b2.vy * cos - b2.vx * sin };
+                const v1F = { x: v2.x, y: v1.y }, v2F = { x: v1.x, y: v2.y };
+                b1.vx = v1F.x * cos - v1F.y * sin; b1.vy = v1F.y * cos + v1F.x * sin;
+                b2.vx = v2F.x * cos - v2F.y * sin; b2.vy = v2F.y * cos + v2F.x * sin;
+
+                const overlap = (b1.radius + b2.radius - dist) / 2;
+                b1.x -= overlap * Math.cos(angle); b1.y -= overlap * Math.sin(angle);
+                b2.x += overlap * Math.cos(angle); b2.y += overlap * Math.sin(angle);
+            }
+        }
+
+        function handleTurnEnd() {
+            drawGame();
+            updateStatus();
+            flashRefresh();
+
+            // --- 8-Ball Rules ---
+            let foul = false;
+            let switchTurn = true;
+            let gameEnded = false;
+
+            // 1. Foul: Cue ball potted
+            if (cueBallPotted) {
+                foul = true;
+                const cue = balls[cueBallIndex];
+                cue.potted = false;
+                cue.x = width / 2; cue.y = height * 0.75;
+                cueBallPotted = false;
+                // Note: In strict 8-ball, ball in hand. Here, just respawn.
+            }
+
+            // 2. Determine Groups if Open
+            if (!playerGroup && !foul && turnPottedBalls.length > 0) {
+                // First valid ball potted defines group
+                const first = turnPottedBalls[0];
+                if (first.group !== '8ball' && first.group !== 'cue') {
+                    if (turn === 'player') playerGroup = first.group;
+                    else playerGroup = (first.group === 'solids' ? 'stripes' : 'solids');
+                    switchTurn = false; // Potting valid ball keeps turn
+                }
+            }
+
+            // 3. Current Group Logic
+            let myGroup = null;
+            if (playerGroup) {
+                myGroup = (turn === 'player') ? playerGroup : (playerGroup === 'solids' ? 'stripes' : 'solids');
+            }
+
+            // 4. Check for 8-Ball Pot
+            const eightPotted = turnPottedBalls.find(b => b.id === 8);
+            if (eightPotted) {
+                gameEnded = true;
+                // Win condition: Must have cleared all group balls first
+                let hasBallsLeft = balls.some(b => b.group === myGroup && !b.potted);
+                if (foul || hasBallsLeft) {
+                    // Loss
+                    endGame(turn !== 'player'); // Opponent wins
+                } else {
+                    // Win
+                    endGame(turn === 'player'); // Current player wins
+                }
+                return;
+            }
+
+            // 5. Normal Pot Logic (if groups assigned)
+            if (playerGroup && !foul) {
+                // Must have potted at least one of OWN group to keep turn
+                const pottedOwn = turnPottedBalls.some(b => b.group === myGroup);
+                if (pottedOwn) switchTurn = false;
+            }
+
+            if (switchTurn || foul) {
+                turn = (turn === 'player') ? 'cpu' : 'player';
+            }
+
+            updateStatus();
+            if (turn === 'cpu' && !gameEnded) aiTurn();
+        }
+
+        function endGame(playerWon) {
+            document.getElementById('game-over-title').innerText = playerWon ? "You Won!" : "CPU Won!";
+            document.getElementById('game-over-msg').innerText = playerWon ? "Congratulations!" : "Better luck next time.";
+            document.getElementById('game-over-modal').style.display = 'flex';
+            isMoving = false;
+        }
+
+        // --- DRAWING ---
+        function drawGame() {
+            gCtx.fillStyle = COLORS.bg;
+            gCtx.fillRect(0, 0, width, height);
+
+            gCtx.fillStyle = COLORS.rail;
+            const railW = 15;
+            gCtx.fillRect(0, 0, width, railW);
+            gCtx.fillRect(0, height - railW, width, railW);
+            gCtx.fillRect(0, 0, railW, height);
+            gCtx.fillRect(width - railW, 0, railW, height);
+
+            const pockets = getPockets();
+            gCtx.fillStyle = COLORS.pocket;
+            const pR = width * POCKET_RADIUS_FACTOR;
+            pockets.forEach(p => { gCtx.beginPath(); gCtx.arc(p.x, p.y, pR, 0, Math.PI * 2); gCtx.fill(); });
+
+            balls.forEach(b => b.draw(gCtx));
+        }
+
+        function drawUI() {
+            uCtx.clearRect(0, 0, width, height);
+            if (isDragging) {
+                const cue = balls[cueBallIndex];
+                uCtx.beginPath();
+                uCtx.moveTo(cue.x, cue.y);
+                const dx = dragStart.x - dragCurrent.x;
+                const dy = dragStart.y - dragCurrent.y;
+                uCtx.lineTo(cue.x + dx * 3, cue.y + dy * 3);
+                uCtx.strokeStyle = COLORS.aimLine;
+                uCtx.setLineDash([6, 6]);
+                uCtx.lineWidth = 3;
+                uCtx.stroke();
+                uCtx.setLineDash([]);
+            }
+        }
+
+        function flashRefresh() {
+            const flash = document.createElement('div');
+            flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:black;z-index:9999;';
+            document.body.appendChild(flash);
+            requestAnimationFrame(() => setTimeout(() => flash.remove(), 150));
+        }
+
+        function loadWallpaper() {
+            if (typeof localStorage !== 'undefined') {
+                const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+                const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+                if (wallpaperImg) {
+                    document.body.style.backgroundImage = wallpaperImg;
+                }
+                if (wallpaperSize) {
+                    document.body.style.backgroundSize = wallpaperSize;
+                }
+            }
+        }
+
+        // --- BOOT ---
+        setTimeout(init, 100);
+
+    </script>
+</body>
+
+</html>
