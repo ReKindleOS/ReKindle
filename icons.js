@@ -71,12 +71,12 @@ const APPS = [
         cat: 'tools',
         icon: '<rect x="4" y="6" width="24" height="20"/><text x="16" y="24" font-size="10" text-anchor="middle" stroke="none" fill="black">00</text>'
     },
-    {
-        id: 'einksites',
-        name: 'E-ink Sites',
-        cat: 'tools',
-        icon: '<rect x="5" y="5" width="22" height="22" rx="2" stroke="black" stroke-width="2" fill="none"/><line x1="9" y1="10" x2="23" y2="10" stroke="black" stroke-width="2"/><line x1="9" y1="16" x2="23" y2="16" stroke="black" stroke-width="2"/><line x1="9" y1="22" x2="17" y2="22" stroke="black" stroke-width="2"/>'
-    },
+    /*     {
+            id: 'einksites',
+            name: 'E-ink Sites',
+            cat: 'tools',
+            icon: '<rect x="5" y="5" width="22" height="22" rx="2" stroke="black" stroke-width="2" fill="none"/><line x1="9" y1="10" x2="23" y2="10" stroke="black" stroke-width="2"/><line x1="9" y1="16" x2="23" y2="16" stroke="black" stroke-width="2"/><line x1="9" y1="22" x2="17" y2="22" stroke="black" stroke-width="2"/>'
+        }, */
     {
         id: 'flashcards',
         name: 'Flashcards',
