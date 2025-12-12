@@ -279,12 +279,24 @@
         }
 
         .game-cover {
-            width: 50px;
-            height: 75px;
+            width: 70px;
+            height: 70px;
             object-fit: contain;
             border-radius: 4px;
             margin-right: 15px;
             background: #000;
+        }
+
+        .resume-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        @media (max-width: 765px) {
+            .resume-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* SEARCH BAR */
@@ -419,7 +431,6 @@
             <div class="lib-tabs">
                 <div id="tab-local" class="lib-tab active" onclick="setLibTab('local')">My Library</div>
                 <div id="tab-search" class="lib-tab" onclick="setLibTab('search')">Online Store</div>
-                <div id="tab-uploads" class="lib-tab" onclick="setLibTab('uploads')">User Uploads</div>
             </div>
 
             <div id="view-local" class="lib-view">
@@ -435,30 +446,22 @@
                 <div class="search-bar">
                     <input type="text" id="search-input" placeholder="Search IFDB..." onkeypress="handleSearch(event)">
                     <button class="sys-btn" onclick="searchIFDB()">Search</button>
+                    <button class="sys-btn" onclick="openUploadModal()" title="Upload a .z1-.z3 file">Upload</button>
                 </div>
                 <div id="search-results"></div>
             </div>
 
-            <div id="view-uploads" class="lib-view" style="display:none;">
-                <div
-                    style="text-align:center; padding:10px; margin-bottom:15px; border-bottom:1px solid #ccc; font-size:0.9rem; color:#555;">
-                    Community uploads. Z-Code (v1-v3) only.
-                    <br><button class="sys-btn" style="margin-top:5px;" onclick="openUploadModal()">Upload New
-                        Story</button>
-                </div>
-                <div id="uploads-list"></div>
-            </div>
-
             <div id="loading-indicator">Loading...</div>
 
-            <!-- DELETE MODAL -->
-            <div id="delete-modal" class="modal-overlay">
+            <!-- CONFIRM MODAL -->
+            <div id="confirm-modal" class="modal-overlay">
                 <div class="modal-content">
-                    <div class="modal-title">Confirm Delete</div>
-                    <div id="delete-modal-text" class="modal-text">Are you sure?</div>
+                    <div id="confirm-modal-title" class="modal-title">Confirm</div>
+                    <div id="confirm-modal-text" class="modal-text">Are you sure?</div>
                     <div class="modal-buttons">
-                        <button class="sys-btn" onclick="cancelDelete()">Cancel</button>
-                        <button class="sys-btn" onclick="confirmDelete()" style="color:red;">Delete</button>
+                        <button class="sys-btn" onclick="closeConfirmModal()">Cancel</button>
+                        <button id="confirm-modal-btn" class="sys-btn" onclick="executeConfirm()"
+                            style="color:red;">Confirm</button>
                     </div>
                 </div>
             </div>
@@ -734,51 +737,91 @@
             });
 
             // --- SORTING & SPLITTING ---
-            // 1. Find Resume Game
-            let resumeGame = null;
-            let otherGames = [];
+            // 1. Get Recent Games History
+            let recentGames = await localforage.getItem('interactive_recent_games') || [];
 
-            if (lastGameId) {
-                resumeGame = mergedLibrary.find(g => g.id === lastGameId);
+            // Legacy Migration (if recent is empty but lastGameId exists)
+            if (recentGames.length === 0 && lastGameId) {
+                const legcyGame = mergedLibrary.find(g => g.id === lastGameId);
+                if (legcyGame) {
+                    recentGames.push({
+                        id: lastGameId,
+                        timestamp: Date.now(),
+                        meta: legcyGame
+                    });
+                }
             }
 
-            // 2. Filter others and Sort by Rating (High to Low)
-            otherGames = mergedLibrary.filter(g => g.id !== lastGameId);
-            otherGames.sort((a, b) => (b.starRating || 0) - (a.starRating || 0));
+            const resumeGames = [];
+            const resumeIds = new Set();
+
+            recentGames.forEach(rec => {
+                // If it's in library, use library data (fresher rating etc), else use history meta
+                const libMatch = mergedLibrary.find(g => g.id === rec.id);
+                const gameData = libMatch || rec.meta;
+
+                if (gameData) {
+                    resumeGames.push(gameData);
+                    resumeIds.add(gameData.id);
+                }
+            });
+
+            // 2. Filter others and Sort by Wilson Score (High to Low)
+            let otherGames = mergedLibrary.filter(g => !resumeIds.has(g.id));
+            otherGames.forEach(g => {
+                g.wilsonScore = calculateWilsonScore(g.starRating || 0, g.numRatings || 0);
+            });
+            otherGames.sort((a, b) => b.wilsonScore - a.wilsonScore);
 
             // --- RENDER RESUME SECTION ---
-            if (resumeGame) {
+            if (resumeGames.length > 0) {
                 const resumeContainer = document.createElement('div');
                 resumeContainer.style.marginBottom = '30px';
                 resumeContainer.style.paddingBottom = '20px';
                 resumeContainer.style.borderBottom = '1px dashed #ccc';
 
                 const header = document.createElement('div');
-                header.innerText = "Resume:";
-                header.style.fontFamily = 'Helvetica Neue, sans-serif';
+                header.innerText = "Resume Playing:";
                 header.style.fontWeight = 'bold';
-                header.style.marginBottom = '10px';
+                header.style.marginBottom = '15px';
                 header.style.fontSize = '1.2rem';
                 resumeContainer.appendChild(header);
 
-                const el = document.createElement('div');
-                el.className = 'game-item';
-                el.style.backgroundColor = '#fff'; // Highlight?
+                // Grid Wrapper
+                const grid = document.createElement('div');
+                grid.className = 'resume-grid';
 
-                // Larger Item Render
-                renderGameItem(el, resumeGame, true, true);
+                resumeGames.forEach(g => {
+                    const el = document.createElement('div');
+                    el.className = 'game-item';
+                    renderGameItem(el, g, true, true); // keep isLarge=true
+                    grid.appendChild(el);
+                });
 
-                resumeContainer.appendChild(el);
+                resumeContainer.appendChild(grid);
                 list.appendChild(resumeContainer);
             }
 
-            // --- RENDER OTHER GAMES ---
-            otherGames.forEach(game => {
-                const el = document.createElement('div');
-                el.className = 'game-item';
-                renderGameItem(el, game, false);
-                list.appendChild(el);
-            });
+            // --- RENDER LIBRARY SECTION ---
+            if (otherGames.length > 0) {
+                if (resumeGames.length > 0) {
+                    const header = document.createElement('div');
+                    header.innerText = "My Library:";
+                    header.style.fontWeight = 'bold';
+                    header.style.marginBottom = '15px';
+                    header.style.marginTop = '10px';
+                    header.style.fontSize = '1.2rem';
+                    list.appendChild(header);
+                }
+                otherGames.forEach(game => {
+                    const el = document.createElement('div');
+                    el.className = 'game-item';
+                    renderGameItem(el, game, false);
+                    list.appendChild(el);
+                });
+            } else if (resumeGames.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">Library Empty.<br>Go to the store to find stories!</div>';
+            }
         }
 
         async function backfillGameRating(game) {
@@ -810,49 +853,56 @@
         }
 
         function renderGameItem(el, game, isLarge, shouldResume = false) {
-            // Info Div (Direct JS handler)
-            const infoDiv = document.createElement('div');
-            infoDiv.style.flexGrow = '1';
-            infoDiv.style.display = 'flex'; // Enable flex for image + details
-            infoDiv.style.alignItems = 'center';
+            // Main Content Container (Image + Text)
+            // If resume: Text contains Buttons at bottom.
+            // If library: Buttons are separate sibling to InfoDiv.
 
             const safeTitle = (game.title || 'Untitled').replace(/</g, "&lt;");
             const safeAuthor = (game.author || 'Unknown').replace(/</g, "&lt;");
             const coverArt = game.coverArtLink || "";
 
-            // Cover Art HTML - adjust size based on isLarge
-            let imgHtml = '';
-            const imgWidth = isLarge ? '80px' : '50px';
-            const imgHeight = isLarge ? '120px' : '75px';
+            // Dimensions
+            const imgWidth = isLarge ? '100px' : '70px';
+            const imgHeight = isLarge ? '100px' : '70px';
             const fontSize = isLarge ? '1.2rem' : '1rem';
 
+            // 1. Build Image Element
+            let imgEl;
             if (coverArt) {
-                imgHtml = `<img src="${coverArt}" class="game-cover" style="width:${imgWidth}; height:${imgHeight};" alt="Cover" onerror="this.style.display='none'">`;
+                imgEl = document.createElement('img');
+                imgEl.src = coverArt;
+                imgEl.className = 'game-cover';
+                imgEl.style.width = imgWidth;
+                imgEl.style.height = imgHeight;
+                imgEl.alt = "Cover";
+                imgEl.onerror = function () { this.style.display = 'none'; }; // or replace with placeholder
             } else {
-                imgHtml = `<div class="game-cover" style="width:${imgWidth}; height:${imgHeight}; display:flex;align-items:center;justify-content:center;color:#666;font-size:20px;">?</div>`;
+                imgEl = document.createElement('div');
+                imgEl.className = 'game-cover';
+                imgEl.innerText = "?";
+                imgEl.style.cssText = `width:${imgWidth}; height:${imgHeight}; display:flex; align-items:center; justify-content:center; color:#666; font-size:20px; background:#000;`;
             }
 
-            // Generate Stars
+            // 2. Build Text Column
+            const textCol = document.createElement('div');
+            textCol.style.flexGrow = '1';
+            textCol.style.minWidth = '0';
+
             const stars = generateStarRating(game.starRating, game.numRatings);
 
-            infoDiv.innerHTML = `
-                ${imgHtml}
-                <div style="flex-grow:1; min-width: 0;">
-                    <div class="game-title" style="font-size:${fontSize}">${safeTitle}</div>
-                    <div class="game-desc">${safeAuthor}</div>
-                    ${stars}
-                </div>
+            textCol.innerHTML = `
+                <div class="game-title" style="font-size:${fontSize}">${safeTitle}</div>
+                <div class="game-desc">${safeAuthor}</div>
+                ${stars}
             `;
-            infoDiv.onclick = () => loadGame(game, !shouldResume);
-            el.appendChild(infoDiv);
 
-            // Controls Div
+            // 3. Build Controls
             const controls = document.createElement('div');
             controls.style.display = 'flex';
             controls.style.gap = '10px';
             controls.style.alignItems = 'center';
 
-            // Play Button
+            // Play/Resume Button
             const btn = document.createElement('button');
             btn.className = 'sys-btn';
             btn.innerText = shouldResume ? 'Resume' : 'Play';
@@ -867,11 +917,50 @@
             delBtn.className = 'sys-btn';
             delBtn.innerText = 'X';
             delBtn.style.color = 'red';
-            delBtn.onclick = (e) => { e.stopPropagation(); promptDelete(game); };
-
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (shouldResume) {
+                    clearGameProgress(game);
+                } else {
+                    promptDelete(game);
+                }
+            };
             controls.appendChild(delBtn);
 
-            el.appendChild(controls);
+            // 4. Assemble Layout
+            if (shouldResume) {
+                // Stacked Layout: Image | (Text \n Buttons)
+                controls.style.marginTop = '10px';
+                controls.style.justifyContent = 'flex-end';
+                textCol.appendChild(controls);
+
+                const wrapper = document.createElement('div');
+                wrapper.style.display = 'flex'; // Row: Img + Text
+                wrapper.style.alignItems = 'flex-start'; // Align top? or center
+                wrapper.style.width = '100%';
+
+                wrapper.appendChild(imgEl);
+                wrapper.appendChild(textCol);
+
+                // Click handler on wrapper
+                wrapper.onclick = () => loadGame(game, !shouldResume);
+                el.appendChild(wrapper);
+
+            } else {
+                // Standard Library Layout: (Image | Text)   [Buttons]
+                const infoDiv = document.createElement('div');
+                infoDiv.style.flexGrow = '1';
+                infoDiv.style.display = 'flex';
+                infoDiv.style.alignItems = 'center';
+
+                infoDiv.appendChild(imgEl);
+                infoDiv.appendChild(textCol);
+
+                infoDiv.onclick = () => loadGame(game, !shouldResume);
+
+                el.appendChild(infoDiv);
+                el.appendChild(controls);
+            }
         }
 
         async function addToLibrary(gameMeta, buttonElement) {
@@ -1208,54 +1297,94 @@
             document.getElementById('info-modal').style.display = 'none';
         }
 
-        // --- DELETE LOGIC ---
-        function promptDelete(game) {
-            pendingDeleteId = game.id;
-            // Handle cloud ID matching
-            // We need to know if we are deleting a cloud doc or local item or both
-            // Simplified: We delete by ID from both stores.
+        // --- CONFIRMATION MODAL LOGIC ---
+        let onConfirmCallback = null;
 
-            document.getElementById('delete-modal-text').innerText = `Delete "${game.title}"?`;
-            document.getElementById('delete-modal').style.display = 'flex';
+        function showConfirmModal(title, message, callback, btnColor = 'red', btnText = 'Confirm') {
+            document.getElementById('confirm-modal-title').innerText = title;
+            document.getElementById('confirm-modal-text').innerText = message;
+
+            const btn = document.getElementById('confirm-modal-btn');
+            btn.style.color = btnColor;
+            btn.innerText = btnText;
+
+            onConfirmCallback = callback;
+            document.getElementById('confirm-modal').style.display = 'flex';
         }
 
-        function cancelDelete() {
-            document.getElementById('delete-modal').style.display = 'none';
-            pendingDeleteId = null;
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+            onConfirmCallback = null;
         }
 
-        async function confirmDelete() {
-            if (!pendingDeleteId) return;
-
-            document.getElementById('delete-modal').style.display = 'none';
-            document.getElementById('loading-indicator').style.display = 'flex';
-
-            try {
-                // 1. Remove from Local
-                let index = await localforage.getItem('interactive_library_index') || [];
-                const newIndex = index.filter(g => g.id !== pendingDeleteId);
-                await localforage.setItem('interactive_library_index', newIndex);
-
-                // 2. Remove from Cloud (if logged in)
-                if (currentUser) {
-                    // Find doc with this ID
-                    const snapshot = await db.collection('users').doc(currentUser.uid).collection('interactive_games').where('id', '==', pendingDeleteId).get();
-                    const batch = db.batch();
-                    snapshot.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
-                    await batch.commit();
-                }
-
-                loadLocalLibrary();
-
-            } catch (e) {
-                console.error(e);
-                showInfoModal("Error", "Error deleting game.");
-            } finally {
-                document.getElementById('loading-indicator').style.display = 'none';
-                pendingDeleteId = null;
+        function executeConfirm() {
+            if (onConfirmCallback) {
+                onConfirmCallback();
             }
+            closeConfirmModal();
+        }
+
+        // --- DELETE / CLEAR ACTIONS ---
+        function clearGameProgress(game) {
+            showConfirmModal(
+                "Remove from History?",
+                `Remove "${game.title}" from Resume Playing? This will delete your progress but keep the story in your library.`,
+                async () => {
+                    try {
+                        // 1. Remove from History
+                        let recentGames = await localforage.getItem('interactive_recent_games') || [];
+                        recentGames = recentGames.filter(g => g.id !== game.id);
+                        await localforage.setItem('interactive_recent_games', recentGames);
+
+                        // 2. Remove Save File
+                        await localforage.removeItem(`interactive_save_${game.id}`);
+
+                        // 3. Clear Legacy ID if matches
+                        const lastId = await localforage.getItem('interactive_last_game_id');
+                        if (lastId === game.id) {
+                            await localforage.removeItem('interactive_last_game_id');
+                        }
+
+                        // 4. Refresh View
+                        loadLocalLibrary();
+                    } catch (e) {
+                        console.error("Failed to clear progress:", e);
+                        showInfoModal("Error", "Failed to remove progress.");
+                    }
+                },
+                'red', 'Remove'
+            );
+        }
+
+        function promptDelete(game) {
+            showConfirmModal(
+                "Delete Story?",
+                `Are you sure you want to delete "${game.title}" from your library permanently?`,
+                async () => {
+                    const docId = game.id;
+                    try {
+                        // Local Delete
+                        let index = await localforage.getItem('interactive_library_index') || [];
+                        index = index.filter(g => g.id !== docId);
+                        await localforage.setItem('interactive_library_index', index);
+
+                        // Note: We don't delete from cloud because requirements usually say owner-only or we can attempt it
+                        if (currentUser) {
+                            if (game.source === 'cloud') {
+                                // Attempt cloud delete (if permission allows)
+                                try {
+                                    await db.collection('users').doc(currentUser.uid).collection('interactive_games').doc(docId).delete();
+                                } catch (e) { console.warn("Cloud delete failed", e); }
+                            }
+                        }
+
+                        loadLocalLibrary();
+                    } catch (e) {
+                        alert("Failed to delete: " + e.message);
+                    }
+                },
+                'red', 'Delete'
+            );
         }
 
         // --- UI LOGIC ---
@@ -1269,16 +1398,17 @@
             if (tab === 'search') {
                 const results = document.getElementById('search-results');
                 if (results.innerHTML === '') {
-                    fetchRecommendations();
+                    loadCombinedStore();
                 }
             } else if (tab === 'uploads') {
-                renderUserUploads();
+                // Legacy
             }
         }
 
         function showLibrary() {
             document.getElementById('library-overlay').style.display = 'flex';
             document.getElementById('app-title').innerText = "Interactive Reader";
+            loadLocalLibrary();
         }
 
         function handleSearch(e) {
@@ -1286,20 +1416,7 @@
         }
 
         // --- IFDB SEARCH ---
-        async function fetchRecommendations() {
-            // Fetch "Highest Rated of All Time" for the featured page
-            const resultsDiv = document.getElementById('search-results');
-            resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">Fetching highest rated stories...</div>';
 
-            // Reset pagination state
-            // "downloadable:yes" matches all downloadable games
-            currentSearchQuery = "downloadable:yes";
-            currentSearchOffset = 0;
-            hasMoreResults = true;
-            currentSearchDisplayedTuids.clear();
-
-            await performIFDBSearch(currentSearchQuery, false);
-        }
 
         async function searchIFDB() {
             const query = document.getElementById('search-input').value;
@@ -1335,197 +1452,291 @@
             return mergedLibrary.some(g => g.id === gameId);
         }
 
-        // Load more results when scrolling
-        async function loadMoreResults() {
-            if (isLoadingMore || !hasMoreResults) return;
+        // --- IFDB & STORE LOGIC ---
 
-            isLoadingMore = true;
-            currentSearchOffset += RESULTS_PER_PAGE;
-
-            await performIFDBSearch(currentSearchQuery, true);
-            isLoadingMore = false;
-        }
-
-        // Setup scroll listener for search view
-        function setupSearchScroll() {
-            const searchView = document.getElementById('view-search');
-            searchView.addEventListener('scroll', () => {
-                const scrollTop = searchView.scrollTop;
-                const scrollHeight = searchView.scrollHeight;
-                const clientHeight = searchView.clientHeight;
-
-                // Load more when within 200px of bottom
-                if (scrollTop + clientHeight >= scrollHeight - 200) {
-                    loadMoreResults();
-                }
-            });
-        }
-
-        async function performIFDBSearch(query, append = false) {
-            const resultsDiv = document.getElementById('search-results');
-
-            // Handle empty query (should trigger recommendations)
-            if (!query || query.trim() === "") {
-                query = "downloadable:yes";
-            }
-
-            if (!append) {
-                resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">Searching...</div>';
-            }
+        async function fetchIFDBGames(query, offset = 0) {
+            const proxyUrl = "https://corsproxy.io/?";
+            const apiFilter = " downloadable:yes tag:z-machine v3";
+            const finalQuery = query + apiFilter;
+            const startPos = offset + 1;
+            const targetUrl = `https://ifdb.org/search?json&searchfor=${encodeURIComponent(finalQuery)}&searchgo=${startPos}&sortby=ratu&pgsize=${RESULTS_PER_PAGE}`;
 
             try {
-                // IFDB Search API: https://ifdb.org/search?json&searchfor=...
-                // Using CORS proxy
-                const proxyUrl = "https://corsproxy.io/?";
-
-                // Filter for downloadable Z-code version 3 games (API side)
-                const apiFilter = " downloadable:yes tag:z-machine v3";
-                const finalQuery = query + apiFilter;
-
-                // Note: IFDB API uses 'searchfor' for the query in the JSON/XML API, not 'q'.
-                // Add searchgo parameter for pagination (1-indexed start position)
-                // Add sortby parameter: 'ratu' = Highest Rated First (verified working)
-                const startPos = currentSearchOffset + 1;
-                const targetUrl = `https://ifdb.org/search?json&searchfor=${encodeURIComponent(finalQuery)}&searchgo=${startPos}&sortby=ratu&pgsize=${RESULTS_PER_PAGE}`;
-
                 const res = await fetch(proxyUrl + encodeURIComponent(targetUrl));
                 const data = await res.json();
+                return data.games || [];
+            } catch (e) {
+                console.error("IFDB Fetch Error", e);
+                return [];
+            }
+        }
 
-                // Data format: { games: [ { ... }, ... ] }
-                const games = data.games || [];
+        async function loadCombinedStore() {
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">Fetching highest rated stories & community uploads...</div>';
 
-                if (!append) {
-                    resultsDiv.innerHTML = '';
-                } else {
-                    // Remove "Loading more..." indicator if present
-                    const loadingIndicator = resultsDiv.querySelector('.loading-more');
-                    if (loadingIndicator) loadingIndicator.remove();
-                }
+            currentSearchQuery = "downloadable:yes";
+            currentSearchOffset = 0;
+            hasMoreResults = true; // For scrolling IFDB
+            currentSearchDisplayedTuids.clear();
 
-                if (games.length === 0) {
-                    hasMoreResults = false;
-                    if (!append) {
-                        resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">No results found.</div>';
-                    } else {
-                        resultsDiv.innerHTML += '<div style="text-align:center; padding:20px; color:#666;">No more results.</div>';
-                    }
+            try {
+                // 1. Fetch IFDB Top Rated
+                const ifdbPromise = fetchIFDBGames(currentSearchQuery, 0);
+                // 2. Fetch Recent Uploads
+                const uploadsPromise = fetchRecentUploads();
+
+                const [ifdbGames, uploadGames] = await Promise.all([ifdbPromise, uploadsPromise]);
+
+                // 3. Normalize IFDB games
+                const normalizedIFDB = [];
+                ifdbGames.forEach(g => {
+                    const tuid = g.tuid;
+                    if (!tuid) return;
+
+                    // Compatibility check (basic)
+                    const devsys = g.devsys || "";
+                    const compatible = devsys.includes('ZIL') || devsys.includes('Inform') || devsys.includes('Z-code') || devsys.includes('Infocom');
+                    if (!compatible) return;
+                    if (blacklistedTuids.has(tuid)) return;
+
+                    normalizedIFDB.push({
+                        id: tuid,
+                        title: g.title || "Unknown",
+                        author: g.author || "Unknown",
+                        starRating: parseFloat(g.starRating || 0),
+                        numRatings: parseInt(g.numRatings || 0),
+                        coverArtLink: g.coverArtLink || "",
+                        isUpload: false
+                    });
+                });
+
+                // 4. Normalize Uploads (already done mostly in fetch, just ensure keys match)
+                const normalizedUploads = uploadGames.map(u => ({
+                    id: "upload_" + u.docId,
+                    title: u.title,
+                    author: u.author,
+                    starRating: parseFloat(u.starRating || 0),
+                    numRatings: parseInt(u.numRatings || 0),
+                    coverArtLink: u.coverArtLink,
+                    isUpload: true,
+                    uploadData: u // Keep ref for import
+                }));
+
+                // 5. Merge and Sort
+                let combined = [...normalizedIFDB, ...normalizedUploads];
+
+                // Calculate scores
+                combined.forEach(g => {
+                    g.wilsonScore = calculateWilsonScore(g.starRating || 0, g.numRatings || 0);
+                });
+
+                // Sort by Wilson Score Descending
+                combined.sort((a, b) => b.wilsonScore - a.wilsonScore);
+
+                // 6. Render
+                if (combined.length === 0) {
+                    resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">No results found.</div>';
                     return;
                 }
 
-                // Check if we got fewer results than expected
-                if (games.length < RESULTS_PER_PAGE) {
-                    hasMoreResults = false;
-                }
+                resultsDiv.innerHTML = '';
+                combined.forEach(game => renderStoreItem(game, resultsDiv));
 
-                // Sort games by starSort (Evan Miller's formula) descending
-                // This ensures displayed batch is ordered by quality
-                games.sort((a, b) => (b.starSort || 0) - (a.starSort || 0));
-
-                // Display all games from this batch
-                let displayedCount = 0;
-                games.forEach(g => {
-                    const title = g.title || "Unknown Title";
-                    const author = g.author || "Unknown Author";
-                    const tuid = g.tuid;
-                    const starRating = g.starRating;
-                    const numRatings = g.numRatings || 0;
-                    const devsys = g.devsys || "";
-                    const coverArt = g.coverArtLink || "";
-
-                    if (!tuid) return;
-
-                    // FILTER: Only show Z-code games (will be checked for Z3 compatibility at download)
-                    // JSZM only supports Z-code version 3 - we filter at download time
-                    // Show games made with systems that might produce Z3:
-                    const compatible = devsys.includes('ZIL') ||
-                        devsys.includes('Inform') ||
-                        devsys.includes('Z-code') ||
-                        devsys.includes('Infocom');
-
-                    if (!compatible) return;
-
-                    // Skip blacklisted games (failed Z3 compatibility check)
-                    if (blacklistedTuids.has(tuid)) return;
-
-                    // Deduplicate visual results
-                    if (currentSearchDisplayedTuids.has(tuid)) return;
-                    currentSearchDisplayedTuids.add(tuid);
-
-                    displayedCount++;
-
-                    const gameMeta = {
-                        id: tuid,
-                        title: title,
-                        author: author,
-                        description: "",
-                        type: 'iframe',
-                        url: `https://ifdb.org/viewgame?id=${tuid}`,
-                        coverArtLink: coverArt,
-                        starRating: starRating || 0,
-                        numRatings: numRatings || 0
-                    };
-
-                    const el = document.createElement('div');
-                    el.className = 'game-item';
-
-                    // Check if already in library
-                    const alreadyInLibrary = isGameInLibrary(tuid);
-
-                    // Cover Art
-                    let imgHtml = '';
-                    if (coverArt) {
-                        imgHtml = `<img src="${coverArt}" class="game-cover" alt="Cover" onerror="this.style.display='none'">`;
-                    } else {
-                        // Placeholder or empty
-                        imgHtml = `<div class="game-cover" style="display:flex;align-items:center;justify-content:center;color:#666;font-size:20px;">?</div>`;
-                    }
-
-                    // Simple Info with star rating
-                    const starHtml = generateStarRating(starRating, numRatings);
-                    let content = `
-                        ${imgHtml}
-                        <div style="flex-grow:1; min-width: 0;">
-                            <div class="game-title">${title.replace(/</g, "&lt;")}</div>
-                            <div class="game-desc">${author.replace(/</g, "&lt;")}</div>
-                            ${starHtml}
-                        </div>
-                    `;
-
-                    el.innerHTML = content;
-
-                    // Add Button (or Added state)
-                    const addBtn = document.createElement('button');
-                    addBtn.className = 'sys-btn';
-
-                    if (alreadyInLibrary) {
-                        addBtn.innerText = 'Added';
-                        addBtn.classList.add('added');
-                    } else {
-                        addBtn.innerText = 'Add';
-                        addBtn.onclick = () => addToLibrary(gameMeta, addBtn);
-                    }
-
-                    el.appendChild(addBtn);
-                    resultsDiv.appendChild(el);
-                });
-
-                // Add "Loading more..." indicator if there are more results
-                if (hasMoreResults) {
+                // Add scroll indicator for IFDB loading (hybrid scrolling is tricky, for now just allow loading more IFDB)
+                // We'll just leave the scroll listener active, but it needs to call a function that appends valid IFDB results.
+                // Simplified: The "Load More" will just fetch next page of IFDB and append to bottom.
+                if (ifdbGames.length >= RESULTS_PER_PAGE) {
                     const loadingMore = document.createElement('div');
                     loadingMore.className = 'loading-more';
                     loadingMore.style.cssText = 'text-align:center; padding:20px; color:#666;';
-                    loadingMore.innerText = 'Scroll for more...';
+                    loadingMore.innerText = 'Scroll for more from IFDB...';
                     resultsDiv.appendChild(loadingMore);
+                } else {
+                    hasMoreResults = false;
                 }
 
             } catch (e) {
                 console.error(e);
-                if (!append) {
-                    resultsDiv.innerHTML = '<div style="text-align:center; color:red;">Error searching IFDB.</div>';
+                resultsDiv.innerHTML = '<div style="color:red; text-align:center; padding:20px;">Error loading store.</div>';
+            }
+        }
+
+        function renderStoreItem(game, container) {
+            if (currentSearchDisplayedTuids.has(game.id)) return;
+            currentSearchDisplayedTuids.add(game.id);
+
+            const el = document.createElement('div');
+            el.className = 'game-item';
+
+            const alreadyInLibrary = isGameInLibrary(game.id);
+
+            let imgHtml = '';
+            let badgeHtml = '';
+
+            if (game.isUpload) {
+                // badgeHtml = '<span style="font-size:0.7em; background:#ccc; padding:2px 4px; margin-left:5px; border-radius:3px;">Upload</span>';
+            }
+
+            if (game.coverArtLink) {
+                imgHtml = `<img src="${game.coverArtLink}" class="game-cover" alt="Cover" onerror="this.onerror=null;this.src='';this.parentNode.innerHTML='<div class=\\'game-cover\\' style=\\'display:flex;align-items:center;justify-content:center;color:#666;font-size:20px; background:#000;\\'>?</div>';">`;
+            } else {
+                imgHtml = `<div class="game-cover" style="display:flex;align-items:center;justify-content:center;color:#666;font-size:20px; background:#000;">?</div>`;
+            }
+
+            const starHtml = generateStarRating(game.starRating, game.numRatings);
+
+            el.innerHTML = `
+                 ${imgHtml}
+                 <div style="flex-grow:1; min-width: 0;">
+                     <div class="game-title">${game.title.replace(/</g, "&lt;")}${badgeHtml}</div>
+                     <div class="game-desc">${game.author.replace(/</g, "&lt;")}</div>
+                     ${starHtml}
+                 </div>
+             `;
+
+            const addBtn = document.createElement('button');
+            addBtn.className = 'sys-btn';
+
+            if (alreadyInLibrary) {
+                addBtn.innerText = 'Added';
+                addBtn.classList.add('added');
+            } else {
+                addBtn.innerText = 'Add';
+                if (game.isUpload) {
+                    addBtn.onclick = () => importUserGame(game.uploadData.docId, game.uploadData, addBtn);
                 } else {
-                    showInfoModal("Error", "Failed to load more results.");
+                    // Reconstruct meta for IFDB add
+                    const meta = {
+                        id: game.id,
+                        title: game.title,
+                        author: game.author,
+                        url: `https://ifdb.org/viewgame?id=${game.id}`,
+                        coverArtLink: game.coverArtLink,
+                        starRating: game.starRating,
+                        numRatings: game.numRatings
+                    };
+                    addBtn.onclick = () => addToLibrary(meta, addBtn);
                 }
             }
+            el.appendChild(addBtn);
+            container.appendChild(el);
+        }
+
+        async function searchIFDB() {
+            const query = document.getElementById('search-input').value;
+            // If empty, load combined default
+            if (!query || query.trim() === "") {
+                loadCombinedStore();
+                return;
+            }
+
+            // If query exists, perform standard IFDB search (we could fallback to "performIFDBSearch" style logic using shared render)
+            currentSearchQuery = query;
+            currentSearchOffset = 0;
+            hasMoreResults = true;
+            currentSearchDisplayedTuids.clear();
+
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">Searching IFDB...</div>';
+
+            const games = await fetchIFDBGames(query, 0);
+
+            resultsDiv.innerHTML = '';
+
+            // Normalize and Render IFDB Search Results
+            if (games.length === 0) {
+                resultsDiv.innerHTML = '<div style="text-align:center; padding:20px;">No results found.</div>';
+                return;
+            }
+
+            // Sort search results by Wilson Score
+            games.forEach(g => {
+                g.wilsonScore = calculateWilsonScore(parseFloat(g.starRating) || 0, parseInt(g.numRatings) || 0);
+            });
+            games.sort((a, b) => b.wilsonScore - a.wilsonScore);
+
+            games.forEach(g => {
+                const tuid = g.tuid;
+                if (!tuid) return;
+                const devsys = g.devsys || "";
+                const compatible = devsys.includes('ZIL') || devsys.includes('Inform') || devsys.includes('Z-code') || devsys.includes('Infocom');
+                if (!compatible) return;
+                if (blacklistedTuids.has(tuid)) return;
+
+                renderStoreItem({
+                    id: tuid,
+                    title: g.title || "Unknown",
+                    author: g.author || "Unknown",
+                    starRating: parseFloat(g.starRating || 0),
+                    numRatings: parseInt(g.numRatings || 0),
+                    coverArtLink: g.coverArtLink || "",
+                    isUpload: false
+                }, resultsDiv);
+            });
+
+            if (games.length >= RESULTS_PER_PAGE) {
+                const loadingMore = document.createElement('div');
+                loadingMore.className = 'loading-more';
+                loadingMore.style.cssText = 'text-align:center; padding:20px; color:#666;';
+                loadingMore.innerText = 'Scroll for more...';
+                resultsDiv.appendChild(loadingMore);
+            } else {
+                hasMoreResults = false;
+            }
+        }
+
+        async function loadMoreResults() {
+            if (isLoadingMore || !hasMoreResults) return;
+            isLoadingMore = true;
+            currentSearchOffset += RESULTS_PER_PAGE;
+
+            const games = await fetchIFDBGames(currentSearchQuery, currentSearchOffset);
+            const resultsDiv = document.getElementById('search-results');
+
+            const indicator = resultsDiv.querySelector('.loading-more');
+            if (indicator) indicator.remove();
+
+            if (games.length === 0) {
+                hasMoreResults = false;
+                // Add "End" message?
+            } else {
+                games.forEach(g => {
+                    g.wilsonScore = calculateWilsonScore(parseFloat(g.starRating) || 0, parseInt(g.numRatings) || 0);
+                });
+                games.sort((a, b) => b.wilsonScore - a.wilsonScore);
+
+                games.forEach(g => {
+                    const tuid = g.tuid;
+                    if (!tuid) return;
+                    const devsys = g.devsys || "";
+                    const compatible = devsys.includes('ZIL') || devsys.includes('Inform') || devsys.includes('Z-code') || devsys.includes('Infocom');
+                    if (!compatible) return;
+                    if (blacklistedTuids.has(tuid)) return;
+
+                    renderStoreItem({
+                        id: tuid,
+                        title: g.title || "Unknown",
+                        author: g.author || "Unknown",
+                        starRating: parseFloat(g.starRating || 0),
+                        numRatings: parseInt(g.numRatings || 0),
+                        coverArtLink: g.coverArtLink || "",
+                        isUpload: false
+                    }, resultsDiv);
+                });
+            }
+
+            if (games.length >= RESULTS_PER_PAGE) {
+                const loadingMore = document.createElement('div');
+                loadingMore.className = 'loading-more';
+                loadingMore.style.cssText = 'text-align:center; padding:20px; color:#666;';
+                loadingMore.innerText = 'Scroll for more...';
+                resultsDiv.appendChild(loadingMore);
+            } else {
+                hasMoreResults = false;
+            }
+
+            isLoadingMore = false;
         }
 
         // Initialize scroll listener when DOM is ready
@@ -1553,14 +1764,26 @@
         async function fetchUploadMetadata(title) {
             try {
                 const proxyUrl = "https://corsproxy.io/?";
-                // Use sortby=rel (Relevance) and grab the first result
+                // Use sortby=rel (Relevance)
                 const targetUrl = `https://ifdb.org/search?json&searchfor=${encodeURIComponent(title)}&sortby=rel`;
 
                 const res = await fetch(proxyUrl + encodeURIComponent(targetUrl));
                 const data = await res.json();
 
                 if (data && data.games && data.games.length > 0) {
-                    return data.games[0]; // Return the first result (most relevant)
+                    // Refined Match Logic:
+                    // 1. Check for Exact Matches (case-insensitive)
+                    const searchTitle = title.toLowerCase().trim();
+                    const exactMatches = data.games.filter(g => (g.title || "").toLowerCase().trim() === searchTitle);
+
+                    if (exactMatches.length > 0) {
+                        // 2. Choose match with most reviews
+                        exactMatches.sort((a, b) => (parseInt(b.numRatings) || 0) - (parseInt(a.numRatings) || 0));
+                        return exactMatches[0];
+                    }
+
+                    // 3. Fallback to first result (most relevant)
+                    return data.games[0];
                 }
             } catch (e) {
                 console.warn("Metadata fetch failed for", title, e);
@@ -1697,8 +1920,9 @@
                     numRatings: finalMetadata.numRatings || 0
                 });
 
-                showInfoModal("Success", "Story uploaded successfully! It is now available in the 'User Uploads' tab.");
-                setLibTab('uploads'); // Switch to uploads tab to see it
+                showInfoModal("Success", "Story uploaded successfully! It is now available in the 'Online Store'.");
+                setLibTab('search');
+                loadCombinedStore(); // Reload to show new item
 
             } catch (e) {
                 console.error("Upload error:", e);
@@ -1708,99 +1932,50 @@
             }
         }
 
-        // --- USER UPLOADS TAB ---
-        let uploadsUnsubscribe = null;
+        // --- COMBINED STORE LOGIC ---
 
-        function renderUserUploads() {
-            const list = document.getElementById('uploads-list');
-            list.innerHTML = '<div style="text-align:center; padding:20px;">Loading uploads...</div>';
+        async function fetchRecentUploads() {
+            // Return promise with recent uploads (with ratings)
+            return new Promise((resolve, reject) => {
+                db.collection('interactive_uploads')
+                    .orderBy('uploadedAt', 'desc')
+                    .limit(50)
+                    .get()
+                    .then(async snapshot => {
+                        const games = [];
+                        snapshot.forEach(doc => {
+                            games.push({ ...doc.data(), docId: doc.id, isUpload: true });
+                        });
 
-            // Realtime listener
-            if (uploadsUnsubscribe) uploadsUnsubscribe();
+                        // Fetch missing ratings concurrently
+                        const promises = games.map(async game => {
+                            if (game.starRating !== undefined) return;
+                            const ratingData = await fetchIFDBRating(game.title);
+                            if (ratingData) {
+                                game.starRating = ratingData.starRating;
+                                game.numRatings = ratingData.numRatings;
+                            } else {
+                                game.starRating = 0;
+                                game.numRatings = 0;
+                            }
+                        });
 
-            uploadsUnsubscribe = db.collection('interactive_uploads')
-                .orderBy('uploadedAt', 'desc')
-                .limit(50)
-                .onSnapshot(async snapshot => {
-                    if (snapshot.empty) {
-                        list.innerHTML = '<div style="text-align:center; padding:20px;">No uploads yet. Be the first!</div>';
-                        return;
-                    }
+                        await Promise.all(promises);
+                        resolve(games);
+                    })
+                    .catch(reject);
+            });
+        }
 
-                    // Collect data
-                    const games = [];
-                    snapshot.forEach(doc => {
-                        games.push({ ...doc.data(), docId: doc.id });
-                    });
+        function calculateWilsonScore(starRating, numRatings) {
+            if (!numRatings || numRatings === 0) return 0;
+            const phat = starRating / 5.0;
+            const n = numRatings;
+            const z = 1.96; // 95% confidence
 
-                    // Fetch missing ratings concurrently
-                    const promises = games.map(async game => {
-                        // Use saved if available
-                        if (game.starRating !== undefined) return;
-
-                        // Fetch if missing
-                        const ratingData = await fetchIFDBRating(game.title);
-                        if (ratingData) {
-                            game.starRating = ratingData.starRating;
-                            game.numRatings = ratingData.numRatings;
-                        } else {
-                            game.starRating = 0;
-                            game.numRatings = 0;
-                        }
-                    });
-
-                    await Promise.all(promises);
-
-                    // Sort by Rating (High to Low)
-                    games.sort((a, b) => (b.starRating || 0) - (a.starRating || 0));
-
-                    list.innerHTML = '';
-                    games.forEach(data => {
-                        const el = document.createElement('div');
-                        el.className = 'game-item';
-
-                        const alreadyInLibrary = isGameInLibrary("upload_" + data.docId);
-
-                        let imgHtml = '';
-                        if (data.coverArtLink) {
-                            imgHtml = `<img src="${data.coverArtLink}" class="game-cover" alt="Cover" onerror="this.onerror=null;this.src='';this.parentNode.innerHTML='<div class=\\'game-cover\\' style=\\'display:flex;align-items:center;justify-content:center;color:#666;font-size:20px; background:#000;\\'>U</div>';">`;
-                        } else {
-                            imgHtml = `<div class="game-cover" style="display:flex;align-items:center;justify-content:center;color:#666;font-size:20px; background:#000;">U</div>`;
-                        }
-
-                        // Generate Stars
-                        const starHtml = generateStarRating(data.starRating, data.numRatings);
-
-                        el.innerHTML = `
-                            ${imgHtml}
-                            <div style="flex-grow:1; min-width: 0;">
-                                <div class="game-title">${(data.title || 'Untitled').replace(/</g, "&lt;")}</div>
-                                <div class="game-desc">${(data.author || 'Unknown').replace(/</g, "&lt;")}</div>
-                                <div class="star-rating" style="margin-top:2px; font-size:0.8rem; color:#666;">
-                                    ${data.size ? Math.round(data.size / 1024) + ' KB' : ''} • .z${data.zVersion}
-                                </div>
-                                ${starHtml}
-                            </div>
-                        `;
-
-                        // Add Button
-                        const addBtn = document.createElement('button');
-                        addBtn.className = 'sys-btn';
-                        if (alreadyInLibrary) {
-                            addBtn.innerText = 'Added';
-                            addBtn.classList.add('added');
-                        } else {
-                            addBtn.innerText = 'Add';
-                            addBtn.onclick = () => importUserGame(data.docId, data, addBtn);
-                        }
-                        el.appendChild(addBtn);
-
-                        list.appendChild(el);
-                    });
-                }, error => {
-                    console.error("Error loading uploads:", error);
-                    list.innerHTML = '<div style="text-align:center; padding:20px; color:red;">Error loading uploads.</div>';
-                });
+            const numerator = phat + z * z / (2 * n) - z * Math.sqrt((phat * (1 - phat) + z * z / (4 * n)) / n);
+            const denominator = 1 + z * z / n;
+            return numerator / denominator;
         }
 
         // --- RATING HELPER ---
@@ -1986,8 +2161,28 @@
                 document.getElementById('app-title').innerText = gameMeta.title; // Update window title to Game Title
                 document.getElementById('library-overlay').style.display = 'none';
 
-                // SAVE ID (Non-blocking to avoid Kindle hang)
-                localforage.setItem('interactive_last_game_id', gameMeta.id).catch(e => console.warn("Failed to save ID", e));
+                // SAVE RECENT GAMES (History)
+                try {
+                    let recentGames = await localforage.getItem('interactive_recent_games') || [];
+                    // Remove current if exists (to move to top)
+                    recentGames = recentGames.filter(g => g.id !== gameMeta.id);
+                    // Add to top
+                    recentGames.unshift({
+                        id: gameMeta.id,
+                        title: gameMeta.title,
+                        author: gameMeta.author,
+                        coverArtLink: gameMeta.coverArtLink,
+                        timestamp: Date.now(),
+                        meta: gameMeta // Store full meta for resume capability
+                    });
+                    // Limit
+                    if (recentGames.length > 20) recentGames = recentGames.slice(0, 20);
+
+                    await localforage.setItem('interactive_recent_games', recentGames);
+
+                    // Legacy Support (keep for now, or just ignore)
+                    await localforage.setItem('interactive_last_game_id', gameMeta.id);
+                } catch (e) { console.warn("Failed to save history", e); }
 
                 if (gameMeta.type === 'native') {
                     // RESTORE NATIVE UI
