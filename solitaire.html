@@ -1,9 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Solitaire</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -45,7 +50,7 @@
             overflow: hidden;
             background-color: #e5e5e5;
             /* Background managed by settings */
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -61,7 +66,8 @@
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            height: 550px; /* ADAPTIVE HEIGHT */
+            height: 550px;
+            /* ADAPTIVE HEIGHT */
             max-height: 95vh;
             width: 95%;
             max-width: 600px;
@@ -83,7 +89,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -195,7 +204,7 @@
             border-radius: 4px;
             position: relative;
         }
-        
+
         .column {
             width: var(--card-width);
             position: relative;
@@ -229,8 +238,9 @@
             background-size: 6px 6px;
             border: 2px solid black;
         }
-        
-        .card.back .top-corner, .card.back .center-suit {
+
+        .card.back .top-corner,
+        .card.back .center-suit {
             display: none;
         }
 
@@ -243,17 +253,23 @@
         }
 
         /* Suits */
-        .suit-black { color: black; }
-        .suit-red { 
-            color: black; 
+        .suit-black {
+            color: black;
+        }
+
+        .suit-red {
+            color: black;
             /* Hollow/Stroked text effect for Red suits on E-ink */
             -webkit-text-stroke: 0.5px black;
             color: transparent;
         }
-        
+
         /* Fallback for non-webkit: just use gray */
         @supports not (-webkit-text-stroke: 0.5px black) {
-            .suit-red { color: #666; -webkit-text-stroke: 0; }
+            .suit-red {
+                color: #666;
+                -webkit-text-stroke: 0;
+            }
         }
 
         .top-corner {
@@ -272,7 +288,8 @@
         /* EMPTY MESSAGE */
         #msg-overlay {
             position: absolute;
-            top: 50%; left: 50%;
+            top: 50%;
+            left: 50%;
             transform: translate(-50%, -50%);
             background: white;
             border: 2px solid black;
@@ -283,18 +300,95 @@
             z-index: 200;
         }
 
+        /* MOVES COUNTER */
+        .moves-counter {
+            background: white;
+            padding: 0 10px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 0.9rem;
+            position: absolute;
+            left: 50px;
+            /* Adjust based on title pos */
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 6px 6px 0 black;
+            padding: 20px;
+            width: 80%;
+            max-width: 300px;
+            text-align: center;
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-bottom: 2px solid black;
+            padding-bottom: 5px;
+        }
+
+        .modal-btns {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+
+        /* LEADERBOARD */
+        .leaderboard-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 2px solid black;
+            margin-bottom: 10px;
+            text-align: left;
+            font-size: 0.8rem;
+        }
+
+        .lb-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px dotted #ccc;
+        }
+
+        .lb-entry:last-child {
+            border-bottom: none;
+        }
+
+        .lb-name {
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
 
     <div class="window">
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div id="moves-display" class="moves-counter">Moves: 0</div>
             <span class="title-text">Solitaire</span>
             <div class="controls">
                 <button class="sys-btn" onclick="autoWin()" id="auto-btn" style="display:none">Finish</button>
-                <button class="sys-btn" onclick="newGame()">New</button>
+                <button class="sys-btn" onclick="openLeaderboard()">Top</button>
+                <button class="sys-btn" onclick="confirmNewGame()">New</button>
             </div>
         </div>
 
@@ -325,27 +419,76 @@
 
         <div id="msg-overlay">
             <h2>YOU WIN!</h2>
-            <button class="sys-btn" onclick="newGame()">Play Again</button>
+            <button class="sys-btn" onclick="confirmNewGame()">Play Again</button>
+        </div>
+
+        <!-- NEW GAME MODAL -->
+        <div id="new-game-modal" class="modal-overlay">
+            <div class="modal-box">
+                <div class="modal-title">New Game?</div>
+                <div>Current progress will be lost.</div>
+                <div class="modal-btns">
+                    <button class="sys-btn" onclick="startNewGameFromModal()">Yes</button>
+                    <button class="sys-btn" onclick="closeNewGameModal()">No</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEADERBOARD MODAL -->
+        <div id="leaderboard-modal" class="modal-overlay">
+            <div class="modal-box">
+                <div class="modal-title">Leaderboard <span style="font-size:0.8rem; font-weight:normal;">(Fewest
+                        Moves)</span></div>
+                <div id="leaderboard-list" class="leaderboard-list">
+                    <div style="padding:10px;">Loading...</div>
+                </div>
+                <button class="sys-btn" onclick="closeLeaderboard()">Close</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        let currentUser = null;
+
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+        });
+
         // --- CONFIG ---
         const SUITS = ['♠', '♥', '♣', '♦'];
         const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-        
+
         // --- STATE ---
         let stock = [];
         let waste = [];
         let foundations = [[], [], [], []];
         let tableau = [[], [], [], [], [], [], []];
-        
+        let moves = 0;
+
         let selected = null; // { source: 'col-1', cardIndex: 5 }
-        
+
         // --- INIT ---
         window.onload = () => {
             loadWallpaper();
-            newGame();
+            if (!loadGame()) {
+                newGame();
+            }
         };
 
         // Helper to HTML-escape text
@@ -373,16 +516,34 @@
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if(wallpaperImg) {
+            if (wallpaperImg) {
                 document.body.style.backgroundImage = wallpaperImg;
                 document.body.style.backgroundSize = wallpaperSize;
             }
         }
 
+        // --- GAME LOGIC ---
+
+        function confirmNewGame() {
+            document.getElementById('new-game-modal').style.display = 'flex';
+        }
+
+        function closeNewGameModal() {
+            document.getElementById('new-game-modal').style.display = 'none';
+        }
+
+        function startNewGameFromModal() {
+            closeNewGameModal();
+            newGame();
+        }
+
         function newGame() {
             document.getElementById('msg-overlay').style.display = 'none';
             document.getElementById('auto-btn').style.display = 'none';
-            
+
+            moves = 0;
+            updateMovesDisplay();
+
             // Generate Deck
             let deck = [];
             SUITS.forEach(suit => {
@@ -390,7 +551,7 @@
                     deck.push({ suit, val, rank: i + 1, color: (suit === '♥' || suit === '♦') ? 'red' : 'black', faceUp: false });
                 });
             });
-            
+
             // Shuffle
             for (let i = deck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -406,13 +567,45 @@
                     tableau[i].push(card);
                 }
             }
-
             stock = deck;
             waste = [];
             foundations = [[], [], [], []];
             selected = null;
 
+            saveGame();
             renderAll();
+        }
+
+        function saveGame() {
+            const state = {
+                stock, waste, foundations, tableau, moves
+            };
+            localStorage.setItem('solitaire_save', JSON.stringify(state));
+        }
+
+        function loadGame() {
+            const save = localStorage.getItem('solitaire_save');
+            if (!save) return false;
+            try {
+                const state = JSON.parse(save);
+                stock = state.stock || [];
+                waste = state.waste || [];
+                foundations = state.foundations || [[], [], [], []];
+                tableau = state.tableau || [[], [], [], [], [], [], []];
+                moves = state.moves || 0;
+
+                updateMovesDisplay();
+                renderAll();
+                checkWinCondition(true); // check without triggering win modal immediately on load if possible, or just check
+                return true;
+            } catch (e) {
+                console.error("Failed to load save", e);
+                return false;
+            }
+        }
+
+        function updateMovesDisplay() {
+            document.getElementById('moves-display').textContent = 'Moves: ' + moves;
         }
 
         // --- INTERACTION ---
@@ -422,11 +615,15 @@
                 // Recycle waste
                 stock = waste.reverse().map(c => { c.faceUp = false; return c; });
                 waste = [];
+                moves++; // Cycling waste counts as a move? Usually yes.
             } else {
                 let card = stock.pop();
                 card.faceUp = true;
                 waste.push(card);
+                moves++;
             }
+            updateMovesDisplay();
+            saveGame();
             renderAll();
         }
 
@@ -447,6 +644,9 @@
             // 3. Try to move selected to this pile
             if (tryMove(selected, pileId)) {
                 selected = null;
+                moves++;
+                updateMovesDisplay();
+                saveGame();
                 checkWinCondition();
                 renderAll();
             } else {
@@ -461,29 +661,29 @@
 
             // Can only select form Waste top, Foundation top, or Tableau face-up
             if (pileId === 'waste') {
-                selected = { source: 'waste', cards: [pile[pile.length-1]] };
+                selected = { source: 'waste', cards: [pile[pile.length - 1]] };
             } else if (pileId.startsWith('col')) {
                 // In tableau, clicking a card selects it and everything below it
                 // Note: In this simplified click handler, we select the whole valid stack from the clicked point
                 // But since we don't have precise click coordinates on the div, we rely on the DOM event.
                 // The render function attaches onclick to specific cards.
                 // Default fallback: Select top card
-                let top = pile[pile.length-1];
+                let top = pile[pile.length - 1];
                 if (top.faceUp) selected = { source: pileId, cards: [top] };
             } else if (pileId.startsWith('found')) {
-                selected = { source: pileId, cards: [pile[pile.length-1]] };
+                selected = { source: pileId, cards: [pile[pile.length - 1]] };
             }
-            
+
             renderAll();
         }
 
         function selectSpecificCard(pileId, index) {
             event.stopPropagation();
-            
+
             // Can we select this?
             let pile = getPileData(pileId);
             let card = pile[index];
-            
+
             if (!card.faceUp) return;
 
             // Allow re-selecting to deselect
@@ -492,7 +692,7 @@
                 renderAll();
                 return;
             }
-            
+
             // If clicking a different pile while selected, treat as move attempt
             if (selected && selected.source !== pileId) {
                 clickPile(pileId);
@@ -515,7 +715,7 @@
                 if (targetPile.length === 0) {
                     if (movingCard.rank === 1) { executeMove(sel, targetId); return true; }
                 } else {
-                    let top = targetPile[targetPile.length-1];
+                    let top = targetPile[targetPile.length - 1];
                     if (top.suit === movingCard.suit && top.rank === movingCard.rank - 1) {
                         executeMove(sel, targetId); return true;
                     }
@@ -526,7 +726,7 @@
                 if (targetPile.length === 0) {
                     if (movingCard.rank === 13) { executeMove(sel, targetId); return true; } // King only
                 } else {
-                    let top = targetPile[targetPile.length-1];
+                    let top = targetPile[targetPile.length - 1];
                     if (top.color !== movingCard.color && top.rank === movingCard.rank + 1) {
                         executeMove(sel, targetId); return true;
                     }
@@ -542,13 +742,13 @@
 
             // Move cards data
             sel.cards.forEach(c => targetPile.push(c));
-            
+
             // Remove from source (using splice to remove 'n' items from end)
             sourcePile.splice(sourcePile.length - sel.cards.length, sel.cards.length);
 
             // Flip new top of source if needed
             if (sel.source.startsWith('col') && sourcePile.length > 0) {
-                sourcePile[sourcePile.length-1].faceUp = true;
+                sourcePile[sourcePile.length - 1].faceUp = true;
             }
         }
 
@@ -571,7 +771,7 @@
         function renderPile(id, cards, stacked) {
             const el = document.getElementById(id);
             el.innerHTML = '';
-            
+
             if (cards.length === 0) {
                 // Empty slot style handled by CSS
                 return;
@@ -585,9 +785,9 @@
 
             // For Waste and Foundations, we only really care about top card visually
             // But to animate/select, we render top card. 
-            let topCard = cards[cards.length-1];
+            let topCard = cards[cards.length - 1];
             let div = createCardDiv(topCard);
-            
+
             // Highlight if selected
             if (selected && selected.source === id && selected.cards[0] === topCard) {
                 div.classList.add('selected');
@@ -598,14 +798,14 @@
                 e.stopPropagation();
                 clickPile(id);
             };
-            
+
             el.appendChild(div);
         }
 
         function renderColumn(id, cards) {
             const el = document.getElementById(id);
             el.innerHTML = '';
-            
+
             let overlap = 25; // px offset
 
             cards.forEach((card, index) => {
@@ -632,7 +832,7 @@
 
             div.className = 'card';
             let suitClass = card.color === 'red' ? 'suit-red' : 'suit-black';
-            
+
             div.innerHTML = `
                 <div class="top-corner ${suitClass}">${card.val}<br>${card.suit}</div>
                 <div class="center-suit ${suitClass}">${card.suit}</div>
@@ -641,12 +841,17 @@
         }
 
         // --- WIN LOGIC ---
-        function checkWinCondition() {
+        function checkWinCondition(silent = false) {
             // Check if all foundation piles have 13 cards
             let total = 0;
             foundations.forEach(f => total += f.length);
             if (total === 52) {
-                document.getElementById('msg-overlay').style.display = 'block';
+                if (!silent) {
+                    document.getElementById('msg-overlay').style.display = 'block';
+                    // Clear save on win
+                    localStorage.removeItem('solitaire_save');
+                    submitScore();
+                }
                 return;
             }
 
@@ -655,7 +860,7 @@
             tableau.forEach(col => {
                 col.forEach(c => { if (!c.faceUp) allFaceUp = false; });
             });
-            
+
             if (stock.length === 0 && waste.length === 0 && allFaceUp) {
                 document.getElementById('auto-btn').style.display = 'block';
             }
@@ -667,23 +872,25 @@
             let timer = setInterval(() => {
                 moved = false;
                 // Naive approach: try to move any top tableau card to foundation
-                for (let i=0; i<7; i++) {
+                for (let i = 0; i < 7; i++) {
                     if (tableau[i].length > 0) {
-                        let card = tableau[i][tableau[i].length-1];
+                        let card = tableau[i][tableau[i].length - 1];
                         // Try all foundations
-                        for (let f=0; f<4; f++) {
+                        for (let f = 0; f < 4; f++) {
                             let fPile = foundations[f];
                             let valid = false;
                             if (fPile.length === 0) {
                                 if (card.rank === 1) valid = true;
                             } else {
-                                let top = fPile[fPile.length-1];
+                                let top = fPile[fPile.length - 1];
                                 if (top.suit === card.suit && top.rank === card.rank - 1) valid = true;
                             }
-                            
+
                             if (valid) {
                                 fPile.push(tableau[i].pop());
                                 moved = true;
+                                moves++; // Auto win moves count? Maybe.
+                                updateMovesDisplay();
                                 renderAll();
                                 break;
                             }
@@ -697,6 +904,8 @@
                 if (total === 52) {
                     clearInterval(timer);
                     document.getElementById('msg-overlay').style.display = 'block';
+                    localStorage.removeItem('solitaire_save');
+                    submitScore();
                 } else if (!moved) {
                     // Should not happen if logic is sound, but prevent infinite loop
                     clearInterval(timer);
@@ -704,6 +913,88 @@
             }, 100);
         }
 
+        // --- LEADERBOARD ---
+        function openLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'flex';
+            fetchLeaderboard();
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('leaderboard-modal').style.display = 'none';
+        }
+
+        function fetchLeaderboard() {
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = '<div style="padding:10px;">Loading...</div>';
+
+            db.collection('leaderboard_solitaire')
+                .orderBy('moves', 'asc')
+                .limit(20)
+                .get()
+                .then(snapshot => {
+                    if (snapshot.empty) {
+                        list.innerHTML = '<div style="padding:10px;">No scores yet.</div>';
+                        return;
+                    }
+
+                    let html = '';
+                    let rank = 1;
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const name = escapeHTML(data.username || 'Anonymous');
+                        const moves = data.moves;
+                        // Highlight current user
+                        const isMe = currentUser && currentUser.uid === doc.id;
+                        const style = isMe ? 'background:#eee;' : '';
+
+                        html += `
+                        <div class="lb-entry" style="${style}">
+                            <span style="width:20px;">#${rank}</span>
+                            <span class="lb-name">${name}</span>
+                            <span>${moves}</span>
+                        </div>
+                      `;
+                        rank++;
+                    });
+                    list.innerHTML = html;
+                })
+                .catch(err => {
+                    console.error("Error fetching leaderboard:", err);
+                    list.innerHTML = '<div style="padding:10px; color:red;">Error loading scores.</div>';
+                });
+        }
+
+        function submitScore() {
+            if (!currentUser) return; // Must be logged in
+
+            const userRef = db.collection('leaderboard_solitaire').doc(currentUser.uid);
+
+            // Check if current score is better (lower) than existing
+            userRef.get().then(doc => {
+                if (doc.exists) {
+                    const best = doc.data().moves;
+                    if (moves < best) {
+                        saveScoreToDb(userRef);
+                    }
+                } else {
+                    saveScoreToDb(userRef);
+                }
+            });
+        }
+
+        function saveScoreToDb(ref) {
+            const username = currentUser.displayName || currentUser.email.split('@')[0];
+            ref.set({
+                username: username,
+                moves: moves,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                console.log("Score submitted!");
+            }).catch(err => console.error("Error submitting score:", err));
+        }
+
     </script>
 </body>
+
 </html>
+```
