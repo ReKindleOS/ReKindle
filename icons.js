@@ -307,7 +307,7 @@ const APPS = [
     },
     {
         id: 'pool',
-        name: 'Pool',
+        name: '8 Ball',
         cat: 'games',
         beta: true,
         icon: '<circle cx="16" cy="16" r="14" fill="none" stroke="black" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" text-anchor="middle" fill="black">8</text>'
