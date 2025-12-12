@@ -10,7 +10,7 @@ service cloud.firestore {
       return username is string &&
              username.size() > 0 &&
              username.size() <= 30 &&
-             !username.matches('[<>&\'"]');
+             !username.matches('.*[<>&\'"].*');
     }
 
     function isValidText(text) {
@@ -18,7 +18,7 @@ service cloud.firestore {
       return text is string &&
              text.size() > 0 &&
              text.size() <= 1000 && // Limit message length
-             !text.matches('[<>]'); // Block basic HTML tags
+             !text.matches('.*[<>].*'); // Block basic HTML tags
     }
 
     // --- Collection Rules ---
@@ -35,8 +35,9 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if request.auth != null;
         // Secure create: Validate username and message text for safety.
+        // Note: For anonymous users, email might be null, so check before accessing.
         allow create: if request.auth != null &&
-                        request.resource.data.user == request.auth.token.email.split('@')[0] &&
+                        (request.auth.token.email == null || request.resource.data.user == request.auth.token.email.split('@')[0]) &&
                         isValidText(request.resource.data.text);
         allow update: if request.auth != null && 
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
@@ -45,12 +46,8 @@ service cloud.firestore {
     }
 
     // 3. TETRIS LEADERBOARD
-    // FIXED: Combined read permissions (get + list) into the document match
     match /leaderboard_tetris/{userId} {
       allow read: if request.auth != null;
-      
-      // Secure write: user must be authenticated, own the document,
-      // and provide a valid username and score.
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
                       isValidUsername(request.resource.data.username) &&
@@ -58,12 +55,8 @@ service cloud.firestore {
     }
 
     // 4. SNAKE LEADERBOARD
-    // FIXED: Combined read permissions (get + list) into the document match
     match /leaderboard_snake/{userId} {
       allow read: if request.auth != null;
-
-      // Secure write: user must be authenticated, own the document,
-      // and provide a valid username and score.
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
                       isValidUsername(request.resource.data.username) &&
@@ -73,13 +66,10 @@ service cloud.firestore {
     // 5. WORDS (Multiplayer Game)
     match /word_games/{gameId} {
       allow read: if request.auth != null;
-      // Secure write: Validate incoming data on create/update.
-      // User must be one of the players, and names must be valid.
       allow write: if request.auth != null &&
                       (request.resource.data.p1_uid == request.auth.uid ||
                        request.resource.data.p2_uid == request.auth.uid) &&
                       isValidUsername(request.resource.data.p1_name) &&
-                      // p2_name can be null when a game is created, so only validate if it exists.
                       (request.resource.data.p2_name == null || isValidUsername(request.resource.data.p2_name));
     }
 
@@ -90,66 +80,40 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
     }
 
-    // 7. HANOI LEADERBOARD (per difficulty: 3, 4, 5, 6, 7 disks)
-    // Note: Firestore doesn't support partial wildcards in collection names,
-    // so each difficulty level needs an explicit rule.
+    // 7. HANOI LEADERBOARD
     match /leaderboard_hanoi_3/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_hanoi_4/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_hanoi_5/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_hanoi_6/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_hanoi_7/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
 
-    // 8. LIGHTS OUT LEADERBOARD (per difficulty: 3, 4, 5 grid size)
+    // 8. LIGHTS OUT LEADERBOARD
     match /leaderboard_lightsout_3/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_lightsout_4/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
     match /leaderboard_lightsout_5/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      isValidUsername(request.resource.data.username) &&
-                      request.resource.data.moves is number;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
     }
 
     // 9. TRIVIA LEADERBOARD
@@ -162,10 +126,28 @@ service cloud.firestore {
                       request.resource.data.gameCount is number;
     }
 
-    // 10. INTERACTIVE BLACKLIST (games that failed Z3 compatibility check)
+    // 10. SOLITAIRE LEADERBOARD
+    match /leaderboard_solitaire/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+                      request.auth.uid == userId &&
+                      isValidUsername(request.resource.data.username) &&
+                      request.resource.data.moves is number;
+    }
+
+    // 11. INTERACTIVE BLACKLIST
     match /interactive_blacklist/{gameId} {
-      allow read: if true;  // Anyone can read to filter search results
-      allow write: if request.auth != null;  // Only authenticated users can add
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // 12. USER UPLOADS
+    match /interactive_uploads/{uploadId} {
+      allow read: if true;
+      allow create: if request.auth != null &&
+                      request.resource.data.uploaderUid == request.auth.uid &&
+                      isValidText(request.resource.data.title);
+      allow delete: if request.auth != null && resource.data.uploaderUid == request.auth.uid;
     }
   }
 }
