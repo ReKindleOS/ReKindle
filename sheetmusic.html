@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -11,6 +12,9 @@
 
     <!-- OpenSheetMusicDisplay for rendering MusicXML -->
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.3/build/opensheetmusicdisplay.min.js"></script>
+
+    <!-- Tone.js MIDI for conversion -->
+    <script src="https://unpkg.com/@tonejs/midi"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS (from index.html) */
@@ -47,7 +51,8 @@
             display: flex;
             flex-direction: column;
             width: 90%;
-            max-width: 450px;
+            max-width: 800px;
+            /* Wider window */
             height: fit-content;
             max-height: 95vh;
             position: relative;
@@ -67,7 +72,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
             z-index: 0;
         }
@@ -109,19 +117,60 @@
         }
 
         .window-content {
-            padding: 15px;
+            padding: 0;
+            /* Remove padding here, managing in children */
             background: white;
             display: flex;
+            flex-direction: row;
+            height: calc(95vh - 35px);
+            /* Subtract title bar */
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 140px;
+            background: #f0f0f0;
+            border-right: 2px solid black;
+            display: flex;
             flex-direction: column;
-            gap: 15px;
             overflow-y: auto;
+            flex-shrink: 0;
+            padding: 10px;
+            gap: 5px;
+        }
+
+        .sidebar-item {
+            padding: 5px 8px;
+            cursor: pointer;
+            border: 1px dotted transparent;
+            font-size: 0.9rem;
+        }
+
+        .sidebar-item:hover {
+            border: 1px dotted black;
+            background: white;
+        }
+
+        .sidebar-item.active {
+            background: black;
+            color: white;
+            border: 1px solid black;
+        }
+
+        .main-view {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            overflow: hidden;
         }
 
         .tab-nav {
             display: flex;
             gap: 5px;
-            border-bottom: 2px solid black;
-            padding-bottom: 10px;
+            /* border-bottom: 2px solid black; -- REMOVED */
+            padding-bottom: 0px;
+            margin-bottom: 10px;
         }
 
         .tab-btn {
@@ -132,28 +181,43 @@
             font-weight: bold;
             cursor: pointer;
             box-shadow: 2px 2px 0 #ccc;
+            border-bottom: 2px solid black;
+            /* Ensure tabs have bottom border */
         }
 
         .tab-btn.active {
             background: black;
             color: white;
             box-shadow: none;
+            /* border-bottom: none; -- Optional style choice, but keeping simple */
         }
 
         .search-bar {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            /* Prevent wrapping */
             gap: 10px;
-    align-items: center;
-    margin-bottom: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        /* Responsive Search */
+        @media (max-width: 500px) {
+            #search-label {
+                display: none;
+            }
+
+            #store-search {
+                width: 100%;
+                flex-grow: 1;
+            }
         }
 
         .results-list {
             display: flex;
             flex-direction: column;
             gap: 10px;
-            min-height: 200px;
-            max-height: 50vh;
+            flex-grow: 1;
             overflow-y: auto;
             border: 2px solid black;
             padding: 10px;
@@ -162,47 +226,125 @@
 
         .list-item {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #ccc;
-            padding-top: 8px;
-            padding-bottom: 8px;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            gap: 12px;
+            background: white;
+            transition: background 0.2s;
+        }
+
+        .list-item:hover {
+            background: #f0f0f0;
+        }
+
+        .composer-img {
+            width: 48px;
+            /* Slightly larger for better visibility */
+            height: 48px;
+            border-radius: 10px;
+            /* Square with curved corners */
+            object-fit: cover;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+            /* Placeholder bg */
+            flex-shrink: 0;
+        }
+
+        .instrument-label {
+            font-size: 0.85rem;
+            color: #444;
+            width: 70px;
+            /* Fixed width for alignment */
+            text-align: left;
+            flex-shrink: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .instrument-icon {
+            width: 32px;
+            height: 32px;
+            /* Explicit height */
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .instrument-icon svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .score-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex-grow: 1;
+            overflow: hidden;
+            gap: 2px;
+        }
+
+        .score-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: black;
+            text-decoration: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        .score-title:hover {
+            text-decoration: underline;
+        }
+
+        .score-composer {
+            font-size: 0.8rem;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .list-item-buttons {
             display: flex;
-            gap: 5px;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
         }
 
-        .list-item-title {
-            font-size: 0.9rem;
-            text-decoration: none;
-            color: black;
-        }
-        .list-item-title:hover {
-            text-decoration: underline;
-        }
-
+        /* list-btn styles remain, slightly tweaked if needed */
         .list-btn {
             border: 1px solid black;
             background: white;
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 4px 10px;
             font-size: 0.8rem;
-        }
-        .list-btn:active {
-            background: black;
-            color: white;
+            min-width: 60px;
+            font-weight: 500;
         }
 
-        .info-text { text-align: center; padding: 20px; color: #666; }
+        .info-text {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
 
         /* SCORE VIEWER MODAL */
         .score-viewer-overlay {
             display: none;
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -228,12 +370,96 @@
         .osmd-cursor {
             background-color: rgba(0, 0, 0, 0.2) !important;
         }
+
         #score-loading {
-            text-align: center; padding: 40px; font-size: 1.2rem;
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2rem;
         }
 
+        /* LOADING */
+        #loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            z-index: 50;
+            display: none;
+        }
+
+        /* MODAL OVERLAY */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border: 2px solid black;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 4px 4px 0 black;
+            max-width: 80%;
+            min-width: 250px;
+        }
+
+        .modal-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .modal-text {
+            margin-bottom: 20px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.85rem;
+            font-family: inherit;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        input[type="text"],
+        input[type="file"],
+        select {
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
+
 <body>
 
     <div class="window">
@@ -244,8 +470,43 @@
         </div>
 
         <div class="window-content">
-            <div id="score-list" class="results-list">
-                <p class="info-text">Loading music library...</p>
+            <!-- SIDEBAR -->
+            <div class="sidebar" id="instrument-sidebar">
+                <div class="sidebar-item active" onclick="filterByInstrument('All')">All Instruments</div>
+                <!-- Dynamic Items -->
+            </div>
+
+            <!-- MAIN VIEW -->
+            <div class="main-view">
+                <div class="tab-nav">
+                    <button class="tab-btn active" id="tab-library" onclick="setLibTab('library')">My Library</button>
+                    <button class="tab-btn" id="tab-store" onclick="setLibTab('store')">Online Store</button>
+                </div>
+
+                <div class="search-bar">
+                    <button class="sys-btn" id="upload-btn" onclick="openUploadModal()"> Upload Sheet Music </button>
+                    <span style="flex-grow:1"></span>
+                    <span id="search-label">Search:</span>
+                    <input type="text" id="store-search" placeholder="Type here..." onkeyup="filterScores()"
+                        style="border: 2px solid black; padding: 4px;">
+                </div>
+
+                <div class="results-list" id="score-list">
+                    <!-- Scores injected here -->
+                    <p class="info-text">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRM REMOVE MODAL -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">Confirm Remove</div>
+            <div class="modal-text">Are you sure you want to remove this score from your library?</div>
+            <div class="modal-buttons">
+                <button class="sys-btn" onclick="confirmRemoveAction()">Yes, Remove</button>
+                <button class="sys-btn" onclick="closeConfirmModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -263,6 +524,72 @@
         </div>
     </div>
 
+    <!-- UPLOAD MODAL -->
+    <div id="upload-modal" class="modal-overlay">
+        <div class="modal-content" style="text-align: left; width: 400px;">
+            <div class="modal-title">Upload Sheet Music</div>
+
+            <p style="margin-bottom: 5px;">Title:</p>
+            <input type="text" id="upload-title" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+
+            <p style="margin-bottom: 5px;">Composer:</p>
+            <input type="text" id="upload-composer" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+
+            <p style="margin-bottom: 5px;">Instrument:</p>
+            <select id="upload-instrument" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+                <option value="Piano">Piano</option>
+                <option value="Violin">Violin</option>
+                <option value="Cello">Cello</option>
+                <option value="Flute">Flute</option>
+                <option value="Clarinet">Clarinet</option>
+                <option value="Trumpet">Trumpet</option>
+                <option value="Guitar">Guitar</option>
+                <option value="Saxophone">Saxophone</option>
+                <option value="Drums">Drums</option>
+                <option value="Bass">Bass</option>
+                <option value="Viola">Viola</option>
+                <option value="Oboe">Oboe</option>
+                <option value="Harp">Harp</option>
+                <option value="Trombone">Trombone</option>
+                <option value="Tuba">Tuba</option>
+                <option value="French Horn">French Horn</option>
+                <option value="Bassoon">Bassoon</option>
+                <option value="Recorder">Recorder</option>
+                <option value="Ukulele">Ukulele</option>
+                <option value="Voice">Voice</option>
+                <option value="Synthesizer">Synthesizer</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <p style="margin-bottom: 5px;">File (.mxl, .musicxml, .mid):</p>
+            <input type="file" id="upload-file" accept=".mxl,.xml,.musicxml,.mid,.midi"
+                style="width: 100%; margin-bottom: 15px;">
+
+            <p style="font-size: 0.8rem; color: #666; margin-bottom: 20px;">
+                Note: Uploads are public. Ensure you have the right to distribute this file.
+            </p>
+
+            <div class="modal-buttons">
+                <button class="sys-btn" onclick="startUpload()">Upload</button>
+                <button class="sys-btn" onclick="closeUploadModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INFO MODAL -->
+    <div id="info-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title" id="info-modal-title">Notice</div>
+            <div id="info-modal-text" class="modal-text"></div>
+            <div class="modal-buttons">
+                <button class="sys-btn" onclick="closeInfoModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOADING INDICATOR -->
+    <div id="loading-indicator">Processing...</div>
+
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
@@ -278,11 +605,18 @@
         const db = firebase.firestore();
 
         let osmd;
+        let currentUser = null;
 
         const scoreListContainer = document.getElementById('score-list');
 
-        window.onload = function() {
+        window.onload = function () {
             loadWallpaper();
+
+            auth.onAuthStateChanged(user => {
+                currentUser = user;
+                updateUploadButton();
+            });
+
             loadScores();
         };
 
@@ -293,107 +627,486 @@
             return div.innerHTML;
         }
 
-        // Helper to sanitize background image URLs from localStorage
-        function sanitizeBackgroundImage(imageString) {
-            if (!imageString) return '';
-            if (imageString.startsWith('url("data:image/png;base64,')) {
-                return imageString;
-            }
-            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
-                const url = imageString.substring(5, imageString.length - 2);
-                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
-                    return imageString;
-                }
-            }
-            return '';
-        }
-
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if(wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
-            if(wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
+            if (wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if (wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
         }
 
         const ALL_SCORES = [
-            // Bach
-            { composer: 'Bach', title: 'Air on the G String', url: 'https://musetrainer.github.io/library/scores/J._S._Bach_-_Air_on_the_G_String_Piano_arrangement.mxl' },
-            { composer: 'Bach', title: 'Minuet in G Major, BWV Anh. 114', url: 'https://musetrainer.github.io/library/scores/Bach_Minuet_in_G_Major_BWV_Anh._114.mxl' },
-            { composer: 'Bach', title: 'Toccata and Fugue in D Minor', url: 'https://musetrainer.github.io/library/scores/Bach_Toccata_and_Fugue_in_D_Minor_Piano_solo.mxl' },
-            { composer: 'Bach', title: 'Prelude in C Major, BWV 846', url: 'https://musetrainer.github.io/library/scores/Prelude_I_in_C_major_BWV_846_-_Well_Tempered_Clavier_First_Book.mxl' },
-            { composer: 'Bach', title: 'Prelude in C Minor, BWV 847', url: 'https://musetrainer.github.io/library/scores/Prelude_No._2_BWV_847_in_C_Minor.mxl' },
-            { composer: 'Bach', title: 'Little Fugue in G Minor', url: 'https://musetrainer.github.io/library/scores/G_Minor_Bach.mxl' },
-            // Beethoven
-            { composer: 'Beethoven', title: 'Symphony No. 5, 1st Mvt', url: 'https://musetrainer.github.io/library/scores/Beethoven_Symphony_No._5_1st_movement_Piano_solo.mxl' },
-            { composer: 'Beethoven', title: 'Danse Villageoise', url: 'https://musetrainer.github.io/library/scores/DANSE_VILLAGEOISE_Beethoven.mxl' },
-            { composer: 'Beethoven', title: 'Für Elise', url: 'https://musetrainer.github.io/library/scores/Fur_Elise.mxl' },
-            { composer: 'Beethoven', title: 'Moonlight Sonata, 1st Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_1st_Movement.mxl' },
-            { composer: 'Beethoven', title: 'Moonlight Sonata, 3rd Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_3rd_Movement.mxl' },
-            { composer: 'Beethoven', title: 'Pathetique Sonata, 2nd Mvt', url: 'https://musetrainer.github.io/library/scores/Sonate_No._8_Pathetique_2nd_Movement.mxl' },
-            { composer: 'Beethoven', title: 'Ode to Joy (Easy)', url: 'https://raw.githubusercontent.com/musetrainer/library/master/scores/Ode_to_Joy_Easy_variation.mxl' },
-            // Brahms
-            { composer: 'Brahms', title: 'Hungarian Dance No. 5', url: 'https://musetrainer.github.io/library/scores/Hungarian_Dance_No_5_in_G_Minor.mxl' },
-            // Chopin
-            { composer: 'Chopin', title: 'Ballade No. 1 in G minor', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Ballade_no._1_in_G_minor_Op._23.mxl' },
-            { composer: 'Chopin', title: 'Nocturne, Op. 9 No. 1', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op._9_No._1.mxl' },
-            { composer: 'Chopin', title: 'Nocturne, Op. 9 No. 2', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op_9_No_2_E_Flat_Major.mxl' },
-            { composer: 'Chopin', title: 'Nocturne No. 20 in C# minor', url: 'https://musetrainer.github.io/library/scores/Nocturne_No._20_in_C_Minor.mxl' },
-            { composer: 'Chopin', title: 'Prélude, Op. 28 No. 4', url: 'https://musetrainer.github.io/library/scores/Prlude_Opus_28_No._4_in_E_Minor__Chopin.mxl' },
-            { composer: 'Chopin', title: 'Waltz, Op. 64 No. 2', url: 'https://musetrainer.github.io/library/scores/Waltz_Opus_64_No._2_in_C_Minor.mxl' },
-            { composer: 'Chopin', title: 'Waltz in A Minor', url: 'https://musetrainer.github.io/library/scores/Waltz_in_A_MinorChopin.mxl' },
-            // Debussy
-            { composer: 'Debussy', title: 'Arabesque No. 1', url: 'https://musetrainer.github.io/library/scores/Arabesque_L._66_No._1_in_E_Major.mxl' },
-            { composer: 'Debussy', title: 'Clair de Lune', url: 'https://musetrainer.github.io/library/scores/Clair_de_Lune__Debussy.mxl' },
-            // Handel
-            { composer: 'Handel', title: 'Passacaglia', url: 'https://musetrainer.github.io/library/scores/Passacaglia.mxl' },
-            // Joplin
-            { composer: 'Joplin', title: 'Maple Leaf Rag', url: 'https://musetrainer.github.io/library/scores/Maple_Leaf_Rag_Scott_Joplin.mxl' },
-            { composer: 'Joplin', title: 'The Entertainer', url: 'https://musetrainer.github.io/library/scores/The_Entertainer_-_Scott_Joplin.mxl' },
-            // Liszt
-            { composer: 'Liszt', title: 'La Campanella', url: 'https://musetrainer.github.io/library/scores/La_Campanella_-_Grandes_Etudes_de_Paganini_No._3_-_Franz_Liszt.mxl' },
-            { composer: 'Liszt', title: 'Liebestraum No. 3', url: 'https://musetrainer.github.io/library/scores/Liebestraum_No._3_in_A_Major.mxl' },
-            // Mozart
-            { composer: 'Mozart', title: 'Lacrimosa', url: 'https://musetrainer.github.io/library/scores/Lacrimosa_-_Requiem.mxl' },
-            { composer: 'Mozart', title: 'Rondo alla Turca', url: 'https://musetrainer.github.io/library/scores/Piano_Sonata_No._11_K._331_3rd_Movement_Rondo_alla_Turca.mxl' },
-            { composer: 'Mozart', title: 'Sonata No. 16, K. 545 (Allegro)', url: 'https://musetrainer.github.io/library/scores/Mozart_-_Piano_Sonata_No._16_-_Allegro.mxl' },
-            { composer: 'Mozart', title: '12 Variations on "Twinkle Twinkle"', url: 'https://musetrainer.github.io/library/scores/12_Variations_of_Twinkle_Twinkle_Little_Star.mxl' },
-            // Pachelbel
-            { composer: 'Pachelbel', title: 'Canon in D', url: 'https://musetrainer.github.io/library/scores/Canon_in_D.mxl' },
+            // Johann Sebastian Bach
+            { composer: 'Johann Sebastian Bach', title: 'Air on the G String', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/J._S._Bach_-_Air_on_the_G_String_Piano_arrangement.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Minuet in G Major, BWV Anh. 114', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Bach_Minuet_in_G_Major_BWV_Anh._114.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Toccata and Fugue in D Minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Bach_Toccata_and_Fugue_in_D_Minor_Piano_solo.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Prelude in C Major, BWV 846', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Prelude_I_in_C_major_BWV_846_-_Well_Tempered_Clavier_First_Book.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Prelude in C Minor, BWV 847', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Prelude_No._2_BWV_847_in_C_Minor.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Little Fugue in G Minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/G_Minor_Bach.mxl' },
+            // Ludwig van Beethoven
+            { composer: 'Ludwig van Beethoven', title: 'Symphony No. 5, 1st Mvt', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Beethoven_Symphony_No._5_1st_movement_Piano_solo.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Danse Villageoise', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/DANSE_VILLAGEOISE_Beethoven.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Für Elise', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Fur_Elise.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Moonlight Sonata, 1st Mvt', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_1st_Movement.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Moonlight Sonata, 3rd Mvt', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Sonate_No._14_Moonlight_3rd_Movement.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Pathetique Sonata, 2nd Mvt', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Sonate_No._8_Pathetique_2nd_Movement.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Ode to Joy (Easy)', instrument: 'Piano', url: 'https://raw.githubusercontent.com/musetrainer/library/master/scores/Ode_to_Joy_Easy_variation.mxl' },
+            // Johannes Brahms
+            { composer: 'Johannes Brahms', title: 'Hungarian Dance No. 5', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Hungarian_Dance_No_5_in_G_Minor.mxl' },
+            // Frédéric Chopin
+            { composer: 'Frédéric Chopin', title: 'Ballade No. 1 in G minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Ballade_no._1_in_G_minor_Op._23.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Nocturne, Op. 9 No. 1', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op._9_No._1.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Nocturne, Op. 9 No. 2', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Nocturne_Op_9_No_2_E_Flat_Major.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Nocturne No. 20 in C# minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Nocturne_No._20_in_C_Minor.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Prélude, Op. 28 No. 4', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Prlude_Opus_28_No._4_in_E_Minor__Chopin.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Waltz, Op. 64 No. 2', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Waltz_Opus_64_No._2_in_C_Minor.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Waltz in A Minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Waltz_in_A_MinorChopin.mxl' },
+            // Claude Debussy
+            { composer: 'Claude Debussy', title: 'Arabesque No. 1', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Arabesque_L._66_No._1_in_E_Major.mxl' },
+            { composer: 'Claude Debussy', title: 'Clair de Lune', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Clair_de_Lune__Debussy.mxl' },
+            // George Frideric Handel
+            { composer: 'George Frideric Handel', title: 'Passacaglia', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Passacaglia.mxl' },
+            // Scott Joplin
+            { composer: 'Scott Joplin', title: 'Maple Leaf Rag', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Maple_Leaf_Rag_Scott_Joplin.mxl' },
+            { composer: 'Scott Joplin', title: 'The Entertainer', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/The_Entertainer_-_Scott_Joplin.mxl' },
+            // Franz Liszt
+            { composer: 'Franz Liszt', title: 'La Campanella', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/La_Campanella_-_Grandes_Etudes_de_Paganini_No._3_-_Franz_Liszt.mxl' },
+            { composer: 'Franz Liszt', title: 'Liebestraum No. 3', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Liebestraum_No._3_in_A_Major.mxl' },
+            // Wolfgang Amadeus Mozart
+            { composer: 'Wolfgang Amadeus Mozart', title: 'Lacrimosa', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Lacrimosa_-_Requiem.mxl' },
+            { composer: 'Wolfgang Amadeus Mozart', title: 'Rondo alla Turca', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Piano_Sonata_No._11_K._331_3rd_Movement_Rondo_alla_Turca.mxl' },
+            { composer: 'Wolfgang Amadeus Mozart', title: 'Sonata No. 16, K. 545 (Allegro)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Mozart_-_Piano_Sonata_No._16_-_Allegro.mxl' },
+            { composer: 'Wolfgang Amadeus Mozart', title: '12 Variations on "Twinkle Twinkle"', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/12_Variations_of_Twinkle_Twinkle_Little_Star.mxl' },
+            // Johann Pachelbel
+            { composer: 'Johann Pachelbel', title: 'Canon in D', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Canon_in_D.mxl' },
             // Paul de Senneville
-            { composer: 'Paul de Senneville', title: "Mariage d'Amour", url: 'https://musetrainer.github.io/library/scores/Mariage_dAmour.mxl' },
-            // Rimsky-Korsakov
-            { composer: 'Rimsky-Korsakov', title: 'Flight of the Bumblebee', url: 'https://musetrainer.github.io/library/scores/Flight_of_the_Bumblebee.mxl' },
-            // Satie
-            { composer: 'Satie', title: 'Gymnopédie No. 1', url: 'https://musetrainer.github.io/library/scores/Gymnopdie_No._1__Satie.mxl' },
-            { composer: 'Satie', title: 'Gnossienne No. 1', url: 'https://musetrainer.github.io/library/scores/Gnossienne_No._1.mxl' },
-            // Schubert
-            { composer: 'Schubert', title: 'Ave Maria', url: 'https://musetrainer.github.io/library/scores/Ave_Maria_D839_-_Schubert_-_Solo_Piano_Arrg..mxl' },
-            { composer: 'Schubert', title: 'Serenade (Ständchen)', url: 'https://musetrainer.github.io/library/scores/Schubert_Serenade_-_Standchen_-_By_Lizst.mxl' },
-            // Tchaikovsky
-            { composer: 'Tchaikovsky', title: 'Dance of the Sugar Plum Fairy', url: 'https://musetrainer.github.io/library/scores/Dance_of_the_sugar_plum_fairy.mxl' },
-            { composer: 'Tchaikovsky', title: 'Swan Lake', url: 'https://musetrainer.github.io/library/scores/Swan_Lake.mxl' },
-            { composer: 'Tchaikovsky', title: 'Waltz of the Flowers', url: 'https://musetrainer.github.io/library/scores/Waltz_of_the_Flowers.mxl' },
+            { composer: 'Paul de Senneville', title: "Mariage d'Amour", instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Mariage_dAmour.mxl' },
+            // Nikolai Rimsky-Korsakov
+            { composer: 'Nikolai Rimsky-Korsakov', title: 'Flight of the Bumblebee', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Flight_of_the_Bumblebee.mxl' },
+            // Erik Satie
+            { composer: 'Erik Satie', title: 'Gymnopédie No. 1', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Gymnopdie_No._1__Satie.mxl' },
+            { composer: 'Erik Satie', title: 'Gnossienne No. 1', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Gnossienne_No._1.mxl' },
+            // Franz Schubert
+            { composer: 'Franz Schubert', title: 'Ave Maria', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Ave_Maria_D839_-_Schubert_-_Solo_Piano_Arrg..mxl' },
+            { composer: 'Franz Schubert', title: 'Serenade (Ständchen)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Schubert_Serenade_-_Standchen_-_By_Lizst.mxl' },
+            // Pyotr Ilyich Tchaikovsky
+            { composer: 'Pyotr Ilyich Tchaikovsky', title: 'Dance of the Sugar Plum Fairy', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Dance_of_the_sugar_plum_fairy.mxl' },
+            { composer: 'Pyotr Ilyich Tchaikovsky', title: 'Swan Lake', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Swan_Lake.mxl' },
+            { composer: 'Pyotr Ilyich Tchaikovsky', title: 'Waltz of the Flowers', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Waltz_of_the_Flowers.mxl' },
             // Traditional
-            { composer: 'Traditional', title: 'Bella Ciao', url: 'https://musetrainer.github.io/library/scores/Bella_Ciao.mxl' },
-            { composer: 'Traditional', title: 'Carol of the Bells', url: 'https://musetrainer.github.io/library/scores/Carol_of_the_Bells.mxl' },
-            { composer: 'Traditional', title: 'Greensleeves', url: 'https://musetrainer.github.io/library/scores/Greensleeves_for_Piano_easy_and_beautiful.mxl' },
-            { composer: 'Traditional', title: 'Happy Birthday', url: 'https://musetrainer.github.io/library/scores/Happy_Birthday_To_You_Piano.mxl' },
+            { composer: 'Traditional', title: 'Bella Ciao', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Bella_Ciao.mxl' },
+            { composer: 'Traditional', title: 'Bella Ciao', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Bella_Ciao_-_La_Casa_de_Papel.mxl' },
+            { composer: 'Traditional', title: 'Carol of the Bells', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Carol_of_the_Bells.mxl' },
+            { composer: 'Traditional', title: 'Carol of the Bells (Easy)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Carol_of_the_Bells_easy_piano.mxl' },
+            { composer: 'Traditional', title: 'Greensleeves', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Greensleeves_for_Piano_easy_and_beautiful.mxl' },
+            { composer: 'Traditional', title: 'Happy Birthday', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Happy_Birthday_To_You_Piano.mxl' },
+            { composer: 'Traditional', title: 'Happy Birthday (C Major)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Happy_Birthday_To_You_C_Major.mxl' },
+            // Johann Pachelbel (More Arrangements)
+            { composer: 'Johann Pachelbel', title: 'Canon in D (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Canon_in_D_3.mxl' },
+            { composer: 'Johann Pachelbel', title: 'Canon in D (Easy)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Canon_in_D_easy.mxl' },
+            // Claude Debussy (More Arrangements)
+            { composer: 'Claude Debussy', title: 'Clair de Lune (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Clair_de_lune_-_Claude_Debussy.mxl' },
+            // Erik Satie (More Arrangements)
+            { composer: 'Erik Satie', title: 'Gymnopédie No. 1 (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Erik_Satie_-_Gymnopedie_No.1.mxl' },
+            // Ludwig van Beethoven (More Arrangements)
+            { composer: 'Ludwig van Beethoven', title: 'Für Elise (Easy)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Fur_Elise_Easy_Piano.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Für Elise (Beginner)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Fur_Elise_-_Beethoven_-_for_beginner_piano.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Für Elise (Fingered)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Fur_Elise_fingered.mxl' },
+            { composer: 'Ludwig van Beethoven', title: 'Moonlight Sonata, 3rd Mvt (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/moonlight_sonata_3rd_movement.mxl' },
+            // Johann Sebastian Bach (More Arrangements)
+            { composer: 'Johann Sebastian Bach', title: 'Little Fugue in G Minor (Original)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/G_Minor_Bach_Original.mxl' },
+            { composer: 'Johann Sebastian Bach', title: 'Minuet in G Major (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Minuet_in_G_Major_Bach.mxl' },
+            // Paul de Senneville / Richard Clayderman
+            { composer: 'Paul de Senneville', title: 'Hungarian Sonata', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Hungarian_Sonata.mxl' },
+            { composer: 'Paul de Senneville', title: "Mariage d'Amour (Arrangement 2)", instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Chopin_-_Spring_Waltz.mxl' },
+            { composer: 'Paul de Senneville', title: 'Spring Waltz', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Spring_Waltz_Mariage_dAmour_-_Chopin.mxl' },
+            // Frédéric Chopin (More Arrangements)
+            { composer: 'Frédéric Chopin', title: 'Nocturne Op. 9 No. 2 (Easy)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Nocturne_in_E-flat_Major_Op._9_No._2_Easy.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Nocturne in C# Minor', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Nocturne_in_C_sharp_Minor.mxl' },
+            { composer: 'Frédéric Chopin', title: 'Prélude Op. 28 No. 4 (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Prlude_No._4_in_E_Minor_Op._28_-_Frdric_Chopin.mxl' },
+            // George Frideric Handel (More Arrangements)
+            { composer: 'George Frideric Handel', title: 'Passacaglia (Arrangement 2)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Passacaglia2.mxl' },
+            // Wolfgang Amadeus Mozart (More Arrangements)
+            { composer: 'Wolfgang Amadeus Mozart', title: 'Sonata No. 16, K. 545', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/Sonata_No._16_1st_Movement_K._545.mxl' },
+            { composer: 'Wolfgang Amadeus Mozart', title: 'Turkish March (Fingered)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/WA_Mozart_Marche_Turque_Turkish_March_fingered.mxl' },
+            // Scott Joplin (More Arrangements)
+            { composer: 'Scott Joplin', title: 'The Entertainer (1902)', instrument: 'Piano', url: 'https://musetrainer.github.io/library/scores/The_Entertainer_-_Scott_Joplin_-_1902.mxl' },
         ];
 
+        // --- TABS & STATE ---
+        let currentTab = 'library';
+        let allStoreScores = []; // Cache for store
+        let userLibraryScores = []; // Cache for library
+
         function loadScores() {
-            scoreListContainer.innerHTML = ''; // Clear loading message
-            
-            // Create a mutable copy to sort
-            const allScores = [...ALL_SCORES];
-            allScores.sort((a, b) => a.composer.localeCompare(b.composer) || a.title.localeCompare(b.title));
-            
-            displayScores(allScores);
+            setLibTab(currentTab);
+        }
+
+        function setLibTab(tab) {
+            currentTab = tab;
+
+            // Update UI Tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tab === 'library') document.getElementById('tab-library').classList.add('active');
+            else document.getElementById('tab-store').classList.add('active');
+
+            // Reset Filter
+            currentFilterInstrument = 'All';
+            document.getElementById('store-search').value = '';
+
+            // Load Content
+            if (tab === 'library') {
+                loadLibrary();
+            } else {
+                loadStore();
+            }
+        }
+
+        // --- AUTH ---
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+            if (currentTab === 'library') {
+                loadLibrary();
+            } else {
+                // Store reload
+                if (currentTab === 'store' && !user) {
+                    // refresh to update buttons
+                    filterScores();
+                } else if (currentTab === 'store' && user) {
+                    fetchUserLibraryIDs().then(() => filterScores());
+                }
+            }
+        });
+
+        // --- LOADING DATA ---
+
+        // 1. LOAD STORE (Public)
+        async function loadStore() {
+            scoreListContainer.innerHTML = '<p class="info-text">Loading Store...</p>';
+
+            // 1. Fetch User Uploads
+            let uploads = [];
+            try {
+                const snapshot = await db.collection('sheet_music_uploads')
+                    .orderBy('uploadedAt', 'desc')
+                    .limit(50)
+                    .get();
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    uploads.push({
+                        id: doc.id,
+                        title: data.title,
+                        composer: data.composer || "User Upload",
+                        url: data.downloadURL,
+                        isUpload: true,
+                        uploaderName: data.uploaderName,
+                        instrument: data.instrument || 'Piano'
+                    });
+                });
+            } catch (e) {
+                console.error("Failed to load uploads:", e);
+            }
+
+            // 2. Prepare Built-ins (add Pseudo-IDs)
+            const builtIns = ALL_SCORES.map(s => ({
+                id: s.url, // Use URL as ID
+                ...s
+            }));
+
+            // 3. Merge & Sort
+            const combined = [...builtIns, ...uploads];
+            combined.sort((a, b) => a.composer.localeCompare(b.composer) || a.title.localeCompare(b.title));
+
+            allLoadedScores = combined;
+            allStoreScores = combined; // Cache
+
+            renderSidebar(combined);
+            // We need to know what's in library to show "Add" vs "Added"
+            if (currentUser) {
+                await fetchUserLibraryIDs();
+            }
+            displayScores(combined);
+        }
+
+        // 2. LOAD LIBRARY (Private)
+        async function loadLibrary() {
+            if (!currentUser) {
+                scoreListContainer.innerHTML = '<p class="info-text">Please log in to view your library.</p>';
+                renderSidebar([]);
+                return;
+            }
+
+            scoreListContainer.innerHTML = '<p class="info-text">Loading Library...</p>';
+
+            try {
+                const snapshot = await db.collection('users').doc(currentUser.uid)
+                    .collection('sheet_music_library')
+                    .orderBy('addedAt', 'desc')
+                    .get();
+
+                const libScores = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    libScores.push({
+                        docId: doc.id, // ID of the library entry
+                        id: data.originalId, // ID of the original score
+                        title: data.title,
+                        composer: data.composer,
+                        instrument: data.instrument || 'Piano',
+                        url: data.url,
+                        isUpload: data.isUpload || false
+                    });
+                });
+
+                allLoadedScores = libScores;
+                userLibraryScores = libScores; // Cache
+
+                renderSidebar(libScores);
+                displayScores(libScores);
+
+            } catch (e) {
+                console.error("Library load error:", e);
+                scoreListContainer.innerHTML = '<p class="info-text">Error loading library.</p>';
+            }
+        }
+
+        let libraryIDs = new Set();
+        async function fetchUserLibraryIDs() {
+            if (!currentUser) return;
+            try {
+                const snap = await db.collection('users').doc(currentUser.uid).collection('sheet_music_library').get();
+                libraryIDs = new Set();
+                snap.forEach(doc => libraryIDs.add(doc.data().originalId));
+            } catch (e) { console.error(e); }
+        }
+
+        // --- ACTIONS ---
+
+        let itemToRemoveId = null;
+
+        function promptRemoveFromLibrary(docId) {
+            itemToRemoveId = docId;
+            document.getElementById('confirm-modal').style.display = 'flex';
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+            itemToRemoveId = null;
+        }
+
+        async function confirmRemoveAction() {
+            if (!currentUser || !itemToRemoveId) return;
+
+            const btn = document.querySelector('button[onclick="promptRemoveFromLibrary(\'' + itemToRemoveId + '\')"]');
+            if (btn) btn.innerText = "Removing...";
+
+            try {
+                await db.collection('users').doc(currentUser.uid)
+                    .collection('sheet_music_library').doc(itemToRemoveId).delete();
+
+                loadLibrary(); // Reload
+                closeConfirmModal();
+            } catch (e) {
+                console.error("Delete error:", e);
+                showInfoModal("Error", "Failed to remove.");
+                closeConfirmModal();
+            }
+        }
+
+        async function addToLibrary(score) {
+            if (!currentUser) {
+                showInfoModal("Login Required", "Please log in to save scores.");
+                return;
+            }
+
+            try {
+                // Check if already exists (client side check first)
+                if (libraryIDs.has(score.id)) {
+                    showInfoModal("Info", "Already in library.");
+                    return;
+                }
+
+                await db.collection('users').doc(currentUser.uid).collection('sheet_music_library').add({
+                    originalId: score.id,
+                    title: score.title,
+                    composer: score.composer,
+                    instrument: score.instrument || 'Piano',
+                    url: score.url,
+                    isUpload: !!score.isUpload,
+                    addedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                libraryIDs.add(score.id);
+                // Refresh button state in place
+                filterScores();
+                // showInfoModal("Success", "Added to library!");
+
+            } catch (e) {
+                console.error("Add error:", e);
+                showInfoModal("Error", "Failed to add to library.");
+            }
+        }
+
+        // --- DISPLAY & FILTER ---
+
+        // Responsive Placeholder Listener
+        function updatePlaceholder() {
+            const input = document.getElementById('store-search');
+            if (window.innerWidth <= 500) {
+                input.placeholder = "Search";
+            } else {
+                input.placeholder = "Type here...";
+            }
+        }
+        window.addEventListener('resize', updatePlaceholder);
+        // Initial check called in window.onload or explicitly here if needed, 
+        // but window.onload logic is below. I'll add it there.
+
+        let currentFilterInstrument = 'All';
+        let allLoadedScores = [];
+
+        function renderSidebar(scores) {
+            allLoadedScores = scores;
+            const sidebar = document.getElementById('instrument-sidebar');
+            sidebar.innerHTML = '<div class="sidebar-item active" id="filter-all" onclick="filterByInstrument(\'All\')">All Instruments</div>';
+
+            const instruments = new Set();
+            scores.forEach(s => {
+                const inst = s.instrument || 'Unknown';
+                instruments.add(inst);
+            });
+
+            const sortedInstruments = Array.from(instruments).sort();
+
+            sortedInstruments.forEach(inst => {
+                const div = document.createElement('div');
+                div.className = 'sidebar-item';
+                div.innerText = inst;
+                div.onclick = () => filterByInstrument(inst);
+                div.id = `filter-${inst.replace(/\s+/g, '-')}`;
+                sidebar.appendChild(div);
+            });
+        }
+
+        function filterByInstrument(instrument) {
+            currentFilterInstrument = instrument;
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            if (instrument === 'All') {
+                document.getElementById('filter-all').classList.add('active');
+            } else {
+                const id = `filter-${instrument.replace(/\s+/g, '-')}`;
+                const el = document.getElementById(id);
+                if (el) el.classList.add('active');
+            }
+            filterScores();
+        }
+
+        function filterScores() {
+            const query = document.getElementById('store-search').value.toLowerCase();
+
+            const filtered = allLoadedScores.filter(score => {
+                const matchesSearch = score.title.toLowerCase().includes(query) ||
+                    score.composer.toLowerCase().includes(query);
+                const matchesInst = currentFilterInstrument === 'All' ||
+                    (score.instrument === currentFilterInstrument) ||
+                    (!score.instrument && currentFilterInstrument === 'Unknown');
+                return matchesSearch && matchesInst;
+            });
+            displayScores(filtered);
+        }
+
+        // --- HELPERS FOR DISPLAY ---
+
+        // Cache for fetched images
+        const composerImageCache = {};
+
+        const pendingImageRequests = {};
+
+        async function fetchComposerImage(composer) {
+            if (!composer) return null;
+            const lowerC = composer.toLowerCase();
+
+            // 1. Check Hardcoded Cache (Exact or Partial)
+            if (composerImageCache.hasOwnProperty(lowerC)) return composerImageCache[lowerC];
+            for (const key in composerImageCache) {
+                if (lowerC.includes(key) && composerImageCache[key]) return composerImageCache[key];
+            }
+
+            // 2. Check LocalStorage Cache (Persistent)
+            const cachedUrl = localStorage.getItem(`rekindle_img_${lowerC}`);
+            if (cachedUrl) {
+                if (cachedUrl === 'null') return null;
+                composerImageCache[lowerC] = cachedUrl; // Sync to memory
+                return cachedUrl;
+            }
+
+            // 3. Check Pending Requests (Deduplicate)
+            if (pendingImageRequests[lowerC]) return pendingImageRequests[lowerC];
+
+            // 4. Fetch from Wikipedia (Direct Title -> Search Fallback)
+            const promise = new Promise(async (resolve) => {
+                try {
+                    // A. Direct Title Lookup (Best Quality)
+                    // We assume 'composer' is the full name now (e.g. "Johann Sebastian Bach")
+                    let resp = await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(composer)}&prop=pageimages&format=json&pithumbsize=100&origin=*`);
+                    let data = await resp.json();
+                    let pages = data.query ? data.query.pages : null;
+                    let pageId = pages ? Object.keys(pages)[0] : null;
+
+                    if (pageId && pageId !== "-1" && pages[pageId].thumbnail) {
+                        const url = pages[pageId].thumbnail.source;
+                        composerImageCache[lowerC] = url;
+                        localStorage.setItem(`rekindle_img_${lowerC}`, url); // Save to LocalStorage
+                        resolve(url);
+                        return;
+                    }
+
+                    // B. Fallback: Search Generator (If direct lookup failed)
+                    // Useful if the name is slightly off or is a redirect we missed
+                    const searchTerm = `${composer} composer`;
+                    resp = await fetch(`https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchTerm)}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=100&origin=*`);
+                    data = await resp.json();
+
+                    if (data.query && data.query.pages) {
+                        pages = data.query.pages;
+                        pageId = Object.keys(pages)[0];
+                        if (pageId && pages[pageId].thumbnail) {
+                            const url = pages[pageId].thumbnail.source;
+                            composerImageCache[lowerC] = url;
+                            localStorage.setItem(`rekindle_img_${lowerC}`, url); // Save to LocalStorage
+                            resolve(url);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // console.warn("Wiki fetch failed", e);
+                }
+
+                // Manual Override if Pachelbel fails
+                if (lowerC.includes('pachelbel')) {
+                    const fallback = 'https://interlude-cdn-blob-prod.azureedge.net/interlude-blob-storage-prod/2025/06/Pachelbel-composer.jpg';
+                    composerImageCache[lowerC] = fallback;
+                    localStorage.setItem(`rekindle_img_${lowerC}`, fallback); // Save fallback too
+                    resolve(fallback);
+                    return;
+                }
+
+                composerImageCache[lowerC] = null;
+                resolve(null);
+            });
+
+            pendingImageRequests[lowerC] = promise;
+            return promise;
+        }
+
+        // Replaced Icon with valid instrument text map or pass-through
+        function getInstrumentLabel(instrument) {
+            return instrument || 'Unknown';
         }
 
         function displayScores(scores) {
             scoreListContainer.innerHTML = '';
             if (!scores || scores.length === 0) {
-                scoreListContainer.innerHTML = '<p class="info-text">No scores found.</p>';
+                scoreListContainer.innerHTML = '<p class="info-text">No scores found.<br>Go to the store to find more!</p>';
                 return;
             }
 
@@ -402,31 +1115,370 @@
                 const div = document.createElement('div');
                 div.className = 'list-item';
 
-                const link = document.createElement('a');
-                link.href = '#'; // Link is decorative, button handles action
-                link.target = '_blank';
-                link.className = 'list-item-title';
-                link.textContent = `${score.title} - ${score.composer}`;
-                link.onclick = (e) => e.preventDefault();
+                // 1. Composer Image Container
+                const imgContainer = document.createElement('div');
+                // Create Placeholder
+                const placeholder = document.createElement('div');
+                placeholder.className = 'composer-img';
+                placeholder.style.display = 'flex';
+                placeholder.style.justifyContent = 'center';
+                placeholder.style.alignItems = 'center';
+                placeholder.style.backgroundColor = '#ddd';
+                placeholder.style.fontSize = '1.2rem';
+                placeholder.textContent = score.composer ? score.composer.charAt(0).toUpperCase() : '?';
+                imgContainer.appendChild(placeholder);
+                div.appendChild(imgContainer);
 
-                const button = document.createElement('button');
-                button.className = 'list-btn';
-                button.textContent = 'View';
-                
-                button.addEventListener('click', () => {
-                    viewScore(score.url, score.title);
+                // Async Fetch Image
+                fetchComposerImage(score.composer).then(url => {
+                    if (url) {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.className = 'composer-img';
+                        // Replace content
+                        imgContainer.innerHTML = '';
+                        imgContainer.appendChild(img);
+                    }
+                    // Else keep placeholder
                 });
 
+                // 2. Info Stack (Title / Composer) - MOVED UP
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'score-info';
+
+                const titleLink = document.createElement('div');
+                titleLink.className = 'score-title';
+                titleLink.textContent = score.title;
+                titleLink.onclick = () => viewScore(score);
+                infoDiv.appendChild(titleLink);
+
+                const compText = document.createElement('div');
+                compText.className = 'score-composer';
+                compText.textContent = score.composer;
+                infoDiv.appendChild(compText);
+
+                div.appendChild(infoDiv);
+
+                // 3. Instrument Label (Text) - MOVED DOWN
+                const instDiv = document.createElement('div');
+                instDiv.className = 'instrument-label';
+                instDiv.textContent = getInstrumentLabel(score.instrument);
+                div.appendChild(instDiv);
+
+                // 4. Buttons
                 const buttonWrapper = document.createElement('div');
                 buttonWrapper.className = 'list-item-buttons';
-                buttonWrapper.appendChild(button);
 
-                div.appendChild(link);
+                // View Button
+                const viewBtn = document.createElement('button');
+                viewBtn.className = 'list-btn';
+                viewBtn.textContent = 'View';
+                viewBtn.onclick = () => viewScore(score);
+                buttonWrapper.appendChild(viewBtn);
+
+                // Action Buttons
+                if (currentUser) {
+                    if (currentTab === 'store') {
+                        const isAdded = libraryIDs.has(score.id);
+                        const addBtn = document.createElement('button');
+                        addBtn.className = 'list-btn';
+                        addBtn.textContent = isAdded ? 'Added' : 'Add';
+                        addBtn.disabled = isAdded;
+                        if (!isAdded) addBtn.onclick = () => addToLibrary(score);
+                        else addBtn.style.opacity = '0.6';
+                        buttonWrapper.appendChild(addBtn);
+
+                    } else if (currentTab === 'library') {
+                        const delBtn = document.createElement('button');
+                        delBtn.className = 'list-btn';
+                        delBtn.textContent = 'Remove';
+                        delBtn.onclick = () => promptRemoveFromLibrary(score.docId);
+                        buttonWrapper.appendChild(delBtn);
+                    }
+                }
+
                 div.appendChild(buttonWrapper);
                 fragment.appendChild(div);
             });
             scoreListContainer.appendChild(fragment);
         }
+
+        // --- UPLOAD LOGIC ---
+        function updateUploadButton() {
+            const btn = document.getElementById('upload-btn');
+            if (currentUser && currentUser.email === 'ukiyo@rekindle.ink') {
+                btn.style.opacity = '1.0';
+                btn.style.cursor = 'pointer';
+            } else {
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+            }
+        }
+
+        function openUploadModal() {
+            if (!currentUser || currentUser.email !== 'ukiyo@rekindle.ink') {
+                showInfoModal("Coming Soon", "Uploads are currently limited to administrators. Coming to everyone soon!");
+                return;
+            }
+
+            document.getElementById('upload-title').value = '';
+            document.getElementById('upload-composer').value = '';
+            document.getElementById('upload-file').value = '';
+            document.getElementById('upload-instrument').selectedIndex = 0;
+            document.getElementById('upload-modal').style.display = 'flex';
+        }
+
+        // ... (rest of upload/midi logic) ... 
+
+        // Add existing window.onload if I can find where it is or just update it if it's near
+        // Wait, window.onload is way up at line 540.
+        // I will just add the call to updatePlaceholder here at the end of the script to run immediately
+        // and let the event listener handle resizing.
+        updatePlaceholder();
+
+        function closeUploadModal() {
+            document.getElementById('upload-modal').style.display = 'none';
+        }
+
+        async function startUpload() {
+            const title = document.getElementById('upload-title').value;
+            const composer = document.getElementById('upload-composer').value;
+            const fileInput = document.getElementById('upload-file');
+            const instrument = document.getElementById('upload-instrument').value;
+
+            if (!title) {
+                alert("Please enter a title.");
+                return;
+            }
+            if (fileInput.files.length === 0) {
+                alert("Please select a file.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const name = file.name.toLowerCase();
+            const isMidi = name.endsWith('.mid') || name.endsWith('.midi');
+
+            if (!name.endsWith('.mxl') && !name.endsWith('.xml') && !name.endsWith('.musicxml') && !isMidi) {
+                alert("Only .mxl, .xml, .musicxml, .mid, and .midi files are allowed.");
+                return;
+            }
+
+            // Size Limit (700KB)
+            if (file.size > 700 * 1024) {
+                alert("File too large. Maximum size is 700KB.");
+                return;
+            }
+
+            closeUploadModal();
+            document.getElementById('loading-indicator').style.display = 'flex';
+
+            try {
+                // 1. Read File
+                const reader = new FileReader();
+                const fileData = await new Promise((resolve, reject) => {
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = (e) => reject(e);
+                    reader.readAsDataURL(file);
+                });
+
+                let uploadDataUrl = fileData;
+                let finalFilename = file.name;
+
+                // 2. SKIP CONVERSION - Upload raw MIDI to save space
+                // Conversion happens on viewScore
+                if (isMidi) {
+                    finalFilename = file.name; // Keep original extension
+                }
+
+                // 3. Upload
+                await db.collection('sheet_music_uploads').add({
+                    title: title,
+                    composer: composer || "User Upload",
+                    uploaderUid: currentUser.uid,
+                    uploaderName: currentUser.email ? currentUser.email.split('@')[0] : 'User',
+                    filename: finalFilename,
+                    downloadURL: uploadDataUrl,
+                    uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    size: file.size, // Original size
+                    isMidiConverted: isMidi,
+                    instrument: instrument || "Piano"
+                });
+
+                showInfoModal("Success", "Sheet music uploaded successfully!");
+                setLibTab('store'); // Reload Store to show new item
+
+            } catch (e) {
+                console.error("Upload error:", e);
+                showInfoModal("Error", "Upload failed: " + e.message);
+            } finally {
+                document.getElementById('loading-indicator').style.display = 'none';
+            }
+        }
+
+        // --- MIDI TO MUSICXML CONVERTER ---
+        function convertMidiToMusicXML(midi, title, composer, instrument) {
+            // Basic MusicXML Generation
+            // This is a simplified generator that quantizes to 4/4 
+
+            // 1. Setup Wrapper
+            let xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <work>
+    <work-title>${escapeHTML(title)}</work-title>
+  </work>
+  <identification>
+    <creator type="composer">${escapeHTML(composer || 'Unknown')}</creator>
+  </identification>
+  <part-list>
+    <score-part id="P1">
+      <part-name>${escapeHTML(instrument || 'Piano')}</part-name>
+      <score-instrument id="P1-I1">
+        <instrument-name>${escapeHTML(instrument || 'Piano')}</instrument-name>
+      </score-instrument>
+    </score-part>
+  </part-list>
+  <part id="P1">
+`;
+
+            // 2. Process Notes
+            // Merge all tracks into one list of notes for simplicity (Single Staff)
+            let allNotes = [];
+            midi.tracks.forEach(track => {
+                track.notes.forEach(note => {
+                    allNotes.push({
+                        pitch: note.midi,
+                        start: note.ticks,
+                        duration: note.durationTicks,
+                        velocity: note.velocity
+                    });
+                });
+            });
+
+            // Sort by start time
+            allNotes.sort((a, b) => a.start - b.start);
+
+            // Quantization / Measure Logic
+            const PPQ = midi.header.ppq || 480;
+            // Assume 4/4: 1 Measure = 4 beats = 4 * PPQ ticks
+            const ticksPerMeasure = PPQ * 4;
+
+            // Find length of song
+            const lastNote = allNotes[allNotes.length - 1];
+            const totalTicks = lastNote ? (lastNote.start + lastNote.duration) : 0;
+            const totalMeasures = Math.ceil(totalTicks / ticksPerMeasure) || 1;
+
+            let currentNoteIndex = 0;
+
+            for (let m = 0; m < totalMeasures; m++) {
+                const measureStart = m * ticksPerMeasure;
+                const measureEnd = measureStart + ticksPerMeasure;
+
+                xml += `    <measure number="${m + 1}">\n`;
+
+                // Add Attributes to first measure
+                if (m === 0) {
+                    xml += `      <attributes>
+        <divisions>${PPQ}</divisions>
+        <key>
+          <fifths>0</fifths>
+        </key>
+        <time>
+          <beats>4</beats>
+          <beat-type>4</beat-type>
+        </time>
+        <clef>
+          <sign>G</sign>
+          <line>2</line>
+        </clef>
+      </attributes>\n`;
+                }
+
+                // Find notes starting in this measure
+                let measureNotes = [];
+                while (currentNoteIndex < allNotes.length && allNotes[currentNoteIndex].start < measureEnd) {
+                    measureNotes.push(allNotes[currentNoteIndex]);
+                    currentNoteIndex++;
+                }
+
+                // Iterate notes in this measure
+                let currentMeasureTime = 0;
+
+                for (let i = 0; i < measureNotes.length; i++) {
+                    const note = measureNotes[i];
+                    const relativeStart = Math.round(note.start - measureStart);
+
+                    const prevNote = i > 0 ? measureNotes[i - 1] : null;
+                    const isSimultaneous = prevNote && Math.abs(prevNote.start - note.start) < 5;
+
+                    if (isSimultaneous) {
+                        xml += `      <note>
+        <chord/>
+        <pitch>
+          <step>${getNoteName(note.pitch)}</step>
+          <octave>${getOctave(note.pitch)}</octave>
+        </pitch>
+        <duration>${note.duration}</duration>
+        <type>quarter</type>
+      </note>\n`;
+                    } else {
+                        // Fill gap with rest
+                        if (relativeStart > currentMeasureTime) {
+                            const gap = relativeStart - currentMeasureTime;
+                            xml += `      <note>
+        <rest/>
+        <duration>${gap}</duration>
+        <type>quarter</type>
+      </note>\n`;
+                            currentMeasureTime += gap;
+                        }
+
+                        // If overlaps with previous note's duration (polyphony), skip for this simple version
+                        if (relativeStart < currentMeasureTime) {
+                            continue;
+                        }
+
+                        xml += `      <note>
+        <pitch>
+          <step>${getNoteName(note.pitch)}</step>
+          <octave>${getOctave(note.pitch)}</octave>
+        </pitch>
+        <duration>${note.duration}</duration>
+        <type>quarter</type>
+      </note>\n`;
+                        currentMeasureTime += note.duration;
+                    }
+                }
+
+                xml += `    </measure>\n`;
+            }
+
+            xml += `  </part>
+</score-partwise>`;
+            return xml;
+        }
+
+        const NOTE_NAMES = ['C', 'C', 'D', 'D', 'E', 'F', 'F', 'G', 'G', 'A', 'A', 'B'];
+        function getNoteName(midiVal) {
+            return NOTE_NAMES[midiVal % 12];
+        }
+        function getOctave(midiVal) {
+            return Math.floor(midiVal / 12) - 1;
+        }
+
+        // --- MODALS ---
+        function showInfoModal(title, message) {
+            document.getElementById('info-modal-title').innerText = title;
+            document.getElementById('info-modal-text').innerText = message;
+            document.getElementById('info-modal').style.display = 'flex';
+        }
+
+        function closeInfoModal() {
+            document.getElementById('info-modal').style.display = 'none';
+        }
+
+        // --- VIEWER ---
 
         function openScoreViewer() {
             document.getElementById('score-viewer').style.display = 'flex';
@@ -434,23 +1486,53 @@
 
         function closeScoreViewer() {
             document.getElementById('score-viewer').style.display = 'none';
-            // Clear the container to free up memory
             document.getElementById('osmd-container').innerHTML = '';
             osmd = null;
         }
 
-        async function viewScore(url, title) {
+        async function viewScore(score) {
             openScoreViewer();
-            document.getElementById('score-title').innerText = title;
+            document.getElementById('score-title').innerText = score.title;
             const loadingDiv = document.getElementById('score-loading');
             const osmdContainer = document.getElementById('osmd-container');
-            
+
             loadingDiv.style.display = 'block';
             loadingDiv.innerText = 'Loading score...';
-            osmdContainer.innerHTML = ''; // Clear previous score
+            osmdContainer.innerHTML = '';
 
             try {
-                const scoreData = url; // GitHub raw URLs are CORS-friendly
+                let scoreData = score.url;
+
+                // Detect MIDI Logic (Base64 MIDI or .mid extension)
+                const isMidiUrl = scoreData.startsWith('data:audio/mid') || scoreData.startsWith('data:audio/x-mid') || scoreData.toLowerCase().endsWith('.mid') || scoreData.toLowerCase().endsWith('.midi');
+
+                // Also check our specific boolean flag from uploads if present
+                const isMidiUpload = score.isMidiConverted; // We used this flag name, now it means "isMidiSource"
+
+                if (isMidiUrl || isMidiUpload) {
+                    loadingDiv.innerText = 'Converting MIDI...';
+                    // Fetch if it's a URL, or use if data URI
+                    let midiArrayBuffer;
+                    if (scoreData.startsWith('data:')) {
+                        // Convert Base64 Data URI to ArrayBuffer
+                        const base64 = scoreData.split(',')[1];
+                        const binaryString = window.atob(base64);
+                        const len = binaryString.length;
+                        const bytes = new Uint8Array(len);
+                        for (let i = 0; i < len; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        midiArrayBuffer = bytes.buffer;
+                    } else {
+                        const resp = await fetch(scoreData);
+                        midiArrayBuffer = await resp.arrayBuffer();
+                    }
+
+                    if (!Midi) throw new Error("MIDI library missing");
+                    const midi = new Midi(midiArrayBuffer);
+                    // On-the-fly conversion
+                    scoreData = convertMidiToMusicXML(midi, score.title, score.composer, score.instrument);
+                }
 
                 osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(osmdContainer, { autoResize: true, backend: "svg", drawTitle: true });
                 await osmd.load(scoreData);
@@ -463,4 +1545,5 @@
         }
     </script>
 </body>
+
 </html>
