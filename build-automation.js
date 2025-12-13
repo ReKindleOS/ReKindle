@@ -162,6 +162,8 @@ async function transpileHtml(htmlContent) {
             );
             // Add margin to children
             css += ` .grid-container > * { margin: 10px; flex: 1 0 85px; max-width: 120px; } `;
+            // FIX: "All Games" Header Layout
+            css += ` .grid-container > .view-header { flex: 1 1 100%; max-width: 100%; margin-top: 25px; margin-bottom: 15px; border-bottom: 2px solid black; } `;
             // Specific fix for Featured Grid (Wider cards)
             css += ` #featured-grid > * { flex: 1 0 200px !important; max-width: none !important; } `;
         }
