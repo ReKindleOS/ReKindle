@@ -6,7 +6,6 @@ const APPS = [
     {
         id: 'browser',
         name: 'Browser',
-        // es6: true,        
         cat: 'essentials',
         icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><path d="M16 2 C22 10 22 22 16 30"/><path d="M16 2 C10 10 10 22 16 30"/>'
     },
@@ -316,6 +315,7 @@ const APPS = [
     {
         id: '2048',
         name: '2048',
+        es6: true,
         cat: 'games',
         icon: '<rect x="2" y="2" width="28" height="28" fill="white" stroke="black" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="2"/><text x="9" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">2</text><text x="23" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">0</text><text x="9" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">4</text><text x="23" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">8</text>'
     },
@@ -376,12 +376,14 @@ const APPS = [
     {
         id: 'jigsaw',
         name: 'Jigsaw',
+        es6: true,
         cat: 'games',
         icon: '<path d="M10 4 h12 v8 h4 v12 h-12 v-4 h-8 v-12 h4 v-4 z"/><circle cx="16" cy="12" r="2"/>'
     },
     {
         id: 'memory',
         name: 'Memory',
+        es6: true,
         cat: 'games',
         icon: '<rect x="4" y="4" width="10" height="10" fill="black" stroke="none"/><rect x="18" y="18" width="10" height="10" fill="black" stroke="none"/>'
     },
@@ -389,6 +391,7 @@ const APPS = [
         id: 'minesweeper',
         cat: 'games',
         name: 'Minesweeper',
+        es6: true,
         icon: '<circle cx="16" cy="16" r="8" fill="black"/><line x1="16" y1="4" x2="16" y2="8"/><line x1="16" y1="24" x2="16" y2="28"/><line x1="4" y1="16" x2="8" y2="16"/><line x1="24" y1="16" x2="28" y2="16"/>'
     },
     {
@@ -406,12 +409,14 @@ const APPS = [
     {
         id: 'nonograms',
         name: 'Nonograms',
+        es6: true,
         cat: 'games',
         icon: '<rect x="6" y="6" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><line x1="11" y1="6" x2="11" y2="26"/><line x1="21" y1="6" x2="21" y2="26"/><line x1="6" y1="11" x2="26" y2="11"/><line x1="6" y1="21" x2="26" y2="21"/>'
     },
     {
         id: 'words',
         name: 'Scrabble',
+        es6: true,
         cat: 'games',
         icon: '<rect x="4" y="10" width="10" height="12" fill="white"/><text x="9" y="19" font-size="10" text-anchor="middle" stroke="none" fill="black" font-weight="bold">S</text><rect x="16" y="8" width="10" height="12" fill="black" stroke="none"/><text x="21" y="17" font-size="10" text-anchor="middle" stroke="none" fill="white" font-weight="bold">W</text>'
     },
@@ -436,6 +441,7 @@ const APPS = [
     {
         id: 'sudoku',
         name: 'Sudoku',
+        es6: true,
         cat: 'games',
         icon: '<rect x="2" y="2" width="28" height="28" fill="none" stroke="black" stroke-width="2"/><path d="M11 2v28M21 2v28M2 11h28M2 21h28" stroke="black" stroke-width="1"/><text x="16" y="19" font-size="10" font-family="monospace" text-anchor="middle">9</text>'
     },
@@ -467,6 +473,7 @@ const APPS = [
     {
         id: 'bindings',
         name: 'Connections',
+        es6: true,
         cat: 'games',
         icon: '<rect x="6" y="6" width="8" height="8"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>' // Adjusted icon to be distinct
     },
@@ -500,6 +507,7 @@ const APPS = [
     {
         id: '2ptictactoe',
         name: 'Tic-Tac-Toe',
+        es6: true,
         cat: 'two_player',
         icon: '<line x1="12" y1="6" x2="12" y2="26"/><line x1="20" y1="6" x2="20" y2="26"/><line x1="6" y1="12" x2="26" y2="12"/><line x1="6" y1="20" x2="26" y2="20"/>'
     }
