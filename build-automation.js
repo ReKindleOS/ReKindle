@@ -168,7 +168,17 @@ async function transpileHtml(htmlContent, filename = '') {
             // Epub.js: Inline & Transpile (v0.3.88 is ES6+, existing Babel step will fix it)
             'epub': {
                 check: (src) => src.includes('epub.min.js'),
-                replace: () => "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"
+                replace: () => {
+                    console.log("    Downloading epub.js for inlining...");
+                    try {
+                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+                        return { type: 'inline', content: content };
+                    } catch (e) {
+                        console.error("    Failed to download epub.js:", e.message);
+                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                    }
+                }
             },
             // OpenSheetMusicDisplay: Downgrade to 0.8.3 (Pre-TypeScript/Modern targets)
             'osmd': {
@@ -860,7 +870,20 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         const LIBRARY_REPLACEMENTS = {
             'firebase': { check: src => src.includes('firebase') && src.endsWith('.js'), replace: src => `https://www.gstatic.com/firebasejs/8.10.1/${src.split('/').pop().replace('-compat', '')}` },
             'marked': { check: src => src.includes('marked.min.js'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js" },
-            'epub': { check: src => src.includes('epub.min.js'), replace: () => "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js" },
+            'epub': {
+                check: (src) => src.includes('epub.min.js'),
+                replace: () => {
+                    console.log("    Downloading epub.js for inlining...");
+                    try {
+                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+                        return { type: 'inline', content: content };
+                    } catch (e) {
+                        console.error("    Failed to download epub.js:", e.message);
+                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                    }
+                }
+            },
             'osmd': { check: src => src.includes('opensheetmusicdisplay'), replace: () => "https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@0.8.3/build/opensheetmusicdisplay.min.js" },
             'tonejs-midi': { check: src => src.includes('@tonejs/midi'), replace: () => "https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js" },
             'jszip': { check: src => src.includes('jszip') && !src.includes('3.10.1'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" },
@@ -979,7 +1002,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         // Let's handle both.
 
         const mainGridInjection = `
-            if (app['lite-hidden']) {
+            if (app['es6']) {
                 a.classList.add('es6-disabled');
                 a.onclick = function (e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
@@ -997,7 +1020,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         const featuredTarget = "a.className = 'featured-card';";
         const featuredInjection = `
             a.className = 'featured-card';
-            if (app['lite-hidden']) {
+            if (app['es6']) {
                 a.className += ' es6-disabled';
                 a.onclick = function(e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
