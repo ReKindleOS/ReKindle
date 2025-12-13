@@ -1,10 +1,17 @@
 export default {
   async fetch(request, env) {
     // SECURITY: Only allow your specific domain
-    const ALLOWED_ORIGIN = "https://rekindle.ink";
-    
+    // SECURITY: Limit to specific domains
+    const ALLOWED_ORIGINS = [
+      "https://rekindle.ink",
+      "https://lite.rekindle.ink"
+    ];
+
+    const origin = request.headers.get("Origin");
+    const isAllowed = ALLOWED_ORIGINS.includes(origin);
+
     const corsHeaders = {
-      "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+      "Access-Control-Allow-Origin": isAllowed ? origin : "null",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
@@ -15,9 +22,9 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return new Response("Send a POST request with JSON body { image: 'base64...' }", { 
+      return new Response("Send a POST request with JSON body { image: 'base64...' }", {
         status: 405,
-        headers: corsHeaders 
+        headers: corsHeaders
       });
     }
 
@@ -56,7 +63,7 @@ RULES:
 4. If the image is blank, blurry, or contains no text, output EXACTLY this string: "__NO_TEXT_DETECTED__"
 5. Do NOT explain why you are outputting "__NO_TEXT_DETECTED__".`,
           image: imageArray,
-          temperature: 0, 
+          temperature: 0,
           max_tokens: 60,
         }
       );
@@ -66,7 +73,7 @@ RULES:
 
       // Cleanup Markdown
       rawText = rawText.replace(/```[\s\S]*?\n/g, "").replace(/```/g, "");
-      
+
       // Cleanup prefixes
       const prefixesToRemove = ["Here is the text:", "The text is:", "Output:"];
       prefixesToRemove.forEach(prefix => {
