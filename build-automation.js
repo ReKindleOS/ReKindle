@@ -52,7 +52,7 @@ async function transpileHtml(htmlContent) {
         // Epub.js: Pin to 0.3.88 (Stable for legacy)
         'epub': {
             check: (src) => src.includes('epub.min.js'),
-            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"
+            replace: () => "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"
         },
         // OpenSheetMusicDisplay: Downgrade to 0.8.3 (Pre-TypeScript/Modern targets)
         'osmd': {

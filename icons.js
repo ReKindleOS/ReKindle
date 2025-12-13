@@ -6,6 +6,7 @@ const APPS = [
     {
         id: 'browser',
         name: 'Browser',
+        // es6: true,        
         cat: 'essentials',
         icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><path d="M16 2 C22 10 22 22 16 30"/><path d="M16 2 C10 10 10 22 16 30"/>'
     },
@@ -142,7 +143,6 @@ const APPS = [
     {
         id: 'airtype',
         name: 'AirType',
-        es6: true,
         cat: 'tools',
         featured: true,
         featuredOrder: 5,
@@ -162,7 +162,6 @@ const APPS = [
     {
         id: 'kindlechat',
         name: 'KindleChat',
-        es6: true,
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 4,
@@ -266,7 +265,6 @@ const APPS = [
     {
         id: 'pixel',
         name: 'Pixel',
-        es6: true,
         cat: 'tools',
         desc: 'A 1-bit pixel art canvas.',
         icon: '<rect x="4" y="4" width="24" height="24" fill="none" stroke="black" stroke-width="2"/><rect x="8" y="8" width="4" height="4" fill="black"/><rect x="20" y="12" width="4" height="4" fill="black"/><rect x="12" y="20" width="4" height="4" fill="black"/>'
@@ -463,7 +461,6 @@ const APPS = [
     {
         id: 'wordle',
         name: 'Wordle',
-        es6: true,
         cat: 'games',
         icon: '<rect x="2" y="2" width="12" height="12"/><rect x="18" y="18" width="12" height="12" fill="black" stroke="none"/>'
     },
