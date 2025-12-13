@@ -232,7 +232,121 @@ async function transpileHtml(htmlContent) {
         </div>
     `);
 
-    return $.html();
+    // 7. INJECT ES6 WARNING LOGIC (Lite Build Only)
+    // A. CSS
+    $('style').append('.es6-disabled { opacity: 0.5; filter: grayscale(100%); }');
+
+    // B. Modal HTML
+    $('body').append(`
+        <div id="es6-warning-modal" class="modal-overlay" onclick="document.getElementById('es6-warning-modal').style.display='none'" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10001; align-items:center; justify-content:center;">
+            <div class="modal-box" onclick="event.stopPropagation()" style="background:white; border:2px solid black; padding:20px; width:300px; text-align:center; box-shadow:4px 4px 0 black; font-family:sans-serif;">
+                <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Warning</h3>
+                <p style="margin:20px 0;">This app requires modern features and almost certainly won't work on this device.</p>
+                <div style="display:flex; justify-content:center; gap:10px;">
+                    <button class="sys-btn" onclick="document.getElementById('es6-warning-modal').style.display='none'" style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;">Back</button>
+                    <button id="es6-proceed-btn" class="sys-btn" style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;">Proceed Anyway</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    // C. Helper Function
+    $('body').append(`
+        <script>
+            function showEs6Warning(appId) {
+                var modal = document.getElementById('es6-warning-modal');
+                var btn = document.getElementById('es6-proceed-btn');
+                btn.onclick = function() {
+                    window.location.href = appId + ".html";
+                };
+                modal.style.display = 'flex';
+            }
+        </script>
+    `);
+
+    let finalHtml = $.html();
+
+    // D. Inject JS Logic into index.html rendering loops via String Replacement
+    // Target 1: createAppElement (Main Grid)
+    // We look for a unique line inside createAppElement
+    const mainGridTarget = 'const isFav = favoriteApps.includes(app.id);';
+    const mainGridInjection = `
+            if (app.es6) {
+        a.classList.add('es6-disabled');
+        a.onclick = function (e) {
+            e.preventDefault();
+            showEs6Warning(app.id);
+        };
+        a.href = "javascript:void(0)";
+    }
+            ${mainGridTarget}
+    `;
+    finalHtml = finalHtml.replace(mainGridTarget, mainGridInjection);
+
+    // Target 2: Featured Apps Loop (Manual Render)
+    // We look for the appendChild call in the featured loop. 
+    // This is fragile but focused. We target the end of the innerHTML template literal block.
+    // Original: </div>\n                    `; \n                    fragment.appendChild(a);
+    // Since Babel transpilation might have happened, line endings might vary. 
+    // However, build-automation.js only transpiles inline script blocks using Babel IF they are processed.
+    // The main index.html logic is usually in a script block. 
+    // IF Babel ran on it, the code structure might be different (var instead of const).
+    // Babel 'modules: false, targets: ie 11' likely kept the structure similar but transpiled const->var.
+    // So 'const isFav' might be 'var isFav'.
+    // We should try to be flexible or check if transpilation happened.
+
+    // Fallback: If Babel ran, 'const' -> 'var'.
+    finalHtml = finalHtml.replace('var isFav = favoriteApps.includes(app.id);', mainGridInjection.replace('const', 'var'));
+
+    // Featured Loop Injection
+    // We search for the specific structure of the featured card creation.
+    // "fragment.appendChild(a);" appears multiple times.
+    // The featured loop has: a.className = 'featured-card';
+    const featuredTarget = 'fragment.appendChild(a);'; // Too generic?
+    // Let's use the line before it in the featured loop: 
+    // <span class="featured-sub">${subheading}</span>
+    // But Babel might have turned template literals into string concatenation!
+    // "featured-sub" class string is likely stable.
+
+    // NOTE: Babel transform is async and happened in Step 3. 
+    // If Babel transformed the template literals, we can't search for them easily.
+    // However, 'createAppElement' function name survives. 
+    // 'featuredApps.forEach' survives.
+
+    // Let's rely on the selector logic:
+    // If we can't easily patch the JS text because of Babel, we might need to inject a runtime patch.
+    // But "app.es6" property is new, so existing logic doesn't know it.
+
+    // STRONGER APPROACH: 
+    // Inject a script that runs AFTER the main script (onload) and iterates the DOM to apply the classes/events?
+    // Apps are rendered by 'filterApps'.
+    // 'filterApps' is called on click.
+    // We can monkey-patch 'createAppElement' if it's exposed on window (it's in global scope of definition).
+    // In index.html, 'createAppElement' is defined in the script block. It IS accessible if not inside a compiled module (it's not).
+
+    // So we can overwrite window.createAppElement!
+    // But wait, the Featured loop doesn't use createAppElement. It manually creates elements.
+    // We can OVERWRITE 'filterApps'?
+    // That's a huge function.
+
+    // Let's try the string replace on 'const isFav' / 'var isFav' for createAppElement.
+    // For Featured, we can search for `a.className = 'featured-card';` which is unique to that loop.
+
+    const featuredInjectionPoint = "a.className = 'featured-card';";
+    const featuredLogic = `
+                    a.className = 'featured-card';
+                    if (app.es6) {
+                        a.className += ' es6-disabled';
+                        a.onclick = function(e) {
+                            e.preventDefault();
+                            showEs6Warning(app.id);
+                        };
+                        a.href = "javascript:void(0)";
+                    }
+    `;
+    finalHtml = finalHtml.replace(featuredInjectionPoint, featuredLogic);
+
+    return finalHtml;
 }
 
 async function run() {
