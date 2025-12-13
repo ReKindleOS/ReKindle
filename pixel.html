@@ -355,10 +355,40 @@
         }
 
         .sys-btn:active {
-            background: black;
-            color: white;
             box-shadow: none;
             transform: translate(3px, 3px);
+        }
+
+        /* SLIDER STYLES */
+        input[type=range].gradient-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 25px;
+            background: linear-gradient(to right, black, white);
+            border: 2px solid black;
+            outline: none;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        input[type=range].gradient-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 35px;
+            background: white;
+            border: 2px solid black;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        input[type=range].gradient-slider::-moz-range-thumb {
+            width: 15px;
+            height: 35px;
+            background: white;
+            border: 2px solid black;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
         }
     </style>
 </head>
@@ -481,12 +511,23 @@
                     <canvas id="pixel-canvas"></canvas>
                     <canvas id="grid-canvas"></canvas>
                 </div>
+
+                <!-- Full Width Slider Container -->
+                <div id="slider-container" style="margin-bottom: 10px;">
+                    <input type="range" id="shade-slider" class="gradient-slider" min="0" max="100" value="0"
+                        title="Shade Selector" oninput="updateShade(this.value)">
+                </div>
+
                 <div class="controls">
                     <button class="active" onclick="showGallery()">Back</button>
                     <div style="width:10px;"></div>
-                    <button id="pen-btn" class="active" onclick="setTool('pen')">Pen</button>
-                    <button id="eraser-btn" onclick="setTool('eraser')">Eraser</button>
+
+                    <!-- Tools -->
+                    <button id="tool-pen" class="active" onclick="setTool('pen')">Pen</button>
+                    <button id="tool-eraser" onclick="setTool('eraser')">Eraser</button>
+
                     <div style="width:10px;"></div>
+
                     <button onclick="clearGrid()">Clear</button>
                     <div style="width:10px;"></div>
                     <button class="sys-btn" style="padding: 8px 10px; font-size: 0.8rem; margin-top:0;"
@@ -510,6 +551,7 @@
         let cellSize;
         let grid;
         let currentTool = 'pen';
+        let currentShade = 1; // 0 to 1
         let isDrawing = false;
 
         let lastDrawnRow = -1;
@@ -877,6 +919,12 @@
             container.style.height = canvasSize + 'px';
             container.style.flexGrow = '0'; // Stop it from expanding weirdly
 
+            // Resize Slider Container to match
+            const sliderCont = document.getElementById('slider-container');
+            if (sliderCont) {
+                sliderCont.style.width = canvasSize + 'px';
+            }
+
             cellSize = canvas.width / gridSize;
 
             drawGridLines();
@@ -890,7 +938,7 @@
             gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
             if (cellSize <= 4) return;
 
-            gridCtx.strokeStyle = '#eee';
+            gridCtx.strokeStyle = '#bbb'; // Darker grid lines for better visibility
             gridCtx.lineWidth = 1;
             gridCtx.beginPath();
 
@@ -907,18 +955,24 @@
         function redrawAllPixels() {
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'black';
             for (let r = 0; r < gridSize; r++) {
                 for (let c = 0; c < gridSize; c++) {
-                    if (grid[r][c] === 1) {
-                        ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
-                    }
+                    drawPixel(r, c, grid[r][c]);
                 }
             }
         }
 
         function drawPixel(row, col, value) {
-            ctx.fillStyle = value === 1 ? 'black' : 'white';
+            // Value is 0..1 (1=Black, 0=White)
+            if (value === 0) {
+                ctx.fillStyle = 'white';
+            } else if (value === 1) {
+                ctx.fillStyle = 'black';
+            } else {
+                // Greyscale mapping
+                const shade = Math.round((1 - value) * 255);
+                ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+            }
             ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
         }
 
@@ -956,7 +1010,10 @@
             const row = Math.floor(y / cellSize);
 
             if (col >= 0 && col < gridSize && row >= 0 && row < gridSize) {
-                const newValue = currentTool === 'pen' ? 1 : 0;
+                // Round to 2 decimal places for storage efficiency
+                const penVal = Math.round(currentShade * 100) / 100;
+                const newValue = (currentTool === 'eraser') ? 0 : penVal;
+
                 if (lastDrawnRow !== -1 && lastDrawnCol !== -1) {
                     drawLine(lastDrawnRow, lastDrawnCol, row, col, newValue);
                 } else {
@@ -1053,8 +1110,18 @@
 
         function setTool(tool) {
             currentTool = tool;
-            document.getElementById('pen-btn').classList.toggle('active', tool === 'pen');
-            document.getElementById('eraser-btn').classList.toggle('active', tool === 'eraser');
+            document.getElementById('tool-pen').classList.toggle('active', tool === 'pen');
+            document.getElementById('tool-eraser').classList.toggle('active', tool === 'eraser');
+        }
+
+        function updateShade(val) {
+            // val is 0-100 from slider
+            // 0 (Left) = Black (1.0)
+            // 100 (Right) = White (0.0)
+            currentShade = 1.0 - (val / 100);
+
+            // Auto-switch to pen if user adjusts slider
+            if (currentTool !== 'pen') setTool('pen');
         }
 
         // Helper to sanitize background image URLs from localStorage (from reference)
@@ -1075,7 +1142,7 @@
 
 
         loadWallpaper();
-        
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
