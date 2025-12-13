@@ -32,7 +32,70 @@ async function transpileHtml(htmlContent) {
         }
     });
 
-    // 2. TRANSPILE INLINE JS
+    // 2. REPLACE LIBRARIES WITH ES5 COMPATIBLES
+    const LIBRARY_REPLACEMENTS = {
+        // Firebase: Force 8.10.1 (Last v8 release, fully ES5)
+        'firebase': {
+            check: (src) => src.includes('firebase') && src.endsWith('.js'),
+            replace: (src) => {
+                // Determine module type from filename (app, auth, firestore)
+                // Source: .../9.6.1/firebase-app-compat.js -> Target: .../8.10.1/firebase-app.js
+                const base = src.split('/').pop().replace('-compat', '');
+                return `https://www.gstatic.com/firebasejs/8.10.1/${base}`;
+            }
+        },
+        // Marked: Downgrade to 2.1.3 (Last definitely ES5 safe version)
+        'marked': {
+            check: (src) => src.includes('marked.min.js'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js"
+        },
+        // Epub.js: Pin to 0.3.88 (Stable for legacy)
+        'epub': {
+            check: (src) => src.includes('epub.min.js'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"
+        },
+        // OpenSheetMusicDisplay: Downgrade to 0.8.3 (Pre-TypeScript/Modern targets)
+        'osmd': {
+            check: (src) => src.includes('opensheetmusicdisplay'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/opensheetmusicdisplay/0.8.3/opensheetmusicdisplay.min.js"
+        },
+        // Tone.js/Midi: Pin to 2.0.28 (2021 release)
+        'tonejs-midi': {
+            check: (src) => src.includes('@tonejs/midi'),
+            replace: () => "https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js"
+        },
+        // JSZip: Update to 3.10.1 (IE11/Chrome 44 supported)
+        'jszip': {
+            check: (src) => src.includes('jszip') && !src.includes('3.10.1'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        },
+        // QRCode: Use davidshimjs-qrcodejs (Standard ES5 lib)
+        'qrcode': {
+            check: (src) => src.includes('qrcode'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        },
+        // Chess.js: Keep 0.10.3 (Standard ES5)
+        'chess': {
+            check: (src) => src.includes('chess.js') && !src.includes('0.10.3'),
+            replace: () => "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"
+        }
+    };
+
+    $('script').each((i, el) => {
+        let src = $(el).attr('src');
+        if (src) {
+            for (const [key, rule] of Object.entries(LIBRARY_REPLACEMENTS)) {
+                if (rule.check(src)) {
+                    const newSrc = rule.replace(src);
+                    console.log(`  [${key}] Replaced: ${src} -> ${newSrc}`);
+                    $(el).attr('src', newSrc);
+                    break; // Only apply one rule per script
+                }
+            }
+        }
+    });
+
+    // 3. TRANSPILE INLINE JS
     const scripts = $('script');
     for (let i = 0; i < scripts.length; i++) {
         const script = scripts[i];
@@ -51,14 +114,26 @@ async function transpileHtml(htmlContent) {
         }
     }
 
-    // 3. INJECT POLYFILLS (For Promise, Fetch, etc.)
+    // 4. INJECT POLYFILLS (For Promise, Fetch, etc.)
     $('head').prepend(`
         <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign"></script>
         <script>window.isLiteVersion = true;</script>
     `);
 
-    // 4. ADD VISUAL INDICATOR
-    $('.os-title').append('<span class="lite-badge" style="font-size:0.5em; vertical-align:super;">LITE</span>');
+    // 5. ADD VISUAL INDICATOR & INFO MODAL
+    $('.os-title').append('<span class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.5em; vertical-align:super; cursor:pointer; border-bottom:1px dotted black;" title="About Lite Mode">LITE</span>');
+
+    $('body').append(`
+        <div id="lite-info-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;" onclick="this.style.display='none'">
+            <div class="modal-box" onclick="event.stopPropagation()" style="background:white; border:2px solid black; padding:20px; width:300px; max-width:80%; text-align:center; box-shadow:4px 4px 0 black; font-family:sans-serif;">
+                <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Lite Version</h3>
+                <p style="margin:15px 0;">This is a lightweight version of ReKindle designed for older devices.</p>
+                <p style="margin:15px 0; font-size:0.9em;">ReKindle apps and games are untested on these browsers and most likely won't work, proceed with caution.</p>
+                <button style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;" onclick="document.getElementById('lite-info-modal').style.display='none'">OK</button>
+            </div>
+        </div>
+    `);
+
     return $.html();
 }
 
