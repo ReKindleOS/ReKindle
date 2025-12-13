@@ -10,24 +10,21 @@ const BUILD_DIR = './_deploy';
 const LITE_DIR = './_deploy/lite';
 const MAIN_DIR = './_deploy/main';
 
-// FILES TO IGNORE (System files & Build artifacts)
+// IGNORE LIST
+// Prevents system files and backend configs from being published
 const ignoreList = [
     'node_modules', '.git', '.github', '_deploy',
     'build-automation.js', 'package.json', 'package-lock.json',
     'wrangler.toml', '.gitignore', '.DS_Store',
-    // Firebase files (Keep in root for DB rules, but don't publish to site)
+    // Firebase Backend Files (Keep in repo, ignore for hosting)
     'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json'
 ];
-
-const filterFunc = (src, dest) => {
-    if (ignoreList.includes(path.basename(src))) return false;
-    return true;
-};
 
 async function transpileHtml(htmlContent) {
     const $ = cheerio.load(htmlContent);
 
-    // 1. REMOVE TRAFFIC COP (Prevents Lite site from redirecting to itself)
+    // 1. REMOVE TRAFFIC COP
+    // Prevents the Lite site from checking for legacy browsers and redirecting to itself
     $('script').each((i, el) => {
         const content = $(el).html() || "";
         if (content.includes('Traffic Cop') || content.includes('lite.rekindle.ink')) {
@@ -42,6 +39,7 @@ async function transpileHtml(htmlContent) {
         const $script = $(script);
         const code = $script.html();
 
+        // Only process inline JS (ignore src="..." and non-JS types)
         if (code && !$script.attr('src') && (!$script.attr('type') || $script.attr('type') === 'text/javascript')) {
             try {
                 const result = await babel.transformAsync(code, {
@@ -59,20 +57,38 @@ async function transpileHtml(htmlContent) {
         <script>window.isLiteVersion = true;</script>
     `);
 
-    // 4. VISUAL INDICATOR
+    // 4. ADD VISUAL INDICATOR
     $('.os-title').append('<span class="lite-badge" style="font-size:0.5em; vertical-align:super;">LITE</span>');
     return $.html();
 }
 
 async function run() {
     console.log("🚀 Starting Build...");
+
+    // 1. Clean & Setup Directories
     await fs.emptyDir(BUILD_DIR);
+    await fs.ensureDir(MAIN_DIR);
+    await fs.ensureDir(LITE_DIR);
 
-    // COPY MAIN SITE
-    await fs.copy(SOURCE_DIR, MAIN_DIR, { filter: filterFunc });
+    // 2. Manual Copy Loop (Safer than copying '.')
+    const allFiles = await fs.readdir(SOURCE_DIR);
 
-    // GENERATE LITE SITE
-    await fs.copy(SOURCE_DIR, LITE_DIR, { filter: filterFunc });
+    for (const item of allFiles) {
+        if (ignoreList.includes(item)) continue;
+
+        const srcPath = path.join(SOURCE_DIR, item);
+        const destMain = path.join(MAIN_DIR, item);
+        const destLite = path.join(LITE_DIR, item);
+
+        // Copy to Main
+        await fs.copy(srcPath, destMain);
+
+        // Copy to Lite
+        await fs.copy(srcPath, destLite);
+    }
+
+    // 3. Process Lite HTML Files
+    console.log("🛠️  Transpiling Lite Version...");
     const files = glob.sync(`${LITE_DIR}/**/*.html`);
 
     for (const file of files) {
@@ -80,6 +96,7 @@ async function run() {
         const processed = await transpileHtml(html);
         await fs.outputFile(file, processed);
     }
+
     console.log("✅ Build Complete!");
 }
 
