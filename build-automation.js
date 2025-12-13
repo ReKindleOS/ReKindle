@@ -199,10 +199,7 @@ async function transpileHtml(htmlContent) {
         <script src="https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js"></script>
 
         <!-- 2. Standard Polyfills -->
-        <!-- URLSearchParams Polyfill for Chrome 44 -->
-        <script src="https://unpkg.com/url-search-params-polyfill@8.2.5/index.js"></script>
-        
-        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith&flags=gated"></script>
+        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith,URLSearchParams&flags=gated"></script>
         
         <!-- 3. Manual Fallbacks & Lite Flags -->
         <script>
