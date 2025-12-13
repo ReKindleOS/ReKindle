@@ -3,6 +3,7 @@ const path = require('path');
 const babel = require('@babel/core');
 const cheerio = require('cheerio');
 const glob = require('glob');
+const { execSync } = require('child_process');
 
 // --- CONFIGURATION ---
 const SOURCE_DIR = '.';
@@ -49,10 +50,21 @@ async function transpileHtml(htmlContent) {
             check: (src) => src.includes('marked.min.js'),
             replace: () => "https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js"
         },
-        // Epub.js: Pin to 0.3.88 (Stable for legacy)
+        // Epub.js: Inline & Transpile (v0.3.88 is ES6+, existing Babel step will fix it)
         'epub': {
             check: (src) => src.includes('epub.min.js'),
-            replace: () => "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"
+            replace: () => {
+                console.log("    Downloading epub.js for inlining...");
+                // Fetch content synchronously using curl (no extra deps)
+                try {
+                    const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                    const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+                    return { type: 'inline', content: content };
+                } catch (e) {
+                    console.error("    Failed to download epub.js:", e.message);
+                    return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"; // Fallback to link
+                }
+            }
         },
         // OpenSheetMusicDisplay: Downgrade to 0.8.3 (Pre-TypeScript/Modern targets)
         'osmd': {
@@ -86,9 +98,16 @@ async function transpileHtml(htmlContent) {
         if (src) {
             for (const [key, rule] of Object.entries(LIBRARY_REPLACEMENTS)) {
                 if (rule.check(src)) {
-                    const newSrc = rule.replace(src);
-                    console.log(`  [${key}] Replaced: ${src} -> ${newSrc}`);
-                    $(el).attr('src', newSrc);
+                    const result = rule.replace(src);
+                    
+                    if (typeof result === 'object' && result.type === 'inline') {
+                        console.log(`  [${key}] Replaced: ${src} -> [Inlined Content]`);
+                        $(el).removeAttr('src');
+                        $(el).html(result.content);
+                    } else {
+                        console.log(`  [${key}] Replaced: ${src} -> ${result}`);
+                        $(el).attr('src', result);
+                    }
                     break; // Only apply one rule per script
                 }
             }
@@ -183,7 +202,7 @@ async function transpileHtml(htmlContent) {
         <!-- URLSearchParams Polyfill for Chrome 44 -->
         <script src="https://unpkg.com/url-search-params-polyfill@8.2.5/index.js"></script>
         
-        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith"></script>
+        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith&flags=gated"></script>
         
         <!-- 3. Manual Fallbacks & Lite Flags -->
         <script>
