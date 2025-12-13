@@ -23,6 +23,69 @@ const ignoreList = [
     'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json'
 ];
 
+
+// --- MINIFICATION HELPERS ---
+
+function minifyCssString(css) {
+    // 1. Remove comments
+    css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    // 2. Collapse whitespace (Safe-ish)
+    css = css.replace(/\s+/g, ' ').trim();
+    // 3. Remove space after/before brackets/colons
+    css = css.replace(/\s*{\s*/g, '{').replace(/\s*}\s*/g, '}').replace(/\s*:\s*/g, ':').replace(/\s*;\s*/g, ';');
+    return css;
+}
+
+async function minifyHtmlContent(html) {
+    const $ = cheerio.load(html);
+
+    // 1. Minify Inline Scripts (Safe Minify)
+    const scripts = $('script');
+    for (let i = 0; i < scripts.length; i++) {
+        const el = scripts[i];
+        const $el = $(el);
+        const content = $el.html();
+        if (content && !$el.attr('src')) {
+            // Basic heuristic: is it JS?
+            const type = $el.attr('type');
+            if (!type || type === 'text/javascript' || type === 'module' || type === 'application/javascript') {
+                // Note: we don't change 'module' type here, just minify content
+                const minified = await safeMinifyJs(content);
+                $el.html(minified);
+            }
+        }
+    }
+
+    // 2. Minify Inline Styles
+    $('style').each((i, el) => {
+        const content = $(el).html();
+        if (content) {
+            $(el).html(minifyCssString(content));
+        }
+    });
+
+    // 3. Remove HTML Comments (Regex on final string)
+    // We do this on the output because cheerio might not expose comments easily for removal
+    return $.html().replace(/<!--[\s\S]*?-->/g, '');
+}
+
+async function safeMinifyJs(code) {
+    // Uses Babel to remove comments and minify safely without transpiling syntax (unless needed)
+    try {
+        const result = await babel.transformAsync(code, {
+            comments: false,
+            minified: true,
+            compact: true,
+            configFile: false,
+            babelrc: false
+        });
+        return result.code;
+    } catch (e) {
+        console.error("    JS Minify Error:", e.message);
+        return code; // Return original if fails
+    }
+}
+
 async function processCss(cssContent) {
     // 1. Regex fixes for layout breakers or explicit downgrades
     // Dynamic Viewport Units (dvh/lvh/svh) -> vh (Chrome 108)
@@ -43,7 +106,7 @@ async function processCss(cssContent) {
                 }
             })
         ]).process(css, { from: undefined });
-        return result.css;
+        return minifyCssString(result.css);
     } catch (e) {
         console.error("    CSS Processing Error:", e.message);
         return css;
@@ -59,6 +122,8 @@ async function transpileJs(code) {
                 useBuiltIns: false // We use an external polyfill bundle
             }]],
             comments: false,
+            minified: true,
+            compact: true,
             // Enable common syntax plugins if not in preset (preset-env usually handles Syntax)
         });
         return result.code;
@@ -773,7 +838,7 @@ async function transpileHtml(htmlContent) {
         finalHtml = finalHtml.replace('</style>', wordleCss + '</style>');
     }
 
-    return finalHtml;
+    return await minifyHtmlContent(finalHtml);
 }
 
 async function run() {
@@ -799,6 +864,34 @@ async function run() {
 
         // Copy to Lite
         await fs.copy(srcPath, destLite);
+    }
+
+    // 2.5 Process Main Files (Minify Only)
+    console.log("🛠️  Minifying Main Version...");
+
+    // Main HTML
+    const mainHtmlFiles = glob.sync(`${MAIN_DIR}/**/*.html`);
+    for (const file of mainHtmlFiles) {
+        const html = await fs.readFile(file, 'utf8');
+        await fs.outputFile(file, await minifyHtmlContent(html));
+    }
+
+    // Main CSS
+    const mainCssFiles = glob.sync(`${MAIN_DIR}/**/*.css`);
+    for (const file of mainCssFiles) {
+        const css = await fs.readFile(file, 'utf8');
+        await fs.outputFile(file, minifyCssString(css));
+    }
+
+    // Main JS (Safe Minify)
+    const mainJsFiles = glob.sync(`${MAIN_DIR}/**/*.js`);
+    for (const file of mainJsFiles) {
+        // Skip already minified files (optional, but good practice)
+        if (file.includes('.min.js')) continue;
+
+        const code = await fs.readFile(file, 'utf8');
+        const minified = await safeMinifyJs(code);
+        await fs.outputFile(file, minified);
     }
 
     // 3. Process Lite HTML Files
