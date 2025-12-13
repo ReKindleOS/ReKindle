@@ -233,12 +233,51 @@ async function transpileHtml(htmlContent, filename = '') {
         for (let i = 0; i < scripts.length; i++) {
             const script = scripts[i];
             const $script = $(script);
-            const code = $script.html();
+            let code = $script.html();
 
             // Only process inline JS (ignore src="..." and non-JS types)
             if (code && !$script.attr('src') && (!$script.attr('type') || $script.attr('type') === 'text/javascript' || $script.attr('type') === 'module')) {
                 // Remove module type for compatibility
                 if ($script.attr('type') === 'module') $script.removeAttr('type');
+
+                // --- INJECT ES6 WARNING LOGIC (Pre-Transpilation) ---
+                if (filename === 'index.html') {
+                    // Target 1: createAppElement (Main Grid)
+                    const mainGridTargetOriginal = 'const isFav = favoriteApps.includes(app.id);';
+                    if (code.includes(mainGridTargetOriginal)) {
+                        // console.log("    [Index] Injecting ES6 Warning (Grid)...");
+                        const mainGridInjection = `
+                        if (app.es6) {
+                            a.classList.add('es6-disabled');
+                            a.onclick = function (e) {
+                                e.preventDefault();
+                                showEs6Warning(app.id);
+                            };
+                            a.href = "javascript:void(0)";
+                        }
+                        const isFav = favoriteApps.includes(app.id);
+                       `;
+                        code = code.replace(mainGridTargetOriginal, mainGridInjection);
+                    }
+
+                    // Target 2: Featured Apps Loop (Featured)
+                    const featuredTargetOriginal = "a.className = 'featured-card';";
+                    if (code.includes(featuredTargetOriginal)) {
+                        // console.log("    [Index] Injecting ES6 Warning (Featured)...");
+                        const featuredInjection = `
+                            a.className = 'featured-card';
+                            if (app.es6) {
+                                a.className += ' es6-disabled';
+                                a.onclick = function(e) {
+                                    e.preventDefault();
+                                    showEs6Warning(app.id);
+                                };
+                                a.href = "javascript:void(0)";
+                            }
+                        `;
+                        code = code.replace(featuredTargetOriginal, featuredInjection);
+                    }
+                }
 
                 const transpiled = await transpileJs(code);
                 $script.html(transpiled);
@@ -371,7 +410,7 @@ async function transpileHtml(htmlContent, filename = '') {
         });
 
         // 6. ADD VISUAL INDICATOR & INFO MODAL
-        $('.os-title').append('<span class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.5em; vertical-align:super; cursor:pointer; border-bottom:1px dotted black;" title="About Lite Mode">LITE</span>');
+        $('.os-title').after('<div class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Lite Mode">LITE</div>');
 
         // Fix for specific styling in Lite where badges might look weird
         $('style').append('.lite-badge { background: white; border: 1px solid black; padding: 0 2px; }');
@@ -421,56 +460,7 @@ async function transpileHtml(htmlContent, filename = '') {
 
         let finalHtml = $.html();
 
-        // D. Inject JS Logic into index.html rendering loops via String Replacement
-        // Target 1: createAppElement (Main Grid)
-        // We look for a unique line inside createAppElement.
-        // Minified: const isFav=favoriteApps.includes(app.id);
-        const mainGridTargetMinified = 'const isFav=favoriteApps.includes(app.id);';
-        const mainGridTargetOriginal = 'const isFav = favoriteApps.includes(app.id);';
 
-        const mainGridInjection = `
-            if (app.es6) {
-        a.classList.add('es6-disabled');
-        a.onclick = function (e) {
-            e.preventDefault();
-            showEs6Warning(app.id);
-        };
-        a.href = "javascript:void(0)";
-    }
-            const isFav=favoriteApps.includes(app.id);
-    `;
-
-        // Try minified first, then original
-        if (finalHtml.includes(mainGridTargetMinified)) {
-            finalHtml = finalHtml.replace(mainGridTargetMinified, mainGridInjection);
-        } else if (finalHtml.includes(mainGridTargetOriginal)) {
-            // Adapt injection for original style (not strictly necessary but consistent)
-            finalHtml = finalHtml.replace(mainGridTargetOriginal, mainGridInjection.replace('const isFav=', 'const isFav = '));
-        }
-
-
-        // Target 2: Featured Apps Loop (Featured)
-        // Minified: a.className="featured-card";
-        const featuredTargetMinified = 'a.className="featured-card";';
-        const featuredTargetOriginal = "a.className = 'featured-card';";
-
-        const featuredInjection = `
-            a.className="featured-card";
-            if (app.es6) {
-                a.className += ' es6-disabled';
-                a.onclick = function(e) {
-                    e.preventDefault();
-                    showEs6Warning(app.id);
-                };
-                a.href = "javascript:void(0)";
-            }
-        `;
-
-        if (finalHtml.includes(featuredTargetMinified)) {
-            finalHtml = finalHtml.replace(featuredTargetMinified, featuredInjection);
-        } else if (finalHtml.includes(featuredTargetOriginal)) {
-            finalHtml = finalHtml.replace(featuredTargetOriginal, featuredInjection.replace('a.className="featured-card";', "a.className = 'featured-card';"));
-        }
 
         // 8. APP-SPECIFIC FIXES
         // A. Home Screen: Fix Grid Layout
@@ -964,7 +954,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         $('video[src$=".mp4"]').each((i, el) => { const src = $(el).attr('src'); if (src) $(el).attr('src', src.replace('.mp4', '.webm')); });
 
         // 7. VISUAL INDICATOR
-        $('.os-title').append('<span class="legacy-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.5em; vertical-align:super; cursor:pointer; border-bottom:1px dotted black;" title="About Legacy Mode">LEGACY</span>');
+        $('.os-title').after('<div class="legacy-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Legacy Mode">LEGACY</div>');
         $('style').append('.legacy-badge { background: white; border: 1px solid black; padding: 0 2px; }');
 
         // 7b. INJECT INFO MODAL (Reusing Lite Modal ID for simplicity or creating new one? User said "modal popup we made")
@@ -1059,16 +1049,28 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         // A. Home Screen: Fix Grid Layout
         if (finalHtml.includes('<title>ReKindle</title>')) {
             console.log("  [Home] Injecting Flexbox Layout fixes...");
-            const homeCss = `
-             .grid-container { display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; }
-             #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
-             #featured-grid { justify-content: center !important; }
-             #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
-             /* Fix View Header in Flex Container */
-             .view-header { width: 100% !important; flex: none !important; margin-top: 25px !important; margin-bottom: 15px !important; }
-             @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
-             `;
-            finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
+            let homeCss = `
+              .grid-container { display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; }
+              #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
+              #featured-grid { justify-content: center !important; }
+              #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
+              /* Fix View Header in Flex Container */
+              .view-header { width: 100% !important; flex: none !important; margin-top: 25px !important; margin-bottom: 15px !important; }
+              @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
+              `;
+
+            // Debug Log
+            // console.log("    [Home] CSS Before Process:", homeCss.substring(0, 50) + "...");
+            homeCss = await processLegacyCss(homeCss);
+            // console.log("    [Home] CSS After Process:", homeCss.substring(0, 50) + "...");
+
+            const hasStyleClose = finalHtml.includes('</style>');
+            if (hasStyleClose) {
+                finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
+                // console.log("    [Home] CSS Injected successfully.");
+            } else {
+                console.error("    [Home] ERROR: </style> tag not found for injection!");
+            }
         }
 
         // B. Mindmap: Fix empty document path error (generate ID if missing)
@@ -1095,54 +1097,59 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         // C. Pixel App: Fix Grid Layout (Convert to Flex)
         if (finalHtml.includes('id="pixel-canvas"')) {
             console.log("  [Pixel] Injecting Grid -> Flexbox fixes...");
-            const pixelParams = `
+            let pixelParams = `
             .gallery-grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 0 !important; }
             .gallery-item { width: 130px !important; height: 156px !important; margin: 10px !important; aspect-ratio: auto !important; }
         `;
+            pixelParams = await processLegacyCss(pixelParams);
             finalHtml = finalHtml.replace('</style>', pixelParams + '</style>');
         }
 
         // D. Calculator: Fix Button Layout
         if (finalHtml.includes('<title>Calculator</title>')) {
             console.log("  [Calculator] Injecting Flexbox Layout fixes...");
-            const calcCss = `
+            let calcCss = `
             .keypad { display: flex !important; flex-wrap: wrap !important; justify-content: space-between !important; }
             .keypad button { width: 23% !important; margin-bottom: 12px !important; height: 75px !important; }
             .btn-zero { width: 48% !important; }
         `;
+            calcCss = await processLegacyCss(calcCss);
             finalHtml = finalHtml.replace('</style>', calcCss + '</style>');
         }
 
         // E. Converter: Fix Button Layout
         if (finalHtml.includes('<title>Converter</title>')) {
             console.log("  [Converter] Injecting Flexbox Layout fixes...");
-            const convCss = `
+            let convCss = `
             .keypad { display: flex !important; flex-wrap: wrap !important; justify-content: space-between !important; margin-top: 20px !important; }
             .key { width: 23% !important; margin-bottom: 10px !important; height: 50px !important; }
             /* Target the zero key specifically since it spans 2 cols */
             div[style*="span 2"] { width: 48% !important; }
         `;
+            convCss = await processLegacyCss(convCss);
             finalHtml = finalHtml.replace('</style>', convCss + '</style>');
         }
 
         // F. 2048: Fix Grid Layout
         if (finalHtml.includes('<title>2048</title>')) {
             console.log("  [2048] Injecting 4x4 Grid Fixes...");
-            const g2048Css = `
+            let g2048Css = `
             #grid-container { display: flex !important; flex-wrap: wrap !important; width: 300px !important; height: 300px !important; align-content: flex-start !important; }
             .cell { width: 68px !important; height: 68px !important; margin: 2px !important; flex: none !important; }
             .grid-container > * { margin: 2px !important; } 
         `;
+            g2048Css = await processLegacyCss(g2048Css);
             finalHtml = finalHtml.replace('</style>', g2048Css + '</style>');
         }
 
         // G. Connections (Bindings): Fix Grid Layout
         if (finalHtml.includes('<title>Connections</title>')) {
             console.log("  [Connections] Injecting Grid Fixes...");
-            const connCss = `
+            let connCss = `
             .grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 0 !important; }
             .card { width: 23% !important; margin: 1% !important; height: 70px !important; }
         `;
+            connCss = await processLegacyCss(connCss);
             finalHtml = finalHtml.replace('</style>', connCss + '</style>');
         }
 
@@ -1150,10 +1157,11 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         if (finalHtml.includes('<title>Chess</title>') || finalHtml.includes('<title>Checkers</title>') || finalHtml.includes('id="board"')) {
             if (finalHtml.includes('id="board"')) {
                 console.log("  [Board Game] Injecting 8x8 Board Fixes...");
-                const boardCss = `
+                let boardCss = `
                 #board { display: flex !important; flex-wrap: wrap !important; width: 300px !important; height: 300px !important; align-content: flex-start !important; border: 4px solid black !important; }
                 .square { width: 12.5% !important; height: 12.5% !important; flex: none !important; margin: 0 !important; padding: 0 !important; }
             `;
+                boardCss = await processLegacyCss(boardCss);
                 finalHtml = finalHtml.replace('</style>', boardCss + '</style>');
             }
         }
@@ -1161,40 +1169,44 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         // I. Battleships: Fix 10x10 Grid
         if (finalHtml.includes('<title>Battleship</title>')) {
             console.log("  [Battleship] Injecting 10x10 Grid Fixes...");
-            const battleCss = `
+            let battleCss = `
             .grid-container { display: flex !important; flex-wrap: wrap !important; width: 300px !important; height: 300px !important; align-content: flex-start !important; }
             .grid-container > .cell { width: 10% !important; height: 10% !important; flex: none !important; margin: 0 !important; border: 1px solid #ccc; box-sizing: border-box; }
         `;
+            battleCss = await processLegacyCss(battleCss);
             finalHtml = finalHtml.replace('</style>', battleCss + '</style>');
         }
 
         // J. Settings (Pixel Drawer): Fix Grid
         if (finalHtml.includes('id="pixel-grid"')) {
             console.log("  [Settings] Injecting Pixel Grid Fixes...");
-            const pixelCss = `
+            let pixelCss = `
             #pixel-grid { display: flex !important; flex-wrap: wrap !important; width: 200px !important; height: 200px !important; gap: 0 !important; }
             .pixel { width: 12.5% !important; height: 12.5% !important; margin: 0 !important; border-top: 1px solid #eee; border-left: 1px solid #eee; box-sizing: border-box; flex-grow: 0 !important; max-width: none !important; }
         `;
+            pixelCss = await processLegacyCss(pixelCss);
             finalHtml = finalHtml.replace('</style>', pixelCss + '</style>');
         }
 
         // K. Memory: Fix Grid
         if (finalHtml.includes('<title>Memory</title>')) {
             console.log("  [Memory] Injecting Grid Fixes...");
-            const memoryCss = `
+            let memoryCss = `
             #game-grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; }
             .card { width: 22% !important; margin: 1% !important; height: 90px !important; flex: none !important; }
         `;
+            memoryCss = await processLegacyCss(memoryCss);
             finalHtml = finalHtml.replace('</style>', memoryCss + '</style>');
         }
 
         // L. Mini Crossword: Fix 5x5 Grid
         if (finalHtml.includes('<title>Mini Crossword</title>')) {
             console.log("  [Mini Crossword] Injecting 5x5 Grid Fixes...");
-            const miniCss = `
+            let miniCss = `
             #grid-container { display: flex !important; flex-wrap: wrap !important; width: 100% !important; max-width: 400px !important; height: auto !important; aspect-ratio: 1/1; gap: 0 !important; }
             .cell { width: 20% !important; height: 20% !important; margin: 0 !important; box-sizing: border-box; flex: none !important; border: 1px solid #999; }
         `;
+            miniCss = await processLegacyCss(miniCss);
             finalHtml = finalHtml.replace('</style>', miniCss + '</style>');
         }
 
@@ -1205,7 +1217,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #puzzle-board { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; }
             .piece { margin: 0 !important; box-sizing: border-box; flex: none !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', jigsawCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(jigsawCss)) + '</style>');
             finalHtml = finalHtml.replace(
                 'div.style.backgroundPosition',
                 "div.style.width = (100/gridSize) + '%'; div.style.height = (100/gridSize) + '%'; div.style.backgroundPosition"
@@ -1219,7 +1231,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; gap: 0 !important; }
             .cell { margin: 0 !important; box-sizing: border-box; flex: none !important; border: 1px solid #999; }
         `;
-            finalHtml = finalHtml.replace('</style>', crossCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(crossCss)) + '</style>');
             finalHtml = finalHtml.replace(
                 "cell.className = 'cell';",
                 "cell.className = 'cell'; cell.style.width = (100/currentPuzzle.cols) + '%'; cell.style.height = (100/currentPuzzle.rows) + '%';"
@@ -1233,7 +1245,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; gap: 0 !important; }
             .cell { margin: 0 !important; box-sizing: border-box; flex: none !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', mineCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(mineCss)) + '</style>');
             finalHtml = finalHtml.replace(
                 "cell.className = 'cell';",
                 "cell.className = 'cell'; cell.style.width = (100/COLS) + '%';"
@@ -1250,19 +1262,20 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .tile { flex: 1 !important; margin-right: 4px !important; height: auto !important; aspect-ratio: 1/1 !important; }
             .tile:last-child { margin-right: 0 !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', nerdleCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(nerdleCss)) + '</style>');
         }
 
         // Q. Nonograms: Fix Grid & Previews
         if (finalHtml.includes('<title>Nonograms</title>')) {
             console.log("  [Nonograms] Injecting Flexbox Layout fixes...");
-            const nonoCss = `
+            let nonoCss = `
             .level-grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; }
             .level-item { margin: 5px !important; flex: 0 0 90px !important; }
             .nonogram-grid { display: flex !important; flex-wrap: wrap !important; }
             .cell { flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', nonoCss + '</style>');
+            nonoCss = await processLegacyCss(nonoCss);
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(nonoCss)) + '</style>');
             if (finalHtml.includes('function renderGameGrid()')) {
                 finalHtml = finalHtml.replace(
                     "cell.className = 'cell';",
@@ -1278,29 +1291,31 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #board { display: flex !important; flex-wrap: wrap !important; width: 100% !important; aspect-ratio: 1/1 !important; }
             .sq { width: 6.66% !important; height: 6.66% !important; flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', scrabbleCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(scrabbleCss)) + '</style>');
         }
 
         // S. Sudoku: Fix 9x9 Grid
         if (finalHtml.includes('<title>Sudoku</title>')) {
             console.log("  [Sudoku] Injecting Flexbox Layout fixes...");
-            const sudokuCss = `
+            let sudokuCss = `
             #game-container { display: flex !important; flex-wrap: wrap !important; }
             .cell { width: 11.11% !important; height: 11.11% !important; flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
+            sudokuCss = await processLegacyCss(sudokuCss);
             finalHtml = finalHtml.replace('</style>', sudokuCss + '</style>');
         }
 
         // T. Tic-Tac-Toe: Fix Grid Layout
         if (finalHtml.includes('<title>Tic-Tac-Toe</title>')) {
             console.log("  [Tic-Tac-Toe] Injecting Flexbox Layout fixes...");
-            const tttCss = `
+            let tttCss = `
             .board { display: flex !important; flex-wrap: wrap !important; width: 100% !important; max-width: 380px !important; margin: 0 auto 20px auto !important; height: auto !important; }
             .cell { width: 33.33% !important; height: 100px !important; margin: 0 !important; box-sizing: border-box !important; flex: none !important; }
             .u-board { display: flex !important; flex-wrap: wrap !important; width: 100% !important; max-width: 420px !important; margin: 0 auto 15px auto !important; padding: 4px !important; height: auto !important; box-sizing: border-box !important; }
             .sub-board { width: 32% !important; margin: 0.5% !important; padding: 1px !important; box-sizing: border-box !important; flex: none !important; display: flex !important; flex-wrap: wrap !important; height: auto !important; }
             .sub-cell { width: 33.33% !important; height: 35px !important; margin: 0 !important; box-sizing: border-box !important; flex: none !important; }
         `;
+            tttCss = await processLegacyCss(tttCss);
             finalHtml = finalHtml.replace('</style>', tttCss + '</style>');
         }
 
@@ -1311,13 +1326,13 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; gap: 0 !important; width: 100% !important; max-width: 550px !important; margin: 0 auto !important; height: auto !important; }
             .cell { width: 10% !important; height: 35px !important; margin: 0 !important; box-sizing: border-box !important; flex: none !important; border: 1px solid #ccc; font-size: 1.2rem !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', wsCss + '</style>');
+            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(wsCss)) + '</style>');
         }
 
         // V. Wordle: Fix Grid Layout
         if (finalHtml.includes('<title>Wordle</title>')) {
             console.log("  [Wordle] Injecting Flexbox Layout fixes...");
-            const wordleCss = `
+            let wordleCss = `
             #board-container { display: flex !important; flex-direction: column !important; height: 420px !important; }
             .row { display: flex !important; width: 100% !important; flex: 1 !important; justify-content: center !important; grid-template-columns: none !important; margin-bottom: 5px !important; }
             .row:last-child { margin-bottom: 0 !important; }
@@ -1327,6 +1342,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .key { flex: 1 !important; margin: 0 3px !important; }
             .key.big { flex: 1.5 !important; }
         `;
+            wordleCss = await processLegacyCss(wordleCss);
             finalHtml = finalHtml.replace('</style>', wordleCss + '</style>');
         }
 
