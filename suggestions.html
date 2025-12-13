@@ -159,11 +159,6 @@
             box-shadow: 2px 2px 0 #ccc;
         }
 
-        .suggestion-item:hover {
-            box-shadow: 4px 4px 0 #999;
-            transform: translate(-1px, -1px);
-        }
-
         .sugg-header {
             display: flex;
             justify-content: space-between;
@@ -438,6 +433,41 @@
     <script>
         // --- APP LOGIC ---
 
+        // GLOBAL ERROR HANDLER FOR KINDLE DEBUGGING
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            var string = msg.toLowerCase();
+            var substring = "script error";
+            if (string.indexOf(substring) > -1) {
+                alert('Script Error: See Console for Details');
+            } else {
+                var message = [
+                    'Message: ' + msg,
+                    'URL: ' + url,
+                    'Line: ' + lineNo,
+                    'Column: ' + columnNo,
+                    'Error object: ' + JSON.stringify(error)
+                ].join(' - ');
+                // Only alert on older devices/Kindle where console is hard to access
+                // alert(message); 
+                console.error(message);
+
+                // If stuck on loading, show error there
+                var listEl = document.getElementById('suggestion-list');
+                if (listEl && listEl.innerText.indexOf('Loading...') !== -1) {
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:red;">Error Loading App:<br>' + msg + '</div>';
+                }
+            }
+            return false;
+        };
+
+        // LOADING TIMEOUT
+        setTimeout(function () {
+            var listEl = document.getElementById('suggestion-list');
+            if (listEl && listEl.innerText.indexOf('Loading...') !== -1) {
+                listEl.innerHTML = '<div style="text-align:center; padding:20px;">Taking a while...<br><br><button class="sys-btn" onclick="window.location.reload()">Reload</button></div>';
+            }
+        }, 15000);
+
         // Config
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
@@ -447,360 +477,388 @@
             messagingSenderId: "748026882518",
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
 
-        let currentUser = null;
-        let currentSuggestionId = null;
-        let unsubscribeComments = null;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+            const auth = firebase.auth();
 
-        // AUTH LISTENER
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                currentUser = user;
-                document.getElementById('login-overlay').style.display = 'none';
-                loadSuggestions();
-            } else {
-                currentUser = null;
-                document.getElementById('login-overlay').style.display = 'flex';
+            let currentUser = null;
+            let currentSuggestionId = null;
+            let unsubscribeComments = null;
+
+            // AUTH LISTENER
+            auth.onAuthStateChanged(function (user) {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('login-overlay').style.display = 'none';
+                    loadSuggestions();
+                } else {
+                    currentUser = null;
+                    document.getElementById('login-overlay').style.display = 'flex';
+                }
+            });
+
+            // WALLPAPER
+            function loadWallpaper() {
+                // MATCHING READING.HTML: No sanitization on this read
+                const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+                const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+                if (wallpaperImg) {
+                    document.body.style.backgroundImage = wallpaperImg;
+                }
+                if (wallpaperSize) {
+                    document.body.style.backgroundSize = wallpaperSize;
+                }
             }
-        });
 
-        // WALLPAPER
-        function loadWallpaper() {
-            // MATCHING READING.HTML: No sanitization on this read
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
-
-        // Call immediately (like reading.html) and on load
-        loadWallpaper();
-        window.onload = function () {
+            // Call immediately (like reading.html) and on load
             loadWallpaper();
-            // Auth listener handling...
-        };
+            window.onload = function () {
+                loadWallpaper();
+            };
 
-        function sanitizeBackgroundImage(imageString) {
-            if (!imageString) return '';
-            if (imageString.startsWith('url("data:image/png;base64,')) {
-                return imageString;
-            }
-            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
-                const url = imageString.substring(5, imageString.length - 2);
-                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+            function sanitizeBackgroundImage(imageString) {
+                if (!imageString) return '';
+                if (imageString.startsWith('url("data:image/png;base64,')) {
                     return imageString;
                 }
+                if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                    const url = imageString.substring(5, imageString.length - 2);
+                    if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                        return imageString;
+                    }
+                }
+                return '';
             }
-            return '';
-        }
 
-        let allSuggestions = []; // Cache for client-side sorting
-        let currentSort = 'newest';
+            let allSuggestions = []; // Cache for client-side sorting
+            let currentSort = 'newest';
 
-        function changeSort() {
-            const sel = document.getElementById('sort-select');
-            currentSort = sel.value;
-            renderList();
-        }
-
-        // LOAD SUGGESTIONS
-        function loadSuggestions() {
-            db.collection('suggestions').orderBy('createdAt', 'desc').limit(100).onSnapshot(snapshot => {
-                allSuggestions = [];
-                snapshot.forEach(doc => {
-                    allSuggestions.push({ id: doc.id, ...doc.data() });
-                });
+            window.changeSort = function () {
+                const sel = document.getElementById('sort-select');
+                currentSort = sel.value;
                 renderList();
-            });
-        }
+            };
 
-        function renderList() {
-            const listEl = document.getElementById('suggestion-list');
-            listEl.innerHTML = '';
-
-            // SORT
-            const sorted = [...allSuggestions];
-
-            // Primary Sort: Status (Open first, Done last)
-            // Secondary Sort: Selected Criteria
-
-            sorted.sort((a, b) => {
-                // Check status first
-                const isDoneA = (a.status === 'done');
-                const isDoneB = (b.status === 'done');
-
-                if (isDoneA && !isDoneB) return 1; // A (done) goes to bottom
-                if (!isDoneA && isDoneB) return -1; // B (done) goes to bottom
-
-                // If status same, check criteria
-                if (currentSort === 'popular') {
-                    const votesA = (a.upvotes || []).length;
-                    const votesB = (b.upvotes || []).length;
-                    return votesB - votesA;
-                } else {
-                    // Newest
-                    const tA = a.createdAt?.seconds || 0;
-                    const tB = b.createdAt?.seconds || 0;
-                    return tB - tA;
-                }
-            });
-
-            sorted.forEach(data => {
-                const id = data.id;
-                const voteCount = (data.upvotes || []).length;
-                const isDone = data.status === 'done';
-                const hasVoted = (data.upvotes || []).includes(currentUser?.uid);
-
-                const el = document.createElement('div');
-                el.className = 'suggestion-item' + (isDone ? ' done' : '');
-                el.onclick = () => openSuggestion(id, data);
-
-                let statusHtml = '';
-                if (isDone) {
-                    statusHtml = '<span class="status-badge">DONE</span>';
-                }
-
-                const voteClass = hasVoted ? 'vote-badge voted' : 'vote-badge';
-                const voteIcon = hasVoted ? '▼' : '▲'; // Or keep it ▲ and just toggle color? User said 'upvote button'. ▲ is fine.
-                // Let's stick to consistent iconography. Up arrow generally means "Vote up".
-                // Detail view changes text to "Remove Upvote".
-                // List view space is limited.
-                // Color inversion is enough signal.
-
-                el.innerHTML = `
-                <div class="sugg-header">
-                    <div>
-                        ${statusHtml}
-                        <span class="sugg-title">${escapeHtml(data.title)}</span>
-                    </div>
-                    <button class="${voteClass}" onclick="event.stopPropagation(); toggleVote('${id}')">▲ ${voteCount}</button>
-                </div>
-                <div style="font-size:0.9rem; margin-bottom:5px; height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    ${escapeHtml(data.description)}
-                </div>
-                <div class="sugg-meta">by ${escapeHtml(data.authorName || 'Anon')}</div>
-            `;
-                listEl.appendChild(el);
-            });
-
-            if (sorted.length === 0) {
-                listEl.innerHTML = '<div style="text-align:center; padding:20px;">No suggestions yet. Be the first!</div>';
-            }
-        }
-
-        // OPEN DETAIL
-        function openSuggestion(id, data) {
-            currentSuggestionId = id;
-            document.getElementById('detail-view').style.display = 'flex';
-            document.getElementById('suggestion-list').style.display = 'none'; // Hide list
-            document.getElementById('main-toolbar').style.display = 'none';
-
-            document.getElementById('detail-title').textContent = data.title;
-            document.getElementById('detail-title-bar').textContent = data.title;
-            document.getElementById('detail-desc').textContent = data.description;
-            document.getElementById('detail-meta').textContent = `by ${data.authorName || 'Anonymous'} • ${new Date(data.createdAt?.toDate()).toLocaleDateString()}`;
-
-            updateVoteBtn(data.upvotes || []);
-            updateAdminControls(data);
-            loadComments(id);
-        }
-
-        function updateAdminControls(data) {
-            // Simple check for "ukiyo" in email
-            // Security is handled by rules, this adds UI convenience
-            const isAdmin = currentUser && currentUser.email && currentUser.email.startsWith('ukiyo');
-            const btn = document.getElementById('detail-done-btn');
-
-            if (isAdmin) {
-                btn.style.display = 'inline-flex';
-                const isDone = data.status === 'done';
-                if (isDone) {
-                    btn.querySelector('span').textContent = '✗ Mark Open';
-                    btn.style.background = '#ccc';
-                } else {
-                    btn.querySelector('span').textContent = '✓ Mark Done';
-                    btn.style.background = 'white';
-                }
-            } else {
-                btn.style.display = 'none';
-            }
-        }
-
-        function toggleStatus() {
-            if (!currentSuggestionId || !currentUser) return;
-
-            const docRef = db.collection('suggestions').doc(currentSuggestionId);
-
-            // Toggle logic requires reading current state first
-            db.runTransaction(async (transaction) => {
-                const doc = await transaction.get(docRef);
-                if (!doc.exists) return;
-
-                const currentStatus = doc.data().status;
-                const newStatus = (currentStatus === 'done') ? 'open' : 'done';
-
-                transaction.update(docRef, { status: newStatus });
-                return newStatus;
-            }).then((newStatus) => {
-                // Close view or just update UI? Update UI.
-                // Manually update the local cache so sort works immediately if we don't wait for snapshot
-                const item = allSuggestions.find(s => s.id === currentSuggestionId);
-                if (item) item.status = newStatus;
-
-                // Refresh admin button text
-                // Fake a data object for updateAdminControls
-                updateAdminControls({ status: newStatus });
-                renderList(); // Re-render background list to show strikethrough updates
-            }).catch(err => {
-                console.error("Status update failed", err);
-                alert("Failed to update status. Are you Ukiyo?");
-            });
-        }
-
-        function closeDetailView() {
-            document.getElementById('detail-view').style.display = 'none';
-            document.getElementById('suggestion-list').style.display = 'flex';
-            document.getElementById('main-toolbar').style.display = 'flex';
-            currentSuggestionId = null;
-            if (unsubscribeComments) unsubscribeComments();
-        }
-
-        // VOTE LOGIC
-        function updateVoteBtn(upvotes) {
-            const btn = document.getElementById('detail-vote-btn');
-            const countSpan = document.getElementById('detail-vote-count');
-            const count = upvotes.length;
-            const hasVoted = currentUser && upvotes.includes(currentUser.uid);
-
-            countSpan.textContent = count;
-            if (hasVoted) {
-                btn.classList.add('voted');
-                btn.querySelector('span').textContent = '▼ Remove Upvote';
-            } else {
-                btn.classList.remove('voted');
-                btn.querySelector('span').textContent = '▲ Upvote';
-            }
-        }
-
-        function toggleVote(id) {
-            const targetId = id || currentSuggestionId;
-            if (!targetId || !currentUser) return;
-
-            const docRef = db.collection('suggestions').doc(targetId);
-
-            db.runTransaction(async (transaction) => {
-                const doc = await transaction.get(docRef);
-                if (!doc.exists) return; // Should handle removal
-
-                let upvotes = doc.data().upvotes || [];
-                if (upvotes.includes(currentUser.uid)) {
-                    upvotes = upvotes.filter(uid => uid !== currentUser.uid);
-                } else {
-                    upvotes.push(currentUser.uid);
-                }
-
-                transaction.update(docRef, { upvotes: upvotes });
-                return upvotes;
-            }).then((newUpvotes) => {
-                // If we are in detail view of THIS item, update the big button
-                if (targetId === currentSuggestionId) {
-                    updateVoteBtn(newUpvotes);
-                }
-                // List listener will auto-update the list UI via onSnapshot
-            }).catch(err => console.error("Vote failed", err));
-        }
-
-
-        // COMMENTS
-        function loadComments(id) {
-            const list = document.getElementById('detail-comments');
-            list.innerHTML = 'Loading comments...';
-
-            unsubscribeComments = db.collection('suggestions').doc(id).collection('comments')
-                .orderBy('createdAt', 'asc')
-                .onSnapshot(snapshot => {
-                    list.innerHTML = '';
-                    snapshot.forEach(doc => {
-                        const c = doc.data();
-                        const el = document.createElement('div');
-                        el.className = 'comment-item';
-                        el.innerHTML = `
-                        <span class="comment-author">${escapeHtml(c.authorName)}:</span>
-                        <span>${escapeHtml(c.text)}</span>
-                    `;
-                        list.appendChild(el);
+            // LOAD SUGGESTIONS
+            function loadSuggestions() {
+                db.collection('suggestions').orderBy('createdAt', 'desc').limit(100).onSnapshot(function (snapshot) {
+                    allSuggestions = [];
+                    snapshot.forEach(function (doc) {
+                        var data = doc.data();
+                        data.id = doc.id;
+                        allSuggestions.push(data);
                     });
-                    // Auto scroll to bottom
-                    list.scrollTop = list.scrollHeight;
+                    renderList();
+                }, function (error) {
+                    console.error("Error loading suggestions:", error);
+                    document.getElementById('suggestion-list').innerHTML = '<div style="text-align:center; padding:20px; color:red;">Failed to load suggestions. <br> ' + error.message + '</div>';
                 });
-        }
-
-        function postComment() {
-            const inp = document.getElementById('comment-input');
-            const text = inp.value.trim();
-            if (!text || !currentSuggestionId || !currentUser) return;
-
-            db.collection('suggestions').doc(currentSuggestionId).collection('comments').add({
-                text: text,
-                authorName: currentUser.displayName || currentUser.email.split('@')[0],
-                authorUid: currentUser.uid,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            inp.value = '';
-        }
-
-        // SUBMIT SUGGESTION
-        function openCreateModal() {
-            document.getElementById('modal-overlay').style.display = 'flex';
-            document.getElementById('new-title').focus();
-        }
-
-        function closeModal() {
-            document.getElementById('modal-overlay').style.display = 'none';
-            document.getElementById('new-title').value = '';
-            document.getElementById('new-desc').value = '';
-        }
-
-        function submitSuggestion() {
-            const title = document.getElementById('new-title').value.trim();
-            const desc = document.getElementById('new-desc').value.trim();
-
-            if (!title || !desc) {
-                alert("Please fill in both fields.");
-                return;
             }
 
-            db.collection('suggestions').add({
-                title: title,
-                description: desc,
-                authorUid: currentUser.uid,
-                authorName: currentUser.displayName || currentUser.email.split('@')[0],
-                upvotes: [],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                closeModal();
-            }).catch(err => {
-                console.error(err);
-                alert("Error submitting. content too long?");
-            });
-        }
+            function renderList() {
+                const listEl = document.getElementById('suggestion-list');
+                listEl.innerHTML = '';
 
-        // UTILS
-        function escapeHtml(text) {
-            if (!text) return "";
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+                // SORT
+                const sorted = [].concat(allSuggestions);
+
+                // Primary Sort: Status (Open first, Done last)
+                // Secondary Sort: Selected Criteria
+
+                sorted.sort(function (a, b) {
+                    // Check status first
+                    const isDoneA = (a.status === 'done');
+                    const isDoneB = (b.status === 'done');
+
+                    if (isDoneA && !isDoneB) return 1; // A (done) goes to bottom
+                    if (!isDoneA && isDoneB) return -1; // B (done) goes to bottom
+
+                    // If status same, check criteria
+                    if (currentSort === 'popular') {
+                        const votesA = (a.upvotes || []).length;
+                        const votesB = (b.upvotes || []).length;
+                        return votesB - votesA;
+                    } else {
+                        // Newest
+                        // SAFE ACCESS: No optional chaining
+                        const tA = (a.createdAt && a.createdAt.seconds) ? a.createdAt.seconds : 0;
+                        const tB = (b.createdAt && b.createdAt.seconds) ? b.createdAt.seconds : 0;
+                        return tB - tA;
+                    }
+                });
+
+                sorted.forEach(function (data) {
+                    const id = data.id;
+                    const voteCount = (data.upvotes || []).length;
+                    const isDone = data.status === 'done';
+                    // SAFE ACCESS: No optional chaining
+                    const hasVoted = (data.upvotes || []).includes(currentUser ? currentUser.uid : null);
+
+                    const el = document.createElement('div');
+                    el.className = 'suggestion-item' + (isDone ? ' done' : '');
+                    el.onclick = function () { openSuggestion(id, data); };
+
+                    let statusHtml = '';
+                    if (isDone) {
+                        statusHtml = '<span class="status-badge">DONE</span>';
+                    }
+
+                    const voteClass = hasVoted ? 'vote-badge voted' : 'vote-badge';
+
+                    el.innerHTML = `
+                    <div class="sugg-header">
+                        <div>
+                            ${statusHtml}
+                            <span class="sugg-title">${escapeHtml(data.title)}</span>
+                        </div>
+                        <button class="${voteClass}" onclick="event.stopPropagation(); toggleVote('${id}')">▲ ${voteCount}</button>
+                    </div>
+                    <div style="font-size:0.9rem; margin-bottom:5px; height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${escapeHtml(data.description)}
+                    </div>
+                    <div class="sugg-meta">by ${escapeHtml(data.authorName || 'Anon')}</div>
+                `;
+                    listEl.appendChild(el);
+                });
+
+                if (sorted.length === 0) {
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px;">No suggestions yet. Be the first!</div>';
+                }
+            }
+
+            // OPEN DETAIL
+            window.openSuggestion = function (id, data) {
+                currentSuggestionId = id;
+                document.getElementById('detail-view').style.display = 'flex';
+                document.getElementById('suggestion-list').style.display = 'none'; // Hide list
+                document.getElementById('main-toolbar').style.display = 'none';
+
+                document.getElementById('detail-title').textContent = data.title;
+                document.getElementById('detail-title-bar').textContent = data.title;
+                document.getElementById('detail-desc').textContent = data.description;
+
+                let dateStr = 'Unknown Date';
+                // SAFE ACCESS: No optional chaining
+                if (data.createdAt && data.createdAt.toDate) {
+                    dateStr = new Date(data.createdAt.toDate()).toLocaleDateString();
+                }
+
+                document.getElementById('detail-meta').textContent = `by ${data.authorName || 'Anonymous'} • ${dateStr}`;
+
+                updateVoteBtn(data.upvotes || []);
+                updateAdminControls(data);
+                loadComments(id);
+            };
+
+            window.updateAdminControls = function (data) {
+                // Simple check for "ukiyo" in email
+                // Security is handled by rules, this adds UI convenience
+                const isAdmin = currentUser && currentUser.email && currentUser.email.startsWith('ukiyo');
+                const btn = document.getElementById('detail-done-btn');
+
+                if (isAdmin) {
+                    btn.style.display = 'inline-flex';
+                    const isDone = data.status === 'done';
+                    if (isDone) {
+                        btn.querySelector('span').textContent = '✗ Mark Open';
+                        btn.style.background = '#ccc';
+                    } else {
+                        btn.querySelector('span').textContent = '✓ Mark Done';
+                        btn.style.background = 'white';
+                    }
+                } else {
+                    btn.style.display = 'none';
+                }
+            };
+
+            window.toggleStatus = function () {
+                if (!currentSuggestionId || !currentUser) return;
+
+                const docRef = db.collection('suggestions').doc(currentSuggestionId);
+
+                // REFACTORED: Removed async/await and arrow functions mainly to be safe
+                db.runTransaction(function (transaction) {
+                    return transaction.get(docRef).then(function (doc) {
+                        if (!doc.exists) {
+                            throw "Document does not exist!";
+                        }
+
+                        const currentStatus = doc.data().status;
+                        const newStatus = (currentStatus === 'done') ? 'open' : 'done';
+
+                        transaction.update(docRef, { status: newStatus });
+                        return newStatus;
+                    });
+                }).then(function (newStatus) {
+                    // Update UI manually
+                    // SAFE FIND (IE11/Older might need polyfill for array.find? Kindle usually supports it but let's be safe-ish or assume build script polyfills it. 
+                    // Actually build-automation does not run on main version. 
+                    // Array.find IS ES6. Let's use a simple loop or assume Kindle > 2014 supports it (it usually does).
+                    // But to be super safe let's just use filter[0] or manual loop.
+
+                    var item = null;
+                    for (var i = 0; i < allSuggestions.length; i++) {
+                        if (allSuggestions[i].id === currentSuggestionId) {
+                            item = allSuggestions[i];
+                            break;
+                        }
+                    }
+
+                    if (item) item.status = newStatus;
+
+                    updateAdminControls({ status: newStatus });
+                    renderList();
+                }).catch(function (err) {
+                    console.error("Status update failed", err);
+                    alert("Failed to update status. Are you Ukiyo?");
+                });
+            };
+
+            window.closeDetailView = function () {
+                document.getElementById('detail-view').style.display = 'none';
+                document.getElementById('suggestion-list').style.display = 'flex';
+                document.getElementById('main-toolbar').style.display = 'flex';
+                currentSuggestionId = null;
+                if (unsubscribeComments) unsubscribeComments();
+            };
+
+            // VOTE LOGIC
+            window.updateVoteBtn = function (upvotes) {
+                const btn = document.getElementById('detail-vote-btn');
+                const countSpan = document.getElementById('detail-vote-count');
+                const count = upvotes.length;
+                const hasVoted = currentUser && upvotes.includes(currentUser.uid);
+
+                countSpan.textContent = count;
+                if (hasVoted) {
+                    btn.classList.add('voted');
+                    btn.querySelector('span').textContent = '▼ Remove Upvote';
+                } else {
+                    btn.classList.remove('voted');
+                    btn.querySelector('span').textContent = '▲ Upvote';
+                }
+            };
+
+            window.toggleVote = function (id) {
+                const targetId = id || currentSuggestionId;
+                if (!targetId || !currentUser) return;
+
+                const docRef = db.collection('suggestions').doc(targetId);
+
+                db.runTransaction(function (transaction) {
+                    return transaction.get(docRef).then(function (doc) {
+                        if (!doc.exists) {
+                            throw "Document does not exist!";
+                        }
+
+                        let upvotes = doc.data().upvotes || [];
+                        if (upvotes.includes(currentUser.uid)) {
+                            upvotes = upvotes.filter(function (uid) { return uid !== currentUser.uid; });
+                        } else {
+                            upvotes.push(currentUser.uid);
+                        }
+
+                        transaction.update(docRef, { upvotes: upvotes });
+                        return upvotes;
+                    });
+                }).then(function (newUpvotes) {
+                    if (targetId === currentSuggestionId) {
+                        updateVoteBtn(newUpvotes);
+                    }
+                }).catch(function (err) { console.error("Vote failed", err); });
+            };
+
+
+            // COMMENTS
+            function loadComments(id) {
+                const list = document.getElementById('detail-comments');
+                list.innerHTML = 'Loading comments...';
+
+                unsubscribeComments = db.collection('suggestions').doc(id).collection('comments')
+                    .orderBy('createdAt', 'asc')
+                    .onSnapshot(function (snapshot) {
+                        list.innerHTML = '';
+                        snapshot.forEach(function (doc) {
+                            const c = doc.data();
+                            const el = document.createElement('div');
+                            el.className = 'comment-item';
+                            el.innerHTML = `
+                            <span class="comment-author">${escapeHtml(c.authorName)}:</span>
+                            <span>${escapeHtml(c.text)}</span>
+                        `;
+                            list.appendChild(el);
+                        });
+                        // Auto scroll to bottom
+                        list.scrollTop = list.scrollHeight;
+                    });
+            }
+
+            window.postComment = function () {
+                const inp = document.getElementById('comment-input');
+                const text = inp.value.trim();
+                if (!text || !currentSuggestionId || !currentUser) return;
+
+                db.collection('suggestions').doc(currentSuggestionId).collection('comments').add({
+                    text: text,
+                    authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                    authorUid: currentUser.uid,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                inp.value = '';
+            };
+
+            // SUBMIT SUGGESTION
+            window.openCreateModal = function () {
+                document.getElementById('modal-overlay').style.display = 'flex';
+                document.getElementById('new-title').focus();
+            };
+
+            window.closeModal = function () {
+                document.getElementById('modal-overlay').style.display = 'none';
+                document.getElementById('new-title').value = '';
+                document.getElementById('new-desc').value = '';
+            };
+
+            window.submitSuggestion = function () {
+                const title = document.getElementById('new-title').value.trim();
+                const desc = document.getElementById('new-desc').value.trim();
+
+                if (!title || !desc) {
+                    alert("Please fill in both fields.");
+                    return;
+                }
+
+                db.collection('suggestions').add({
+                    title: title,
+                    description: desc,
+                    authorUid: currentUser.uid,
+                    authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                    upvotes: [],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }).then(function () {
+                    closeModal();
+                }).catch(function (err) {
+                    console.error(err);
+                    alert("Error submitting. content too long?");
+                });
+            };
+
+            // UTILS
+            function escapeHtml(text) {
+                if (!text) return "";
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+        } catch (e) {
+            console.error("CRITICAL INIT ERROR", e);
+            document.body.innerHTML = '<div style="padding:20px;">CRITICAL ERROR: ' + e.message + '</div>';
         }
 
     </script>
