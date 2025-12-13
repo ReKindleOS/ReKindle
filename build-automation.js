@@ -171,12 +171,12 @@ async function transpileHtml(htmlContent, filename = '') {
                 replace: () => {
                     console.log("    Downloading epub.js for inlining...");
                     try {
-                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
                         const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
                         return { type: 'inline', content: content };
                     } catch (e) {
                         console.error("    Failed to download epub.js:", e.message);
-                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
                     }
                 }
             },
@@ -473,7 +473,20 @@ async function transpileHtml(htmlContent, filename = '') {
         }
 
         // 8. APP-SPECIFIC FIXES
-        // A. Mindmap: Fix empty document path error (generate ID if missing)
+        // A. Home Screen: Fix Grid Layout
+        if (finalHtml.includes('<title>ReKindle</title>')) {
+            console.log("  [Home] Injecting Flexbox Layout fixes...");
+            const homeCss = `
+             .grid-container { display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; }
+             #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
+             #featured-grid { justify-content: center !important; }
+             #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
+             @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
+             `;
+            finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
+        }
+
+        // B. Mindmap: Fix empty document path error (generate ID if missing)
         if (finalHtml.includes('id="mindmap-canvas"')) {
             console.log("  [Mindmap] Injecting ID generation fix...");
             // Inject check inside saveData
@@ -875,12 +888,12 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
                 replace: () => {
                     console.log("    Downloading epub.js for inlining...");
                     try {
-                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
                         const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
                         return { type: 'inline', content: content };
                     } catch (e) {
                         console.error("    Failed to download epub.js:", e.message);
-                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js";
+                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
                     }
                 }
             },
@@ -1002,7 +1015,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         // Let's handle both.
 
         const mainGridInjection = `
-            if (app['es6']) {
+            if (app.es6) {
                 a.classList.add('es6-disabled');
                 a.onclick = function (e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
@@ -1020,7 +1033,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         const featuredTarget = "a.className = 'featured-card';";
         const featuredInjection = `
             a.className = 'featured-card';
-            if (app['es6']) {
+            if (app.es6) {
                 a.className += ' es6-disabled';
                 a.onclick = function(e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
@@ -1038,7 +1051,20 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
 
 
         // 8. APP-SPECIFIC FIXES (Legacy)
-        // A. Mindmap: Fix empty document path error (generate ID if missing)
+        // A. Home Screen: Fix Grid Layout
+        if (finalHtml.includes('<title>ReKindle</title>')) {
+            console.log("  [Home] Injecting Flexbox Layout fixes...");
+            const homeCss = `
+             .grid-container { display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; }
+             #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
+             #featured-grid { justify-content: center !important; }
+             #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
+             @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
+             `;
+            finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
+        }
+
+        // B. Mindmap: Fix empty document path error (generate ID if missing)
         if (finalHtml.includes('id="mindmap-canvas"')) {
             console.log("  [Mindmap] Injecting ID generation fix...");
             finalHtml = finalHtml.replace(
