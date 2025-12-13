@@ -228,7 +228,7 @@ async function transpileHtml(htmlContent) {
             <div class="modal-box" onclick="event.stopPropagation()" style="background:white; border:2px solid black; padding:20px; width:300px; max-width:80%; text-align:center; box-shadow:4px 4px 0 black; font-family:sans-serif;">
                 <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Lite Version</h3>
                 <p style="margin:15px 0;">This is a lightweight version of ReKindle designed for older devices.</p>
-                <p style="margin:15px 0; font-size:0.9em;">ReKindle apps and games are untested on these browsers and most likely won't work, proceed with caution.</p>
+                <p style="margin:15px 0; font-size:0.9em;">ReKindle apps and games are not regularly tested on these browsers and often won't work, proceed with caution.</p>
                 <button style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;" onclick="document.getElementById('lite-info-modal').style.display='none'">OK</button>
             </div>
         </div>
@@ -243,7 +243,7 @@ async function transpileHtml(htmlContent) {
         <div id="es6-warning-modal" class="modal-overlay" onclick="document.getElementById('es6-warning-modal').style.display='none'" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10001; align-items:center; justify-content:center;">
             <div class="modal-box" onclick="event.stopPropagation()" style="background:white; border:2px solid black; padding:20px; width:300px; text-align:center; box-shadow:4px 4px 0 black; font-family:sans-serif;">
                 <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Warning</h3>
-                <p style="margin:20px 0;">This app requires modern features and almost certainly won't work on this device.</p>
+                <p style="margin:20px 0;">This app requires modern features and most likely won't work on this device.</p>
                 <div style="display:flex; justify-content:center; gap:10px;">
                     <button class="sys-btn" onclick="document.getElementById('es6-warning-modal').style.display='none'" style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;">Back</button>
                     <button id="es6-proceed-btn" class="sys-btn" style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;">Proceed Anyway</button>
