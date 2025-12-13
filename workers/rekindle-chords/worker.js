@@ -2,6 +2,7 @@ export default {
   async fetch(request, env, ctx) {
     const allowedOrigins = [
       "https://rekindle.ink",
+      "https://lite.rekindle.ink",
     ];
     const origin = request.headers.get("Origin");
     const isAllowed = allowedOrigins.includes(origin);

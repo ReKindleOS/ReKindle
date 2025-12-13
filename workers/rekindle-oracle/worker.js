@@ -1,10 +1,17 @@
 export default {
   async fetch(request, env) {
     // SECURITY: Only allow your specific domain
-    const ALLOWED_ORIGIN = "https://rekindle.ink";
+    // SECURITY: Limit to specific domains
+    const ALLOWED_ORIGINS = [
+      "https://rekindle.ink",
+      "https://lite.rekindle.ink"
+    ];
+
+    const origin = request.headers.get("Origin");
+    const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
     const corsHeaders = {
-      "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+      "Access-Control-Allow-Origin": isAllowed ? origin : "null",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
@@ -15,9 +22,9 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return new Response("Method not allowed", { 
-        status: 405, 
-        headers: corsHeaders 
+      return new Response("Method not allowed", {
+        status: 405,
+        headers: corsHeaders
       });
     }
 
@@ -27,7 +34,7 @@ export default {
       if (!prompt) {
         return new Response(JSON.stringify({ error: { message: "No prompt provided" } }), {
           status: 400,
-          headers: { 
+          headers: {
             "Content-Type": "application/json",
             ...corsHeaders
           }
@@ -36,10 +43,10 @@ export default {
 
       // Configuration
       const API_KEY = env.GEMINI_API_KEY;
-      
+
       // Using Gemini 2.5 Flash
-      const MODEL = "gemini-2.5-flash"; 
-      
+      const MODEL = "gemini-2.5-flash";
+
       const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
 
       // Call Google Gemini

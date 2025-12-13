@@ -463,7 +463,8 @@ JSZM.prototype = {
 
 const ALLOWED_ORIGINS = [
   'https://beta.rekindle.pages.dev',
-  'https://rekindle.ink'
+  'https://rekindle.ink',
+  'https://lite.rekindle.ink'
 ];
 
 function getCorsHeaders(request) {
