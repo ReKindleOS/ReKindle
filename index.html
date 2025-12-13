@@ -4,27 +4,40 @@
 <head>
     <script>
         (function () {
-            var ua = navigator.userAgent;
+            var search = window.location.search || '';
 
-            // 1. Detect Kobo specifically
-            // Kobo UA always contains "Kobo Touch" or just "Kobo"
-            var isKobo = ua.indexOf("Kobo") !== -1;
-
-            // 2. Optional: Detect REALLY old browsers (Ancient Kindles from 2015)
-            // If the browser doesn't even support 'let' or 'const' (ES6), it will crash anyway.
-            // We use a safe check that won't kill the modern Kindle.
-            var isAncient = false;
+            // 1. DETECT MESQUITE (Legacy Kindle / Chrome ~12)
+            // Logic: Fails basic ES6 syntax (const/let).
+            // Result: Redirect to 'legacy'
+            var isMesquite = false;
             try {
-                eval("const x = () => {};"); // Basic ES6 check (Supported by Kobo & Modern Kindle)
+                eval("const x = 1;");
             } catch (e) {
-                isAncient = true;
+                isMesquite = true;
             }
 
-            // 3. Logic: Redirect if it is Kobo OR if it is Ancient
-            if (isKobo || isAncient) {
-                var search = window.location.search || '';
-                window.location.href = "https://lite.rekindle.ink/" + search;
+            if (isMesquite) {
+                window.location.href = "https://legacy.rekindle.ink/" + search;
+                return; // Stop execution
             }
+
+            // 2. DETECT KOBO / LITE DEVICES (Chrome ~44)
+            // Logic: Supports 'const', but fails modern 'async/await' (Chrome 55+).
+            // Result: Redirect to 'lite'
+            var isLite = false;
+            try {
+                eval("async function f(){}");
+            } catch (e) {
+                isLite = true;
+            }
+
+            if (isLite) {
+                window.location.href = "https://lite.rekindle.ink/" + search;
+                return; // Stop execution
+            }
+
+            // 3. MODERN DEVICES
+            // Logic: Passes both checks. Stays on main app.
         })();
     </script>
     <meta charset="UTF-8">
