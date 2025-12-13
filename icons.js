@@ -111,6 +111,7 @@ const APPS = [
     {
         id: 'quicktodo',
         name: 'Quick ToDo',
+        es6: true,
         cat: 'tools',
         desc: 'Handwritten, sync-able todos!',
         icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/>'
