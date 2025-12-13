@@ -4,6 +4,8 @@ const babel = require('@babel/core');
 const cheerio = require('cheerio');
 const glob = require('glob');
 const { execSync } = require('child_process');
+const postcss = require('postcss');
+const postcssPresetEnv = require('postcss-preset-env');
 
 // --- CONFIGURATION ---
 const SOURCE_DIR = '.';
@@ -20,6 +22,51 @@ const ignoreList = [
     // Firebase Backend Files (Keep in repo, ignore for hosting)
     'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json'
 ];
+
+async function processCss(cssContent) {
+    // 1. Regex fixes for layout breakers or explicit downgrades
+    // Dynamic Viewport Units (dvh/lvh/svh) -> vh (Chrome 108)
+    let css = cssContent.replace(/(\d+)(dvh|lvh|svh)/g, '$1vh');
+
+    // text-wrap: balance/pretty -> remove (Chrome 114)
+    css = css.replace(/text-wrap:\s*(balance|pretty);?/g, '');
+
+    // 2. PostCSS Processing (Nesting, AutoPrefixer, fallback for modern syntax)
+    try {
+        const result = await postcss([
+            postcssPresetEnv({
+                stage: 0,
+                browsers: 'Chrome 87',
+                features: {
+                    'nesting-rules': true, // Flatten css nesting
+                    'glbal-nesting-rules': true
+                }
+            })
+        ]).process(css, { from: undefined });
+        return result.css;
+    } catch (e) {
+        console.error("    CSS Processing Error:", e.message);
+        return css;
+    }
+}
+
+async function transpileJs(code) {
+    try {
+        const result = await babel.transformAsync(code, {
+            presets: [['@babel/preset-env', {
+                targets: "chrome 87",
+                modules: false,
+                useBuiltIns: false // We use an external polyfill bundle
+            }]],
+            comments: false,
+            // Enable common syntax plugins if not in preset (preset-env usually handles Syntax)
+        });
+        return result.code;
+    } catch (err) {
+        console.error("    Babel Error:", err.message);
+        return code;
+    }
+}
 
 async function transpileHtml(htmlContent) {
     const $ = cheerio.load(htmlContent);
@@ -99,7 +146,7 @@ async function transpileHtml(htmlContent) {
             for (const [key, rule] of Object.entries(LIBRARY_REPLACEMENTS)) {
                 if (rule.check(src)) {
                     const result = rule.replace(src);
-                    
+
                     if (typeof result === 'object' && result.type === 'inline') {
                         console.log(`  [${key}] Replaced: ${src} -> [Inlined Content]`);
                         $(el).removeAttr('src');
@@ -122,21 +169,28 @@ async function transpileHtml(htmlContent) {
         const code = $script.html();
 
         // Only process inline JS (ignore src="..." and non-JS types)
-        if (code && !$script.attr('src') && (!$script.attr('type') || $script.attr('type') === 'text/javascript')) {
-            try {
-                const result = await babel.transformAsync(code, {
-                    presets: [['@babel/preset-env', { targets: "ie 11, chrome 43", modules: false }]],
-                    comments: false
-                });
-                $script.html(result.code);
-            } catch (err) { }
+        if (code && !$script.attr('src') && (!$script.attr('type') || $script.attr('type') === 'text/javascript' || $script.attr('type') === 'module')) {
+            // Remove module type for compatibility
+            if ($script.attr('type') === 'module') $script.removeAttr('type');
+
+            const transpiled = await transpileJs(code);
+            $script.html(transpiled);
         }
     }
 
     // 4. PROCESS CSS (Variables & Grid Fallback)
-    $('style').each((i, el) => {
+
+    const styles = $('style');
+    for (let i = 0; i < styles.length; i++) {
+        const el = styles[i];
         let css = $(el).html();
-        if (!css) return;
+        if (!css) continue;
+
+        // Process CSS (PostCSS + Kobo Fixes)
+        css = await processCss(css);
+
+        // Continue with original logic (Variable Substitution - legacy fallback)
+        // ... (We keep the original logic below as it handles :root extraction which preset-env handles too but maybe differently)
 
         // A. Extract :root variables
         const rootMatch = css.match(/:root\s*{([^}]+)}/);
@@ -191,47 +245,74 @@ async function transpileHtml(htmlContent) {
         css = css.replace(/display:\s*grid;/g, 'display: flex; flex-wrap: wrap; justify-content: center;');
 
         $(el).html(css);
-    });
+    } // End of style loop
 
     // 5. INJECT POLYFILLS & RUNTIME (Async/Await, ES6 Features)
     $('head').prepend(`
         <!-- 1. Regenerator Runtime (Required for Async/Await transpilation) -->
         <script src="https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js"></script>
 
-        <!-- 2. Standard Polyfills -->
-        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith,URLSearchParams&flags=gated"></script>
+        <!-- 2. CoreJS Bundle (Standard ES6+ Polyfills including Array.at, Promise.any, etc.) -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js"></script>
         
-        <!-- 3. Manual Fallbacks & Lite Flags -->
+        <!-- 3. Kobo-Specific Shims & Fixes -->
         <script>
             window.isLiteVersion = true;
             
-            // NodeList.forEach
-            if (window.NodeList && !NodeList.prototype.forEach) {
-                NodeList.prototype.forEach = Array.prototype.forEach;
+            // StructuredClone Polyfill (Simple JSON fallback)
+            if (!window.structuredClone) {
+                window.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); };
             }
 
-            // Array.from Fallback
-            if (!Array.from) {
-                Array.from = (function () {
-                    var toStr = Object.prototype.toString;
-                    var isCallable = function (fn) { return typeof fn === 'function' || toStr.call(fn) === '[object Function]'; };
-                    var toInteger = function (value) { var number = Number(value); if (isNaN(number)) { return 0; } if (number === 0 || !isFinite(number)) { return number; } return (number > 0 ? 1 : -1) * Math.floor(Math.abs(number)); };
-                    var maxSafeInteger = Math.pow(2, 53) - 1;
-                    var toLength = function (value) { var len = toInteger(value); return Math.min(Math.max(len, 0), maxSafeInteger); };
-                    return function from(arrayLike) {
-                        var C = this; var items = Object(arrayLike);
-                        if (arrayLike == null) throw new TypeError('Array.from requires an array-like object');
-                        var mapFn = arguments.length > 1 ? arguments[1] : undefined; var T;
-                        if (typeof mapFn !== 'undefined') { if (!isCallable(mapFn)) throw new TypeError('Array.from: when provided, the second argument must be a function'); if (arguments.length > 2) T = arguments[2]; }
-                        var len = toLength(items.length); var A = isCallable(C) ? Object(new C(len)) : new Array(len);
-                        var k = 0; var kValue;
-                        while (k < len) { kValue = items[k]; if (mapFn) { A[k] = typeof T === 'undefined' ? mapFn(kValue, k) : mapFn.call(T, kValue, k); } else { A[k] = kValue; } k += 1; }
-                        A.length = len; return A;
-                    };
-                }());
+            // Window.open / Target Blank Fix
+            // Kobo doesn't support multiple tabs well. Redirect _blank to self or just handle window.open.
+            var originalOpen = window.open;
+            window.open = function(url, target, features) {
+                if (target === '_blank' || !target) {
+                    window.location.href = url;
+                    return null;
+                }
+                return originalOpen(url, target, features);
+            };
+
+            // Error.cause Polyfill (Minimal)
+            // Array.at / String.at should be covered by CoreJS, but just in case:
+            if (![].at) { Array.prototype.at = function(n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; if (n < 0 || n >= this.length) return undefined; return this[n]; }; }
+            if (!"".at) { String.prototype.at = function(n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; if (n < 0 || n >= this.length) return undefined; return this[n]; }; }
+            
+            // Promise.any fallback (Simple)
+            if (!Promise.any) {
+                Promise.any = function(promises) {
+                    return new Promise((resolve, reject) => {
+                        promises = Array.from(promises);
+                        let errors = [];
+                        let count = 0;
+                        promises.forEach(p => {
+                            Promise.resolve(p).then(resolve).catch(e => {
+                                errors.push(e);
+                                count++;
+                                if (count === promises.length) reject(new AggregateError(errors, "All promises were rejected"));
+                            });
+                        });
+                    });
+                };
             }
         </script>
     `);
+
+    // 4. HTML Attribute Fixes for Kobo
+    // Remove target="_blank" to prevent "stuck" loads
+    $('a[target="_blank"]').removeAttr('target');
+
+    // Replace MP4 with WebM in video sources
+    $('video source[src$=".mp4"]').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src) $(el).attr('src', src.replace('.mp4', '.webm'));
+    });
+    $('video[src$=".mp4"]').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src) $(el).attr('src', src.replace('.mp4', '.webm'));
+    });
 
     // 6. ADD VISUAL INDICATOR & INFO MODAL
     $('.os-title').append('<span class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.5em; vertical-align:super; cursor:pointer; border-bottom:1px dotted black;" title="About Lite Mode">LITE</span>');
@@ -727,6 +808,27 @@ async function run() {
     for (const file of files) {
         const html = await fs.readFile(file, 'utf8');
         const processed = await transpileHtml(html);
+        await fs.outputFile(file, processed);
+    }
+
+    // 4. Process Lite JS Files (External Scripts)
+    console.log("🛠️  Transpiling JS Files...");
+    const jsFiles = glob.sync(`${LITE_DIR}/**/*.js`);
+    for (const file of jsFiles) {
+        // Skip already minified files or libraries if we want (optional)
+        // But to be safe, we transpile everything except obvious libraries if needed
+        // For now, transpile all to ensure top-level await etc is handled.
+        const code = await fs.readFile(file, 'utf8');
+        const processed = await transpileJs(code);
+        await fs.outputFile(file, processed);
+    }
+
+    // 5. Process Lite CSS Files (External Styles)
+    console.log("🛠️  Processing CSS Files...");
+    const cssFiles = glob.sync(`${LITE_DIR}/**/*.css`);
+    for (const file of cssFiles) {
+        const css = await fs.readFile(file, 'utf8');
+        const processed = await processCss(css);
         await fs.outputFile(file, processed);
     }
 
