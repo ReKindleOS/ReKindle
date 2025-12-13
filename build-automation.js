@@ -99,7 +99,7 @@ async function processCss(cssContent) {
         const result = await postcss([
             postcssPresetEnv({
                 stage: 3,
-                browsers: 'Chrome 87',
+                browsers: 'Chrome 44',
                 features: {
                     'nesting-rules': true
                 }
@@ -116,7 +116,7 @@ async function transpileJs(code) {
     try {
         const result = await babel.transformAsync(code, {
             presets: [['@babel/preset-env', {
-                targets: "chrome 87",
+                targets: "chrome 44",
                 modules: false,
                 useBuiltIns: false // We use an external polyfill bundle
             }]],
@@ -293,6 +293,12 @@ async function transpileHtml(htmlContent, filename = '') {
 
         <!-- 2. CoreJS Bundle (Standard ES6+ Polyfills including Array.at, Promise.any, etc.) -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js"></script>
+
+        <!-- 2a. URLSearchParams Polyfill (Missing in Chrome 44) -->
+        <script src="https://cdn.jsdelivr.net/npm/url-search-params-polyfill@8.1.1/index.js"></script>
+
+        <!-- 2b. Fetch Polyfill (whatwg-fetch) -->
+        <script src="https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.min.js"></script>
         
         <!-- 3. Kobo-Specific Shims & Fixes -->
         <script>
@@ -666,9 +672,11 @@ async function transpileHtml(htmlContent, filename = '') {
         if (finalHtml.includes('<title>Nerdle</title>')) {
             console.log("  [Nerdle] Injecting Flexbox Layout fixes...");
             const nerdleCss = `
-            #board-container { display: flex !important; flex-direction: column !important; gap: 4px !important; }
-            .row { display: flex !important; width: 100% !important; justify-content: center !important; gap: 4px !important; }
-            .tile { flex: 1 !important; margin: 0 !important; height: auto !important; aspect-ratio: 1/1 !important; }
+            #board-container { display: flex !important; flex-direction: column !important; }
+            .row { display: flex !important; width: 100% !important; justify-content: center !important; margin-bottom: 4px !important; }
+            .row:last-child { margin-bottom: 0 !important; }
+            .tile { flex: 1 !important; margin-right: 4px !important; height: auto !important; aspect-ratio: 1/1 !important; }
+            .tile:last-child { margin-right: 0 !important; }
         `;
             finalHtml = finalHtml.replace('</style>', nerdleCss + '</style>');
         }
@@ -771,13 +779,15 @@ async function transpileHtml(htmlContent, filename = '') {
         if (finalHtml.includes('<title>Wordle</title>')) {
             console.log("  [Wordle] Injecting Flexbox Layout fixes...");
             const wordleCss = `
-            #board-container { display: flex !important; flex-direction: column !important; gap: 5px !important; height: 420px !important; }
-            .row { display: flex !important; width: 100% !important; flex: 1 !important; gap: 5px !important; justify-content: center !important; grid-template-columns: none !important; }
-            .tile { flex: 1 !important; margin: 0 !important; height: 100% !important; width: auto !important; }
+            #board-container { display: flex !important; flex-direction: column !important; height: 420px !important; }
+            .row { display: flex !important; width: 100% !important; flex: 1 !important; justify-content: center !important; grid-template-columns: none !important; margin-bottom: 5px !important; }
+            .row:last-child { margin-bottom: 0 !important; }
+            .tile { flex: 1 !important; margin-right: 5px !important; height: 100% !important; width: auto !important; }
+            .tile:last-child { margin-right: 0 !important; }
             
             /* Keyboard Fixes */
-            .key-row { display: flex !important; width: 100% !important; gap: 6px !important; justify-content: center !important; }
-            .key { flex: 1 !important; }
+            .key-row { display: flex !important; width: 100% !important; justify-content: center !important; }
+            .key { flex: 1 !important; margin: 0 3px !important; }
             .key.big { flex: 1.5 !important; }
         `;
             finalHtml = finalHtml.replace('</style>', wordleCss + '</style>');
