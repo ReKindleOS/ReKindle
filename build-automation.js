@@ -114,25 +114,110 @@ async function transpileHtml(htmlContent) {
         }
     }
 
-    // 4. INJECT POLYFILLS (For Promise, Fetch, etc.)
+    // 4. PROCESS CSS (Variables & Grid Fallback)
+    $('style').each((i, el) => {
+        let css = $(el).html();
+        if (!css) return;
+
+        // A. Extract :root variables
+        const rootMatch = css.match(/:root\s*{([^}]+)}/);
+        const variables = {};
+        if (rootMatch) {
+            const varsBlock = rootMatch[1];
+            varsBlock.split(';').forEach(line => {
+                const parts = line.split(':');
+                if (parts.length === 2) {
+                    const key = parts[0].trim();
+                    const val = parts[1].trim();
+                    if (key.startsWith('--')) {
+                        variables[key] = val;
+                    }
+                }
+            });
+        }
+
+        // B. Replace var(--name) with value
+        // We iterate specifically to handle the extracted variables
+        Object.keys(variables).forEach(key => {
+            const regex = new RegExp(`var\\(${key}\\)`, 'g');
+            css = css.replace(regex, variables[key]);
+        });
+
+        // C. Grid Falback (Blind Replace for Chrome 44)
+        // 1. Generic Grid -> Flex
+        // css = css.replace(/display:\s*grid;/g, 'display: flex; flex-wrap: wrap;');
+        // 2. Specific fixes for known classes
+        if (css.includes('.grid-container')) {
+            css = css.replace(
+                /\.grid-container\s*{[^}]*display:\s*grid;[^}]*}/g,
+                (match) => {
+                    // Replace the whole block or just properties?
+                    // Let's just blindly replace the display: grid and template parts
+                    return match
+                        .replace('display: grid;', 'display: flex; flex-wrap: wrap; justify-content: center;')
+                        .replace(/grid-template-columns:[^;]+;/g, '')
+                        .replace(/grid-auto-rows:[^;]+;/g, '')
+                        .replace(/gap:\s*(\d+)px;/g, 'margin: -$1px;'); // Negative margin hack? No, let's just remove gap
+                }
+            );
+            // Add margin to children
+            css += ` .grid-container > * { margin: 10px; } `;
+        }
+
+        // D. General Replace for other grids (safer to do simple replace)
+        css = css.replace(/display:\s*grid;/g, 'display: flex; flex-wrap: wrap; justify-content: center;');
+
+        $(el).html(css);
+    });
+
+    // 5. INJECT POLYFILLS & RUNTIME (Async/Await, ES6 Features)
     $('head').prepend(`
-        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign"></script>
-        <script>window.isLiteVersion = true;</script>
+        <!-- 1. Regenerator Runtime (Required for Async/Await transpilation) -->
+        <script src="https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js"></script>
+
+        <!-- 2. Standard Polyfills -->
+        <!-- URLSearchParams Polyfill for Chrome 44 -->
+        <script src="https://unpkg.com/url-search-params-polyfill@8.2.5/index.js"></script>
+        
+        <script src="https://polyfill.io/v3/polyfill.min.js?features=default,es6,fetch,Promise,Object.assign,Object.entries,Object.values,Array.from,Array.prototype.find,Array.prototype.findIndex,Array.prototype.includes,String.prototype.includes,String.prototype.startsWith,String.prototype.endsWith"></script>
+        
+        <!-- 3. Manual Fallbacks & Lite Flags -->
+        <script>
+            window.isLiteVersion = true;
+            
+            // NodeList.forEach
+            if (window.NodeList && !NodeList.prototype.forEach) {
+                NodeList.prototype.forEach = Array.prototype.forEach;
+            }
+
+            // Array.from Fallback
+            if (!Array.from) {
+                Array.from = (function () {
+                    var toStr = Object.prototype.toString;
+                    var isCallable = function (fn) { return typeof fn === 'function' || toStr.call(fn) === '[object Function]'; };
+                    var toInteger = function (value) { var number = Number(value); if (isNaN(number)) { return 0; } if (number === 0 || !isFinite(number)) { return number; } return (number > 0 ? 1 : -1) * Math.floor(Math.abs(number)); };
+                    var maxSafeInteger = Math.pow(2, 53) - 1;
+                    var toLength = function (value) { var len = toInteger(value); return Math.min(Math.max(len, 0), maxSafeInteger); };
+                    return function from(arrayLike) {
+                        var C = this; var items = Object(arrayLike);
+                        if (arrayLike == null) throw new TypeError('Array.from requires an array-like object');
+                        var mapFn = arguments.length > 1 ? arguments[1] : undefined; var T;
+                        if (typeof mapFn !== 'undefined') { if (!isCallable(mapFn)) throw new TypeError('Array.from: when provided, the second argument must be a function'); if (arguments.length > 2) T = arguments[2]; }
+                        var len = toLength(items.length); var A = isCallable(C) ? Object(new C(len)) : new Array(len);
+                        var k = 0; var kValue;
+                        while (k < len) { kValue = items[k]; if (mapFn) { A[k] = typeof T === 'undefined' ? mapFn(kValue, k) : mapFn.call(T, kValue, k); } else { A[k] = kValue; } k += 1; }
+                        A.length = len; return A;
+                    };
+                }());
+            }
+        </script>
     `);
 
-    // 5. ADD VISUAL INDICATOR & INFO MODAL
+    // 6. ADD VISUAL INDICATOR & INFO MODAL
     $('.os-title').append('<span class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.5em; vertical-align:super; cursor:pointer; border-bottom:1px dotted black;" title="About Lite Mode">LITE</span>');
 
-    $('body').append(`
-        <div id="lite-info-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;" onclick="this.style.display='none'">
-            <div class="modal-box" onclick="event.stopPropagation()" style="background:white; border:2px solid black; padding:20px; width:300px; max-width:80%; text-align:center; box-shadow:4px 4px 0 black; font-family:sans-serif;">
-                <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Lite Version</h3>
-                <p style="margin:15px 0;">This is a lightweight version of ReKindle designed for older devices.</p>
-                <p style="margin:15px 0; font-size:0.9em;">ReKindle apps and games are untested on these browsers and most likely won't work, proceed with caution.</p>
-                <button style="background:white; border:2px solid black; padding:8px 20px; font-weight:bold; cursor:pointer; box-shadow:2px 2px 0 black;" onclick="document.getElementById('lite-info-modal').style.display='none'">OK</button>
-            </div>
-        </div>
-    `);
+    // Fix for specific styling in Lite where badges might look weird
+    $('style').append('.lite-badge { background: white; border: 1px solid black; padding: 0 2px; }');
 
     return $.html();
 }
