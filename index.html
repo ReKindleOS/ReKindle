@@ -699,13 +699,24 @@
                     <img src="discord.svg" style="width:100%; height:100%; background:white;"
                         alt="Discord Invite QR Code">
                 </div>
-                <p style="font-size:0.9rem;">Scan to join the <a href="http://link.rekindle.ink/discord/" target="_blank" style="color: black; text-decoration: underline;">ReKindle community</a>!</p>
+                <p style="font-size:0.9rem;">Scan to join the <a href="http://link.rekindle.ink/discord/"
+                        target="_blank" style="color: black; text-decoration: underline;">ReKindle community</a>!</p>
                 <button class="sys-btn" onclick="closeModal('discord-modal')">Close</button>
             </div>
         </div>
     </div>
 
     <script>
+        let currentFilter = 'all';
+        let currentUser = null;
+        let gamesDisabled = false;
+        let favoriteApps = [];
+        let isEditMode = false;
+        let isFirebaseAvailable = false;
+        const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
+
+        let auth, db;
+
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
@@ -715,16 +726,21 @@
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
+                isFirebaseAvailable = true;
+                console.log("Firebase initialized successfully.");
+            } else {
+                console.warn("Firebase SDK not loaded. Running in offline mode.");
+            }
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+            isFirebaseAvailable = false;
+        }
 
-        let currentFilter = 'all';
-        let currentUser = null;
-        let gamesDisabled = false;
-        let favoriteApps = [];
-        let isEditMode = false;
-        const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
 
         if (navigator.storage && navigator.storage.persist) {
             navigator.storage.persist().then(granted => {
@@ -746,46 +762,55 @@
             filterApps('all', document.querySelector('#nav-all'));
             renderAboutContent();
 
-            auth.onAuthStateChanged(user => {
-                if (user) {
-                    currentUser = user;
-                    localStorage.setItem('rekindle_uid', user.uid);
-                    let displayUser = user.email.split('@')[0];
-                    if (user.email.endsWith("@rekindle.ink")) {
-                        displayUser = user.email.replace("@rekindle.ink", "");
-                    }
-                    document.getElementById('user-display').innerText = "User: " + displayUser;
-                    document.getElementById('auth-btn').innerText = "Log Out";
-                    document.getElementById('auth-btn').onclick = openLogoutModal;
+            if (isFirebaseAvailable && auth) {
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        currentUser = user;
+                        localStorage.setItem('rekindle_uid', user.uid);
+                        let displayUser = user.email.split('@')[0];
+                        if (user.email.endsWith("@rekindle.ink")) {
+                            displayUser = user.email.replace("@rekindle.ink", "");
+                        }
+                        document.getElementById('user-display').innerText = "User: " + displayUser;
+                        document.getElementById('auth-btn').innerText = "Log Out";
+                        document.getElementById('auth-btn').onclick = openLogoutModal;
 
-                    // Update Modal Button
-                    const modalAuthBtn = document.getElementById('modal-auth-btn');
-                    if (modalAuthBtn) {
-                        modalAuthBtn.innerText = "Log Out";
-                        modalAuthBtn.onclick = openLogoutModal;
-                    }
+                        // Update Modal Button
+                        const modalAuthBtn = document.getElementById('modal-auth-btn');
+                        if (modalAuthBtn) {
+                            modalAuthBtn.innerText = "Log Out";
+                            modalAuthBtn.onclick = openLogoutModal;
+                        }
 
-                    closeModal('login-modal');
-                    monitorGameNotifications(user.uid);
-                    monitorFavoriteApps();
-                } else {
-                    document.getElementById('user-display').innerText = "Guest Mode";
-                    document.getElementById('auth-btn').innerText = "Log In";
-                    document.getElementById('auth-btn').onclick = openLogin;
-
-                    // Update Modal Button
-                    const modalAuthBtn = document.getElementById('modal-auth-btn');
-                    if (modalAuthBtn) {
-                        modalAuthBtn.innerText = "Log In";
-                        modalAuthBtn.onclick = openLogin;
+                        closeModal('login-modal');
+                        monitorGameNotifications(user.uid);
+                        monitorFavoriteApps();
+                    } else {
+                        handleGuestMode();
                     }
-                    favoriteApps = JSON.parse(localStorage.getItem('rekindle_favorites')) || [];
-                    renderFavoriteSection();
-                }
-            });
+                });
+            } else {
+                handleGuestMode();
+                document.getElementById('user-display').innerText = "Offline Mode";
+            }
 
             updateNavVisibility();
         };
+
+        function handleGuestMode() {
+            document.getElementById('user-display').innerText = "Guest Mode";
+            document.getElementById('auth-btn').innerText = "Log In";
+            document.getElementById('auth-btn').onclick = openLogin;
+
+            // Update Modal Button
+            const modalAuthBtn = document.getElementById('modal-auth-btn');
+            if (modalAuthBtn) {
+                modalAuthBtn.innerText = "Log In";
+                modalAuthBtn.onclick = openLogin;
+            }
+            favoriteApps = JSON.parse(localStorage.getItem('rekindle_favorites')) || [];
+            renderFavoriteSection();
+        }
 
         function loadWallpaper() {
             let wallpaperImg = localStorage.getItem('rekindle_bg_image');
@@ -876,7 +901,7 @@
         }
 
         function monitorFavoriteApps() {
-            if (!currentUser) return;
+            if (!currentUser || !isFirebaseAvailable || !db) return;
             db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites')
                 .onSnapshot(doc => {
                     if (doc.exists) {
@@ -900,10 +925,10 @@
                 favoriteApps.push(appId);
             }
 
-            if (currentUser) {
+            if (currentUser && isFirebaseAvailable && db) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites').set({
                     appIds: favoriteApps
-                });
+                }).catch(e => console.error("Error saving favorites:", e));
             } else {
                 localStorage.setItem('rekindle_favorites', JSON.stringify(favoriteApps));
             }
@@ -1145,6 +1170,7 @@
         }
 
         function monitorGameNotifications(uid) {
+            if (!isFirebaseAvailable || !db) return;
             db.collection('word_games')
                 .where('status', '==', 'active')
                 .onSnapshot(snap => {
@@ -1167,6 +1193,10 @@
         function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
 
         function doLogin() {
+            if (!isFirebaseAvailable || !auth) {
+                document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection";
+                return;
+            }
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             const email = u.includes('@') ? u : u + "@rekindle.ink";
@@ -1176,6 +1206,10 @@
         }
 
         function doRegister() {
+            if (!isFirebaseAvailable || !auth) {
+                document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection";
+                return;
+            }
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             const email = u.includes('@') ? u : u + "@rekindle.ink";
@@ -1185,7 +1219,9 @@
         }
 
         function confirmLogout() {
-            auth.signOut();
+            if (isFirebaseAvailable && auth) {
+                auth.signOut().catch(e => console.error("Sign out error:", e));
+            }
             localStorage.removeItem('rekindle_uid');
             localStorage.removeItem('rekindle_favorites');
             closeModal('logout-modal');
