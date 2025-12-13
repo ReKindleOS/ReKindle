@@ -317,7 +317,6 @@ const APPS = [
         id: 'pool',
         name: '8 Ball',
         cat: 'games',
-        beta: true,
         icon: '<circle cx="16" cy="16" r="14" fill="none" stroke="black" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" text-anchor="middle" fill="black">8</text>'
     },
     {
@@ -518,6 +517,12 @@ const APPS = [
         es6: true,
         cat: 'two_player',
         icon: '<line x1="12" y1="6" x2="12" y2="26"/><line x1="20" y1="6" x2="20" y2="26"/><line x1="6" y1="12" x2="26" y2="12"/><line x1="6" y1="20" x2="26" y2="20"/>'
+    },
+    {
+        id: 'pool2p',
+        name: '8 Ball 2P',
+        cat: 'two_player',
+        icon: '<circle cx="21" cy="11" r="8" fill="white" stroke="black" stroke-width="2"/><circle cx="13" cy="19" r="10" fill="white" stroke="black" stroke-width="2"/><text x="13" y="23.5" font-size="11" font-weight="bold" text-anchor="middle" fill="black">8</text>'
     }
 ];
 
