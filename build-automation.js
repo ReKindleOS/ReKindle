@@ -481,6 +481,8 @@ async function transpileHtml(htmlContent, filename = '') {
              #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
              #featured-grid { justify-content: center !important; }
              #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
+             /* Fix View Header in Flex Container */
+             .view-header { width: 100% !important; flex: none !important; margin-top: 25px !important; margin-bottom: 15px !important; }
              @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
              `;
             finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
@@ -1007,12 +1009,10 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         let finalHtml = $.html();
 
         // Patch Main Grid
-        const mainGridTarget = 'const isFav = favoriteApps.includes(app.id);';
-        // Note: Legacy babel transpilation will likely turn const to var? 
-        // BUT we are operating on the HTML source BEFORE the main script is transpiled by US?
-        // No, standard JS files are just copied or inline scripts.
-        // If inline scripts are transpiled in Step 3 (which they are), then 'const' might be 'var'.
-        // Let's handle both.
+        // Minified variations for Legacy (Babel might convert const -> var or keep const, + minification removes spaces)
+        const mainGridTargetOriginal = 'const isFav = favoriteApps.includes(app.id);';
+        const mainGridTargetMinifiedConst = 'const isFav=favoriteApps.includes(app.id);';
+        const mainGridTargetMinifiedVar = 'var isFav=favoriteApps.includes(app.id);';
 
         const mainGridInjection = `
             if (app.es6) {
@@ -1020,31 +1020,36 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
                 a.onclick = function (e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
             }
-            const isFav = favoriteApps.includes(app.id); /* Re-add original line */
+            const isFav=favoriteApps.includes(app.id); /* Re-add original line */
         `;
 
-        if (finalHtml.includes('const isFav')) {
-            finalHtml = finalHtml.replace('const isFav = favoriteApps.includes(app.id);', mainGridInjection);
-        } else {
-            finalHtml = finalHtml.replace('var isFav = favoriteApps.includes(app.id);', mainGridInjection.replace('const', 'var'));
+        // Check for minified const first, then var, then original
+        if (finalHtml.includes(mainGridTargetMinifiedConst)) {
+            finalHtml = finalHtml.replace(mainGridTargetMinifiedConst, mainGridInjection);
+        } else if (finalHtml.includes(mainGridTargetMinifiedVar)) {
+            // If var, we need to inject with var
+            finalHtml = finalHtml.replace(mainGridTargetMinifiedVar, mainGridInjection.replace('const isFav=', 'var isFav='));
+        } else if (finalHtml.includes(mainGridTargetOriginal)) {
+            finalHtml = finalHtml.replace(mainGridTargetOriginal, mainGridInjection.replace('const isFav=', 'const isFav = '));
         }
 
         // Patch Featured
-        const featuredTarget = "a.className = 'featured-card';";
+        const featuredTargetOriginal = "a.className = 'featured-card';";
+        const featuredTargetMinified = 'a.className="featured-card";';
+
         const featuredInjection = `
-            a.className = 'featured-card';
+            a.className="featured-card";
             if (app.es6) {
                 a.className += ' es6-disabled';
                 a.onclick = function(e) { e.preventDefault(); showEs6Warning(app.id); };
                 a.href = "javascript:void(0)";
             }
         `;
-        // Handle potential minification or var/const diffs if needed, but this line is usually standard assignment.
-        // We use the same loose replace strategy.
-        if (finalHtml.includes(featuredTarget)) {
-            finalHtml = finalHtml.replace(featuredTarget, featuredInjection);
-        } else if (finalHtml.includes('a.className="featured-card";')) {
-            finalHtml = finalHtml.replace('a.className="featured-card";', featuredInjection.replace("a.className = 'featured-card';", 'a.className="featured-card";'));
+
+        if (finalHtml.includes(featuredTargetMinified)) {
+            finalHtml = finalHtml.replace(featuredTargetMinified, featuredInjection);
+        } else if (finalHtml.includes(featuredTargetOriginal)) {
+            finalHtml = finalHtml.replace(featuredTargetOriginal, featuredInjection.replace('a.className="featured-card";', "a.className = 'featured-card';"));
         }
 
         return await minifyHtmlContent(finalHtml);
@@ -1059,6 +1064,8 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
              #app-grid .app-icon { width: 90px !important; margin: 5px !important; flex: none !important; }
              #featured-grid { justify-content: center !important; }
              #featured-grid .featured-card { width: 45% !important; min-width: 200px !important; margin: 5px !important; flex: none !important; }
+             /* Fix View Header in Flex Container */
+             .view-header { width: 100% !important; flex: none !important; margin-top: 25px !important; margin-bottom: 15px !important; }
              @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
              `;
             finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
