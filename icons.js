@@ -292,6 +292,13 @@ const APPS = [
     },
 
     {
+        id: 'suggestions',
+        name: 'Suggestions',
+        cat: 'lifestyle',
+        desc: 'Vote on new features!',
+        icon: '<circle cx="16" cy="14" r="9" stroke="black" stroke-width="2" fill="none"/><path d="M12 21 h8 l-2 6 h-4 z" fill="black"/><path d="M16 14 v-5 M16 14 l-3 3 M16 14 l3 3" stroke="black" stroke-width="1.5"/><path d="M11 21 L 12 18 L 13 20 L 14 18 L 15 20 L 16 18 L 17 20 L 18 18 L 19 20 L 20 18 L 21 21" stroke="black" stroke-width="1" fill="none"/><path d="M16 2 v-2 M16 2 v0 M7 5 l-1.5 -1.5 M25 5 l1.5 -1.5 M2 14 h2 M28 14 h2 M7 23 l-2 2 M25 23 l2 2" stroke="black" stroke-width="2" stroke-linecap="round"/>' // Globe style with huge rays
+    },
+    {
         id: 'discord',
         name: 'Discord',
         cat: 'lifestyle',

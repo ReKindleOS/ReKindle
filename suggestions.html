@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suggestions</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS (Shared with KindleChat/others) */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 800px;
+            /* Slightly wider for lists */
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* APP LAYOUT */
+        #app-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        /* HEADER / TOOLBAR */
+        .toolbar {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eee;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* LIST VIEW */
+        #suggestion-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .suggestion-item {
+            border: 2px solid black;
+            padding: 10px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .suggestion-item:hover {
+            box-shadow: 4px 4px 0 #999;
+            transform: translate(-1px, -1px);
+        }
+
+        .sugg-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 5px;
+        }
+
+        .sugg-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .sugg-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .vote-badge {
+            background: black;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        /* DETAIL VIEW */
+        #detail-view {
+            display: none;
+            /* Hidden by default */
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .detail-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: white;
+        }
+
+        .comment-section {
+            border-top: 2px solid black;
+            background: #eee;
+            padding: 10px;
+            height: 40%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .comment-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            /* Inset look */
+            background: #fafafa;
+            padding: 5px;
+        }
+
+        .comment-item {
+            border-bottom: 1px dotted #ccc;
+            padding: 5px 0;
+            font-size: 0.9rem;
+        }
+
+        .comment-author {
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+
+        /* MODALS */
+        #modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+            border: 2px solid black;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        #login-overlay {
+            display: none;
+            position: absolute;
+            top: 35px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* VOTE BUTTON IN DETAIL */
+        .vote-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 10px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .vote-btn.voted {
+            background: black;
+            color: white;
+        }
+
+        /* STATUS BADGE */
+        .status-badge {
+            background: #999;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 5px;
+            text-transform: uppercase;
+        }
+
+        /* DONE ITEM STYLE */
+        .suggestion-item.done {
+            opacity: 0.6;
+            background: #f0f0f0;
+        }
+
+        .suggestion-item.done .sugg-title {
+            text-decoration: line-through;
+        }
+    </style>
+
+    <!-- FIREBASE -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Suggestions</span>
+        </div>
+
+        <!-- MAIN VIEW (LIST) -->
+        <div id="app-content">
+            <div class="toolbar" id="main-toolbar">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-weight:bold;">Suggestions</span>
+                    <select id="sort-select" onchange="changeSort()"
+                        style="font-family:inherit; font-size:0.8rem; border:2px solid black; padding:3px;">
+                        <option value="newest">Newest</option>
+                        <option value="popular">Popular</option>
+                    </select>
+                </div>
+                <button class="sys-btn" onclick="openCreateModal()">+ New Idea</button>
+            </div>
+
+            <div id="suggestion-list">
+                <!-- Items injected here -->
+                <div style="text-align:center; padding:20px; color:#666;">Loading...</div>
+            </div>
+
+            <!-- DETAIL VIEW (Overlay inside app-content) -->
+            <div id="detail-view">
+                <div class="toolbar">
+                    <button class="sys-btn" onclick="closeDetailView()">← Back</button>
+                    <span id="detail-title-bar"
+                        style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 60%;">...</span>
+                    <div></div> <!-- spacer -->
+                </div>
+
+                <div class="detail-content">
+                    <h2 id="detail-title" style="margin-top:0;">Title</h2>
+                    <div class="sugg-meta" id="detail-meta">by Author</div>
+                    <p id="detail-desc" style="white-space: pre-wrap; line-height: 1.5;"></p>
+
+                    <button id="detail-vote-btn" class="vote-btn" onclick="toggleVote()">
+                        <span>▲ Upvote</span>
+                        <span id="detail-vote-count">0</span>
+                    </button>
+
+                    <!-- Admin Only -->
+                    <button id="detail-done-btn" class="vote-btn" onclick="toggleStatus()"
+                        style="display:none; margin-left:10px;">
+                        <span>✓ Mark Done</span>
+                    </button>
+                </div>
+
+                <div class="comment-section">
+                    <div style="font-weight:bold; margin-bottom:5px;">Comments</div>
+                    <div class="comment-list" id="detail-comments">
+                        <!-- comments -->
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <input type="text" id="comment-input" class="modal-input" placeholder="Add a comment..."
+                            style="margin:0;">
+                        <button class="sys-btn" onclick="postComment()">Post</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="login-overlay">
+            <h2>Please Log In</h2>
+            <p>You need to be logged in to enable suggestions.</p>
+            <button class="sys-btn" onclick="window.location.href='index?login=true'">Log In</button>
+        </div>
+    </div>
+
+    <!-- CREATE MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3>New Suggestion</h3>
+            <input type="text" id="new-title" class="modal-input" placeholder="Title (e.g. Add Calculator)"
+                maxlength="50">
+            <textarea id="new-desc" class="modal-input" placeholder="Description..." style="height:100px; resize:none;"
+                maxlength="500"></textarea>
+            <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="submitSuggestion()">Submit</button>
+                <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- APP LOGIC ---
+
+        // Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        let currentUser = null;
+        let currentSuggestionId = null;
+        let unsubscribeComments = null;
+
+        // AUTH LISTENER
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-overlay').style.display = 'none';
+                loadSuggestions();
+            } else {
+                currentUser = null;
+                document.getElementById('login-overlay').style.display = 'flex';
+            }
+        });
+
+        // WALLPAPER
+        function loadWallpaper() {
+            // MATCHING READING.HTML: No sanitization on this read
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+        // Call immediately (like reading.html) and on load
+        loadWallpaper();
+        window.onload = function () {
+            loadWallpaper();
+            // Auth listener handling...
+        };
+
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) {
+                return imageString;
+            }
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                    return imageString;
+                }
+            }
+            return '';
+        }
+
+        let allSuggestions = []; // Cache for client-side sorting
+        let currentSort = 'newest';
+
+        function changeSort() {
+            const sel = document.getElementById('sort-select');
+            currentSort = sel.value;
+            renderList();
+        }
+
+        // LOAD SUGGESTIONS
+        function loadSuggestions() {
+            db.collection('suggestions').orderBy('createdAt', 'desc').limit(100).onSnapshot(snapshot => {
+                allSuggestions = [];
+                snapshot.forEach(doc => {
+                    allSuggestions.push({ id: doc.id, ...doc.data() });
+                });
+                renderList();
+            });
+        }
+
+        function renderList() {
+            const listEl = document.getElementById('suggestion-list');
+            listEl.innerHTML = '';
+
+            // SORT
+            const sorted = [...allSuggestions];
+
+            // Primary Sort: Status (Open first, Done last)
+            // Secondary Sort: Selected Criteria
+
+            sorted.sort((a, b) => {
+                // Check status first
+                const isDoneA = (a.status === 'done');
+                const isDoneB = (b.status === 'done');
+
+                if (isDoneA && !isDoneB) return 1; // A (done) goes to bottom
+                if (!isDoneA && isDoneB) return -1; // B (done) goes to bottom
+
+                // If status same, check criteria
+                if (currentSort === 'popular') {
+                    const votesA = (a.upvotes || []).length;
+                    const votesB = (b.upvotes || []).length;
+                    return votesB - votesA;
+                } else {
+                    // Newest
+                    const tA = a.createdAt?.seconds || 0;
+                    const tB = b.createdAt?.seconds || 0;
+                    return tB - tA;
+                }
+            });
+
+            sorted.forEach(data => {
+                const id = data.id;
+                const voteCount = (data.upvotes || []).length;
+                const isDone = data.status === 'done';
+
+                const el = document.createElement('div');
+                el.className = 'suggestion-item' + (isDone ? ' done' : '');
+                el.onclick = () => openSuggestion(id, data);
+
+                let statusHtml = '';
+                if (isDone) {
+                    statusHtml = '<span class="status-badge">DONE</span>';
+                }
+
+                el.innerHTML = `
+                <div class="sugg-header">
+                    <div>
+                        ${statusHtml}
+                        <span class="sugg-title">${escapeHtml(data.title)}</span>
+                    </div>
+                    <span class="vote-badge">▲ ${voteCount}</span>
+                </div>
+                <div style="font-size:0.9rem; margin-bottom:5px; height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${escapeHtml(data.description)}
+                </div>
+                <div class="sugg-meta">by ${escapeHtml(data.authorName || 'Anon')}</div>
+            `;
+                listEl.appendChild(el);
+            });
+
+            if (sorted.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center; padding:20px;">No suggestions yet. Be the first!</div>';
+            }
+        }
+
+        // OPEN DETAIL
+        function openSuggestion(id, data) {
+            currentSuggestionId = id;
+            document.getElementById('detail-view').style.display = 'flex';
+            document.getElementById('suggestion-list').style.display = 'none'; // Hide list
+            document.getElementById('main-toolbar').style.display = 'none';
+
+            document.getElementById('detail-title').textContent = data.title;
+            document.getElementById('detail-title-bar').textContent = data.title;
+            document.getElementById('detail-desc').textContent = data.description;
+            document.getElementById('detail-meta').textContent = `by ${data.authorName || 'Anonymous'} • ${new Date(data.createdAt?.toDate()).toLocaleDateString()}`;
+
+            updateVoteBtn(data.upvotes || []);
+            updateAdminControls(data);
+            loadComments(id);
+        }
+
+        function updateAdminControls(data) {
+            // Simple check for "ukiyo" in email
+            // Security is handled by rules, this adds UI convenience
+            const isAdmin = currentUser && currentUser.email && currentUser.email.startsWith('ukiyo');
+            const btn = document.getElementById('detail-done-btn');
+
+            if (isAdmin) {
+                btn.style.display = 'inline-flex';
+                const isDone = data.status === 'done';
+                if (isDone) {
+                    btn.querySelector('span').textContent = '✗ Mark Open';
+                    btn.style.background = '#ccc';
+                } else {
+                    btn.querySelector('span').textContent = '✓ Mark Done';
+                    btn.style.background = 'white';
+                }
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+
+        function toggleStatus() {
+            if (!currentSuggestionId || !currentUser) return;
+
+            const docRef = db.collection('suggestions').doc(currentSuggestionId);
+
+            // Toggle logic requires reading current state first
+            db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(docRef);
+                if (!doc.exists) return;
+
+                const currentStatus = doc.data().status;
+                const newStatus = (currentStatus === 'done') ? 'open' : 'done';
+
+                transaction.update(docRef, { status: newStatus });
+                return newStatus;
+            }).then((newStatus) => {
+                // Close view or just update UI? Update UI.
+                // Manually update the local cache so sort works immediately if we don't wait for snapshot
+                const item = allSuggestions.find(s => s.id === currentSuggestionId);
+                if (item) item.status = newStatus;
+
+                // Refresh admin button text
+                // Fake a data object for updateAdminControls
+                updateAdminControls({ status: newStatus });
+                renderList(); // Re-render background list to show strikethrough updates
+            }).catch(err => {
+                console.error("Status update failed", err);
+                alert("Failed to update status. Are you Ukiyo?");
+            });
+        }
+
+        function closeDetailView() {
+            document.getElementById('detail-view').style.display = 'none';
+            document.getElementById('suggestion-list').style.display = 'flex';
+            document.getElementById('main-toolbar').style.display = 'flex';
+            currentSuggestionId = null;
+            if (unsubscribeComments) unsubscribeComments();
+        }
+
+        // VOTE LOGIC
+        function updateVoteBtn(upvotes) {
+            const btn = document.getElementById('detail-vote-btn');
+            const countSpan = document.getElementById('detail-vote-count');
+            const count = upvotes.length;
+            const hasVoted = currentUser && upvotes.includes(currentUser.uid);
+
+            countSpan.textContent = count;
+            if (hasVoted) {
+                btn.classList.add('voted');
+                btn.querySelector('span').textContent = '▼ Remove Upvote';
+            } else {
+                btn.classList.remove('voted');
+                btn.querySelector('span').textContent = '▲ Upvote';
+            }
+        }
+
+        function toggleVote() {
+            if (!currentSuggestionId || !currentUser) return;
+
+            const docRef = db.collection('suggestions').doc(currentSuggestionId);
+
+            db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(docRef);
+                if (!doc.exists) return; // Should handle removal
+
+                let upvotes = doc.data().upvotes || [];
+                if (upvotes.includes(currentUser.uid)) {
+                    upvotes = upvotes.filter(uid => uid !== currentUser.uid);
+                } else {
+                    upvotes.push(currentUser.uid);
+                }
+
+                transaction.update(docRef, { upvotes: upvotes });
+                return upvotes;
+            }).then((newUpvotes) => {
+                updateVoteBtn(newUpvotes); // Optimistic / post-update UI update
+            }).catch(err => console.error("Vote failed", err));
+        }
+
+
+        // COMMENTS
+        function loadComments(id) {
+            const list = document.getElementById('detail-comments');
+            list.innerHTML = 'Loading comments...';
+
+            unsubscribeComments = db.collection('suggestions').doc(id).collection('comments')
+                .orderBy('createdAt', 'asc')
+                .onSnapshot(snapshot => {
+                    list.innerHTML = '';
+                    snapshot.forEach(doc => {
+                        const c = doc.data();
+                        const el = document.createElement('div');
+                        el.className = 'comment-item';
+                        el.innerHTML = `
+                        <span class="comment-author">${escapeHtml(c.authorName)}:</span>
+                        <span>${escapeHtml(c.text)}</span>
+                    `;
+                        list.appendChild(el);
+                    });
+                    // Auto scroll to bottom
+                    list.scrollTop = list.scrollHeight;
+                });
+        }
+
+        function postComment() {
+            const inp = document.getElementById('comment-input');
+            const text = inp.value.trim();
+            if (!text || !currentSuggestionId || !currentUser) return;
+
+            db.collection('suggestions').doc(currentSuggestionId).collection('comments').add({
+                text: text,
+                authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                authorUid: currentUser.uid,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            inp.value = '';
+        }
+
+        // SUBMIT SUGGESTION
+        function openCreateModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('new-title').focus();
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+            document.getElementById('new-title').value = '';
+            document.getElementById('new-desc').value = '';
+        }
+
+        function submitSuggestion() {
+            const title = document.getElementById('new-title').value.trim();
+            const desc = document.getElementById('new-desc').value.trim();
+
+            if (!title || !desc) {
+                alert("Please fill in both fields.");
+                return;
+            }
+
+            db.collection('suggestions').add({
+                title: title,
+                description: desc,
+                authorUid: currentUser.uid,
+                authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                upvotes: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                closeModal();
+            }).catch(err => {
+                console.error(err);
+                alert("Error submitting. content too long?");
+            });
+        }
+
+        // UTILS
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+    </script>
+
+</body>
+
+</html>

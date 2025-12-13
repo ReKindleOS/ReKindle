@@ -161,5 +161,33 @@ service cloud.firestore {
                       isValidText(request.resource.data.title);
       allow delete: if request.auth != null && resource.data.uploaderUid == request.auth.uid;
     }
+
+    // 14. SUGGESTIONS APP
+    match /suggestions/{suggestionId} {
+      allow read: if true;
+      allow create: if request.auth != null &&
+                      isValidText(request.resource.data.title) &&
+                      isValidText(request.resource.data.description);
+      
+      // Update: 
+      // 1. Author can edit their own suggestion (title/desc).
+      // 2. ANY authenticated user can update 'upvotes' (toggle their UID in the array).
+      // 3. Admin (ukiyo) can update 'status'.
+      allow update: if request.auth != null && (
+          (resource.data.authorUid == request.auth.uid && 
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description'])) 
+          ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']))
+          ||
+          (request.auth.token.email.matches('ukiyo@.*') && 
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+      );
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if request.auth != null && isValidText(request.resource.data.text);
+        allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+      }
+    }
   }
 }
