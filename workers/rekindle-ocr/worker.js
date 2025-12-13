@@ -3,8 +3,10 @@ export default {
     // SECURITY: Only allow your specific domain
     // SECURITY: Limit to specific domains
     const ALLOWED_ORIGINS = [
+      "https://beta.rekindle.pages.dev",
       "https://rekindle.ink",
-      "https://lite.rekindle.ink"
+      "https://lite.rekindle.ink",
+      "https://legacy.rekindle.ink"
     ];
 
     const origin = request.headers.get("Origin");
