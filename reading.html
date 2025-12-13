@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Reading Log</title>
-    
+
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
@@ -47,7 +48,7 @@
             overflow: hidden;
             background-color: #e5e5e5;
             /* Background managed by settings */
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -84,7 +85,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -170,11 +174,12 @@
         .day-row {
             display: flex;
             border-bottom: 1px solid #ccc;
-            flex: 1; /* Fill available space equally */
+            flex: 1;
+            /* Fill available space equally */
             min-height: 50px;
             align-items: stretch;
         }
-        
+
         .day-row:last-child {
             border-bottom: none;
         }
@@ -190,14 +195,25 @@
             flex-shrink: 0;
         }
 
-        .day-num { font-weight: bold; font-size: 1.1rem; }
-        .day-name { font-size: 0.7rem; color: #666; text-transform: uppercase; }
+        .day-num {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .day-name {
+            font-size: 0.7rem;
+            color: #666;
+            text-transform: uppercase;
+        }
 
         .day-row.today .day-label {
             background: black;
             color: white;
         }
-        .day-row.today .day-name { color: #ddd; }
+
+        .day-row.today .day-name {
+            color: #ddd;
+        }
 
         /* TIME SLOTS */
         .slots-container {
@@ -207,7 +223,8 @@
             padding: 5px;
             gap: 5px;
             overflow-x: auto;
-            scrollbar-width: none; /* Hide scrollbar */
+            scrollbar-width: none;
+            /* Hide scrollbar */
         }
 
         .slot {
@@ -253,9 +270,9 @@
             border-top: 1px solid black;
             flex-shrink: 0;
         }
-
     </style>
 </head>
+
 <body>
 
     <div class="window">
@@ -272,8 +289,8 @@
         </div>
 
         <div class="window-content" id="reading-list">
-            </div>
-        
+        </div>
+
         <div id="status-bar">Local Mode</div>
     </div>
 
@@ -294,12 +311,12 @@
 
         // --- STATE ---
         // Data structure: { "YYYY-MM-DD": 45 } (minutes)
-        let readingData = {}; 
-        
+        let readingData = {};
+
         let currentStart = new Date(); // Start of current week view
         let today = new Date(); // Actual today
         let currentUser = null;
-        
+
         // Intervals: 15m up to 120m (2h)
         const INTERVALS = [15, 30, 45, 60, 75, 90, 105, 120];
 
@@ -307,7 +324,7 @@
         window.onload = () => {
             loadWallpaper();
             initCurrentWeek();
-            
+
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
@@ -320,17 +337,32 @@
             });
         };
 
+        // Helper to sanitize background image URLs from localStorage
+        function sanitizeBackgroundImage(imageString) {
+            if (!imageString) return '';
+            if (imageString.startsWith('url("data:image/png;base64,')) {
+                return imageString;
+            }
+            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                const url = imageString.substring(5, imageString.length - 2);
+                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+                    return imageString;
+                }
+            }
+            return '';
+        }
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if(wallpaperImg) {
+            if (wallpaperImg) {
                 document.body.style.backgroundImage = wallpaperImg;
             }
-            if(wallpaperSize) {
+            if (wallpaperSize) {
                 document.body.style.backgroundSize = sanitizeBackgroundImage(wallpaperSize);
             }
         }
-        
+
         function initCurrentWeek() {
             // Align currentStart to Monday
             const day = currentStart.getDay(); // 0 (Sun) - 6 (Sat)
@@ -392,25 +424,25 @@
             // Update Header Label (Week Range)
             const weekEnd = new Date(currentStart);
             weekEnd.setDate(currentStart.getDate() + 6);
-            
+
             const startStr = currentStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            
+
             document.getElementById('current-period-label').innerText = `${startStr} - ${endStr}`;
 
             // Generate 7 Rows
             for (let i = 0; i < 7; i++) {
                 const dateObj = new Date(currentStart);
                 dateObj.setDate(currentStart.getDate() + i);
-                
+
                 const y = dateObj.getFullYear();
                 const m = String(dateObj.getMonth() + 1).padStart(2, '0');
                 const d = String(dateObj.getDate()).padStart(2, '0');
                 const dateKey = `${y}-${m}-${d}`;
-                
+
                 const dayNum = dateObj.getDate();
                 const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                
+
                 const currentMinutes = readingData[dateKey] || 0;
                 const isToday = (dateObj.toDateString() === today.toDateString());
 
@@ -431,7 +463,7 @@
                     const slot = document.createElement('div');
                     slot.className = 'slot';
                     if (currentMinutes >= val) slot.classList.add('filled');
-                    
+
                     // Label formatting
                     let labelText = val;
                     if (val === 60) labelText = "1h";
@@ -460,4 +492,5 @@
 
     </script>
 </body>
+
 </html>
