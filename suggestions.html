@@ -182,14 +182,7 @@
             margin-top: 5px;
         }
 
-        .vote-badge {
-            background: black;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 0.9rem;
-        }
+
 
         /* DETAIL VIEW */
         #detail-view {
@@ -299,6 +292,26 @@
         }
 
         .vote-btn.voted {
+            background: black;
+            color: white;
+        }
+
+        .vote-badge {
+            background: white;
+            color: black;
+            border: 2px solid black;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .vote-badge:hover {
+            background: #eee;
+        }
+
+        .vote-badge.voted {
             background: black;
             color: white;
         }
@@ -543,6 +556,7 @@
                 const id = data.id;
                 const voteCount = (data.upvotes || []).length;
                 const isDone = data.status === 'done';
+                const hasVoted = (data.upvotes || []).includes(currentUser?.uid);
 
                 const el = document.createElement('div');
                 el.className = 'suggestion-item' + (isDone ? ' done' : '');
@@ -553,13 +567,20 @@
                     statusHtml = '<span class="status-badge">DONE</span>';
                 }
 
+                const voteClass = hasVoted ? 'vote-badge voted' : 'vote-badge';
+                const voteIcon = hasVoted ? '▼' : '▲'; // Or keep it ▲ and just toggle color? User said 'upvote button'. ▲ is fine.
+                // Let's stick to consistent iconography. Up arrow generally means "Vote up".
+                // Detail view changes text to "Remove Upvote".
+                // List view space is limited.
+                // Color inversion is enough signal.
+
                 el.innerHTML = `
                 <div class="sugg-header">
                     <div>
                         ${statusHtml}
                         <span class="sugg-title">${escapeHtml(data.title)}</span>
                     </div>
-                    <span class="vote-badge">▲ ${voteCount}</span>
+                    <button class="${voteClass}" onclick="event.stopPropagation(); toggleVote('${id}')">▲ ${voteCount}</button>
                 </div>
                 <div style="font-size:0.9rem; margin-bottom:5px; height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                     ${escapeHtml(data.description)}
@@ -668,10 +689,11 @@
             }
         }
 
-        function toggleVote() {
-            if (!currentSuggestionId || !currentUser) return;
+        function toggleVote(id) {
+            const targetId = id || currentSuggestionId;
+            if (!targetId || !currentUser) return;
 
-            const docRef = db.collection('suggestions').doc(currentSuggestionId);
+            const docRef = db.collection('suggestions').doc(targetId);
 
             db.runTransaction(async (transaction) => {
                 const doc = await transaction.get(docRef);
@@ -687,7 +709,11 @@
                 transaction.update(docRef, { upvotes: upvotes });
                 return upvotes;
             }).then((newUpvotes) => {
-                updateVoteBtn(newUpvotes); // Optimistic / post-update UI update
+                // If we are in detail view of THIS item, update the big button
+                if (targetId === currentSuggestionId) {
+                    updateVoteBtn(newUpvotes);
+                }
+                // List listener will auto-update the list UI via onSnapshot
             }).catch(err => console.error("Vote failed", err));
         }
 
