@@ -236,7 +236,7 @@ const APPS = [
         id: 'watchlist',
         name: 'Watchlist',
         cat: 'lifestyle',
-        icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="6" stroke="black" stroke-width="2" fill="none"/><line x1="16" y1="10" x2="16" y2="22"/><line x1="10" y1="16" x2="22" y2="16"/><rect x="2" y="10" width="4" height="2" fill="black"/><rect x="26" y="10" width="4" height="2" fill="black"/><rect x="2" y="20" width="4" height="2" fill="black"/><rect x="26" y="20" width="4" height="2" fill="black"/>'
+        icon: '<path d="M22 18 L28 14 V26 L22 22 Z" fill="black"/><rect x="4" y="12" width="18" height="14" rx="2" stroke="black" stroke-width="2" fill="none"/><circle cx="9" cy="8" r="4" stroke="black" stroke-width="2" fill="none"/><circle cx="17" cy="8" r="4" stroke="black" stroke-width="2" fill="none"/><circle cx="9" cy="8" r="1.5" fill="black"/><circle cx="17" cy="8" r="1.5" fill="black"/>'
     },
     {
         id: 'reddit',
