@@ -225,6 +225,15 @@
         }
 
 
+        .comment-input {
+            display: flex;
+            align-items: center;
+            border: 2px solid black;
+            background: white;
+            padding: 5px 10px;
+            margin-top: 5px;
+        }
+
         /* MODALS */
         #modal-overlay {
             display: none;
@@ -421,8 +430,9 @@
 
             <!-- TAB BAR -->
             <div class="tab-bar" id="tab-bar">
-                <div class="tab active" id="tab-suggestion" onclick="switchTab('suggestion')">Suggestions</div>
-                <div class="tab" id="tab-problem" onclick="switchTab('problem')">Problems</div>
+                <div class="tab active" onclick="switchTab('suggestion')">Suggestions</div>
+                <div class="tab" onclick="switchTab('problem')">Problems</div>
+                <div class="tab" onclick="switchTab('done')">Done</div>
             </div>
 
             <div id="suggestion-list">
@@ -664,13 +674,8 @@
             window.switchTab = function (tab) {
                 currentFilter = tab;
                 // Update UI
-                if (tab === 'suggestion') {
-                    document.getElementById('tab-suggestion').classList.add('active');
-                    document.getElementById('tab-problem').classList.remove('active');
-                } else {
-                    document.getElementById('tab-suggestion').classList.remove('active');
-                    document.getElementById('tab-problem').classList.add('active');
-                }
+                document.querySelectorAll('.tab-bar .tab').forEach(t => t.classList.remove('active'));
+                document.querySelector(`.tab-bar .tab[onclick="switchTab('${tab}')"]`).classList.add('active');
                 renderList();
             };
 
@@ -695,13 +700,25 @@
                 listEl.innerHTML = '';
 
                 // FILTER
-                let filtered = allSuggestions.filter(function (item) {
-                    const type = item.type || 'suggestion';
-                    return type === currentFilter;
-                });
+                const filtered = allSuggestions.filter(function (item) {
+                    // If filter is 'done', show only DONE items (any type)
+                    if (currentFilter === 'done') {
+                        return item.status === 'done';
+                    }
 
-                // SORT
-                const sorted = [].concat(filtered);
+                    // If filter is 'suggestion', show type suggestion AND NOT done
+                    // If filter is 'problem', show type problem AND NOT done
+                    const type = item.type || 'suggestion';
+                    const status = item.status || '';
+
+                    if (status === 'done') return false; // Hide done items from main tabs
+
+                    if (currentFilter === 'problem') {
+                        return type === 'problem';
+                    }
+                    // default suggestion
+                    return type !== 'problem';
+                }); const sorted = [].concat(filtered);
 
                 // Primary Sort: Status (In Progress first, Done last)
                 // Secondary Sort: Selected Criteria
@@ -714,7 +731,7 @@
                     // Weights: In Progress (2), Open (1), Done (0)
                     const getWeight = s => {
                         if (s === 'in_progress') return 2;
-                        if (s === 'done') return 0;
+                        if (s === 'done') return 0; // Though done are in separate tab, good to keep logic
                         return 1;
                     };
 
