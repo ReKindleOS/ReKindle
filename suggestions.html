@@ -323,6 +323,62 @@
             text-transform: uppercase;
         }
 
+        .problem-badge {
+            background: black;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 5px;
+            text-transform: uppercase;
+        }
+
+        .progress-badge {
+            background: #007bff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 5px;
+            text-transform: uppercase;
+        }
+
+        /* TABS */
+        .tab-bar {
+            display: flex;
+            background: #eee;
+            border-bottom: 2px solid black;
+            padding-left: 10px;
+        }
+
+        .tab {
+            padding: 8px 15px;
+            border: 2px solid black;
+            border-bottom: none;
+            margin-right: 5px;
+            background: #ccc;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            position: relative;
+            top: 2px;
+            /* Push down to overlap border */
+        }
+
+        .tab.active {
+            background: #fafafa;
+            /* Match app-content bg */
+            border-bottom: 2px solid #fafafa;
+            /* Hide line */
+            z-index: 10;
+        }
+
+        .tab:hover:not(.active) {
+            background: #ddd;
+        }
+
         /* DONE ITEM STYLE */
         .suggestion-item.done {
             opacity: 0.6;
@@ -353,14 +409,20 @@
         <div id="app-content">
             <div class="toolbar" id="main-toolbar">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-weight:bold;">Suggestions</span>
+                    <span style="font-weight:bold;">View:</span>
                     <select id="sort-select" onchange="changeSort()"
                         style="font-family:inherit; font-size:0.8rem; border:2px solid black; padding:3px;">
-                        <option value="newest">Newest</option>
                         <option value="popular">Popular</option>
+                        <option value="newest">Newest</option>
                     </select>
                 </div>
                 <button class="sys-btn" onclick="openCreateModal()">+ New Idea</button>
+            </div>
+
+            <!-- TAB BAR -->
+            <div class="tab-bar" id="tab-bar">
+                <div class="tab active" id="tab-suggestion" onclick="switchTab('suggestion')">Suggestions</div>
+                <div class="tab" id="tab-problem" onclick="switchTab('problem')">Problems</div>
             </div>
 
             <div id="suggestion-list">
@@ -387,11 +449,19 @@
                         <span id="detail-vote-count">0</span>
                     </button>
 
-                    <!-- Admin Only -->
-                    <button id="detail-done-btn" class="vote-btn" onclick="toggleStatus()"
-                        style="display:none; margin-left:10px;">
-                        <span>✓ Mark Done</span>
-                    </button>
+                    <div style="margin-top:20px; display:flex; justify-content:center; flex-wrap:wrap; gap:10px;">
+                        <button id="detail-done-btn" class="vote-btn" onclick="cycleStatus()"
+                            style="display:none; background:white; color:black; border:1px solid #ccc;">
+                            <span>✓ Status</span>
+                        </button>
+                        <button id="detail-type-btn" class="vote-btn" onclick="toggleType()" style="display:none;">
+                            <span>⇄ Switch Type</span>
+                        </button>
+                        <button id="detail-cat-btn" class="vote-btn" onclick="openEditCategoryModal()"
+                            style="display:none;">
+                            <span>✎ Edit Cat</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="comment-section">
@@ -399,11 +469,12 @@
                     <div class="comment-list" id="detail-comments">
                         <!-- comments -->
                     </div>
-                    <div style="display:flex; gap:5px;">
-                        <input type="text" id="comment-input" class="modal-input" placeholder="Add a comment..."
-                            style="margin:0;">
-                        <button class="sys-btn" onclick="postComment()">Post</button>
-                    </div>
+                    <form class="comment-input" onsubmit="event.preventDefault(); postComment();">
+                        <input type="text" id="comment-input" placeholder="Add a comment..." maxlength="200"
+                            style="flex:1; border:none; outline:none; background:transparent;">
+                        <button type="submit"
+                            style="background:transparent; border:none; color:#333; cursor:pointer;">➤</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -419,6 +490,23 @@
     <div id="modal-overlay">
         <div class="modal-box">
             <h3>New Suggestion</h3>
+            <div style="margin-bottom: 10px; display: flex; gap: 15px; justify-content: center;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="sugg-type" value="suggestion" checked onchange="updateFormFields()">
+                    Suggestion
+                </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="sugg-type" value="problem" onchange="updateFormFields()"> Problem
+                </label>
+            </div>
+
+            <select id="new-category" class="modal-input" style="margin-bottom:10px;">
+                <!-- Populated via JS -->
+            </select>
+
+            <input type="text" id="new-device" class="modal-input"
+                placeholder="Device (e.g. Kindle Paperwhite 11th Gen)" maxlength="50" style="display:none;">
+
             <input type="text" id="new-title" class="modal-input" placeholder="Title (e.g. Add Calculator)"
                 maxlength="50">
             <textarea id="new-desc" class="modal-input" placeholder="Description..." style="height:100px; resize:none;"
@@ -426,6 +514,30 @@
             <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
                 <button class="sys-btn" onclick="submitSuggestion()">Submit</button>
                 <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MESSAGE MODAL -->
+    <div id="msg-modal-overlay"
+        style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center;">
+        <div class="modal-box" style="width:250px;">
+            <h3 id="msg-title" style="margin-top:0;">Message</h3>
+            <p id="msg-body">Text</p>
+            <button class="sys-btn" onclick="closeMsgModal()" style="margin-top:10px;">OK</button>
+        </div>
+    </div>
+
+    <!-- ADMIN EDIT CATEGORY MODAL -->
+    <div id="edit-cat-overlay"
+        style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center;">
+        <div class="modal-box" style="width:250px;">
+            <h3>Edit Category</h3>
+            <select id="edit-cat-select" class="modal-input"></select>
+            <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="submitEditCategory()">Save</button>
+                <button class="sys-btn"
+                    onclick="document.getElementById('edit-cat-overlay').style.display='none'">Cancel</button>
             </div>
         </div>
     </div>
@@ -438,7 +550,8 @@
             var string = msg.toLowerCase();
             var substring = "script error";
             if (string.indexOf(substring) > -1) {
-                alert('Script Error: See Console for Details');
+                // creating a modal might fail if dom not ready, fallback to alert or console
+                console.error('Script Error: See Console for Details');
             } else {
                 var message = [
                     'Message: ' + msg,
@@ -447,9 +560,16 @@
                     'Column: ' + columnNo,
                     'Error object: ' + JSON.stringify(error)
                 ].join(' - ');
-                // Only alert on older devices/Kindle where console is hard to access
-                // alert(message); 
+
                 console.error(message);
+
+                // Try to use modal if available
+                if (window.showMessage) {
+                    window.showMessage("Error", "An unexpected error occurred.");
+                } else {
+                    // Fallback for very early errors
+                    // alert(message);
+                }
 
                 // If stuck on loading, show error there
                 var listEl = document.getElementById('suggestion-list');
@@ -533,11 +653,24 @@
             }
 
             let allSuggestions = []; // Cache for client-side sorting
-            let currentSort = 'newest';
+            let currentSort = 'popular';
+            let currentFilter = 'suggestion'; // Default to suggestions
 
             window.changeSort = function () {
-                const sel = document.getElementById('sort-select');
-                currentSort = sel.value;
+                currentSort = document.getElementById('sort-select').value;
+                renderList();
+            };
+
+            window.switchTab = function (tab) {
+                currentFilter = tab;
+                // Update UI
+                if (tab === 'suggestion') {
+                    document.getElementById('tab-suggestion').classList.add('active');
+                    document.getElementById('tab-problem').classList.remove('active');
+                } else {
+                    document.getElementById('tab-suggestion').classList.remove('active');
+                    document.getElementById('tab-problem').classList.add('active');
+                }
                 renderList();
             };
 
@@ -561,19 +694,34 @@
                 const listEl = document.getElementById('suggestion-list');
                 listEl.innerHTML = '';
 
-                // SORT
-                const sorted = [].concat(allSuggestions);
+                // FILTER
+                let filtered = allSuggestions.filter(function (item) {
+                    const type = item.type || 'suggestion';
+                    return type === currentFilter;
+                });
 
-                // Primary Sort: Status (Open first, Done last)
+                // SORT
+                const sorted = [].concat(filtered);
+
+                // Primary Sort: Status (In Progress first, Done last)
                 // Secondary Sort: Selected Criteria
 
                 sorted.sort(function (a, b) {
                     // Check status first
-                    const isDoneA = (a.status === 'done');
-                    const isDoneB = (b.status === 'done');
+                    const statusA = a.status || '';
+                    const statusB = b.status || '';
 
-                    if (isDoneA && !isDoneB) return 1; // A (done) goes to bottom
-                    if (!isDoneA && isDoneB) return -1; // B (done) goes to bottom
+                    // Weights: In Progress (2), Open (1), Done (0)
+                    const getWeight = s => {
+                        if (s === 'in_progress') return 2;
+                        if (s === 'done') return 0;
+                        return 1;
+                    };
+
+                    const wA = getWeight(statusA);
+                    const wB = getWeight(statusB);
+
+                    if (wA !== wB) return wB - wA; // Higher weight first
 
                     // If status same, check criteria
                     if (currentSort === 'popular') {
@@ -593,6 +741,7 @@
                     const id = data.id;
                     const voteCount = (data.upvotes || []).length;
                     const isDone = data.status === 'done';
+                    const isProgress = data.status === 'in_progress';
                     // SAFE ACCESS: No optional chaining
                     const hasVoted = (data.upvotes || []).includes(currentUser ? currentUser.uid : null);
 
@@ -600,9 +749,26 @@
                     el.className = 'suggestion-item' + (isDone ? ' done' : '');
                     el.onclick = function () { openSuggestion(id, data); };
 
+
+                    // Badge Logic
+                    let badgeText = (data.category || (data.type || 'suggestion')).toUpperCase();
+                    if (badgeText === 'GENERAL') badgeText = (data.type || 'suggestion').toUpperCase();
+
+                    const isProblem = (data.type === 'problem');
+                    let badgeClass = isProblem ? 'problem-badge' : 'status-badge';
+
+                    let badgeStyle = '';
+                    if (!isProblem && !isDone && !isProgress) {
+                        badgeStyle = 'background:white; color:black; border:1px solid black;';
+                    }
+
                     let statusHtml = '';
                     if (isDone) {
                         statusHtml = '<span class="status-badge">DONE</span>';
+                    } else if (isProgress) {
+                        statusHtml = '<span class="progress-badge">IN PROGRESS</span>';
+                    } else {
+                        statusHtml = `<span class="${badgeClass}" style="${badgeStyle}">${badgeText}</span>`;
                     }
 
                     const voteClass = hasVoted ? 'vote-badge voted' : 'vote-badge';
@@ -634,6 +800,7 @@
                 document.getElementById('detail-view').style.display = 'flex';
                 document.getElementById('suggestion-list').style.display = 'none'; // Hide list
                 document.getElementById('main-toolbar').style.display = 'none';
+                document.getElementById('tab-bar').style.display = 'none'; // Hide tabs
 
                 document.getElementById('detail-title').textContent = data.title;
                 document.getElementById('detail-title-bar').textContent = data.title;
@@ -645,7 +812,12 @@
                     dateStr = new Date(data.createdAt.toDate()).toLocaleDateString();
                 }
 
-                document.getElementById('detail-meta').textContent = `by ${data.authorName || 'Anonymous'} • ${dateStr}`;
+                let metaText = `by ${data.authorName || 'Anonymous'} • ${dateStr}`;
+                if (data.device) {
+                    metaText += ` • Device: ${data.device}`;
+                }
+
+                document.getElementById('detail-meta').textContent = metaText;
 
                 updateVoteBtn(data.upvotes || []);
                 updateAdminControls(data);
@@ -656,70 +828,184 @@
                 // Simple check for "ukiyo" in email
                 // Security is handled by rules, this adds UI convenience
                 const isAdmin = currentUser && currentUser.email && currentUser.email.startsWith('ukiyo');
-                const btn = document.getElementById('detail-done-btn');
+                const btnDone = document.getElementById('detail-done-btn');
+                const btnType = document.getElementById('detail-type-btn');
+                const btnCat = document.getElementById('detail-cat-btn');
 
                 if (isAdmin) {
-                    btn.style.display = 'inline-flex';
-                    const isDone = data.status === 'done';
-                    if (isDone) {
-                        btn.querySelector('span').textContent = '✗ Mark Open';
-                        btn.style.background = '#ccc';
+                    btnDone.style.display = 'inline-flex';
+                    btnType.style.display = 'inline-flex';
+                    btnCat.style.display = 'inline-flex';
+
+                    // Done Button logic (Cycle: Open -> In Progress -> Done -> Open)
+                    const status = data.status || '';
+                    const span = btnDone.querySelector('span');
+
+                    if (status === 'done') {
+                        span.textContent = '✓ Done'; // Next: Open
+                        btnDone.style.background = '#ccc';
+                        btnDone.style.color = 'black';
+                    } else if (status === 'in_progress') {
+                        span.textContent = '➜ In Progress'; // Next: Done
+                        btnDone.style.background = '#007bff';
+                        btnDone.style.color = 'white';
                     } else {
-                        btn.querySelector('span').textContent = '✓ Mark Done';
-                        btn.style.background = 'white';
+                        span.textContent = '☐ Open'; // Next: In Progress
+                        btnDone.style.background = 'white';
+                        btnDone.style.color = 'black';
                     }
+
+                    // Type Button
+                    const currentType = data.type || 'suggestion';
+                    if (currentType === 'problem') {
+                        btnType.querySelector('span').textContent = '⇄ To Suggestion';
+                    } else {
+                        btnType.querySelector('span').textContent = '⇄ To Problem';
+                    }
+
                 } else {
-                    btn.style.display = 'none';
+                    btnDone.style.display = 'none';
+                    btnType.style.display = 'none';
+                    btnCat.style.display = 'none';
                 }
             };
 
-            window.toggleStatus = function () {
+            window.cycleStatus = function () {
                 if (!currentSuggestionId || !currentUser) return;
 
                 const docRef = db.collection('suggestions').doc(currentSuggestionId);
 
-                // REFACTORED: Removed async/await and arrow functions mainly to be safe
+                db.runTransaction(function (transaction) {
+                    return transaction.get(docRef).then(function (doc) {
+                        if (!doc.exists) throw "Document does not exist";
+
+                        const currentStatus = doc.data().status || '';
+                        let newStatus = '';
+
+                        if (currentStatus === 'done') {
+                            newStatus = null; // Open
+                        } else if (currentStatus === 'in_progress') {
+                            newStatus = 'done';
+                        } else {
+                            newStatus = 'in_progress';
+                        }
+
+                        transaction.update(docRef, { status: newStatus });
+                        return newStatus;
+                    });
+                }).then(function (newStatus) {
+                    updateLocalItem(currentSuggestionId, { status: newStatus });
+                    closeDetailView();
+                }).catch(function (err) {
+                    console.error("Status update failed", err);
+                    showMessage("Error", "Failed to update status.");
+                });
+            };
+
+            window.openEditCategoryModal = function () {
+                if (!currentSuggestionId) return;
+
+                // Find current item
+                let item = null;
+                for (var i = 0; i < allSuggestions.length; i++) {
+                    if (allSuggestions[i].id === currentSuggestionId) {
+                        item = allSuggestions[i];
+                        break;
+                    }
+                }
+                if (!item) return;
+
+                const type = item.type || 'suggestion';
+                const currentCat = item.category || 'General';
+
+                const sel = document.getElementById('edit-cat-select');
+                sel.innerHTML = '';
+
+                let opts = [];
+                if (type === 'suggestion') {
+                    opts = ['General', 'App Suggestion', 'Game Suggestion', 'Feature Suggestion', 'Other'];
+                } else {
+                    opts = ['General', 'Visual Problem', 'Technical Problem', 'Performance Issue', 'Accessibility Problem', 'Other'];
+                }
+
+                opts.forEach(function (o) {
+                    const op = document.createElement('option');
+                    op.value = o;
+                    op.text = o;
+                    if (o === currentCat) op.selected = true;
+                    sel.appendChild(op);
+                });
+
+                document.getElementById('edit-cat-overlay').style.display = 'flex';
+            };
+
+            window.submitEditCategory = function () {
+                if (!currentSuggestionId) return;
+                const newCat = document.getElementById('edit-cat-select').value;
+
+                db.collection('suggestions').doc(currentSuggestionId).update({
+                    category: newCat
+                }).then(function () {
+                    document.getElementById('edit-cat-overlay').style.display = 'none';
+                    updateLocalItem(currentSuggestionId, { category: newCat });
+                }).catch(function (err) {
+                    console.error(err);
+                    showMessage("Error", "Failed to update category.");
+                });
+            };
+
+            window.toggleType = function () {
+                if (!currentSuggestionId || !currentUser) return;
+
+                const docRef = db.collection('suggestions').doc(currentSuggestionId);
+
                 db.runTransaction(function (transaction) {
                     return transaction.get(docRef).then(function (doc) {
                         if (!doc.exists) {
                             throw "Document does not exist!";
                         }
 
-                        const currentStatus = doc.data().status;
-                        const newStatus = (currentStatus === 'done') ? 'open' : 'done';
+                        const currentType = doc.data().type || 'suggestion';
+                        const newType = (currentType === 'problem') ? 'suggestion' : 'problem';
 
-                        transaction.update(docRef, { status: newStatus });
-                        return newStatus;
+                        // Reset category to General when switching type to avoid mismatches
+                        transaction.update(docRef, { type: newType, category: 'General' });
+                        return newType;
                     });
-                }).then(function (newStatus) {
-                    // Update UI manually
-                    // SAFE FIND (IE11/Older might need polyfill for array.find? Kindle usually supports it but let's be safe-ish or assume build script polyfills it. 
-                    // Actually build-automation does not run on main version. 
-                    // Array.find IS ES6. Let's use a simple loop or assume Kindle > 2014 supports it (it usually does).
-                    // But to be super safe let's just use filter[0] or manual loop.
-
-                    var item = null;
-                    for (var i = 0; i < allSuggestions.length; i++) {
-                        if (allSuggestions[i].id === currentSuggestionId) {
-                            item = allSuggestions[i];
-                            break;
-                        }
-                    }
-
-                    if (item) item.status = newStatus;
-
-                    updateAdminControls({ status: newStatus });
-                    renderList();
+                }).then(function (newType) {
+                    updateLocalItem(currentSuggestionId, { type: newType, category: 'General' });
+                    // Close detail view because item might disappear from current list
+                    closeDetailView();
+                    // Optional: Switch tab to follow the item?
+                    // switchTab(newType); 
                 }).catch(function (err) {
-                    console.error("Status update failed", err);
-                    alert("Failed to update status. Are you Ukiyo?");
+                    console.error("Type update failed", err);
+                    showMessage("Error", "Failed to update type. Are you Ukiyo?");
                 });
             };
+
+            function updateLocalItem(id, updates) {
+                for (var i = 0; i < allSuggestions.length; i++) {
+                    if (allSuggestions[i].id === id) {
+                        var item = allSuggestions[i];
+                        for (var key in updates) {
+                            item[key] = updates[key];
+                        }
+                        // If we are currently viewing this item, update controls
+                        if (currentSuggestionId === id) {
+                            updateAdminControls(item);
+                        }
+                        break;
+                    }
+                }
+                renderList();
+            }
 
             window.closeDetailView = function () {
                 document.getElementById('detail-view').style.display = 'none';
                 document.getElementById('suggestion-list').style.display = 'flex';
                 document.getElementById('main-toolbar').style.display = 'flex';
+                document.getElementById('tab-bar').style.display = 'flex';
                 currentSuggestionId = null;
                 if (unsubscribeComments) unsubscribeComments();
             };
@@ -812,7 +1098,44 @@
             // SUBMIT SUGGESTION
             window.openCreateModal = function () {
                 document.getElementById('modal-overlay').style.display = 'flex';
+                updateFormFields(); // Init fields
                 document.getElementById('new-title').focus();
+            };
+
+            window.updateFormFields = function () {
+                const radios = document.getElementsByName('sugg-type');
+                let type = 'suggestion';
+                for (var i = 0; i < radios.length; i++) {
+                    if (radios[i].checked) {
+                        type = radios[i].value;
+                        break;
+                    }
+                }
+
+                const catSelect = document.getElementById('new-category');
+                catSelect.innerHTML = '';
+
+                const deviceInput = document.getElementById('new-device');
+
+                if (type === 'suggestion') {
+                    const opts = ['General', 'App Suggestion', 'Game Suggestion', 'Feature Suggestion', 'Other'];
+                    opts.forEach(function (o) {
+                        const op = document.createElement('option');
+                        op.value = o;
+                        op.text = o;
+                        catSelect.appendChild(op);
+                    });
+                    deviceInput.style.display = 'none';
+                } else {
+                    const opts = ['General', 'Visual Problem', 'Technical Problem', 'Performance Issue', 'Accessibility Problem', 'Other'];
+                    opts.forEach(function (o) {
+                        const op = document.createElement('option');
+                        op.value = o;
+                        op.text = o;
+                        catSelect.appendChild(op);
+                    });
+                    deviceInput.style.display = 'block';
+                }
             };
 
             window.closeModal = function () {
@@ -824,15 +1147,38 @@
             window.submitSuggestion = function () {
                 const title = document.getElementById('new-title').value.trim();
                 const desc = document.getElementById('new-desc').value.trim();
+                const category = document.getElementById('new-category').value;
+                const device = document.getElementById('new-device').value.trim();
+
+                const radios = document.getElementsByName('sugg-type');
+                let type = 'suggestion';
+                for (var i = 0; i < radios.length; i++) {
+                    if (radios[i].checked) {
+                        type = radios[i].value;
+                        break;
+                    }
+                }
 
                 if (!title || !desc) {
-                    alert("Please fill in both fields.");
+                    showMessage("Missing Info", "Please fill in title and description.");
                     return;
                 }
+
+                if (type === 'problem' && !device) {
+                    showMessage("Missing Info", "Please specify your device for problems.");
+                    return;
+                }
+
+
+                // Logic moved to earlier in function for validation
+                // const radios = ... 
 
                 db.collection('suggestions').add({
                     title: title,
                     description: desc,
+                    type: type,
+                    category: category,
+                    device: (type === 'problem') ? device : null,
                     authorUid: currentUser.uid,
                     authorName: currentUser.displayName || currentUser.email.split('@')[0],
                     upvotes: [],
@@ -841,8 +1187,19 @@
                     closeModal();
                 }).catch(function (err) {
                     console.error(err);
-                    alert("Error submitting. content too long?");
+                    showMessage("Error", "Error submitting. Content too long?");
                 });
+            };
+
+            // MODAL SYSTEM
+            window.showMessage = function (title, text) {
+                document.getElementById('msg-title').textContent = title;
+                document.getElementById('msg-body').textContent = text;
+                document.getElementById('msg-modal-overlay').style.display = 'flex';
+            };
+
+            window.closeMsgModal = function () {
+                document.getElementById('msg-modal-overlay').style.display = 'none';
             };
 
             // UTILS
