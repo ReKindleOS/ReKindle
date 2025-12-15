@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Watchlist</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TABS */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-right: 1px solid black;
+            background: #eee;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:last-child {
+            border-right: none;
+        }
+
+        .tab-btn.active {
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+            z-index: 10;
+        }
+
+        /* CONTENT AREA */
+        .window-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        /* SEARCH VIEW */
+        #search-view {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .search-bar {
+            padding: 10px;
+            border-bottom: 1px solid black;
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 2px solid black;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        /* BUTTONS */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.9rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* LISTS */
+        .item-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .media-item {
+            display: flex;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            padding: 10px;
+            align-items: flex-start;
+            cursor: pointer;
+        }
+
+        .media-item:active {
+            background-color: #eee;
+        }
+
+        .media-poster {
+            width: 60px;
+            height: 90px;
+            background: #eee;
+            border: 1px solid black;
+            margin-right: 15px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .media-info {
+            flex-grow: 1;
+        }
+
+        .media-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+
+        .media-meta {
+            font-size: 0.9rem;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        /* CALENDAR VIEW */
+        #calendar-view {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #eee;
+            border-bottom: 2px solid black;
+            flex-shrink: 0;
+        }
+
+        .nav-title {
+            font-weight: bold;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+
+        .nav-arrow {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .nav-arrow:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .weekday-label {
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            padding: 5px 0;
+            border-bottom: 2px solid black;
+            background: #f0f0f0;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        .calendar-day {
+            border-right: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            min-height: 80px;
+            position: relative;
+            padding: 4px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .calendar-day:nth-child(7n) {
+            border-right: none;
+        }
+
+        .calendar-day.empty {
+            background: #f9f9f9;
+        }
+
+        .calendar-day.today {
+            background: #eee;
+        }
+
+        .day-number {
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .release-dot {
+            background: black;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 4px;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        /* AUTH MESSAGE */
+        #auth-msg {
+            padding: 20px;
+            text-align: center;
+            display: none;
+        }
+
+        /* --- MODAL STYLES --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .modal-window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px #000000;
+            width: 85%;
+            max-width: 450px;
+            display: flex;
+            flex-direction: column;
+            max-height: 90vh;
+        }
+
+        .modal-body {
+            padding: 20px;
+            font-size: 1rem;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 0 20px 20px 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        /* DETAILS STYLES */
+        .details-header {
+            display: flex;
+            gap: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .details-poster {
+            width: 90px;
+            height: 135px;
+            object-fit: cover;
+            border: 1px solid black;
+            flex-shrink: 0;
+        }
+
+        .details-info {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .details-title {
+            font-size: 1.2rem;
+            font-weight: 900;
+            line-height: 1.2;
+            margin-bottom: 5px;
+        }
+
+        .details-date {
+            font-size: 1rem;
+            font-style: italic;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        .details-blurb {
+            font-family: "Georgia", serif;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #fafafa;
+            border: 1px solid #eee;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Watchlist</span>
+        </div>
+
+        <div class="tabs">
+            <div class="tab-btn active" id="tab-saved" onclick="switchTab('saved')">My List</div>
+            <div class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')">Calendar</div>
+            <div class="tab-btn" id="tab-search" onclick="switchTab('search')">Search</div>
+        </div>
+
+        <div class="window-content">
+
+            <div id="auth-msg">
+                Please log in on the Home screen to save items.
+            </div>
+
+            <!-- TAB: SAVED LIST -->
+            <div id="saved-view" style="display:flex; flex-direction:column; height:100%;">
+                <div class="item-list" id="saved-list">
+                    <div style="text-align:center; padding:20px; color:#666;">Loading...</div>
+                </div>
+            </div>
+
+            <!-- TAB: CALENDAR -->
+            <div id="calendar-view">
+                <!-- Header Controls -->
+                <div class="nav-header">
+                    <button class="nav-arrow" onclick="changeMonth(-1)">&lt;</button>
+                    <div class="nav-title" id="cal-title">Month</div>
+                    <button class="nav-arrow" onclick="changeMonth(1)">&gt;</button>
+                </div>
+                <!-- Grid -->
+                <div class="month-grid" id="cal-grid"></div>
+            </div>
+
+            <!-- TAB: SEARCH -->
+            <div id="search-view">
+                <div class="search-bar">
+                    <input type="text" id="search-input" placeholder="Movie or TV Show..."
+                        onkeypress="handleEnter(event)">
+                    <button class="sys-btn" onclick="searchTMDB()">Go</button>
+                </div>
+                <div class="item-list" id="results-list">
+                    <div style="text-align:center; padding:20px; color:#666;">Search for movies or shows to add.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- DETAILS MODAL -->
+    <div id="details-modal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="title-bar">
+                <div class="title-stripes"></div>
+                <div class="close-box" onclick="closeModal('details-modal')">X</div>
+                <span class="title-text">Details</span>
+            </div>
+            <div class="modal-body" id="details-content">
+                <!-- Content injected via JS -->
+            </div>
+            <div class="modal-footer" id="details-footer">
+                <!-- Buttons injected via JS -->
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- STATE ---
+        let currentUser = null;
+        let tmdbKey = localStorage.getItem('rekindle_tmdb_key') || "";
+        let savedItems = []; // Array of { id, title, release_date, poster_path, overview, media_type, docId }
+        let currentMonth = new Date();
+        let currentItemDetails = null; // For modal
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = user;
+                    loadSavedItems();
+                } else {
+                    document.getElementById('search-view').style.display = 'none';
+                    document.getElementById('saved-view').style.display = 'none';
+                    document.getElementById('calendar-view').style.display = 'none';
+                    document.getElementById('auth-msg').style.display = 'block';
+                }
+            });
+
+            // Initial Tab
+            switchTab('saved');
+        };
+
+
+        // --- NAVIGATION ---
+        function switchTab(tab) {
+            if (!currentUser && tab !== 'search') return; // Should be handled by auth state mostly
+
+            // Toggle Tabs
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+
+            // Toggle Views
+            document.getElementById('search-view').style.display = tab === 'search' ? 'flex' : 'none';
+            document.getElementById('saved-view').style.display = tab === 'saved' ? 'flex' : 'none';
+            document.getElementById('calendar-view').style.display = tab === 'calendar' ? 'flex' : 'none';
+
+            if (tab === 'calendar') renderCalendar();
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') searchTMDB();
+        }
+
+        // --- TMDB SEARCH ---
+        async function searchTMDB() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+
+            const list = document.getElementById('results-list');
+            list.innerHTML = '<div style="text-align:center; padding:20px;">Searching...</div>';
+
+            try {
+                let data = null;
+
+                // 1. Try User Key
+                if (tmdbKey) {
+                    const url = `https://api.themoviedb.org/3/search/multi?api_key=${tmdbKey}&query=${encodeURIComponent(query)}&include_adult=false`;
+                    const res = await fetch(url);
+                    data = await res.json();
+                }
+                // 2. Fallback to Proxy
+                else {
+                    // Update this URL to match your deployed worker
+                    const PROXY_URL = "https://rekindle-tmdb.timjarnott.workers.dev/search/multi";
+                    const url = `${PROXY_URL}?query=${encodeURIComponent(query)}`;
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error("Proxy error");
+                    data = await res.json();
+                }
+
+                list.innerHTML = '';
+
+                if (!data.results || data.results.length === 0) {
+                    list.innerHTML = '<div style="text-align:center; padding:20px;">No results found.</div>';
+                    return;
+                }
+
+                data.results.forEach(item => {
+                    // Filter out people
+                    if (item.media_type === 'person') return;
+
+                    const title = item.title || item.name;
+                    const date = item.release_date || item.first_air_date || "Unknown";
+                    const poster = item.poster_path
+                        ? `https://image.tmdb.org/t/p/w200${item.poster_path}`
+                        : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+                    const div = document.createElement('div');
+                    div.className = 'media-item';
+
+                    // Store strict data needed for saving
+                    const itemData = {
+                        tmdbId: item.id,
+                        title: title,
+                        release_date: date,
+                        poster_path: item.poster_path || "", // Keep relative for storage
+                        poster_full: poster,
+                        overview: item.overview || "No description.",
+                        media_type: item.media_type
+                    };
+
+                    div.onclick = () => openDetails(itemData, 'search');
+
+                    div.innerHTML = `
+                        <img src="${poster}" class="media-poster">
+                        <div class="media-info">
+                            <div class="media-title">${title}</div>
+                            <div class="media-meta">${item.media_type.toUpperCase()} • ${date.split('-')[0]}</div>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+
+            } catch (e) {
+                list.innerHTML = '<div style="text-align:center; padding:20px;">Search failed. Check API Key.</div>';
+                console.error(e);
+            }
+        }
+
+        // --- FIRESTORE ---
+        // Helper to fetch JSON from TMDB (via Proxy or Direct)
+        async function fetchTMDB(path, params = {}) {
+            let url;
+            // Build Query String
+            const qs = Object.keys(params).map(key => `${key}=${encodeURIComponent(params[key])}`).join('&');
+
+            if (tmdbKey) {
+                url = `https://api.themoviedb.org/3${path}?api_key=${tmdbKey}&${qs}`;
+            } else {
+                // Proxy
+                // Base: https://rekindle-tmdb.timjarnott.workers.dev
+                const PROXY_BASE = "https://rekindle-tmdb.timjarnott.workers.dev";
+                url = `${PROXY_BASE}${path}?${qs}`;
+            }
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`TMDB Error: ${res.status}`);
+            return await res.json();
+        }
+
+        async function saveItem(itemData) {
+            if (!currentUser) return;
+
+            // Show loading state?
+            const saveBtn = document.querySelector('#details-footer button:first-child');
+            if (saveBtn) saveBtn.innerText = "Saving...";
+
+            try {
+                const docData = {
+                    tmdbId: itemData.tmdbId,
+                    title: itemData.title,
+                    release_date: itemData.release_date,
+                    poster_path: itemData.poster_path,
+                    overview: itemData.overview,
+                    media_type: itemData.media_type,
+                    addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    episodes: [] // Array of { name, air_date, season_number, episode_number }
+                };
+
+                // IF TV: Fetch all episodes
+                if (itemData.media_type === 'tv') {
+                    // 1. Get Show Details for Season Count
+                    const showDetails = await fetchTMDB(`/tv/${itemData.tmdbId}`);
+
+                    if (showDetails.seasons) {
+                        const episodes = [];
+                        // 2. Fetch each season
+                        for (const season of showDetails.seasons) {
+                            if (season.season_number === 0) continue; // Skip specials usually? Or keep them. Let's skip specials for main calendar clutter.
+
+                            const seasonData = await fetchTMDB(`/tv/${itemData.tmdbId}/season/${season.season_number}`);
+                            if (seasonData.episodes) {
+                                seasonData.episodes.forEach(ep => {
+                                    if (ep.air_date) {
+                                        episodes.push({
+                                            name: ep.name,
+                                            air_date: ep.air_date,
+                                            season_number: ep.season_number,
+                                            episode_number: ep.episode_number,
+                                            id: ep.id
+                                        });
+                                    }
+                                });
+                            }
+                        }
+                        docData.episodes = episodes;
+                    }
+                }
+
+                await db.collection('users').doc(currentUser.uid).collection('watchlist').add(docData);
+                closeModal('details-modal');
+                switchTab('saved');
+
+            } catch (e) {
+                console.error(e);
+                alert("Error saving item: " + e.message);
+                if (saveBtn) saveBtn.innerText = "+ Add to Watchlist";
+            }
+        }
+
+        function loadSavedItems() {
+            if (!currentUser) return;
+
+            db.collection('users').doc(currentUser.uid).collection('watchlist')
+                .orderBy('addedAt', 'desc')
+                .onSnapshot((snapshot) => {
+                    const list = document.getElementById('saved-list');
+                    list.innerHTML = '';
+                    savedItems = []; // Reset local cache
+
+                    if (snapshot.empty) {
+                        list.innerHTML = '<div style="text-align:center; padding:20px;">Your watchlist is empty.</div>';
+                        return;
+                    }
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const fullPoster = data.poster_path
+                            ? `https://image.tmdb.org/t/p/w200${data.poster_path}`
+                            : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+                        const itemObj = { ...data, docId: doc.id, poster_full: fullPoster };
+                        savedItems.push(itemObj);
+
+                        const div = document.createElement('div');
+                        div.className = 'media-item';
+                        div.onclick = () => openDetails(itemObj, 'saved');
+
+                        const year = (data.release_date || "").split('-')[0] || "???";
+
+                        div.innerHTML = `
+                            <img src="${fullPoster}" class="media-poster">
+                            <div class="media-info">
+                                <div class="media-title">${data.title}</div>
+                                <div class="media-meta">${data.media_type ? data.media_type.toUpperCase() : 'MEDIA'} • ${year}</div>
+                            </div>
+                        `;
+                        list.appendChild(div);
+                    });
+                });
+        }
+
+        function deleteItem(docId) {
+            if (currentUser && docId) {
+                db.collection('users').doc(currentUser.uid)
+                    .collection('watchlist').doc(docId).delete();
+                closeModal('details-modal');
+            }
+        }
+
+        // --- CALENDAR RENDERER ---
+        function renderCalendar() {
+            const container = document.getElementById('cal-grid');
+            container.innerHTML = '';
+
+            const headerTitle = document.getElementById('cal-title');
+            headerTitle.innerText = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+            // Weekday Headers
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            days.forEach(d => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'weekday-label';
+                dayHeader.innerText = d;
+                container.appendChild(dayHeader);
+            });
+
+            // Grid Calculations
+            const year = currentMonth.getFullYear();
+            const month = currentMonth.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+
+            const startDayIndex = firstDay.getDay();
+            const totalDays = lastDay.getDate();
+
+            // Filters items for this month
+            // Date format YYYY-MM-DD
+            const monthStr = String(month + 1).padStart(2, '0');
+            const targetPrefix = `${year}-${monthStr}`;
+
+            // Build a map of Day -> Arrays of { title, type }
+            const dayEvents = {}; // key: "DD", val: []
+
+            savedItems.forEach(item => {
+                // 1. Movie Release / TV First Air
+                if (item.release_date && item.release_date.startsWith(targetPrefix)) {
+                    const day = item.release_date.split('-')[2];
+                    if (!dayEvents[day]) dayEvents[day] = [];
+                    // Mark as "Premiere" or just Title
+                    dayEvents[day].push({
+                        label: item.media_type === 'tv' ? `${item.title} (Premiere)` : item.title,
+                        item: item
+                    });
+                }
+
+                // 2. TV Episodes
+                if (item.media_type === 'tv' && item.episodes) {
+                    item.episodes.forEach(ep => {
+                        if (ep.air_date && ep.air_date.startsWith(targetPrefix)) {
+                            const day = ep.air_date.split('-')[2];
+                            if (!dayEvents[day]) dayEvents[day] = [];
+                            dayEvents[day].push({
+                                label: `${item.title} S${ep.season_number}E${ep.episode_number}`,
+                                item: item
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Empty slots
+            for (let i = 0; i < startDayIndex; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'calendar-day empty';
+                container.appendChild(empty);
+            }
+
+            // Days
+            const today = new Date();
+            for (let i = 1; i <= totalDays; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day';
+
+                // Today Check
+                if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    cell.classList.add('today');
+                }
+
+                const dayStr = String(i).padStart(2, '0');
+                const events = dayEvents[dayStr] || [];
+
+                let dots = "";
+                events.forEach((evt, idx) => {
+                    dots += `<div class="release-dot" data-idx="${idx}">${evt.label}</div>`;
+                });
+
+                cell.innerHTML = `
+                    <div class="day-number">${i}</div>
+                    ${dots}
+                `;
+
+                // Add click handlers
+                const dotEls = cell.querySelectorAll('.release-dot');
+                dotEls.forEach((el) => {
+                    const evt = events[el.dataset.idx];
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        openDetails(evt.item, 'saved');
+                    };
+                });
+
+                container.appendChild(cell);
+            }
+        }
+
+        function changeMonth(delta) {
+            currentMonth.setMonth(currentMonth.getMonth() + delta);
+            renderCalendar();
+        }
+
+        // --- DETAILS MODAL ---
+        function openDetails(itemData, context) {
+            currentItemDetails = itemData;
+            const modal = document.getElementById('details-modal');
+            const content = document.getElementById('details-content');
+            const footer = document.getElementById('details-footer');
+
+            content.innerHTML = `
+                <div class="details-header">
+                    <img src="${itemData.poster_full}" class="details-poster">
+                    <div class="details-info">
+                        <div class="details-title">${itemData.title}</div>
+                        <div class="details-date">Release: ${itemData.release_date || "Unknown"}</div>
+                        <div class="details-date">Type: ${itemData.media_type ? itemData.media_type.toUpperCase() : "Media"}</div>
+                    </div>
+                </div>
+                
+                <div class="details-blurb">
+                    ${itemData.overview}
+                </div>
+            `;
+
+            if (context === 'search') {
+                footer.innerHTML = `
+                    <button class="sys-btn" onclick="triggerSave()">+ Add to Watchlist</button>
+                    <button class="sys-btn" onclick="closeModal('details-modal')">Close</button>
+                `;
+            } else {
+                footer.innerHTML = `
+                    <button class="sys-btn" style="color:red;" onclick="triggerDelete('${itemData.docId}')">Remove</button>
+                    <button class="sys-btn" onclick="closeModal('details-modal')">Close</button>
+                `;
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function triggerSave() {
+            if (currentItemDetails) saveItem(currentItemDetails);
+        }
+
+        function triggerDelete(docId) {
+            deleteItem(docId);
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // --- WALLPAPER ---
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+    </script>
+</body>
+
+</html>

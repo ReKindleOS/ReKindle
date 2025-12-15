@@ -233,6 +233,12 @@ const APPS = [
         icon: '<rect x="6" y="4" width="20" height="24"/><line x1="10" y1="8" x2="22" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="18" y2="16"/><polyline points="17 23 21 25 23 19" fill="none" stroke="black" stroke-width="2" transform="rotate(10, 16, 20)"/>'
     },
     {
+        id: 'watchlist',
+        name: 'Watchlist',
+        cat: 'lifestyle',
+        icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="6" stroke="black" stroke-width="2" fill="none"/><line x1="16" y1="10" x2="16" y2="22"/><line x1="10" y1="16" x2="22" y2="16"/><rect x="2" y="10" width="4" height="2" fill="black"/><rect x="26" y="10" width="4" height="2" fill="black"/><rect x="2" y="20" width="4" height="2" fill="black"/><rect x="26" y="20" width="4" height="2" fill="black"/>'
+    },
+    {
         id: 'reddit',
         name: 'Reddit',
         cat: 'lifestyle',
