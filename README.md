@@ -118,25 +118,193 @@ ReKindle uses Google Firebase for user authentication and storing app data (like
     service cloud.firestore {
       match /databases/{database}/documents {
 
-        // Allow users to manage their own private data (notes, settings, etc.)
+        // --- Helper Functions ---
+        function isValidUsername(username) {
+          // Username must be a string between 1 and 30 characters
+          // and must not contain characters that can be used for XSS.
+          return username is string &&
+                 username.size() > 0 &&
+                 username.size() <= 30 &&
+                 !username.matches('.*[<>&\'"].*');
+        }
+
+        function isValidText(text) {
+          // A basic check for message content to prevent HTML injection.
+          return text is string &&
+                 text.size() > 0 &&
+                 text.size() <= 1000 && // Limit message length
+                 !text.matches('.*[<>].*'); // Block basic HTML tags
+        }
+
+        // --- Collection Rules ---
+
+        // 1. USER PRIVATE DATA (e.g., settings, notes)
         match /users/{userId}/{document=**} {
           allow read, write: if request.auth != null && request.auth.uid == userId;
         }
 
-        // Rules for a public chat app like KindleChat
-        match /rooms/{roomId}/{document=**} {
-          allow read, write: if request.auth != null;
+        // 2. KINDLECHAT
+        match /rooms/{roomId} {
+          allow read: if request.auth != null;
+
+          match /messages/{messageId} {
+            allow read: if request.auth != null;
+            // Secure create: Validate username and message text for safety.
+            // Note: For anonymous users, email might be null, so check before accessing.
+            allow create: if request.auth != null &&
+                            (request.auth.token.email == null || request.resource.data.user == request.auth.token.email.split('@')[0]) &&
+                            isValidText(request.resource.data.text);
+            allow update: if request.auth != null && 
+                             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
+            allow delete: if false;
+          }
+          
+          // Allow creating and updating rooms (needed for DMs)
+          allow create, update: if request.auth != null;
         }
 
-        // Rules for a single-player leaderboard where users can only write their own score
+        // 3. TETRIS LEADERBOARD
+        match /leaderboard_tetris/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null &&
+                          request.auth.uid == userId &&
+                          isValidUsername(request.resource.data.username) &&
+                          request.resource.data.score is number;
+        }
+
+        // 4. SNAKE LEADERBOARD
         match /leaderboard_snake/{userId} {
-          allow read: if true;
-          allow write: if request.auth != null && request.auth.uid == userId;
+          allow read: if request.auth != null;
+          allow write: if request.auth != null &&
+                          request.auth.uid == userId &&
+                          isValidUsername(request.resource.data.username) &&
+                          request.resource.data.score is number;
         }
 
-        // Rules for a multiplayer game where any authenticated user can make a move
+        // 5. WORDS (Multiplayer Game)
         match /word_games/{gameId} {
-          allow read, write: if request.auth != null;
+          allow read: if request.auth != null;
+          allow write: if request.auth != null &&
+                          (request.resource.data.p1_uid == request.auth.uid ||
+                           request.resource.data.p2_uid == request.auth.uid) &&
+                          isValidUsername(request.resource.data.p1_name) &&
+                          (request.resource.data.p2_name == null || isValidUsername(request.resource.data.p2_name));
+        }
+
+        // 6. FREEWRITE
+        match /freewrite_sessions/{sessionId} {
+          allow read: if true;
+          allow create: if request.auth != null && request.auth.uid == request.resource.data.ownerId;
+          allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+        }
+
+        // 7. HANOI LEADERBOARD
+        match /leaderboard_hanoi_3/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_hanoi_4/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_hanoi_5/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_hanoi_6/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_hanoi_7/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+
+        // 8. LIGHTS OUT LEADERBOARD
+        match /leaderboard_lightsout_3/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_lightsout_4/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+        match /leaderboard_lightsout_5/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == userId && isValidUsername(request.resource.data.username) && request.resource.data.moves is number;
+        }
+
+        // 9. TRIVIA LEADERBOARD
+        match /leaderboard_trivia/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null &&
+                          request.auth.uid == userId &&
+                          isValidUsername(request.resource.data.username) &&
+                          request.resource.data.totalPercent is number &&
+                          request.resource.data.gameCount is number;
+        }
+
+        // 10. SOLITAIRE LEADERBOARD
+        match /leaderboard_solitaire/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null &&
+                          request.auth.uid == userId &&
+                          isValidUsername(request.resource.data.username) &&
+                          request.resource.data.moves is number;
+        }
+
+        // 11. INTERACTIVE BLACKLIST
+        match /interactive_blacklist/{gameId} {
+          allow read: if true;
+          allow write: if request.auth != null;
+        }
+
+        // 12. USER UPLOADS
+        match /interactive_uploads/{uploadId} {
+          allow read: if true;
+          allow create: if request.auth != null &&
+                          request.resource.data.uploaderUid == request.auth.uid &&
+                          isValidText(request.resource.data.title);
+          allow delete: if request.auth != null && resource.data.uploaderUid == request.auth.uid;
+        }
+
+        // 13. SHEET MUSIC UPLOADS
+        match /sheet_music_uploads/{uploadId} {
+          allow read: if true;
+          allow create: if request.auth != null &&
+                          request.resource.data.uploaderUid == request.auth.uid &&
+                          isValidText(request.resource.data.title);
+          allow delete: if request.auth != null && resource.data.uploaderUid == request.auth.uid;
+        }
+
+        // 14. SUGGESTIONS APP
+        match /suggestions/{suggestionId} {
+          allow read: if true;
+          allow create: if request.auth != null &&
+                          isValidText(request.resource.data.title) &&
+                          isValidText(request.resource.data.description) &&
+                          (request.resource.data.category == null || isValidText(request.resource.data.category)) &&
+                          (request.resource.data.device == null || isValidText(request.resource.data.device));
+          
+          // Update: 
+          // 1. Author can edit their own suggestion (title/desc).
+          // 2. ANY authenticated user can update 'upvotes' (toggle their UID in the array).
+          // 3. Admin (ukiyo) can update 'status'.
+          allow update: if request.auth != null && (
+              (resource.data.authorUid == request.auth.uid && 
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description'])) 
+              ||
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']))
+              ||
+              (request.auth.token.email.matches('ukiyo@.*') && 
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'type', 'category']))
+          );
+
+          match /comments/{commentId} {
+            allow read: if true;
+            allow create: if request.auth != null && isValidText(request.resource.data.text);
+            allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+          }
         }
       }
     }
@@ -163,9 +331,28 @@ The **Oracle AI** (Chat) and **Quick ToDo** (Handwriting OCR) apps use serverles
 
 * **Oracle AI:** Requires a worker to proxy requests to the Google Gemini API. Update `WORKER_URL` in `chat.html`.
 * **Quick ToDo:** Requires a worker to handle image processing for OCR. Update `WORKER_URL` in `quicktodo.html`.
+* **Watchlist:** Requires a worker to proxy TMDB API requests securely. Update `PROXY_BASE` or logic in `watchlist.html`.
+* **Chords:** Requires a worker to fetch song tabs/lyrics to avoid CORS issues. Update `WORKER_URL` in `chords.html`.
+* **Interactive:** Requires a worker provided by the Interactive Fiction DB to serve stories. Update `STORY_SERVER_URL` in `interactive.html`.
 
 *> **Note:** If you do not configure these, the app will default to **Guest Mode** (local storage only), and AI/Google features will be disabled.*
 
 ---
 
-*Created by Ukiyo*
+## 🛠️ Building the Project
+
+To build the project for different devices (Standard, Lite, and Legacy), run the build script:
+
+```bash
+node build-automation.js
+```
+
+This will create a `_deploy` directory with three targets:
+
+*   **Main (`_deploy/main`):** The standard version for modern browsers (Desktop, Mobile, Tablets). Minified but fully featured.
+*   **Lite (`_deploy/lite`):** Optimized for **Kobo** and newer **Kindle** devices (Chrome 44+). Includes polyfills, transpiled ES5 code, and Kobo-specific fixes (e.g., proper window handling, WebM video replacement).
+*   **Legacy (`_deploy/legacy`):** Designed for very old devices (Chrome 12+). Features aggressive transpilation, heavy polyfills, and visual badges/warnings for unsupported apps.
+
+---
+
+*Created by [Ukiyo](https://ukiyomusic.com)*
