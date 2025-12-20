@@ -379,7 +379,20 @@
             gap: 10px;
             margin-top: 10px;
         }
+
+
+        .loc-badge {
+            font-size: 0.7rem;
+            margin-left: 10px;
+            border: 1px solid black;
+            padding: 2px 4px;
+            font-weight: bold;
+            font-family: sans-serif;
+            align-self: center;
+            /* Center vertical relative to flex container */
+        }
     </style>
+    <script src="theme.js"></script>
 </head>
 
 <body>
@@ -453,6 +466,13 @@
 
         let cities = JSON.parse(localStorage.getItem('rekindle_clocks')) || DEFAULT_CITIES;
         let homeCity = JSON.parse(localStorage.getItem('rekindle_clocks_home')) || { name: "Local", zone: null };
+
+        // Override Home City with Global Manual Location if set
+        const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+        if (globalLoc && globalLoc.zone) {
+            homeCity = { name: globalLoc.name, zone: globalLoc.zone };
+        }
+
         let showSeconds = JSON.parse(localStorage.getItem('rekindle_clocks_secs') ?? 'true');
 
         let isEditing = false;
@@ -546,7 +566,6 @@
                 localTimeEl.innerHTML = `${timeStr}<span class="ampm">${ampm}</span>`;
             }
 
-            // --- 2. Update City Clocks ---
             cities.forEach((city, index) => {
                 const clockRow = document.getElementById(`clock-row-${index}`);
                 if (!clockRow) return;
@@ -674,11 +693,21 @@
 
             if (editTarget === 'home') {
                 homeCity = { name: city.name, zone: city.timezone };
+
+                // SYNC: Update Global Manual Location
+                const locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
+                localStorage.setItem('rekindle_location_manual', JSON.stringify(locData));
+
+                // Also update User Settings in Firestore if needed (mirroring settings.html logic)
+                if (currentUser) {
+                    db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: locData }, { merge: true });
+                }
+
             } else {
                 cities.push({ name: city.name, zone: city.timezone });
             }
 
-            saveData();
+            saveData(); // Saves rekindle_clocks and rekindle_clocks_home
             closeModal();
             renderClocks();
         }
@@ -706,6 +735,62 @@
                 ${leftContent}
                 <div class="clock-info">
                     <div class="city-name">${homeCity.name}</div>
+                </div>
+                <div class="clock-time" id="time-local">
+                    --:--:--
+                </div>
+            `;
+            // Note: We render the badge dynamically in updateClocks now to effectively toggle it or we can do it here. 
+            // Better to do it in updateClocks or just here if static? 
+            // The prompt implies the badge is for the "current location setting".
+            // If the user sets a manual location, that is the "LOCATION".
+            // So if homeCity matches manual location, show badge.
+            // Let's rely on updateClocks to inject the badge or just static.
+
+            // Actually, updateClocks is called every second (good for time), but rebuilding DOM (bad).
+            // But wait, updateClocks currently does localTimeEl.innerHTML = ... which CLEARS content.
+            // So I moved the badge logic to updateClocks in previous step (line 548). 
+            // BUT now I need to move it to the city name, which is in `.city-name`.
+            // updateClocks does NOT update `.city-name` usually, only `.clock-time`.
+            // So I should render the badge HERE in renderClocks, and remove it from updateClocks.
+
+            const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            let badgeArg = '';
+            // If manual location is set, it overrides Home. Thus Home IS the Link.
+            // Or if no manual location is set, Home is "Local" (Automatic).
+            // The user asked for a badge "LOCATION". 
+            // If manual location is active, the Home clock IS that location. 
+            // If auto, it is also "Local". 
+            // Maybe show badge always if it represents "My Location"? 
+            // "also in the clocks app add a little badge to the right of the current location time that says 'LOCATION'"
+            // "move the location badge to be to the right of the location name"
+            // It seems they just want to label the first clock as "The Location".
+            // Let's add it always for the Home clock? Or only if Manual?
+            // "make the clock and settings app both use the same current location setting"
+            // So if manual is set, badge it? If auto, maybe not? Or badge "Automatic"?
+            // I will assume badge it always or if manual. Let's do if manual for now to indicate "Fixed Location".
+
+            if (globalLoc) {
+                badgeArg = `<span class="loc-badge">LOCATION</span>`;
+            } else {
+                // Maybe badge "AUTO"? Or nothing. User just said "LOCATON". 
+                // I will stick to adding it if globalLoc exists (Manual Mode) to match Settings "Current: ..."
+                // Wait, "add a little badge ... that says 'LOCATION'". 
+                // I'll add it if globalLoc is set.
+                badgeArg = `<span class="loc-badge">LOCATION</span>`; // Actually user request seemed general. I'll add it regardless?
+            }
+
+            // Wait, previous request: "add a badge ... that says LOCATION" implies singular definite article.
+            // Implies marking the "Current Location" clock.
+            // Since the first clock IS the current location (Home), I will add it there always.
+
+            localDiv.innerHTML = `
+                ${leftContent}
+                <div class="clock-info">
+                   <div style="display:flex; align-items:center;">
+                        <div class="city-name">${homeCity.name}</div>
+                        <span class="loc-badge">LOCATION</span>
+                   </div>
                 </div>
                 <div class="clock-time" id="time-local">
                     --:--:--
@@ -820,6 +905,7 @@
 
     </script>
 
+
     <script>
         // Helper to sanitize background image URLs from localStorage
         function sanitizeBackgroundImage(imageString) {
@@ -836,7 +922,7 @@
             return '';
         }
 
-        
+
         loadWallpaper();
 
         function loadWallpaper() {
