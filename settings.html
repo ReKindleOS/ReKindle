@@ -383,6 +383,17 @@
             box-shadow: none;
             transform: translate(2px, 2px);
         }
+
+        .beta-badge {
+            font-size: 0.6rem;
+            margin-left: 5px;
+            border: 1px solid black;
+            padding: 1px 3px;
+            font-weight: bold;
+            font-family: sans-serif;
+            vertical-align: text-top;
+            display: inline-block;
+        }
     </style>
 </head>
 
@@ -415,6 +426,36 @@
 
                 <div class="nav-arrow" onclick="nextPreset()">&gt;</div>
             </div>
+
+            <h2>Appearance</h2>
+
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Theme <span class="beta-badge">BETA</span></strong>
+                    <div class="setting-desc">Light, Dark, or Auto (Night).</div>
+                </div>
+                <select id="theme-select" onchange="saveTheme()">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Auto (Night)</option>
+                </select>
+            </div>
+
+            <h2>Location</h2>
+
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Manual Location</strong>
+                    <div class="setting-desc">Override automatic detection.</div>
+                </div>
+                <button class="sys-btn" onclick="openLocationModal()" style="width: auto;">Set Location</button>
+            </div>
+            <div id="location-display"
+                style="font-size: 0.8rem; color: #666; margin-bottom: 15px; text-align: right; padding-right: 15px;">
+                Current: Automatic
+            </div>
+
+
 
             <h2>Preferences</h2>
 
@@ -491,6 +532,25 @@
             <button class="modal-btn" onclick="closeModal()">OK</button>
         </div>
     </div>
+
+    <!-- LOCATION MODAL -->
+    <div id="location-modal-overlay"
+        style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.95); z-index:2000; align-items:center; justify-content:center;">
+        <div class="modal-box">
+            <h3>Set Location</h3>
+            <input type="text" id="city-search" placeholder="Search city..." autocomplete="off"
+                oninput="handleSearchInput(this.value)">
+            <div id="search-results"
+                style="max-height: 150px; overflow-y: auto; text-align: left; border: 1px solid #ccc; margin-top: 5px; display: none;">
+            </div>
+            <div class="modal-buttons" style="margin-top: 15px;">
+                <button class="modal-btn" onclick="clearLocation()">Use Auto</button>
+                <button class="modal-btn" onclick="closeLocationModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="theme.js"></script> <!-- Inject Theme Script -->
 
     <!-- Hidden Canvas for generating Pattern (32x32px) -->
     <canvas id="tile-gen" width="32" height="32" style="display:none;"></canvas>
@@ -936,10 +996,141 @@
             }
         }
 
+        // --- THEME & LOCATION LOGIC ---
+        function saveTheme() {
+            const val = document.getElementById('theme-select').value;
+            localStorage.setItem('rekindle_theme_mode', val);
+            if (window.rekindleApplyTheme) window.rekindleApplyTheme();
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ themeMode: val }, { merge: true });
+            }
+        }
+
+        // Location Search Logic (Adapted from Clocks)
+        let searchTimeout;
+
+        function openLocationModal() {
+            document.getElementById('location-modal-overlay').style.display = 'flex';
+            document.getElementById('city-search').value = '';
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('city-search').focus();
+        }
+
+        function closeLocationModal() {
+            document.getElementById('location-modal-overlay').style.display = 'none';
+        }
+
+        function handleSearchInput(query) {
+            clearTimeout(searchTimeout);
+            const resultsContainer = document.getElementById('search-results');
+
+            if (query.length < 2) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            resultsContainer.style.display = 'block';
+            resultsContainer.innerHTML = '<div style="padding:10px; color:#666;">Searching...</div>';
+
+            searchTimeout = setTimeout(() => {
+                fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
+                    .then(res => res.json())
+                    .then(data => {
+                        renderSearchResults(data.results || []);
+                    })
+                    .catch(e => resultsContainer.innerHTML = 'Error');
+            }, 500);
+        }
+
+        function renderSearchResults(results) {
+            const container = document.getElementById('search-results');
+            container.innerHTML = '';
+            if (results.length === 0) {
+                container.innerHTML = '<div style="padding:10px;">No results</div>';
+                return;
+            }
+
+            results.forEach(city => {
+                const div = document.createElement('div');
+                div.style.padding = '8px';
+                div.style.borderBottom = '1px solid #eee';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `<strong>${city.name}</strong> <small>${city.country || ''}</small>`;
+                div.onclick = () => setLocation(city);
+                container.appendChild(div);
+            });
+        }
+
+        function setLocation(city) {
+            const locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
+            localStorage.setItem('rekindle_location_manual', JSON.stringify(locData));
+            updateLocationDisplay();
+            closeLocationModal();
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: locData }, { merge: true });
+            }
+        }
+
+        function clearLocation() {
+            localStorage.removeItem('rekindle_location_manual');
+            updateLocationDisplay();
+            closeLocationModal();
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: firebase.firestore.FieldValue.delete() }, { merge: true });
+            }
+        }
+
+        function updateLocationDisplay() {
+            const saved = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            const el = document.getElementById('location-display');
+            if (saved) {
+                el.innerText = `Current: ${saved.name}`;
+            } else {
+                try {
+                    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (tz && tz.includes('/')) {
+                        const city = tz.split('/').pop().replace(/_/g, ' ');
+                        el.innerText = `Current: Automatic (${city})`;
+                    } else {
+                        el.innerText = "Current: Automatic";
+                    }
+                } catch (e) {
+                    el.innerText = "Current: Automatic";
+                }
+            }
+        }
+
+        // Overwrite standard window.onload to include new settings
+        const originalOnLoad = window.onload;
+        window.onload = () => {
+            // Call original
+            if (originalOnLoad) originalOnLoad();
+
+            // Load Theme
+            const theme = localStorage.getItem('rekindle_theme_mode') || 'light';
+            document.getElementById('theme-select').value = theme;
+
+            // Load Location
+            updateLocationDisplay();
+        };
+
         function loadCloudSettings() {
             db.collection('users').doc(currentUser.uid).collection('settings').doc('general').get().then(doc => {
                 if (doc.exists) {
                     const data = doc.data();
+
+                    if (data.themeMode) {
+                        localStorage.setItem('rekindle_theme_mode', data.themeMode);
+                        document.getElementById('theme-select').value = data.themeMode;
+                        if (window.rekindleApplyTheme) window.rekindleApplyTheme();
+                    }
+
+                    if (data.manualLocation) {
+                        localStorage.setItem('rekindle_location_manual', JSON.stringify(data.manualLocation));
+                        updateLocationDisplay();
+                    }
 
                     if (data.customPattern && Array.isArray(data.customPattern)) {
                         pixelData = data.customPattern;
