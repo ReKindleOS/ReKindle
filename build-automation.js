@@ -87,6 +87,40 @@ async function safeMinifyJs(code) {
     }
 }
 
+async function downloadAndTranspile(url, destDir, filename, legacyFn = false) {
+    const finalPath = path.join(destDir, 'libs', filename);
+    const relPath = './libs/' + filename;
+
+    // Check if valid URL
+    if (!url.startsWith('http')) return url;
+
+    // Check Cache
+    if (await fs.pathExists(finalPath)) return filename;
+
+    try {
+        // console.log(`    Downloading & Transpiling: ${filename} from ${url}`);
+        // 1. Download
+        const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 10 * 1024 * 1024 });
+
+        // 2. Transpile
+        let transpiled;
+        if (legacyFn) {
+            transpiled = await transpileLegacyJs(content);
+        } else {
+            transpiled = await transpileJs(content);
+        }
+
+        // 3. Save
+        await fs.ensureDir(path.dirname(finalPath));
+        await fs.outputFile(finalPath, transpiled);
+
+        return filename;
+    } catch (e) {
+        console.error(`    [Error] Failed to process lib ${filename}: ${e.message}`);
+        return null; // Return null on failure so we can keep original or handle it
+    }
+}
+
 async function processCss(cssContent) {
     // 1. Regex fixes for layout breakers or explicit downgrades
     // Dynamic Viewport Units (dvh/lvh/svh) -> vh (Chrome 108)
@@ -100,10 +134,13 @@ async function processCss(cssContent) {
         const result = await postcss([
             postcssPresetEnv({
                 stage: 3,
-                browsers: 'Chrome 44',
+                browsers: 'Chrome >= 40, Safari >= 8, iOS >= 8',
                 features: {
-                    'nesting-rules': true
-                }
+                    'nesting-rules': true,
+                    'custom-properties': { preserve: false },
+                    'color-functional-notation': true
+                },
+                autoprefixer: { grid: 'autoplace' }
             })
         ]).process(css, { from: undefined });
         return minifyCssString(result.css);
@@ -133,7 +170,17 @@ async function transpileJs(code) {
     }
 }
 
-async function transpileHtml(htmlContent, filename = '') {
+async function transpileHtml(htmlContent, filePath) {
+    const filename = path.basename(filePath);
+
+    // Calculate relative path to lib directory
+    const libsDir = path.join(LITE_DIR, 'libs');
+    let relativeLibsPath = path.relative(path.dirname(filePath), libsDir) || '.';
+
+    const getLibSrc = (fname) => {
+        if (!fname) return null;
+        return path.join(relativeLibsPath, fname).split(path.sep).join('/');
+    };
     // console.log(`    [DEBUG] Transpiling: ${filename}`);
     try {
 
@@ -149,84 +196,54 @@ async function transpileHtml(htmlContent, filename = '') {
         });
 
         // 2. REPLACE LIBRARIES WITH ES5 COMPATIBLES
-        const LIBRARY_REPLACEMENTS = {
-            // Firebase: Force 8.10.1 (Last v8 release, fully ES5)
-            'firebase': {
-                check: (src) => src.includes('firebase') && src.endsWith('.js'),
-                replace: (src) => {
-                    // Determine module type from filename (app, auth, firestore)
-                    // Source: .../9.6.1/firebase-app-compat.js -> Target: .../8.10.1/firebase-app.js
-                    const base = src.split('/').pop().replace('-compat', '');
-                    return `https://www.gstatic.com/firebasejs/8.10.1/${base}`;
-                }
-            },
-            // Marked: Downgrade to 2.1.3 (Last definitely ES5 safe version)
-            'marked': {
-                check: (src) => src.includes('marked.min.js'),
-                replace: () => "https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js"
-            },
-            // Epub.js: Inline & Transpile (v0.3.88 is ES6+, existing Babel step will fix it)
-            'epub': {
-                check: (src) => src.includes('epub.min.js'),
-                replace: () => {
-                    console.log("    Downloading epub.js for inlining...");
-                    try {
-                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
-                        const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-                        return { type: 'inline', content: content };
-                    } catch (e) {
-                        console.error("    Failed to download epub.js:", e.message);
-                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
-                    }
-                }
-            },
-            // OpenSheetMusicDisplay: Downgrade to 0.8.3 (Pre-TypeScript/Modern targets)
-            'osmd': {
-                check: (src) => src.includes('opensheetmusicdisplay'),
-                replace: () => "https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@0.8.3/build/opensheetmusicdisplay.min.js"
-            },
-            // Tone.js/Midi: Pin to 2.0.28 (2021 release)
-            'tonejs-midi': {
-                check: (src) => src.includes('@tonejs/midi'),
-                replace: () => "https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js"
-            },
-            // JSZip: Update to 3.10.1 (IE11/Chrome 44 supported)
-            'jszip': {
-                check: (src) => src.includes('jszip') && !src.includes('3.10.1'),
-                replace: () => "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
-            },
-            // QRCode: Use davidshimjs-qrcodejs (Standard ES5 lib)
-            'qrcode': {
-                check: (src) => src.includes('qrcode'),
-                replace: () => "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-            },
-            // Chess.js: Keep 0.10.3 (Standard ES5)
-            'chess': {
-                check: (src) => src.includes('chess.js') && !src.includes('0.10.3'),
-                replace: () => "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"
-            }
-        };
-
-        $('script').each((i, el) => {
+        // 2. REPLACE LIBRARIES WITH LOCALLY TRANSPILED VERSIONS
+        const scriptElements = $('script').toArray();
+        for (const el of scriptElements) {
             let src = $(el).attr('src');
-            if (src) {
-                for (const [key, rule] of Object.entries(LIBRARY_REPLACEMENTS)) {
-                    if (rule.check(src)) {
-                        const result = rule.replace(src);
+            if (!src) continue;
 
-                        if (typeof result === 'object' && result.type === 'inline') {
-                            console.log(`  [${key}] Replaced: ${src} -> [Inlined Content]`);
-                            $(el).removeAttr('src');
-                            $(el).html(result.content);
-                        } else {
-                            console.log(`  [${key}] Replaced: ${src} -> ${result}`);
-                            $(el).attr('src', result);
-                        }
-                        break; // Only apply one rule per script
-                    }
-                }
+            let newSrc = null;
+
+            // Firebase: Force 8.10.1 & Transpile
+            if (src.includes('firebase') && src.endsWith('.js')) {
+                const base = src.split('/').pop().replace('-compat', '');
+                const url = `https://www.gstatic.com/firebasejs/8.10.1/${base}`;
+                newSrc = await downloadAndTranspile(url, LITE_DIR, `firebase-${base}`);
             }
-        });
+            // Marked: Downgrade to 2.1.3
+            else if (src.includes('marked.min.js')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js", LITE_DIR, 'marked.js');
+            }
+            // Epub.js: v0.3.88
+            else if (src.includes('epub.min.js')) {
+                newSrc = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js", LITE_DIR, 'epub.js');
+            }
+            // OpenSheetMusicDisplay: 0.8.3
+            else if (src.includes('opensheetmusicdisplay')) {
+                newSrc = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@0.8.3/build/opensheetmusicdisplay.min.js", LITE_DIR, 'osmd.js');
+            }
+            // Tone.js/Midi: 2.0.28
+            else if (src.includes('@tonejs/midi')) {
+                newSrc = await downloadAndTranspile("https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js", LITE_DIR, 'tonejs-midi.js');
+            }
+            // JSZip: 3.10.1
+            else if (src.includes('jszip') && !src.includes('3.10.1')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js", LITE_DIR, 'jszip.js');
+            }
+            // QRCode: qrcodejs 1.0.0
+            else if (src.includes('qrcode')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", LITE_DIR, 'qrcode.js');
+            }
+            // Chess.js: 0.10.3
+            else if (src.includes('chess.js') && !src.includes('0.10.3')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js", LITE_DIR, 'chess.js');
+            }
+
+            if (newSrc) {
+                console.log(`  [Lib] Replaced: ${src} -> ${newSrc}`);
+                $(el).attr('src', getLibSrc(newSrc));
+            }
+        }
 
         // 3. TRANSPILE INLINE JS
         const scripts = $('script');
@@ -337,18 +354,24 @@ async function transpileHtml(htmlContent, filename = '') {
         } // End of style loop
 
         // 5. INJECT POLYFILLS & RUNTIME (Async/Await, ES6 Features)
+        // 5. INJECT POLYFILLS & RUNTIME (Async/Await, ES6 Features)
+        const regenName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js", LITE_DIR, 'regenerator.js');
+        const coreName = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js", LITE_DIR, 'core.js');
+        const urlName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/url-search-params-polyfill@8.1.1/index.js", LITE_DIR, 'url-polyfill.js');
+        const fetchName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.min.js", LITE_DIR, 'fetch.js');
+
         $('head').prepend(`
         <!-- 1. Regenerator Runtime (Required for Async/Await transpilation) -->
-        <script src="https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js"></script>
+        <script src="${getLibSrc(regenName)}"></script>
 
-        <!-- 2. CoreJS Bundle (Standard ES6+ Polyfills including Array.at, Promise.any, etc.) -->
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js"></script>
+        <!-- 2. CoreJS Bundle (Standard ES6+ Polyfills) -->
+        <script src="${getLibSrc(coreName)}"></script>
 
-        <!-- 2a. URLSearchParams Polyfill (Missing in Chrome 44) -->
-        <script src="https://cdn.jsdelivr.net/npm/url-search-params-polyfill@8.1.1/index.js"></script>
+        <!-- 2a. URLSearchParams Polyfill -->
+        <script src="${getLibSrc(urlName)}"></script>
 
-        <!-- 2b. Fetch Polyfill (whatwg-fetch) -->
-        <script src="https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.min.js"></script>
+        <!-- 2b. Fetch Polyfill -->
+        <script src="${getLibSrc(fetchName)}"></script>
         
         <!-- 3. Kobo-Specific Shims & Fixes -->
         <script>
@@ -827,10 +850,13 @@ async function processLegacyCss(cssContent) {
         const result = await postcss([
             postcssPresetEnv({
                 stage: 3,
-                browsers: 'Chrome 12',
+                browsers: 'Chrome >= 12, Safari >= 5, iOS >= 5',
                 features: {
-                    'nesting-rules': true
-                }
+                    'nesting-rules': true,
+                    'custom-properties': { preserve: false },
+                    'color-functional-notation': true
+                },
+                autoprefixer: { grid: 'autoplace' }
             })
         ]).process(css, { from: undefined });
         return minifyCssString(result.css);
@@ -859,7 +885,17 @@ async function transpileLegacyJs(code) {
     }
 }
 
-async function transpileLegacyHtml(htmlContent, filename = '') {
+async function transpileLegacyHtml(htmlContent, filePath) {
+    const filename = path.basename(filePath);
+
+    // Calculate relative path to lib directory
+    const libsDir = path.join(LEGACY_DIR, 'libs');
+    let relativeLibsPath = path.relative(path.dirname(filePath), libsDir) || '.';
+
+    const getLibSrc = (fname) => {
+        if (!fname) return null;
+        return path.join(relativeLibsPath, fname).split(path.sep).join('/');
+    };
     try {
         const $ = cheerio.load(htmlContent);
 
@@ -872,46 +908,48 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         });
 
         // 2. LIBRARY REPLACEMENTS (Same as Lite)
-        const LIBRARY_REPLACEMENTS = {
-            'firebase': { check: src => src.includes('firebase') && src.endsWith('.js'), replace: src => `https://www.gstatic.com/firebasejs/8.10.1/${src.split('/').pop().replace('-compat', '')}` },
-            'marked': { check: src => src.includes('marked.min.js'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js" },
-            'epub': {
-                check: (src) => src.includes('epub.min.js'),
-                replace: () => {
-                    console.log("    Downloading epub.js for inlining...");
-                    try {
-                        const url = "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
-                        const content = execSync(`curl -L "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-                        return { type: 'inline', content: content };
-                    } catch (e) {
-                        console.error("    Failed to download epub.js:", e.message);
-                        return "https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js";
-                    }
-                }
-            },
-            'osmd': { check: src => src.includes('opensheetmusicdisplay'), replace: () => "https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@0.8.3/build/opensheetmusicdisplay.min.js" },
-            'tonejs-midi': { check: src => src.includes('@tonejs/midi'), replace: () => "https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js" },
-            'jszip': { check: src => src.includes('jszip') && !src.includes('3.10.1'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" },
-            'qrcode': { check: src => src.includes('qrcode'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" },
-            'chess': { check: src => src.includes('chess.js') && !src.includes('0.10.3'), replace: () => "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" }
-        };
-
-        $('script').each((i, el) => {
+        // 2. REPLACE LIBRARIES WITH LOCALLY TRANSPILED VERSIONS
+        const scriptElements = $('script').toArray();
+        for (const el of scriptElements) {
             let src = $(el).attr('src');
-            if (src) {
-                for (const [key, rule] of Object.entries(LIBRARY_REPLACEMENTS)) {
-                    if (rule.check(src)) {
-                        const result = rule.replace(src);
-                        if (typeof result === 'object' && result.type === 'inline') {
-                            $(el).removeAttr('src').html(result.content);
-                        } else {
-                            $(el).attr('src', result);
-                        }
-                        break;
-                    }
+            if (!src) continue;
+
+            let newSrc = null;
+
+            if (src.includes('firebase') && src.endsWith('.js')) {
+                const base = src.split('/').pop().replace('-compat', '');
+                const url = `https://www.gstatic.com/firebasejs/8.10.1/${base}`;
+                newSrc = await downloadAndTranspile(url, LEGACY_DIR, `firebase-${base}`, true);
+            }
+            else if (src.includes('marked.min.js')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js", LEGACY_DIR, 'marked.js', true);
+            }
+            else if (src.includes('epub.min.js')) {
+                newSrc = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.js", LEGACY_DIR, 'epub.js', true);
+            }
+            else if (src.includes('opensheetmusicdisplay')) {
+                newSrc = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@0.8.3/build/opensheetmusicdisplay.min.js", LEGACY_DIR, 'osmd.js', true);
+            }
+            else if (src.includes('@tonejs/midi')) {
+                newSrc = await downloadAndTranspile("https://unpkg.com/@tonejs/midi@2.0.28/dist/Midi.js", LEGACY_DIR, 'tonejs-midi.js', true);
+            }
+            else if (src.includes('jszip') && !src.includes('3.10.1')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js", LEGACY_DIR, 'jszip.js', true);
+            }
+            else if (src.includes('qrcode')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", LEGACY_DIR, 'qrcode.js', true);
+            }
+            else if (src.includes('chess.js') && !src.includes('0.10.3')) {
+                newSrc = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js", LEGACY_DIR, 'chess.js', true);
+                if (newSrc) {
+                    $(el).attr('src', getLibSrc(newSrc));
                 }
             }
-        });
+
+            if (newSrc && !$(el).attr('src')) { // Only set src if not already set by a specific handler
+                $(el).attr('src', getLibSrc(newSrc));
+            }
+        }
 
         // 3. TRANSPILE INLINE JS
         const scripts = $('script');
@@ -937,11 +975,16 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         }
 
         // 5. INJECT POLYFILLS (Same as Lite)
+        const regenName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js", LEGACY_DIR, 'regenerator.js', true);
+        const coreName = await downloadAndTranspile("https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js", LEGACY_DIR, 'core.js', true);
+        const urlName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/url-search-params-polyfill@8.1.1/index.js", LEGACY_DIR, 'url-polyfill.js', true);
+        const fetchName = await downloadAndTranspile("https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.min.js", LEGACY_DIR, 'fetch.js', true);
+
         $('head').prepend(`
-        <script src="https://cdn.jsdelivr.net/npm/regenerator-runtime@0.13.11/runtime.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/core-js/3.38.1/minified.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/url-search-params-polyfill@8.1.1/index.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.min.js"></script>
+        <script src="${getLibSrc(regenName)}"></script>
+        <script src="${getLibSrc(coreName)}"></script>
+        <script src="${getLibSrc(urlName)}"></script>
+        <script src="${getLibSrc(fetchName)}"></script>
         <script>
             window.isLegacyVersion = true;
             if (!window.structuredClone) { window.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); }; }
@@ -1419,7 +1462,7 @@ async function run() {
 
     for (const file of files) {
         const html = await fs.readFile(file, 'utf8');
-        const processed = await transpileHtml(html, path.basename(file));
+        const processed = await transpileHtml(html, file);
         await fs.outputFile(file, processed);
     }
 
@@ -1450,7 +1493,7 @@ async function run() {
     for (const file of legHtmlFiles) {
         if (file.includes('google')) continue; // Skip google verification file if any?
         const html = await fs.readFile(file, 'utf8');
-        const processed = await transpileLegacyHtml(html, path.basename(file));
+        const processed = await transpileLegacyHtml(html, file);
         await fs.outputFile(file, processed);
     }
 
