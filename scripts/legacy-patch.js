@@ -58,6 +58,15 @@ function fixCss() {
         console.log("   [Layout] Fixed .featured-card to inline-block");
     }
 
+    // .app-view: Fix SCROLLING issue.
+    // Chrome 12 legacy flexbox often fails to scroll if the container is display: -webkit-box.
+    // We change it to display: block, but keep -webkit-box-flex: 1 so it grows within the parent.
+    if (html.match(/\.app-view\{/)) {
+        html = html.replace(/\.app-view\{[^}]+\}/g, '.app-view{-webkit-box-flex:1;flex-grow:1;display:block;height:100%;overflow-y:auto;background:white;position:relative;padding:10px;}');
+        count++;
+        console.log("   [Layout] Fixed .app-view scrolling (display: block)");
+    }
+
     if (count > 0) {
         fs.writeFileSync(htmlPath, html);
         console.log(`✅ [CSS] Replaced ${count} flex/inline-flex instances with -webkit-box`);
