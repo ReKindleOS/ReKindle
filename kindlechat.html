@@ -696,6 +696,61 @@
             margin-top: 0;
             font-size: 1.5rem;
         }
+
+        /* --- USER THEMES --- */
+        .msg-bubble.developer {
+            border: 3px double black !important;
+            box-shadow: 4px 4px 0px #000;
+        }
+
+        .msg.self .msg-bubble.developer {
+            border-color: white !important;
+            /* Ensure visibility on black background? No, self is black bg. */
+            /* If bg is black, double border needs color. */
+            box-shadow: 4px 4px 0px #666;
+            background-image: none;
+        }
+
+        /* Developer Tag */
+        .dev-tag {
+            font-size: 0.7rem;
+            background: black;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 4px;
+            margin-right: 5px;
+            vertical-align: middle;
+            font-weight: bold;
+        }
+
+        .msg-bubble.supporter {
+            background: black !important;
+            color: white !important;
+            border: 2px solid black !important;
+            /* Matches bg but defines size */
+            box-shadow: 4px 4px 0px #999;
+            /* Grey shadow for contrast */
+        }
+
+        /* Ensure links in supporter bubbles are visible */
+        .msg-bubble.supporter a {
+            color: white;
+            text-decoration: underline;
+        }
+
+        .supporter-crown {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            vertical-align: middle;
+            fill: black;
+            /* Default */
+            margin-right: 4px;
+        }
+
+        .msg.self .supporter-crown {
+            fill: black;
+        }
     </style>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -830,6 +885,7 @@
         let unsubscribeRooms = null;
         let oldestMsgDoc = null; // For pagination
         let isLoadingMore = false; // For pagination
+        let supporterUsers = new Set(); // Store supporter usernames
 
         // --- Reaction Keys (Simplified to match the new constant button action) ---
         const FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
@@ -841,6 +897,7 @@
         window.onload = () => {
             loadWallpaper();
             initAsciiPicker(); // Initialize the ASCII picker
+            fetchSupporters(); // Load supporters list
 
             // Check Auth
             auth.onAuthStateChanged(async (user) => {
@@ -1285,7 +1342,18 @@
             div.className = `msg ${isSelf ? 'self' : 'other'}`;
             div.dataset.msgId = msgId;
 
-            const nameHtml = isSelf ? '<span>You</span>' : `<span style="font-weight:bold;">${msg.user}</span>`;
+            let nameHtml = isSelf ? '<span>You</span>' : `<span style="font-weight:bold;">${msg.user}</span>`;
+
+            // Developer Badge in Name
+            if (msg.user === 'ukiyo') {
+                const devBadge = `<span class="dev-tag">DEV</span>`;
+                nameHtml = isSelf ? `<span>${devBadge}You</span>` : `<span>${devBadge}<span style="font-weight:bold;">${msg.user}</span></span>`;
+            } else if (supporterUsers.has(msg.user)) {
+                // Supporter Crown (SVG for Kindle compatibility)
+                const crownSvg = `<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>`;
+                const crown = `<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">${crownSvg}</a>`;
+                nameHtml = isSelf ? `<span>${crown}You</span>` : `<span>${crown}<span style="font-weight:bold;">${msg.user}</span></span>`;
+            }
 
             let timeStr = "";
             if (msg.timestamp) {
@@ -1366,6 +1434,15 @@
             } else {
                 // Regular Text Message
                 bubbleContent = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+            }
+
+            // --- THEME INJECTION ---
+            if (msg.user === 'ukiyo') {
+                // Inject developer class
+                bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble developer');
+            } else if (supporterUsers.has(msg.user)) {
+                // Inject supporter class
+                bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble supporter');
             }
 
             // MODIFIED: Reaction Button (Opens Modal)
@@ -1598,43 +1675,63 @@
 
                 let existingRoomId = null;
 
-                roomsSnap.forEach(doc => {
+                const roomsWithOther = roomsSnap.docs.filter(doc => {
                     const data = doc.data();
-                    // Check if the other user is also in the participants
-                    if (data.participants.includes(otherUser) && data.participants.length === 2) {
-                        existingRoomId = doc.id;
-                    }
+                    // Ensure it has exactly these 2 participants
+                    return data.participants.length === 2 && data.participants.includes(otherPerson);
                 });
 
-                let roomId = existingRoomId;
-
-                // 2. If no room exists, create one
-                if (!roomId) {
-                    const roomData = {
-                        participants: [currentUsername, otherUser],
-                        intendedParticipants: [currentUsername, otherUser], // Keep for consistency
-                        type: 'dm',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    const roomRef = await db.collection('rooms').add(roomData);
-                    roomId = roomRef.id;
+                if (roomsWithOther.length > 0) {
+                    existingRoomId = roomsWithOther[0].id;
                 }
 
-                // 3. Send the message to the room
-                await db.collection('rooms').doc(roomId).collection('messages').add({
-                    user: currentUsername,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    text: messageInput
-                });
+                if (existingRoomId) {
+                    switchRoom(existingRoomId, otherPerson);
+                } else {
+                    // Create new DM room
+                    const newRoomRef = await db.collection('rooms').add({
+                        type: 'dm',
+                        participants: [currentUsername], // Only start with me
+                        intendedParticipants: participants, // Add the other person later when msg sent
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
 
-                // 4. Switch to the room
-                switchRoom(roomId, otherUser);
+                    // Add initial message
+                    await newRoomRef.collection('messages').add({
+                        user: currentUsername,
+                        text: messageInput,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // Activate room for both
+                    await newRoomRef.update({
+                        participants: participants
+                    });
+
+                    // Reload rooms and switch
+                    // loadRooms(); // loadRooms is onSnapshot, should update auto
+                    // But we want to switch immediately
+                    switchRoom(newRoomRef.id, otherPerson);
+                }
 
             } catch (e) {
                 console.error("Error sending DM:", e);
-                alert("Failed to send message. Please try again.");
+                alert("Error starting chat.");
             }
         }
+
+        // --- SUPPORTER LOGIC ---
+        async function fetchSupporters() {
+            try {
+                const doc = await db.collection('config').doc('supporters').get();
+                if (doc.exists && doc.data().usernames) {
+                    supporterUsers = new Set(doc.data().usernames);
+                }
+            } catch (e) {
+                console.error("Error loading supporters:", e);
+            }
+        }
+
 
         // --- LEAVE ROOM ---
         function promptLeaveRoom(roomId, event) {
