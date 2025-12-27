@@ -758,6 +758,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="emojis.js"></script>
 
+    <script src="bad_words.js?v=2"></script>
     <script src="theme.js"></script>
 </head>
 
@@ -1334,6 +1335,24 @@
                 });
         }
 
+
+        let profanityRegex = null;
+        function getProfanityRegex() {
+            if (profanityRegex) return profanityRegex;
+            if (typeof BAD_WORDS === 'undefined') return null;
+
+            // Create regex once from the BAD_WORDS array
+            const escaped = BAD_WORDS.filter(w => w).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            profanityRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi');
+            return profanityRegex;
+        }
+
+        function censorText(text) {
+            const regex = getProfanityRegex();
+            if (!regex) return text;
+            return text.replace(regex, (match) => '*'.repeat(match.length));
+        }
+
         function renderMessage(msg, msgId, prepend = false) {
             const history = document.getElementById('chat-history');
             const div = document.createElement('div');
@@ -1364,6 +1383,12 @@
             let bubbleContent = '';
             let isSpecialMessage = false;
             let messageText = msg.text || '';
+
+            // Censor Profanity Logic
+            const censorProfanity = localStorage.getItem('rekindle_censor_profanity');
+            if (messageText && (censorProfanity === null || censorProfanity === 'true')) {
+                messageText = censorText(messageText);
+            }
 
             // ASCII Art detection: Check for newlines (must have multiple lines)
             const isAscii = messageText.includes('\n');
@@ -1427,13 +1452,13 @@
                             border: 2px solid black; 
                             display:block;
                          ">
-                         ${msg.text ? `<div style="margin-top:5px; font-size:0.9rem;">${escapeHtml(msg.text)}</div>` : ''}
+                         ${messageText ? `<div style="margin-top:5px; font-size:0.9rem;">${escapeHtml(messageText)}</div>` : ''}
                     </div>
                 `;
                 isSpecialMessage = true;
             } else {
                 // Regular Text Message
-                bubbleContent = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+                bubbleContent = `<div class="msg-bubble">${escapeHtml(messageText)}</div>`;
             }
 
             // --- THEME INJECTION ---
