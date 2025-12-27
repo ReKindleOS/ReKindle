@@ -296,33 +296,33 @@
     <script>
         // --- WORD LIST (Compressed) ---
         const ANSWERS = [
-            "APPLE","BEACH","BRAIN","BREAD","BRUSH","CHAIR","CHEST","CLOUD","DANCE","DREAM",
-            "DRIVE","EARTH","FEAST","FIELD","FLAME","FRUIT","GLASS","GRAPE","GRASS","HEART",
-            "HOUSE","IMAGE","LIGHT","LUNCH","MELON","MODEL","MONEY","MONTH","MUSIC","NIGHT",
-            "OCEAN","PARTY","PHONE","PIANO","PILOT","PLANE","PLANT","PLATE","POWER","RADIO",
-            "RIVER","SCALE","SCENE","SCOPE","SHAPE","SHARE","SHIRT","SKILL","SLEEP","SMILE",
-            "SNAKE","SPACE","SPOON","STAGE","STAND","START","STEAM","STONE","STORM","STORY",
-            "STYLE","SUGAR","TABLE","TASTE","TEACH","THING","TIGER","TITLE","TOAST","TOUCH",
-            "TOWER","TRACK","TRADE","TRAIN","TREAT","TRUCK","TRUST","TRUTH","UNCLE","UNITY",
-            "VALUE","VIDEO","VISIT","VOICE","WASTE","WATCH","WATER","WHALE","WHEEL","WHITE",
-            "WOMAN","WORLD","WRITE","YOUTH","ZEBRA"
+            "APPLE", "BEACH", "BRAIN", "BREAD", "BRUSH", "CHAIR", "CHEST", "CLOUD", "DANCE", "DREAM",
+            "DRIVE", "EARTH", "FEAST", "FIELD", "FLAME", "FRUIT", "GLASS", "GRAPE", "GRASS", "HEART",
+            "HOUSE", "IMAGE", "LIGHT", "LUNCH", "MELON", "MODEL", "MONEY", "MONTH", "MUSIC", "NIGHT",
+            "OCEAN", "PARTY", "PHONE", "PIANO", "PILOT", "PLANE", "PLANT", "PLATE", "POWER", "RADIO",
+            "RIVER", "SCALE", "SCENE", "SCOPE", "SHAPE", "SHARE", "SHIRT", "SKILL", "SLEEP", "SMILE",
+            "SNAKE", "SPACE", "SPOON", "STAGE", "STAND", "START", "STEAM", "STONE", "STORM", "STORY",
+            "STYLE", "SUGAR", "TABLE", "TASTE", "TEACH", "THING", "TIGER", "TITLE", "TOAST", "TOUCH",
+            "TOWER", "TRACK", "TRADE", "TRAIN", "TREAT", "TRUCK", "TRUST", "TRUTH", "UNCLE", "UNITY",
+            "VALUE", "VIDEO", "VISIT", "VOICE", "WASTE", "WATCH", "WATER", "WHALE", "WHEEL", "WHITE",
+            "WOMAN", "WORLD", "WRITE", "YOUTH", "ZEBRA"
         ];
 
         // --- GAME STATE ---
         const WORD_LENGTH = 5;
         const MAX_GUESSES = 6;
-        
+
         let currentGuess = [];
-        let guesses = []; 
+        let guesses = [];
         let gameOver = false;
         let targetWord = "";
 
         // --- INIT ---
-        window.onload = () => {
+        window.onload = async () => {
             loadWallpaper();
             initBoard();
             initKeyboard();
-            pickWordOfTheDay();
+            await pickWordOfTheDay();
         };
 
         // Helper to HTML-escape text
@@ -349,22 +349,51 @@
 
         // --- WALLPAPER LOADER ---
 
-        function pickWordOfTheDay() {
+        async function pickWordOfTheDay() {
             const now = new Date();
+
+            // 1. Try fetching live NYT solution
+            try {
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+
+                const nytUrl = `https://www.nytimes.com/svc/wordle/v2/${dateStr}.json`;
+                // Use corsproxy.io which proved more reliable
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(nytUrl)}`;
+
+                showMessage("Loading NYT Word...");
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Network response was not ok");
+
+                const data = await response.json();
+                if (data.solution) {
+                    targetWord = data.solution.toUpperCase();
+                    console.log("Loaded Live Target:", targetWord);
+                    showMessage(""); // Clear loading message
+                    return;
+                }
+            } catch (e) {
+                console.warn("Failed to fetch live word, falling back to offline list", e);
+                showMessage("Offline Mode");
+            }
+
+            // 2. Fallback to offline algorithm
             const start = new Date(now.getFullYear(), 0, 0);
             const diff = now - start;
             const oneDay = 1000 * 60 * 60 * 24;
             const dayOfYear = Math.floor(diff / oneDay);
-            
+
             targetWord = ANSWERS[dayOfYear % ANSWERS.length];
-            console.log("Target:", targetWord); 
+            console.log("Offline Target:", targetWord);
         }
 
         // --- RENDERERS ---
         function initBoard() {
             const board = document.getElementById('board-container');
-            board.innerHTML = ''; 
-            
+            board.innerHTML = '';
+
             for (let i = 0; i < MAX_GUESSES; i++) {
                 const row = document.createElement('div');
                 row.className = 'row';
@@ -384,19 +413,19 @@
                 "ASDFGHJKL".split(""),
                 ["ENTER", ..."ZXCVBNM".split(""), "⌫"]
             ];
-            
+
             const keyboardEl = document.getElementById('keyboard');
             keyboardEl.innerHTML = '<div class="key-row" id="row1"></div><div class="key-row" id="row2"></div><div class="key-row" id="row3"></div>';
 
             rows.forEach((keys, i) => {
-                const rowEl = document.getElementById(`row${i+1}`);
+                const rowEl = document.getElementById(`row${i + 1}`);
                 keys.forEach(key => {
                     const btn = document.createElement('div');
                     btn.innerText = key;
                     btn.className = 'key';
                     if (key === 'ENTER' || key === '⌫') btn.classList.add('big');
                     btn.id = `key-${key}`;
-                    
+
                     btn.onclick = () => handleInput(key);
                     rowEl.appendChild(btn);
                 });
@@ -405,7 +434,7 @@
 
         // --- INPUT HANDLING ---
         function handleInput(key) {
-            if (gameOver) return;
+            if (gameOver || !targetWord) return;
 
             if (key === 'ENTER') {
                 submitGuess();
@@ -444,13 +473,13 @@
             const rowIdx = guesses.length;
             const solutionChars = targetWord.split("");
             const guessChars = [...currentGuess];
-            
+
             // 1. Find Correct (Green/Black)
             guessChars.forEach((char, i) => {
                 if (char === solutionChars[i]) {
                     document.getElementById(`tile-${rowIdx}-${i}`).dataset.state = "correct";
                     updateKey(char, "correct");
-                    solutionChars[i] = null; 
+                    solutionChars[i] = null;
                     guessChars[i] = null;
                 }
             });
@@ -502,7 +531,7 @@
 
 
         loadWallpaper();
-        
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
