@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scores</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .header-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+        }
+
+        .header-btn:active {
+            transform: translateY(-50%) translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .close-box {
+            left: 10px;
+        }
+
+        .refresh-btn {
+            right: 10px;
+        }
+
+        .back-btn {
+            left: 10px;
+            display: none;
+        }
+
+        /* Hidden by default */
+
+        /* CONTENT AREA */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 0;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* TOP TABS (VIEW SWITCHER) */
+        .top-tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #ccc;
+            flex-shrink: 0;
+        }
+
+        .top-tab-btn {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            font-weight: 900;
+            border: none;
+            background: #ccc;
+            border-right: 1px solid #999;
+            cursor: pointer;
+            font-family: inherit;
+            border-bottom: 2px solid transparent;
+            font-size: 0.9rem;
+        }
+
+        .top-tab-btn.active {
+            background: white;
+            border-bottom: 2px solid black;
+            margin-bottom: -2px;
+            /* Overlap border */
+            border-bottom: none;
+            z-index: 2;
+        }
+
+        /* LEAGUE LIST (MENU) */
+        .league-menu {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .league-btn {
+            border: 2px solid black;
+            padding: 15px;
+            background: white;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 4px 4px 0 #eee;
+        }
+
+        .league-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .league-btn:active .arrow {
+            border-color: white;
+            /* Invert arrow on active */
+        }
+
+        .arrow {
+            width: 10px;
+            height: 10px;
+            border-top: 2px solid black;
+            border-right: 2px solid black;
+            transform: rotate(45deg);
+            margin-right: 10px;
+        }
+
+        /* GAMES LIST */
+        #scores-view {
+            display: none;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .game-card {
+            border: 2px solid black;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            background: white;
+        }
+
+        .game-status {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: black;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            font-weight: bold;
+        }
+
+        .game-status.live {
+            background: #000;
+            text-decoration: underline;
+        }
+
+        .teams {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex-grow: 1;
+            margin-top: 10px;
+        }
+
+        .team-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1rem;
+        }
+
+        .team-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .team-name {
+            font-weight: bold;
+        }
+
+        .winner {
+            text-decoration: underline;
+        }
+
+        .team-logo {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            filter: grayscale(100%);
+        }
+
+        .fav-star {
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: #ccc;
+            line-height: 1;
+            margin-right: 5px;
+            -webkit-text-stroke: 1px black;
+            position: relative;
+            z-index: 10;
+        }
+
+        .fav-star.active {
+            color: black;
+            -webkit-text-stroke: 0;
+        }
+
+        .fav-star:hover {
+            opacity: 0.7;
+        }
+
+        .score {
+            font-family: "Courier New", monospace;
+            font-weight: 900;
+            font-size: 1.3rem;
+        }
+
+        .loading-msg {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+
+        .section-header {
+            padding: 10px 10px 0 10px;
+            font-weight: 900;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            border-bottom: 2px solid black;
+            margin-bottom: 5px;
+            background: #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 30px;
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+
+            <!-- BUTTONS -->
+            <div id="btn-close" class="header-btn close-box" onclick="window.location.href='index'">X</div>
+            <div id="btn-back" class="header-btn back-btn" onclick="goBack()">←</div>
+
+            <span class="title-text" id="app-title">Scores</span>
+
+            <div class="header-btn refresh-btn" onclick="refreshCurrent()">↻</div>
+        </div>
+
+        <!-- TABS (Only visible in Menu View) -->
+        <div class="top-tabs" id="main-tabs">
+            <button class="top-tab-btn active" id="tab-all" onclick="switchTab('all')">ALL SPORTS</button>
+            <button class="top-tab-btn" id="tab-favs" onclick="switchTab('favs')">FAVORITES</button>
+        </div>
+
+        <div class="window-content">
+
+            <!-- MENU VIEW (Lists of Sports) -->
+            <div id="menu-view">
+                <div class="league-menu" id="menu-list">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- SCORES VIEW (Detail) -->
+            <div id="scores-view">
+                <div class="section-header" id="scores-header">
+                    <span id="league-name-display">LEAGUE</span>
+                </div>
+                <div id="game-container">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const LEAGUES = [
+            { name: "NFL", slug: "football/nfl" },
+            { name: "NBA", slug: "basketball/nba" },
+            { name: "MLB", slug: "baseball/mlb" },
+            { name: "NHL", slug: "hockey/nhl" },
+            { name: "EPL", slug: "soccer/eng.1" },
+            { name: "MLS", slug: "soccer/usa.1" },
+            { name: "NCAA Football", slug: "football/college-football" },
+            { name: "NCAA Basketball", slug: "basketball/mens-college-basketball" }
+        ];
+
+        // --- STATE ---
+        let currentMode = 'menu'; // 'menu' or 'scores'
+        let currentTab = 'all';   // 'all' or 'favs'
+        let activeLeague = null;
+
+        // Favorites: { teamId: { id, name, league } }
+        let favoriteTeams = JSON.parse(localStorage.getItem('rekindle_scores_favs')) || {};
+
+        window.onload = () => {
+            loadWallpaper();
+            switchTab('all');
+        };
+
+        // --- NAVIGATION ---
+        function switchTab(tab) {
+            currentTab = tab;
+
+            // Toggle Tab UI
+            document.getElementById('tab-all').className = tab === 'all' ? 'top-tab-btn active' : 'top-tab-btn';
+            document.getElementById('tab-favs').className = tab === 'favs' ? 'top-tab-btn active' : 'top-tab-btn';
+
+            if (tab === 'all') {
+                // Show Menu
+                resetToMenu();
+            } else {
+                // Show Favorites Feed
+                showFavoritesView();
+            }
+        }
+
+        function resetToMenu() {
+            currentMode = 'menu';
+            activeLeague = null;
+
+            document.getElementById('app-title').innerText = 'Scores';
+            document.getElementById('menu-view').style.display = 'block';
+            document.getElementById('scores-view').style.display = 'none';
+
+            // Buttons
+            document.getElementById('btn-close').style.display = 'flex';
+            document.getElementById('btn-back').style.display = 'none';
+            // document.getElementById('league-nav').style.display = 'none'; // Ensure nav hidden - this element doesn't exist
+
+            renderMenu();
+        }
+
+        function showFavoritesView() {
+            currentMode = 'scores'; // technically viewing scores
+            activeLeague = null; // purely mixed
+
+            document.getElementById('app-title').innerText = 'Favorites';
+            document.getElementById('menu-view').style.display = 'none';
+            document.getElementById('scores-view').style.display = 'flex';
+
+            // Allow going back? No, tab switching handles it. 
+            // Close button should be active as this is a top-level view.
+            document.getElementById('btn-close').style.display = 'flex';
+            document.getElementById('btn-back').style.display = 'none';
+
+            // Hide League Header in Fav View (or change text)
+            document.getElementById('scores-header').style.display = 'none';
+            // document.getElementById('league-nav').style.display = 'none'; // This element doesn't exist
+
+            fetchFavorites();
+        }
+
+        function openLeague(leagueData) {
+            activeLeague = leagueData;
+            currentMode = 'scores';
+            currentTab = 'all'; // Implicitly we are in All
+
+            // UI Updates
+            document.getElementById('app-title').innerText = leagueData.name;
+            document.getElementById('menu-view').style.display = 'none';
+            document.getElementById('scores-view').style.display = 'flex';
+
+            // Show Back Button
+            document.getElementById('btn-close').style.display = 'none';
+            document.getElementById('btn-back').style.display = 'flex';
+
+            // Header
+            document.getElementById('scores-header').style.display = 'flex';
+            document.getElementById('league-name-display').innerText = `${leagueData.name}`;
+
+            fetchLeagueScores();
+        }
+
+        function goBack() {
+            if (currentTab === 'all') {
+                resetToMenu();
+            } else {
+                // Should not happen if back btn hidden in favs
+                switchTab('all');
+            }
+        }
+
+        function refreshCurrent() {
+            if (currentTab === 'favs') {
+                fetchFavorites();
+            } else if (currentMode === 'scores' && activeLeague) {
+                fetchLeagueScores();
+            } else {
+                // Menu refresh?
+                renderMenu();
+            }
+        }
+
+        // --- RENDERERS ---
+        function renderMenu() {
+            const container = document.getElementById('menu-list');
+            container.innerHTML = '';
+
+            LEAGUES.forEach(league => {
+                const btn = document.createElement('div');
+                btn.className = 'league-btn';
+                btn.innerHTML = `
+                    <span>${league.name}</span>
+                    <div class="arrow"></div>
+                `;
+                btn.onclick = () => openLeague(league);
+                container.appendChild(btn);
+            });
+        }
+
+        // --- DATA LOGIC ---
+
+        async function fetchLeagueScores() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '<div class="loading-msg">Loading scores...</div>';
+
+            try {
+                const data = await fetchFromAPI(activeLeague.slug);
+                renderGames(data.events || [], container);
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<div class="loading-msg" style="color:red;">Error loading data.</div>';
+            }
+        }
+
+        async function fetchFavorites() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '<div class="loading-msg">Loading favorites...</div>';
+
+            // Identify leagues
+            const leaguesToFetch = new Set();
+            Object.values(favoriteTeams).forEach(t => {
+                if (t.league) leaguesToFetch.add(t.league);
+            });
+
+            if (leaguesToFetch.size === 0) {
+                container.innerHTML = `
+                    <div class="loading-msg">
+                        No favorite teams yet.<br><br>
+                        <small>Go to "All Sports", select a league, and star your teams!</small>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                // Fetch all unique leagues
+                const promises = Array.from(leaguesToFetch).map(slug => fetchFromAPI(slug));
+                const results = await Promise.all(promises);
+
+                let allEvents = [];
+                results.forEach(data => {
+                    if (data.events) allEvents = allEvents.concat(data.events);
+                });
+
+                // Filter matches with favorites
+                const favEvents = allEvents.filter(event => {
+                    const comp = event.competitions[0];
+                    const h = comp.competitors[0].team.id;
+                    const a = comp.competitors[1].team.id;
+                    return favoriteTeams[h] || favoriteTeams[a];
+                });
+
+                if (favEvents.length === 0) {
+                    container.innerHTML = '<div class="loading-msg">No games scheduled for your favorite teams.</div>';
+                } else {
+                    // Sort by time? API usually sorts by time.
+                    renderGames(favEvents, container);
+                }
+
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<div class="loading-msg" style="color:red;">Error loading favorites.</div>';
+            }
+        }
+
+        async function fetchFromAPI(leagueSlug) {
+            const apiUrl = `https://site.api.espn.com/apis/site/v2/sports/${leagueSlug}/scoreboard`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
+
+            const res = await fetch(proxyUrl);
+            if (!res.ok) throw new Error("Network error " + leagueSlug);
+            return await res.json();
+        }
+
+        function renderGames(events, container) {
+            container.innerHTML = '';
+
+            if (events.length === 0) {
+                container.innerHTML = '<div class="loading-msg">No games scheduled.</div>';
+                return;
+            }
+
+            events.forEach(event => {
+                const competition = event.competitions[0];
+                const status = event.status.type.state;
+                const statusDetail = event.status.type.shortDetail;
+
+                const homeComp = competition.competitors.find(c => c.homeAway === 'home');
+                const awayComp = competition.competitors.find(c => c.homeAway === 'away');
+                const home = homeComp.team;
+                const away = awayComp.team;
+
+                // Winner Logic
+                const homeClass = (status === 'post' && parseInt(homeComp.score) > parseInt(awayComp.score)) ? 'team-name winner' : 'team-name';
+                const awayClass = (status === 'post' && parseInt(awayComp.score) > parseInt(homeComp.score)) ? 'team-name winner' : 'team-name';
+
+                // Status Badge
+                let statusBadge = '';
+                if (status === 'in') {
+                    statusBadge = `<div class="game-status live">${statusDetail}</div>`;
+                } else {
+                    statusBadge = `<div class="game-status">${statusDetail}</div>`;
+                }
+
+                const card = document.createElement('div');
+                card.className = 'game-card';
+
+                // Pass League Slug if available (from activeLeague or infer?)
+                // If in Favorites view, we don't know the slug easily for the click handler unless we attach it.
+                // But we only allow starring in 'all' view which sets the slug.
+                // Users can unstar in Favorites view because we just toggle.
+
+                card.innerHTML = `
+                    ${statusBadge}
+                    <div class="teams">
+                        ${renderTeamRow(awayComp, awayClass, away.id)}
+                        ${renderTeamRow(homeComp, homeClass, home.id)}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderTeamRow(comp, nameClass, teamId) {
+            const isFav = !!favoriteTeams[teamId];
+            const starChar = isFav ? '★' : '☆';
+            const starClass = isFav ? 'fav-star active' : 'fav-star';
+
+            return `
+                <div class="team-row">
+                    <div class="team-info">
+                        <span class="${starClass}" onclick="toggleFavorite(event, '${teamId}', '${escapeQuote(comp.team.shortDisplayName)}')">${starChar}</span>
+                        <div class="${nameClass}">
+                            <img src="${comp.team.logo}" class="team-logo" onerror="this.style.display='none'">
+                            ${comp.team.abbreviation || comp.team.shortDisplayName}
+                        </div>
+                    </div>
+                    <div class="score">${comp.score}</div>
+                </div>
+            `;
+        }
+
+        // --- FAVORITES ACTION ---
+        function toggleFavorite(event, teamId, teamName) {
+            if (event) event.stopPropagation();
+            if (favoriteTeams[teamId]) {
+                delete favoriteTeams[teamId];
+            } else {
+                // Determine League
+                let league = activeLeague ? activeLeague.slug : null;
+
+                // If we are in Favorites View, we don't know the league of a NEW team easily
+                // (Though you can't usually see non-favs in favorites view to star them).
+                // But if we unstar, we don't need the league.
+                // If we star a team in All View, activeLeague is set.
+
+                if (!league) {
+                    // Fallback or Error? 
+                    // This happens if trying to star a team in Favorites view (if we ever showed non-favs there)
+                    // Currently we only filterFavs, so we are un-starring.
+                    console.warn("League not found for new favorite");
+                    // return; // Soft fail
+                    // Actually, if we are UN-starring, we don't need to add anything.
+                }
+
+                favoriteTeams[teamId] = {
+                    id: teamId,
+                    name: teamName,
+                    league: league
+                };
+            }
+            localStorage.setItem('rekindle_scores_favs', JSON.stringify(favoriteTeams));
+
+            // Refresh
+            refreshCurrent();
+        }
+
+        function escapeQuote(str) {
+            return str.replace(/'/g, "\\'");
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+    </script>
+</body>
+
+</html>

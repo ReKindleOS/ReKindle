@@ -39,6 +39,13 @@ const APPS = [
         cat: 'essentials',
         icon: '<circle cx="16" cy="16" r="7" stroke-width="2"/><path d="M16 4v2M16 26v2M4 16h2M26 16h2M7.5 7.5l1.4 1.4M23 23l1.4 1.4M23 9l1.4-1.4M9 23l-1.4 1.4" stroke-width="2"/>'
     },
+    {
+        id: 'scores',
+        name: 'Scores',
+        cat: 'essentials',
+        beta: true,
+        icon: '<path d="M8 8 H24 L21 18 H11 Z" fill="none" stroke="black" stroke-width="2"/><path d="M16 18 V24 M12 24 H20" stroke="black" stroke-width="2"/><path d="M8 10 C4 10 4 15 8 15" fill="none" stroke="black" stroke-width="2"/><path d="M24 10 C28 10 28 15 24 15" fill="none" stroke="black" stroke-width="2"/>'
+    },
 
     // --- TOOLS ---
     {
