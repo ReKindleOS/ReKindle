@@ -160,6 +160,24 @@
             color: white;
         }
 
+        /* SELECT DROPDOWN */
+        select {
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            border-radius: 0;
+            background: white;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-weight: bold;
+        }
+
+        select:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
         /* CONTENT AREA */
         #content-area {
             flex-grow: 1;
@@ -169,6 +187,39 @@
             font-family: "Georgia", "Times New Roman", serif;
             line-height: 1.6;
             font-size: 1.1rem;
+        }
+
+        /* WIKTIONARY STYLING */
+        .wiki-content h2,
+        .wiki-content h3,
+        .wiki-content h4 {
+            border-bottom: 2px solid #ccc;
+            padding-bottom: 5px;
+            margin-top: 20px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        }
+
+        .wiki-content ul,
+        .wiki-content ol {
+            padding-left: 25px;
+        }
+
+        .wiki-content li {
+            margin-bottom: 8px;
+        }
+
+        .wiki-content dl {
+            margin-left: 20px;
+        }
+
+        .wiki-content dt {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .wiki-content dd {
+            margin-left: 0;
+            margin-bottom: 10px;
         }
 
         /* DICTIONARY STYLING */
@@ -274,6 +325,15 @@
         </div>
 
         <div class="toolbar">
+            <select id="lang-select">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="it">Italiano</option>
+                <option value="pt">Português</option>
+                <option value="grc">Ancient Greek</option>
+            </select>
             <input type="text" id="search-input" placeholder="Look up a word..." onkeypress="handleKey(event)">
             <button onclick="searchWord()">Define</button>
         </div>
@@ -309,6 +369,19 @@
             const content = document.getElementById('content-area');
             content.innerHTML = "<div class='error-msg'>Searching...</div>";
 
+            const lang = document.getElementById('lang-select').value;
+
+            if (lang === 'en') {
+                await fetchEnglish(query);
+            } else if (lang === 'grc') {
+                await fetchAncientGreek(query);
+            } else {
+                await fetchWiktionary(query, lang);
+            }
+        }
+
+        async function fetchEnglish(query) {
+            const content = document.getElementById('content-area');
             try {
                 const res = await fetch(API_URL + encodeURIComponent(query));
 
@@ -317,20 +390,143 @@
                 }
 
                 const data = await res.json();
-                renderResult(data);
+                renderEnglishResult(data);
 
             } catch (e) {
-                content.innerHTML = `
-                    <div class="error-msg">
-                        <h3>No Definition Found</h3>
-                        <p>Sorry, we couldn't find definitions for "${query}".</p>
-                        <p>Please check your spelling.</p>
-                    </div>
-                `;
+                renderError(query);
             }
         }
 
-        function renderResult(data) {
+        async function fetchAncientGreek(query) {
+            const content = document.getElementById('content-area');
+            // Fetch from English Wiktionary
+            const url = `https://en.wiktionary.org/w/api.php?action=query&titles=${encodeURIComponent(query)}&prop=extracts&format=json&origin=*&redirects=true`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+
+                if (pageId === "-1") {
+                    throw new Error("Word not found");
+                }
+
+                const extract = pages[pageId].extract;
+                if (!extract) {
+                    throw new Error("No definition found");
+                }
+
+                // Extract Ancient Greek section
+                const greekContent = extractSection(extract, "Ancient Greek");
+
+                if (!greekContent) {
+                    // Try fallback: maybe the user typed "logos" but the entry is at "λόγος" logic is handled by redirects, 
+                    // but if 'logos' page exists (for English) but has no Ancient Greek, we fail here.
+                    // We could potentially try to search for the Greek script version if the user typed Latin, but that's complex.
+                    // For now, simple fail.
+                    throw new Error("No Ancient Greek definition found on this page");
+                }
+
+                renderWiktionaryResult(query, greekContent);
+
+            } catch (e) {
+                renderError(query);
+            }
+        }
+
+        function extractSection(html, sectionTitle) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const headings = doc.querySelectorAll('h2');
+
+            let found = false;
+            let content = "";
+            let startNode = null;
+
+            for (let i = 0; i < headings.length; i++) {
+                if (headings[i].textContent.trim().includes(sectionTitle)) {
+                    startNode = headings[i];
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) return null;
+
+            // Gather siblings until next h2
+            let currentNode = startNode.nextElementSibling;
+            const tempDiv = document.createElement('div');
+
+            while (currentNode) {
+                if (currentNode.tagName === 'H2') break;
+                tempDiv.appendChild(currentNode.cloneNode(true));
+                currentNode = currentNode.nextElementSibling;
+            }
+
+            return tempDiv.innerHTML;
+        }
+
+        async function fetchWiktionary(query, lang) {
+            const content = document.getElementById('content-area');
+            // Wiktionary API endpoint
+            const url = `https://${lang}.wiktionary.org/w/api.php?action=query&titles=${encodeURIComponent(query)}&prop=extracts&format=json&origin=*&redirects=true`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+
+                if (pageId === "-1") {
+                    throw new Error("Word not found");
+                }
+
+                const extract = pages[pageId].extract;
+                if (!extract) {
+                    throw new Error("No definition found");
+                }
+
+                renderWiktionaryResult(query, extract);
+
+            } catch (e) {
+                renderError(query);
+            }
+        }
+
+        function renderError(query) {
+            const content = document.getElementById('content-area');
+            content.innerHTML = `
+                <div class="error-msg">
+                    <h3>No Definition Found</h3>
+                    <p>Sorry, we couldn't find definitions for "${query}".</p>
+                    <p>Please check your spelling.</p>
+                </div>
+            `;
+        }
+
+        function renderWiktionaryResult(word, htmlContent) {
+            const content = document.getElementById('content-area');
+
+            // Clean up some Wiktionary specific junk if possible, though 'extracts' does decent job.
+            // We wrapper it to style it
+            let html = `
+                <div class="word-header">
+                    <div class="word-title">${word}</div>
+                </div>
+                <div class="wiki-content">
+                    ${htmlContent}
+                </div>
+                 <br><br><div style="font-size:0.7rem; color:#999; border-top:1px solid #ccc; padding-top:5px;">Source: Wiktionary</div>
+            `;
+
+            content.innerHTML = html;
+            content.scrollTop = 0;
+        }
+
+        function renderEnglishResult(data) {
             const content = document.getElementById('content-area');
             content.innerHTML = "";
 
