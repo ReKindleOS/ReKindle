@@ -518,8 +518,10 @@
             gameActive = true;
             moveCount = 0;
 
-            // Allow manual set
-            aiDepth = parseInt(depthSel.value);
+            // Map 1-3 to Stockfish Depth 5, 10, 15
+            const level = parseInt(depthSel.value);
+            aiDepth = level * 5;
+
             playerColor = colorSel.value;
             aiColor = playerColor === 'w' ? 'b' : 'w';
 
@@ -718,38 +720,56 @@
 
         // --- AI (Minimax) ---
 
-        // Material values: Black pieces positive, White pieces negative
-        const pieceValues = {
-            'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 900,
-            'P': -10, 'N': -30, 'B': -30, 'R': -50, 'Q': -90, 'K': -900
-        };
+        async function makeComputerMove() {
+            document.getElementById('status-bar').innerText = "Thinking...";
 
-        // Returns absolute score (Black - White)
-        function evaluateBoard(gameObj) {
-            let total = 0;
-            gameObj.board().forEach(row => {
-                row.forEach(piece => {
-                    if (piece) {
-                        let val = pieceValues[piece.type] || 0;
-                        if (piece.color === 'w') val = -val;
-                        total += val;
-                    }
+            try {
+                const response = await fetch('https://chess-api.com/v1', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fen: game.fen(),
+                        depth: aiDepth
+                    })
                 });
-            });
-            return total;
-        }
 
-        // Returns score relative to AI (positive is good for AI)
-        function getRelativeEval(gameObj) {
-            const absScore = evaluateBoard(gameObj);
-            return aiColor === 'b' ? absScore : -absScore;
-        }
+                if (!response.ok) throw new Error("API Error");
 
-        function makeComputerMove() {
-            // Minimax returns move object
-            const bestMove = getBestMove(game, aiDepth);
-            if (bestMove) {
-                game.move(bestMove);
+                const data = await response.json();
+
+                // data.move is like "e2e4" (LAN) or data.san "e4"
+                // chess.js .move() supports SAN or object {from, to}
+                // Let's use the from/to from the API response to be safe.
+
+                const moveResult = game.move({
+                    from: data.from,
+                    to: data.to,
+                    promotion: data.promotion || 'q'
+                });
+
+                if (!moveResult) {
+                    console.error("Invalid move from API:", data.move);
+                    // Fallback to random if API returns junk (unlikely)
+                    const moves = game.moves();
+                    if (moves.length > 0) game.move(moves[Math.floor(Math.random() * moves.length)]);
+                }
+
+            } catch (error) {
+                console.error("Chess API failed:", error);
+                document.getElementById('status-bar').innerText = "CPU Error. Retrying randomly...";
+
+                // Fallback to random move after delay so game isn't stuck
+                setTimeout(() => {
+                    const moves = game.moves();
+                    if (moves.length > 0) game.move(moves[Math.floor(Math.random() * moves.length)]);
+                    isThinking = false;
+                    renderBoard();
+                    checkStatus();
+                    moveCount++;
+                    setTimeout(flashRefresh, 300);
+                    saveGame();
+                }, 2000);
+                return;
             }
 
             isThinking = false;
@@ -760,62 +780,6 @@
             setTimeout(flashRefresh, 300);
 
             saveGame();
-        }
-
-        function getBestMove(gameObj, depth) {
-            const moves = gameObj.moves();
-            let bestMove = null;
-            let bestValue = -Infinity; // We always want to maximize relative score
-
-            // Randomize to avoid identical games
-            moves.sort(() => Math.random() - 0.5);
-
-            for (let i = 0; i < moves.length; i++) {
-                gameObj.move(moves[i]);
-                // AI just moved. Next turn is Player (Minimizer relative to AI)
-                let boardValue = minimax(gameObj, depth - 1, -Infinity, Infinity, false);
-                gameObj.undo();
-
-                if (boardValue > bestValue) {
-                    bestValue = boardValue;
-                    bestMove = moves[i];
-                }
-            }
-            return bestMove;
-        }
-
-        function minimax(gameObj, depth, alpha, beta, isAiTurn) {
-            if (depth === 0 || gameObj.game_over()) {
-                return getRelativeEval(gameObj);
-            }
-
-            const moves = gameObj.moves();
-
-            if (isAiTurn) {
-                // AI Turn: Maximize Relative Score
-                let maxEval = -Infinity;
-                for (let i = 0; i < moves.length; i++) {
-                    gameObj.move(moves[i]);
-                    let score = minimax(gameObj, depth - 1, alpha, beta, false);
-                    gameObj.undo();
-                    maxEval = Math.max(maxEval, score);
-                    alpha = Math.max(alpha, score);
-                    if (beta <= alpha) break;
-                }
-                return maxEval;
-            } else {
-                // Player Turn: Minimize Relative Score
-                let minEval = Infinity;
-                for (let i = 0; i < moves.length; i++) {
-                    gameObj.move(moves[i]);
-                    let score = minimax(gameObj, depth - 1, alpha, beta, true);
-                    gameObj.undo();
-                    minEval = Math.min(minEval, score);
-                    beta = Math.min(beta, score);
-                    if (beta <= alpha) break;
-                }
-                return minEval;
-            }
         }
 
         function checkStatus() {
