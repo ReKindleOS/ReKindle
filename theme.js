@@ -91,6 +91,15 @@
     applyTheme();
 
     // Export for Settings App to call
+    // --- DISPLAY MODE ---
+    const DISPLAY_MODE_KEY = 'rekindle_display_mode'; // 'eink' (default), 'led'
+
+    function getDisplayMode() {
+        return localStorage.getItem(DISPLAY_MODE_KEY) || 'eink';
+    }
+
+    // Export for Apps to call
     window.rekindleApplyTheme = applyTheme;
+    window.rekindleGetDisplayMode = getDisplayMode;
 
 })();
