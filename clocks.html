@@ -444,7 +444,7 @@
 
     <script>
         // --- FIREBASE CONFIG ---
-        const firebaseConfig = {
+        var firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
             projectId: "rekindle-dd1fa",
@@ -454,40 +454,42 @@
         };
 
         firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        var auth = firebase.auth();
+        var db = firebase.firestore();
 
         // --- CONFIGURATION ---
-        const DEFAULT_CITIES = [
+        var DEFAULT_CITIES = [
             { name: "New York", zone: "America/New_York" },
             { name: "London", zone: "Europe/London" },
             { name: "Tokyo", zone: "Asia/Tokyo" }
         ];
 
-        let cities = JSON.parse(localStorage.getItem('rekindle_clocks')) || DEFAULT_CITIES;
-        let homeCity = JSON.parse(localStorage.getItem('rekindle_clocks_home')) || { name: "Local", zone: null };
+        var cities = JSON.parse(localStorage.getItem('rekindle_clocks')) || DEFAULT_CITIES;
 
-        // Override Home City with Global Manual Location if set
-        const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+        // Default to Local (Auto)
+        var homeCity = { name: "Local", zone: null };
+
+        // Override Home City with Global Manual Location if set in Settings
+        var globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
         if (globalLoc && globalLoc.zone) {
             homeCity = { name: globalLoc.name, zone: globalLoc.zone };
         }
 
-        let showSeconds = JSON.parse(localStorage.getItem('rekindle_clocks_secs') ?? 'true');
+        var showSeconds = JSON.parse(localStorage.getItem('rekindle_clocks_secs') || 'true');
 
-        let isEditing = false;
-        let timer = null;
-        let currentUser = null;
-        let searchTimeout = null;
-        let deleteTargetIndex = -1;
-        let editTarget = null; // 'home' or null
+        var isEditing = false;
+        var timer = null;
+        var currentUser = null;
+        var searchTimeout = null;
+        var deleteTargetIndex = -1;
+        var editTarget = null; // 'home' or null
 
         // --- INIT ---
-        window.onload = () => {
-            loadWallpaper();
+        window.onload = function () {
+            if (typeof loadWallpaper === 'function') loadWallpaper();
             updateSecondsBtn();
 
-            auth.onAuthStateChanged(user => {
+            auth.onAuthStateChanged(function (user) {
                 if (user) {
                     currentUser = user;
                     document.getElementById('status-bar').innerText = "Synced: " + user.email;
@@ -504,9 +506,9 @@
         // --- DATA SYNC ---
         function loadCloudData() {
             db.collection('users').doc(currentUser.uid).collection('apps').doc('clocks')
-                .get().then(doc => {
+                .get().then(function (doc) {
                     if (doc.exists) {
-                        const data = doc.data();
+                        var data = doc.data();
                         if (data.cities) cities = data.cities;
                         if (data.homeCity) homeCity = data.homeCity;
 
@@ -515,7 +517,7 @@
                     }
                     renderClocks();
                     startTimer();
-                }).catch(e => {
+                }).catch(function (e) {
                     console.error(e);
                     renderClocks();
                     startTimer();
@@ -542,69 +544,70 @@
         }
 
         function updateClocks() {
-            const now = new Date();
+            var now = new Date();
 
             // --- 1. Update Home Clock ---
-            const localTimeEl = document.getElementById('time-local');
+            var localTimeEl = document.getElementById('time-local');
 
             if (localTimeEl) {
-                let timeData = { hours: now.getHours(), mins: now.getMinutes(), secs: now.getSeconds(), dayDiff: 0 };
+                var timeData = { hours: now.getHours(), mins: now.getMinutes(), secs: now.getSeconds(), dayDiff: 0 };
 
                 if (homeCity.zone) {
                     timeData = getTimeInZone(now, homeCity.zone);
                 }
 
-                const hours = timeData.hours;
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                const displayHours = hours % 12 || 12;
-                const displayMins = String(timeData.mins).padStart(2, '0');
-                const displaySecs = String(timeData.secs).padStart(2, '0');
+                var hours = timeData.hours;
+                var ampm = hours >= 12 ? 'PM' : 'AM';
+                var displayHours = hours % 12 || 12;
+                var displayMins = String(timeData.mins).padStart(2, '0');
+                var displaySecs = String(timeData.secs).padStart(2, '0');
 
-                let timeStr = `${displayHours}:${displayMins}`;
-                if (showSeconds) timeStr += `:${displaySecs}`;
+                var timeStr = displayHours + ':' + displayMins;
+                if (showSeconds) timeStr += ':' + displaySecs;
 
-                localTimeEl.innerHTML = `${timeStr}<span class="ampm">${ampm}</span>`;
+                localTimeEl.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
             }
 
-            cities.forEach((city, index) => {
-                const clockRow = document.getElementById(`clock-row-${index}`);
+            cities.forEach(function (city, index) {
+                var clockRow = document.getElementById('clock-row-' + index);
                 if (!clockRow) return;
 
-                const { hours, mins, secs, dayDiff } = getTimeInZone(now, city.zone);
+                var tData = getTimeInZone(now, city.zone);
+                // hours, mins, secs, dayDiff
 
                 // Format display
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                const displayHours = hours % 12 || 12;
-                const displayMins = String(mins).padStart(2, '0');
-                const displaySecs = String(secs).padStart(2, '0');
+                var ampm = tData.hours >= 12 ? 'PM' : 'AM';
+                var displayHours = tData.hours % 12 || 12;
+                var displayMins = String(tData.mins).padStart(2, '0');
+                var displaySecs = String(tData.secs).padStart(2, '0');
 
-                let timeStr = `${displayHours}:${displayMins}`;
-                if (showSeconds) timeStr += `:${displaySecs}`;
+                var timeStr = displayHours + ':' + displayMins;
+                if (showSeconds) timeStr += ':' + displaySecs;
 
-                const timeEl = document.getElementById(`time-${index}`);
+                var timeEl = document.getElementById('time-' + index);
                 if (timeEl) {
-                    timeEl.innerHTML = `${timeStr}<span class="ampm">${ampm}</span>`;
+                    timeEl.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
                 }
 
                 // Format Offset string
-                const offsetEl = document.getElementById(`offset-${index}`);
+                var offsetEl = document.getElementById('offset-' + index);
                 if (offsetEl) {
-                    let dayText = "Today";
-                    if (dayDiff > 0) dayText = "Tomorrow";
-                    if (dayDiff < 0) dayText = "Yesterday";
+                    var dayText = "Today";
+                    if (tData.dayDiff > 0) dayText = "Tomorrow";
+                    if (tData.dayDiff < 0) dayText = "Yesterday";
 
                     // Approximate hour offset calculation
-                    let baseH = now.getHours();
+                    var baseH = now.getHours();
                     // If home is zoned, use that as base
                     if (homeCity.zone) {
-                        const homeT = getTimeInZone(now, homeCity.zone);
+                        var homeT = getTimeInZone(now, homeCity.zone);
                         baseH = homeT.hours;
                     }
 
-                    const diffH = (hours - baseH) + (dayDiff * 24);
-                    const sign = diffH >= 0 ? "+" : "";
+                    var diffH = (tData.hours - baseH) + (tData.dayDiff * 24);
+                    var sign = diffH >= 0 ? "+" : "";
 
-                    offsetEl.innerText = `${dayText}, ${sign}${diffH}HRS`;
+                    offsetEl.innerText = dayText + ', ' + sign + diffH + 'HRS';
                 }
             });
         }
@@ -612,23 +615,23 @@
         function getTimeInZone(nowDate, timeZone) {
             try {
                 // Get target time string
-                const targetStr = nowDate.toLocaleString('en-US', { timeZone: timeZone });
-                const targetDate = new Date(targetStr);
+                var targetStr = nowDate.toLocaleString('en-US', { timeZone: timeZone });
+                var targetDate = new Date(targetStr);
 
                 if (isNaN(targetDate.getTime())) throw new Error("Invalid Time");
 
-                const hours = targetDate.getHours();
-                const mins = targetDate.getMinutes();
-                const secs = targetDate.getSeconds();
+                var hours = targetDate.getHours();
+                var mins = targetDate.getMinutes();
+                var secs = targetDate.getSeconds();
 
                 // Calculate day difference
-                const tDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-                const lDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+                var tDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+                var lDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
 
-                const diffTime = tDay.getTime() - lDay.getTime();
-                const dayDiff = Math.round(diffTime / (1000 * 3600 * 24));
+                var diffTime = tDay.getTime() - lDay.getTime();
+                var dayDiff = Math.round(diffTime / (1000 * 3600 * 24));
 
-                return { hours, mins, secs, dayDiff };
+                return { hours: hours, mins: mins, secs: secs, dayDiff: dayDiff };
             } catch (e) {
                 return { hours: 0, mins: 0, secs: 0, dayDiff: 0 };
             }
@@ -637,7 +640,7 @@
         // --- SEARCH LOGIC ---
         function handleSearchInput(query) {
             clearTimeout(searchTimeout);
-            const resultsContainer = document.getElementById('search-results');
+            var resultsContainer = document.getElementById('search-results');
 
             if (query.length < 2) {
                 resultsContainer.style.display = 'none';
@@ -648,20 +651,30 @@
             resultsContainer.style.display = 'block';
             resultsContainer.innerHTML = '<div style="padding:10px; color:#666;">Searching...</div>';
 
-            searchTimeout = setTimeout(() => {
-                fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
-                    .then(res => res.json())
-                    .then(data => {
-                        renderSearchResults(data.results || []);
-                    })
-                    .catch(err => {
-                        resultsContainer.innerHTML = '<div style="padding:10px; color:red;">Error fetching data.</div>';
-                    });
+            searchTimeout = setTimeout(function () {
+                var url = "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(query) + "&count=5&language=en&format=json";
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", url, true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                var data = JSON.parse(xhr.responseText);
+                                renderSearchResults(data.results || []);
+                            } catch (e) {
+                                resultsContainer.innerHTML = '<div style="padding:10px; color:red;">Error parsing data.</div>';
+                            }
+                        } else {
+                            resultsContainer.innerHTML = '<div style="padding:10px; color:red;">Error fetching data.</div>';
+                        }
+                    }
+                };
+                xhr.send();
             }, 500);
         }
 
         function renderSearchResults(results) {
-            const container = document.getElementById('search-results');
+            var container = document.getElementById('search-results');
             container.innerHTML = '';
 
             if (results.length === 0) {
@@ -669,18 +682,17 @@
                 return;
             }
 
-            results.forEach(city => {
-                const div = document.createElement('div');
+            results.forEach(function (city) {
+                var div = document.createElement('div');
                 div.className = 'result-item';
-                let locParts = [city.admin1, city.country].filter(Boolean);
-                let locStr = locParts.join(', ');
+                var locParts = [city.admin1, city.country].filter(Boolean);
+                var locStr = locParts.join(', ');
 
-                div.innerHTML = `
-                    <div class="result-main">${city.name}</div>
-                    <div class="result-sub">${locStr}</div>
-                `;
+                div.innerHTML =
+                    '<div class="result-main">' + city.name + '</div>' +
+                    '<div class="result-sub">' + locStr + '</div>';
 
-                div.onclick = () => addCityFromSearch(city);
+                div.onclick = function () { addCityFromSearch(city); };
                 container.appendChild(div);
             });
         }
@@ -695,7 +707,7 @@
                 homeCity = { name: city.name, zone: city.timezone };
 
                 // SYNC: Update Global Manual Location
-                const locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
+                var locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
                 localStorage.setItem('rekindle_location_manual', JSON.stringify(locData));
 
                 // Also update User Settings in Firestore if needed (mirroring settings.html logic)
@@ -714,93 +726,44 @@
 
         // --- RENDERER ---
         function renderClocks() {
-            const list = document.getElementById('clock-list');
+            var list = document.getElementById('clock-list');
             list.innerHTML = '';
 
             // --- 1. Render Local Clock (Fixed at top) ---
-            const localDiv = document.createElement('div');
+            var localDiv = document.createElement('div');
             localDiv.className = 'clock-row';
             localDiv.id = 'clock-row-local';
             if (isEditing) localDiv.classList.add('editing');
 
             // Add edit button if editing
-            let leftContent = '';
+            var leftContent = '';
             if (isEditing) {
-                leftContent = `<button class="edit-loc-btn" onclick="openEditHomeModal()">✎</button>`;
-            } else {
-                // Keep alignment consistent if needed, but standard iOS behavior removes controls
+                leftContent = '<button class="edit-loc-btn" onclick="openEditHomeModal()">✎</button>';
             }
 
-            localDiv.innerHTML = `
-                ${leftContent}
-                <div class="clock-info">
-                    <div class="city-name">${homeCity.name}</div>
-                </div>
-                <div class="clock-time" id="time-local">
-                    --:--:--
-                </div>
-            `;
-            // Note: We render the badge dynamically in updateClocks now to effectively toggle it or we can do it here. 
-            // Better to do it in updateClocks or just here if static? 
-            // The prompt implies the badge is for the "current location setting".
-            // If the user sets a manual location, that is the "LOCATION".
-            // So if homeCity matches manual location, show badge.
-            // Let's rely on updateClocks to inject the badge or just static.
+            // Global Manual Location Check for Badge
+            var globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
 
-            // Actually, updateClocks is called every second (good for time), but rebuilding DOM (bad).
-            // But wait, updateClocks currently does localTimeEl.innerHTML = ... which CLEARS content.
-            // So I moved the badge logic to updateClocks in previous step (line 548). 
-            // BUT now I need to move it to the city name, which is in `.city-name`.
-            // updateClocks does NOT update `.city-name` usually, only `.clock-time`.
-            // So I should render the badge HERE in renderClocks, and remove it from updateClocks.
+            // Badge HTML
+            var badgeHtml = '<span class="loc-badge">LOCATION</span>';
 
-            const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            let badgeArg = '';
-            // If manual location is set, it overrides Home. Thus Home IS the Link.
-            // Or if no manual location is set, Home is "Local" (Automatic).
-            // The user asked for a badge "LOCATION". 
-            // If manual location is active, the Home clock IS that location. 
-            // If auto, it is also "Local". 
-            // Maybe show badge always if it represents "My Location"? 
-            // "also in the clocks app add a little badge to the right of the current location time that says 'LOCATION'"
-            // "move the location badge to be to the right of the location name"
-            // It seems they just want to label the first clock as "The Location".
-            // Let's add it always for the Home clock? Or only if Manual?
-            // "make the clock and settings app both use the same current location setting"
-            // So if manual is set, badge it? If auto, maybe not? Or badge "Automatic"?
-            // I will assume badge it always or if manual. Let's do if manual for now to indicate "Fixed Location".
+            localDiv.innerHTML =
+                leftContent +
+                '<div class="clock-info">' +
+                '<div style="display:flex; align-items:center;">' +
+                '<div class="city-name">' + homeCity.name + '</div>' +
+                badgeHtml +
+                '</div>' +
+                '</div>' +
+                '<div class="clock-time" id="time-local">' +
+                '--:--:--' +
+                '</div>';
 
-            if (globalLoc) {
-                badgeArg = `<span class="loc-badge">LOCATION</span>`;
-            } else {
-                // Maybe badge "AUTO"? Or nothing. User just said "LOCATON". 
-                // I will stick to adding it if globalLoc exists (Manual Mode) to match Settings "Current: ..."
-                // Wait, "add a little badge ... that says 'LOCATION'". 
-                // I'll add it if globalLoc is set.
-                badgeArg = `<span class="loc-badge">LOCATION</span>`; // Actually user request seemed general. I'll add it regardless?
-            }
-
-            // Wait, previous request: "add a badge ... that says LOCATION" implies singular definite article.
-            // Implies marking the "Current Location" clock.
-            // Since the first clock IS the current location (Home), I will add it there always.
-
-            localDiv.innerHTML = `
-                ${leftContent}
-                <div class="clock-info">
-                   <div style="display:flex; align-items:center;">
-                        <div class="city-name">${homeCity.name}</div>
-                        <span class="loc-badge">LOCATION</span>
-                   </div>
-                </div>
-                <div class="clock-time" id="time-local">
-                    --:--:--
-                </div>
-            `;
             list.appendChild(localDiv);
 
             // --- 2. Add New Button (If Editing) ---
             if (isEditing) {
-                const addRow = document.createElement('div');
+                var addRow = document.createElement('div');
                 addRow.className = 'add-new-row';
                 addRow.innerHTML = '+ ADD LOCATION';
                 addRow.onclick = openAddModal;
@@ -808,28 +771,28 @@
             }
 
             // --- 3. Render Cities ---
-            cities.forEach((city, index) => {
-                const div = document.createElement('div');
+            cities.forEach(function (city, index) {
+                var div = document.createElement('div');
                 div.className = 'clock-row';
-                div.id = `clock-row-${index}`;
+                div.id = 'clock-row-' + index;
 
                 if (isEditing) div.classList.add('editing');
 
-                let deleteHtml = '';
+                var deleteHtml = '';
                 if (isEditing) {
-                    deleteHtml = `<button class="delete-btn" onclick="promptDelete(${index})">×</button>`;
+                    deleteHtml = '<button class="delete-btn" onclick="promptDelete(' + index + ')">×</button>';
                 }
 
-                div.innerHTML = `
-                    ${deleteHtml}
-                    <div class="clock-info">
-                        <div class="time-offset" id="offset-${index}">Loading...</div>
-                        <div class="city-name">${city.name}</div>
-                    </div>
-                    <div class="clock-time" id="time-${index}">
-                        --:--:--
-                    </div>
-                `;
+                div.innerHTML =
+                    deleteHtml +
+                    '<div class="clock-info">' +
+                    '<div class="time-offset" id="offset-' + index + '">Loading...</div>' +
+                    '<div class="city-name">' + city.name + '</div>' +
+                    '</div>' +
+                    '<div class="clock-time" id="time-' + index + '">' +
+                    '--:--:--' +
+                    '</div>';
+
                 list.appendChild(div);
             });
 
@@ -840,7 +803,7 @@
         function toggleEdit() {
             isEditing = !isEditing;
             document.getElementById('edit-btn').innerText = isEditing ? "Done" : "Edit";
-            const secsBtn = document.getElementById('secs-btn');
+            var secsBtn = document.getElementById('secs-btn');
             if (secsBtn) secsBtn.style.display = isEditing ? 'block' : 'none';
             renderClocks();
         }
@@ -853,7 +816,7 @@
         }
 
         function updateSecondsBtn() {
-            const btn = document.getElementById('secs-btn');
+            var btn = document.getElementById('secs-btn');
             if (btn) btn.innerText = showSeconds ? "Secs: On" : "Secs: Off";
         }
 
@@ -891,7 +854,7 @@
             document.getElementById('modal-overlay').style.display = 'flex';
             document.getElementById('add-modal').classList.remove('active');
             document.getElementById('delete-modal').classList.add('active');
-            document.getElementById('delete-msg-text').innerText = `Remove ${cities[index].name}?`;
+            document.getElementById('delete-msg-text').innerText = 'Remove ' + cities[index].name + '?';
         }
 
         function confirmDelete() {
@@ -914,7 +877,7 @@
                 return imageString;
             }
             if (imageString.startsWith('url("') && imageString.endsWith('")')) {
-                const url = imageString.substring(5, imageString.length - 2);
+                var url = imageString.substring(5, imageString.length - 2);
                 if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
                     return imageString;
                 }
@@ -926,8 +889,8 @@
         loadWallpaper();
 
         function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            var wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            var wallpaperSize = localStorage.getItem('rekindle_bg_size');
             if (wallpaperImg) {
                 document.body.style.backgroundImage = wallpaperImg;
             }
