@@ -399,8 +399,24 @@
             homeBtn.style.display = 'block';
             view.innerHTML = '<div class="loading-msg">Fetching simplified content...</div>';
 
+            // TIMEOUT HELPER
+            const fetchWithTimeout = (url, ms) => {
+                const controller = new AbortController();
+                const promise = fetch(url, { signal: controller.signal });
+                const timeout = new Promise((_, reject) =>
+                    setTimeout(() => {
+                        controller.abort();
+                        reject(new Error("Request timed out"));
+                    }, ms)
+                );
+                return Promise.race([promise, timeout]);
+            };
+
             try {
-                const res = await fetch(proxyUrl);
+                const res = await fetchWithTimeout(proxyUrl, 15000); // 15s timeout
+
+                if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
                 const text = await res.text(); // Get text, not JSON
 
                 if (text) {
@@ -435,12 +451,20 @@
 
                     view.scrollTop = 0;
                 } else {
-                    view.innerHTML = '<div class="loading-msg">Error: Empty response.</div>';
+                    throw new Error("Empty response");
                 }
 
             } catch (e) {
-                view.innerHTML = '<div class="loading-msg">Error connecting to proxy.</div>';
                 console.error(e);
+                let message = "Error connecting to proxy.";
+                if (e.message.includes('time')) message = "Request timed out (15s).";
+
+                view.innerHTML = `
+                    <div class="loading-msg">
+                        <p>${message}</p>
+                        <p style="font-size:0.8rem; color:#666;">${e.message}</p>
+                        <button onclick="handleGo()" style="margin-top:10px; padding:8px 16px; border:2px solid black; background:white; font-weight:bold; cursor:pointer;">Try Again</button>
+                    </div>`;
             }
         }
 
