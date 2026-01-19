@@ -45,6 +45,7 @@
             flex-direction: column;
             width: 90%;
             max-width: 800px;
+            max-height: 90vh;
             position: relative;
         }
 
@@ -172,6 +173,9 @@
             image-rendering: pixelated;
             background: white;
             pointer-events: none;
+            flex-shrink: 0;
+            /* Ensure squareness */
+            object-fit: contain;
         }
 
         .gallery-item.new-btn {
@@ -421,6 +425,18 @@
         </div>
     </div>
 
+    <div id="rename-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Rename Drawing</h3>
+            <input type="text" id="rename-input" maxlength="20"
+                style="width:80%; padding:5px; margin-bottom:20px; font-family:inherit; font-weight:bold; text-align:center; border:2px solid black;">
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" id="confirm-rename-btn" style="text-transform: none;">Rename</button>
+                <button class="sys-btn" onclick="closeModal('rename-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="grid-size-modal" class="modal-overlay">
         <!-- Kept for compatibility but strictly we don't need resize anymore if we have new drawing flow, 
              but user might want to resize current. Handling resize on existing drawing is tricky with data loss.
@@ -474,6 +490,11 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="handleCloseButton()">X</div>
+            <!-- Editor Back Button -->
+            <div id="editor-back-btn" class="close-box" style="left:38px; width:auto; padding:0 5px; display:none;"
+                onclick="showGallery()">
+                Back
+            </div>
             <span class="title-text">Pixel</span>
             <!-- Contextual Back Button -->
             <div id="back-to-chat-btn" class="close-box"
@@ -500,12 +521,7 @@
 
         <!-- EDITOR SCREEN -->
         <div id="screen-editor" class="screen">
-            <!-- New Header with Title Input -->
-            <div
-                style="background:white; border-bottom:2px solid black; padding:10px; display:flex; justify-content:center;">
-                <input type="text" id="drawing-title" placeholder="Untitled" maxlength="20"
-                    style="font-family:inherit; font-weight:bold; font-size:1.2rem; text-align:center; border:none; outline:none; background:transparent; width:100%;">
-            </div>
+            <!-- Removed Header with Title Input -->
 
             <div class="game-content">
                 <div id="canvas-container">
@@ -519,20 +535,19 @@
                         title="Shade Selector" oninput="updateShade(this.value)">
                 </div>
 
-                <div class="controls">
-                    <button class="active" onclick="showGallery()">Back</button>
-                    <div style="width:10px;"></div>
+                <div class="controls" style="flex-wrap:nowrap; gap:5px; padding:0 5px;">
+                    <!-- Removed Back Button here -->
 
                     <!-- Tools -->
-                    <button id="tool-pen" class="active" onclick="setTool('pen')">Pen</button>
-                    <button id="tool-eraser" onclick="setTool('eraser')">Eraser</button>
+                    <button id="tool-pen" class="active" onclick="setTool('pen')"
+                        style="flex:1; padding:8px 5px;">Pen</button>
+                    <button id="tool-eraser" onclick="setTool('eraser')"
+                        style="flex:1; padding:8px 5px;">Eraser</button>
 
-                    <div style="width:10px;"></div>
-
-                    <button onclick="clearGrid()">Clear</button>
-                    <div style="width:10px;"></div>
-                    <button class="sys-btn" style="padding: 8px 10px; font-size: 0.8rem; margin-top:0;"
-                        onclick="openModal('post-confirm-modal')">Post to KindleChat</button>
+                    <button onclick="clearGrid()" style="flex:1; padding:8px 5px;">Clear</button>
+                    <button class="sys-btn"
+                        style="padding: 8px 5px; font-size: 0.8rem; margin-top:0; flex:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                        onclick="openModal('post-confirm-modal')">Post</button>
                 </div>
             </div>
         </div>
@@ -591,7 +606,6 @@
             });
 
             // Input handlers
-            // Note: We attach these to canvas but ensure they work
             canvas.addEventListener('pointerdown', startDrawing);
             canvas.addEventListener('pointermove', moveDrawing);
             canvas.addEventListener('pointerup', stopDrawing);
@@ -628,7 +642,7 @@
                 await roomRef.collection('messages').add({
                     user: currentUser.email.split('@')[0],
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    text: document.getElementById('drawing-title').value || "Pixel Art",
+                    text: (function () { var found = currentDrawingId ? manifest.find(function (m) { return m.id === currentDrawingId; }) : null; return (found && found.title) ? found.title : "Pixel Art"; })(),
                     pixel_art: dataUrl,
                     is_pixel_art: true
                 });
@@ -771,7 +785,7 @@
                 const el = document.createElement('div');
                 el.className = 'gallery-item';
                 el.onclick = (e) => {
-                    if (!e.target.closest('.delete-btn')) openDrawing(item.id);
+                    if (!e.target.closest('.action-btn')) openDrawing(item.id);
                 };
 
                 // Content
@@ -786,15 +800,37 @@
                 const dateStr = new Date(item.modified).toLocaleDateString();
 
                 el.innerHTML = `
-                    <div class="delete-btn" onclick="deleteDrawing('${item.id}')">X</div>
+                    <div class="delete-btn action-btn" onclick="deleteDrawing('${item.id}')">X</div>
                     ${thumbHtml}
                     <div class="item-info">
-                        <div style="font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100px;">${title}</div>
+                        <div onclick="event.stopPropagation(); promptRename('${item.id}')" style="font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100px; cursor:pointer; text-decoration:underline;">${title}</div>
                         <span style="font-weight:normal; color:#666; font-size:0.7rem;">${item.size}x${item.size}</span>
                     </div>
                 `;
                 gridEl.appendChild(el);
             });
+        }
+
+        let renameId = null;
+        function promptRename(id) {
+            const item = manifest.find(m => m.id === id);
+            if (!item) return;
+            renameId = id;
+            document.getElementById('rename-input').value = item.title || "Untitled";
+            document.getElementById('confirm-rename-btn').onclick = performRename;
+            openModal('rename-modal');
+        }
+
+        function performRename() {
+            const newTitle = document.getElementById('rename-input').value.trim() || "Untitled";
+            const item = manifest.find(m => m.id === renameId);
+            if (item) {
+                item.title = newTitle;
+                item.modified = Date.now();
+                saveManifest();
+                renderGallery();
+            }
+            closeModal('rename-modal');
         }
 
         let drawingToDeleteId = null;
@@ -832,8 +868,10 @@
 
             // Set title input
             const titleInput = document.getElementById('drawing-title');
-            titleInput.value = "Untitled";
-            titleInput.blur();
+            if (titleInput) {
+                titleInput.value = "Untitled";
+                titleInput.blur();
+            }
         }
 
         async function openDrawing(id) {
@@ -843,8 +881,8 @@
             currentDrawingId = id;
             gridSize = item.size;
 
-            // Set Title
-            document.getElementById('drawing-title').value = item.title || "Untitled";
+            // Set Title - No longer needed in header
+            // document.getElementById('drawing-title').value = item.title || "Untitled";
 
             // Load data
             const data = await loadDrawingData(id);
@@ -856,16 +894,15 @@
 
             showEditor();
             setupCanvas(false);
-            // We need to redraw pixels from loaded grid
             redrawAllPixels();
         }
 
-        // Title Input Listener
-        document.getElementById('drawing-title').addEventListener('input', (e) => {
-            // For title edit, we want to save immediately (debounced)
-            // This acts as a 'modification' that triggers save
-            triggerAutoSave();
-        });
+        // Title Input Listener - Removed
+        // document.getElementById('drawing-title').addEventListener('input', (e) => {
+        //     // For title edit, we want to save immediately (debounced)
+        //     // This acts as a 'modification' that triggers save
+        //     triggerAutoSave();
+        // });
 
         function showGallery() {
             // If unsaved (null ID) and clean? 
@@ -874,6 +911,10 @@
 
             document.getElementById('screen-editor').classList.remove('active');
             document.getElementById('screen-gallery').classList.add('active');
+
+            const backBtn = document.getElementById('editor-back-btn');
+            if (backBtn) backBtn.style.display = 'none';
+
             renderGallery(); // Update thumbnails and titles
         }
 
@@ -881,6 +922,9 @@
             document.getElementById('screen-gallery').classList.remove('active');
             document.getElementById('screen-editor').classList.add('active');
             // document.querySelector('.title-text').innerText = "Pixel Editor";
+
+            const backBtn = document.getElementById('editor-back-btn');
+            if (backBtn) backBtn.style.display = 'flex';
         }
 
         function handleCloseButton() {
@@ -897,16 +941,73 @@
         }
 
         function setupCanvas(reset = true) {
+            // Guard: Only run if container is visible
+            if (container.offsetParent === null) return;
+
+            // Get scale factor early
+            const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
+            const scale = parseFloat(scaleStr);
+
+            // Reset container size AND zoom to allow it to expand/shrink freely in LOGICAL pixels before measuring
+            container.style.width = '';
+            container.style.height = '';
+            container.style.zoom = '';
+
             const containerWidth = container.clientWidth;
-            const containerHeight = container.clientHeight || (window.innerHeight - 150);
+
+            // Calculate available height dynamically to maximize space
+            // Window constraints: max-height: 90vh, margin 20px (body padding)
+            // We need to fit within the smaller of 90vh or (100vh - 40px)
+            // IMPORTANT: window.innerHeight is PHYSICAL (unscaled). We must converting to LOGICAL pixels if scaled.
+            const logicalWindowH = window.innerHeight / scale;
+            const maxWindowHeight = Math.min(logicalWindowH * 0.9, logicalWindowH - (40 / scale));
+
+            // Measure UI elements
+            const titleBarH = document.querySelector('.title-bar').offsetHeight;
+            const headerH = 0; // Removed editor-header
+
+            const sliderEl = document.getElementById('slider-container');
+            // Element might hidden or have margins, getComputedStyle + offsetHeight is safest or just offsetHeight + margin estimation
+            // Slider container has margin-bottom: 10px inline style
+            const sliderH = sliderEl ? (sliderEl.offsetHeight + 10) : 0;
+
+            const controlsEl = document.querySelector('.controls');
+            // Controls has margin-top: 10px, padding-bottom: 10px in CSS
+            const controlsH = controlsEl ? (controlsEl.offsetHeight + 10) : 0; // Margin top is collapsed or explicit? offsetHeight includes padding. Margin is outside.
+
+            // Sum static UI parts
+            // Margins between flex items? 
+            // title-bar (0 margin)
+            // header (0 margin)
+            // ... flex gap? No gap on .window.
+            // canvas-container (margin-bottom: 10px)
+            // slider (margin-bottom: 10px) - included above
+            // controls (margin-top: 10px) - included above
+
+            // Total non-canvas height
+            const uiHeight = titleBarH + headerH + sliderH + controlsH + 20; // +20 safety buffer/other margins
+
+            const availableHeight = maxWindowHeight - uiHeight;
+            const containerHeight = container.clientHeight || availableHeight;
+
+
 
             // Ensure container has size.
             // If resize event, clientWidth is valid.
 
-            const maxDimension = Math.min(containerWidth, window.innerHeight - 150);
+            // Multiply by scale so that when inverse zoom (1/scale) is applied, it fits the available area.
+            const maxDimension = Math.min(containerWidth, availableHeight) * scale;
             const validSize = Math.max(200, maxDimension);
 
             const canvasSize = Math.floor(validSize / gridSize) * gridSize;
+
+            // Apply Inverse Scaling to Canvas Container
+            if (scale !== 1.0 && scale > 0) {
+                // Use zoom if supported (WebKit), mimicking theme.js logic could be better but simple logic first
+                container.style.zoom = (1.0 / scale);
+            } else {
+                container.style.zoom = '';
+            }
 
             canvas.width = canvasSize;
             canvas.height = canvasSize;
@@ -939,12 +1040,16 @@
             gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
             if (cellSize <= 4) return;
 
+            // Adjust thickness based on scaling
+            const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
+            const scale = parseFloat(scaleStr);
+
             gridCtx.strokeStyle = '#bbb'; // Darker grid lines for better visibility
-            gridCtx.lineWidth = 1;
+            gridCtx.lineWidth = (scale < 1.0) ? 2 : 1;
             gridCtx.beginPath();
 
             for (let i = 0; i <= gridSize; i++) {
-                const pos = Math.floor(i * cellSize) + 0.5;
+                const pos = Math.floor(i * cellSize) + (gridCtx.lineWidth % 2 === 0 ? 0 : 0.5);
                 gridCtx.moveTo(pos, 0);
                 gridCtx.lineTo(pos, gridCanvas.height);
                 gridCtx.moveTo(0, pos);
@@ -1062,7 +1167,7 @@
                 const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
                 currentDrawingId = id;
 
-                const titleVal = document.getElementById('drawing-title').value.trim() || "Untitled";
+                const titleVal = "Untitled"; // Default title for new
 
                 // Add to manifest
                 manifest.unshift({
@@ -1081,7 +1186,7 @@
             // Update Manifest (Timestamp + Thumbnail + Title)
             const item = manifest.find(m => m.id === currentDrawingId);
             if (item) {
-                item.title = document.getElementById('drawing-title').value.trim() || "Untitled";
+                // item.title = document.getElementById('drawing-title').value.trim() || "Untitled";
                 item.modified = Date.now();
                 item.thumbnail = canvas.toDataURL('image/png'); // Generate thumbnail
                 saveManifest();
@@ -1155,7 +1260,6 @@
             }
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
-
-```
