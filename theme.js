@@ -98,8 +98,96 @@
         return localStorage.getItem(DISPLAY_MODE_KEY) || 'eink';
     }
 
+    // --- SCALING ---
+    const SCALE_KEY = 'rekindle_scale'; // '1.0', '0.9', etc.
+    const SCALE_AUTO_KEY = 'rekindle_scale_auto'; // 'true', 'false'
+
+    function injectScalingStyle() {
+        let style = document.getElementById('rekindle-scaling-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'rekindle-scaling-style';
+            document.head.appendChild(style);
+        }
+
+        var scale = localStorage.getItem(SCALE_KEY) || '1.0';
+        var finalScale = (scale === 'auto') ? '1.0' : scale;
+
+        // Set CSS custom property for apps that want selective scaling
+        document.documentElement.style.setProperty('--rekindle-scale', finalScale);
+
+        style.textContent = `
+            .dashboard, .window { 
+                zoom: ${finalScale}; 
+            }
+            @supports not (zoom: 1) {
+                .dashboard, .window {
+                    transform: scale(${finalScale});
+                    transform-origin: top center;
+                }
+            }
+        `;
+    }
+
+    function applyScale() {
+        injectScalingStyle();
+    }
+
+    function init() {
+        applyTheme();
+        applyScale();
+    }
+
+    // Run as soon as possible
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // Still run theme/scale immediately in case it's in the head (prevents flash)
+    applyTheme();
+    applyScale();
+
+    function autoDetectScale() {
+        var autoEnabled = localStorage.getItem(SCALE_AUTO_KEY) !== 'false'; // Default to true
+
+        if (autoEnabled) {
+            var targetW = 800;
+            var targetH = 906;
+            var currentW = window.innerWidth;
+            var currentH = window.innerHeight;
+
+            var scale = '1.0';
+            if (currentW < targetW || currentH < targetH) {
+                var scaleW = currentW / targetW;
+                var scaleH = currentH / targetH;
+                var autoScale = Math.min(scaleW, scaleH);
+
+                // Find closest from supported options: 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0
+                var options = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+                var closest = options[0];
+                var minDiff = Math.abs(autoScale - closest);
+
+                for (var i = 1; i < options.length; i++) {
+                    var diff = Math.abs(autoScale - options[i]);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = options[i];
+                    }
+                }
+                scale = closest.toString();
+            }
+
+            localStorage.setItem(SCALE_KEY, scale);
+            applyScale();
+        }
+    }
+
     // Export for Apps to call
     window.rekindleApplyTheme = applyTheme;
     window.rekindleGetDisplayMode = getDisplayMode;
+    window.rekindleApplyScale = applyScale;
+    window.rekindleAutoDetectScale = autoDetectScale;
 
 })();

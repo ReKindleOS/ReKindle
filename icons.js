@@ -151,8 +151,6 @@ const APPS = [
         id: 'airtype',
         name: 'AirType',
         cat: 'tools',
-        featured: true,
-        featuredOrder: 5,
         desc: 'Phone-based typewriter',
         icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>'
     },
@@ -189,8 +187,6 @@ const APPS = [
         name: 'Interactive Reader',
         cat: 'lifestyle',
         beta: true,
-        featured: true,
-        featuredOrder: 2,
         desc: 'Choose Your Own Adventure',
         icon: '<path d="M6 4 h18 v24 h-18 z" fill="none" stroke="black" stroke-width="2"/><line x1="6" y1="4" x2="4" y2="6"/><line x1="4" y1="6" x2="4" y2="28"/><line x1="4" y1="28" x2="6" y2="26"/><path d="M10 16 L21 16 M18 13 L21 16 L18 19" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 8 M14 9 L18 8 L17 11" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 24 M14 23 L18 24 L17 21" stroke="black" stroke-width="1.5" fill="none"/>'
     },
