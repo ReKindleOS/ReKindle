@@ -593,6 +593,7 @@
                             onclick="addPreset('HackerNews', 'https://news.ycombinator.com/rss')">HackerNews</button>
                         <button class="sys-btn"
                             onclick="addPreset('The Verge', 'https://www.theverge.com/rss/index.xml')">Verge</button>
+                        <button class="sys-btn" onclick="addPreset('XKCD', 'https://xkcd.com/rss.xml')">XKCD</button>
                     </div>
                 </div>
             </div>
@@ -1029,13 +1030,26 @@
                             }
                         }
 
+                        // Specialized extraction for XKCD "alt text" (title attribute)
+                        let xkcdTitle = "";
+                        if (feed.url.includes('xkcd.com')) {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = item.description || item.content;
+                            const foundImg = tempDiv.querySelector('img');
+                            if (foundImg && foundImg.title) {
+                                xkcdTitle = foundImg.title;
+                            }
+                        }
+
                         targetArray.push({
                             source: feed.name,
                             title: item.title,
                             link: item.link,
                             pubDate: item.pubDate,
                             image: imgUrl,
-                            snippet: stripHtml(item.description || item.content || "")
+                            snippet: stripHtml(item.description || item.content || ""),
+                            feedUrl: feed.url,
+                            xkcdTitle: xkcdTitle
                         });
                     });
                 }
@@ -1075,7 +1089,7 @@
 
                 const div = document.createElement('div');
                 div.className = `article ${isRead ? 'read' : ''}`;
-                div.onclick = () => openArticle(article.link);
+                div.onclick = () => openArticle(article);
 
                 let imgHtml = '';
                 if (article.image) {
@@ -1140,7 +1154,10 @@
         }
 
         // --- MODAL READER ---
-        async function openArticle(url) {
+        async function openArticle(articleOrUrl) {
+            let url = typeof articleOrUrl === 'string' ? articleOrUrl : articleOrUrl.link;
+            let article = typeof articleOrUrl === 'object' ? articleOrUrl : null;
+
             currentArticleUrl = url;
 
             // Mark as Read
@@ -1156,13 +1173,65 @@
             btn.innerText = "Mark Unread";
 
             modal.style.display = 'flex';
+
+            // SPECIAL HANDLING FOR XKCD
+            if (article && article.feedUrl && article.feedUrl.includes('xkcd.com')) {
+                frame.removeAttribute('src');
+                frame.srcdoc = `
+                    <html>
+                    <head>
+                        <style>
+                            body { 
+                                font-family: "Geneva", "Verdana", sans-serif; 
+                                text-align: center; 
+                                padding: 20px; 
+                                background-color: white; 
+                                display: flex; 
+                                flex-direction: column; 
+                                align-items: center; 
+                                justify-content: center;
+                                min-height: 100vh;
+                                margin: 0;
+                            }
+                            img { 
+                                max-width: 100%; 
+                                height: auto; 
+                                border: 2px solid black; 
+                                box-shadow: 4px 4px 0 black;
+                                margin-bottom: 20px;
+                            }
+                            .alt-text {
+                                font-size: 1rem;
+                                color: #333;
+                                max-width: 600px;
+                                line-height: 1.4;
+                                border: 1px dashed #999;
+                                padding: 15px;
+                                background: #f9f9f9;
+                            }
+                            .title {
+                                font-weight: bold;
+                                font-size: 1.2rem;
+                                margin-bottom: 20px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="title">${article.title}</div>
+                        <img src="${article.image}">
+                        <div class="alt-text">${article.xkcdTitle || "No title text found."}</div>
+                    </body>
+                    </html>`;
+                return;
+            }
+
             // Show loading state
             frame.srcdoc = `
                 <html>
                 <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:white;">
                     <h2>Loading...</h2>
                     <p style="color:#666;">Cleaning up article for E-ink display...</p>
-</body>
+                </body>
                 </html>`;
 
             try {
@@ -1218,7 +1287,7 @@
                             <button onclick="parent.openArticle('${url}')" style="padding:10px; cursor:pointer; background:white; border:2px solid black; font-weight:bold; margin-right:10px;">Try Again</button>
                             <button onclick="parent.openExternal()" style="padding:10px; cursor:pointer; background:white; border:2px solid black; font-weight:bold;">Open External</button>
                         </div>
-</body>
+                    </body>
                     </html>`;
             }
         }
@@ -1253,7 +1322,8 @@
             }
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
 
 </html>
