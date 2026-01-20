@@ -544,15 +544,28 @@
         const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 
+        let googleEnabled = false;
+        let calDavUrl = localStorage.getItem('rekindle_caldav_url');
+
+        // --- TIMEZONE HANDLING ---
+        function getZonedDate(date = new Date()) {
+            const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            if (globalLoc && globalLoc.zone) {
+                try {
+                    const zonedStr = date.toLocaleString('en-US', { timeZone: globalLoc.zone });
+                    return new Date(zonedStr);
+                } catch (e) {
+                    console.error("Timezone error:", e);
+                    return date;
+                }
+            }
+            return date;
+        }
+
         // --- STATE ---
         let events = []; // Unified structure: { id, title, start: Date }
         let currentView = 'agenda';
-        let viewDate = new Date(); // Tracks currently viewed month/day
-        let currentUser = null;
-        let db = null;
-        let auth = null;
-        let googleEnabled = false;
-        let calDavUrl = localStorage.getItem('rekindle_caldav_url');
+        let viewDate = getZonedDate(); // Tracks currently viewed month/day
 
         // --- INIT ---
         window.onload = function () {
@@ -623,7 +636,7 @@
             // Reset viewDate to today on switching unless already in day/month flow
             if (view === 'agenda') {
                 // Agenda doesn't use viewDate in the same way, usually shows list starting now
-                viewDate = new Date();
+                viewDate = getZonedDate();
             }
 
             document.querySelectorAll('.tab-btn').forEach(b => {
@@ -655,7 +668,7 @@
             wrapper.className = 'agenda-container';
 
             // Filter events: Today onwards only
-            const todayStart = new Date();
+            const todayStart = getZonedDate();
             todayStart.setHours(0, 0, 0, 0);
 
             const filteredEvents = events.filter(e => new Date(e.start) >= todayStart);
@@ -746,7 +759,7 @@
                 cell.className = 'calendar-day';
 
                 // Check for Today
-                const today = new Date();
+                const today = getZonedDate();
                 if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
                     cell.classList.add('today');
                 }
@@ -916,7 +929,7 @@
                 // Ideally, this should refetch when changing months, but static load is safer for rate limits
                 const res = await gapi.client.calendar.events.list({
                     'calendarId': 'primary',
-                    'timeMin': (new Date(new Date().setMonth(new Date().getMonth() - 1))).toISOString(), // 1 month ago
+                    'timeMin': (new Date(getZonedDate().setMonth(getZonedDate().getMonth() - 1))).toISOString(), // 1 month ago
                     'showDeleted': false,
                     'singleEvents': true,
                     'maxResults': 200,
@@ -1108,7 +1121,8 @@
             }
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
 
 </html>
