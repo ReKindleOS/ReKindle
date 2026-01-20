@@ -548,18 +548,51 @@
         let calDavUrl = localStorage.getItem('rekindle_caldav_url');
 
         // --- TIMEZONE HANDLING ---
-        function getZonedDate(date = new Date()) {
+        function getGlobalTimeZone() {
             const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            if (globalLoc && globalLoc.zone) {
-                try {
-                    const zonedStr = date.toLocaleString('en-US', { timeZone: globalLoc.zone });
-                    return new Date(zonedStr);
-                } catch (e) {
-                    console.error("Timezone error:", e);
-                    return date;
-                }
+            return globalLoc && globalLoc.zone ? globalLoc.zone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+        }
+
+        function getZonedDate(date = new Date()) {
+            const zone = getGlobalTimeZone();
+            try {
+                const zonedStr = date.toLocaleString('en-US', { timeZone: zone });
+                return new Date(zonedStr);
+            } catch (e) {
+                console.error("Timezone error:", e);
+                return date;
             }
-            return date;
+        }
+
+        function formatZonedTime(date) {
+            const zone = getGlobalTimeZone();
+            return new Date(date).toLocaleTimeString('en-US', {
+                timeZone: zone,
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        function formatZonedDate(date, options) {
+            const zone = getGlobalTimeZone();
+            return new Date(date).toLocaleDateString('en-US', {
+                ...options,
+                timeZone: zone
+            });
+        }
+
+        function getUTCFromWallClock(dateStr, timeStr) {
+            const zone = getGlobalTimeZone();
+            const wallDate = new Date(`${dateStr}T${timeStr}Z`); // Treat input as UTC for offset math
+
+            const now = new Date();
+            const zonedStr = now.toLocaleString('en-US', { timeZone: zone });
+            const zonedDate = new Date(zonedStr);
+            const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+            const offsetMs = zonedDate.getTime() - utcDate.getTime();
+
+            return new Date(wallDate.getTime() - offsetMs).toISOString();
         }
 
         // --- STATE ---
@@ -671,7 +704,7 @@
             const todayStart = getZonedDate();
             todayStart.setHours(0, 0, 0, 0);
 
-            const filteredEvents = events.filter(e => new Date(e.start) >= todayStart);
+            const filteredEvents = events.filter(e => getZonedDate(new Date(e.start)) >= todayStart);
 
             if (filteredEvents.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:20px;">No upcoming events.</div>';
@@ -689,11 +722,11 @@
             for (const [date, list] of Object.entries(grouped)) {
                 const dayDiv = document.createElement('div');
                 dayDiv.className = 'day-group';
-                const dayLabel = new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                const dayLabel = formatZonedDate(date, { weekday: 'long', month: 'short', day: 'numeric' });
 
                 let html = `<div class="day-header">${dayLabel}</div>`;
                 list.forEach(e => {
-                    const timeStr = new Date(e.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    const timeStr = formatZonedTime(e.start);
                     // Add delete button only for Native mode (not google, not caldav)
                     const isReadOnly = googleEnabled || calDavUrl;
                     const delBtn = (!isReadOnly) ? `<span class="del-event-btn" onclick="deleteEvent('${e.id}')">×</span>` : '';
@@ -716,7 +749,7 @@
             // Header Controls
             const header = document.createElement('div');
             header.className = 'nav-header';
-            const monthLabel = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const monthLabel = formatZonedDate(viewDate, { month: 'long', year: 'numeric' });
             header.innerHTML = `
                 <button class="nav-arrow" onclick="changeMonth(-1)">&lt;</button>
                 <div class="nav-title">${monthLabel}</div>
@@ -765,9 +798,8 @@
                 }
 
                 // Find Events
-                const checkDate = new Date(year, month, i);
                 const dayEvents = events.filter(e => {
-                    const eDate = new Date(e.start);
+                    const eDate = getZonedDate(new Date(e.start));
                     return eDate.getDate() === i && eDate.getMonth() === month && eDate.getFullYear() === year;
                 });
 
@@ -794,7 +826,7 @@
             // Header
             const header = document.createElement('div');
             header.className = 'nav-header';
-            const dateLabel = viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            const dateLabel = formatZonedDate(viewDate, { weekday: 'long', month: 'short', day: 'numeric' });
             header.innerHTML = `
                 <button class="nav-arrow" onclick="changeDay(-1)">&lt;</button>
                 <div class="nav-title">${dateLabel}</div>
@@ -807,7 +839,7 @@
             const dayEnd = new Date(viewDate); dayEnd.setHours(23, 59, 59, 999);
 
             const dayEvents = events.filter(e => {
-                const d = new Date(e.start);
+                const d = getZonedDate(new Date(e.start));
                 return d >= dayStart && d <= dayEnd;
             });
 
@@ -823,7 +855,11 @@
             } else {
                 // Group by hour for a structured look
                 for (let hour = 0; hour < 24; hour++) {
-                    const hourEvents = dayEvents.filter(e => new Date(e.start).getHours() === hour);
+                    const hourEvents = dayEvents.filter(e => {
+                        const d = new Date(e.start);
+                        const zoned = getZonedDate(d);
+                        return zoned.getHours() === hour;
+                    });
 
                     if (hourEvents.length > 0) {
                         const slot = document.createElement('div');
@@ -833,8 +869,8 @@
 
                         let eventHtml = '';
                         hourEvents.forEach(e => {
-                            const min = new Date(e.start).getMinutes().toString().padStart(2, '0');
-                            eventHtml += `<div class="day-event-chip">${min} - ${e.title}</div>`;
+                            const timeStr = formatZonedTime(e.start);
+                            eventHtml += `<div class="day-event-chip">${timeStr} - ${e.title}</div>`;
                         });
 
                         slot.innerHTML = `
@@ -1064,7 +1100,7 @@
 
             if (!title || !date) return alert("Title and Date required");
 
-            const dateTime = new Date(`${date}T${time}`).toISOString();
+            const dateTime = getUTCFromWallClock(date, time);
             const newEvt = { title: title, start: dateTime };
 
             if (currentUser) {
