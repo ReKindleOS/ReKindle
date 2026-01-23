@@ -280,9 +280,12 @@
 
         .event-time {
             font-weight: bold;
-            width: 85px;
+            width: 140px;
+            /* Widened for ranges */
             flex-shrink: 0;
             font-size: 0.9rem;
+            margin-right: 15px;
+            /* Bigger gap */
         }
 
         .event-title {
@@ -400,6 +403,16 @@
 
         .calendar-day:active .event-dot {
             background: white;
+        }
+
+        .month-event {
+            font-size: 0.7rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: transparent;
+            margin-top: 1px;
+            line-height: 1.1;
         }
 
         /* DAY VIEW */
@@ -570,9 +583,15 @@
     <div id="modal-overlay">
         <div class="modal-box">
             <h3>New Event</h3>
+            <div class="modal-btns">
+                <!-- Using grid/flex for inputs -->
+            </div>
             <input type="text" id="evt-title" placeholder="Title">
-            <input type="date" id="evt-date">
-            <input type="time" id="evt-time">
+            <input type="date" id="evt-date" placeholder="Date">
+            <div style="display:flex; gap:10px;">
+                <input type="time" id="evt-time" placeholder="Start" title="Start Time">
+                <input type="time" id="evt-end-time" placeholder="End" title="End Time">
+            </div>
             <div class="modal-btns">
                 <button class="sys-btn" onclick="saveNativeEvent()">Save</button>
                 <button class="sys-btn"
@@ -841,11 +860,15 @@
             const wrapper = document.createElement('div');
             wrapper.className = 'agenda-container';
 
-            // Filter events: Today onwards only
-            const todayStart = getZonedDate();
-            todayStart.setHours(0, 0, 0, 0);
+            // Filter events: Today onwards only (using Zoned Today)
+            const todayZoned = getZonedDate();
+            todayZoned.setHours(0, 0, 0, 0);
 
-            const filteredEvents = events.filter(e => getZonedDate(new Date(e.start)) >= todayStart);
+            // Filter logic: Check if event's zoned start time is >= todayZoned
+            const filteredEvents = events.filter(e => {
+                const z = getZonedDate(new Date(e.start));
+                return z >= todayZoned;
+            });
 
             if (filteredEvents.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:20px;">No upcoming events.</div>';
@@ -854,20 +877,44 @@
 
             const grouped = {};
             filteredEvents.forEach(e => {
-                const dateKey = new Date(e.start).toDateString();
+                // IMPORTANT: Group by the DATE as it appears in the TARGET ZONE
+                const z = getZonedDate(new Date(e.start));
+                // Use a string key based on the zoned date values
+                // ISO string slice is risky if z is local time, so build manually or use formatted
+                const dateKey = z.getFullYear() + '-' + (z.getMonth() + 1).toString().padStart(2, '0') + '-' + z.getDate().toString().padStart(2, '0');
+
                 if (!grouped[dateKey]) grouped[dateKey] = [];
                 grouped[dateKey].push(e);
             });
 
+            // Sort keys to ensure chronological order
+            const sortedKeys = Object.keys(grouped).sort();
+
             // Iterate over grouped events
-            for (const [date, list] of Object.entries(grouped)) {
+            sortedKeys.forEach(dateKey => {
+                const list = grouped[dateKey];
                 const dayDiv = document.createElement('div');
                 dayDiv.className = 'day-group';
-                const dayLabel = formatZonedDate(date, { weekday: 'long', month: 'short', day: 'numeric' });
+
+                // Construct a date object from the key parts to format it
+                // dateKey is YYYY-MM-DD
+                const [y, m, d] = dateKey.split('-').map(Number);
+                const loopDate = new Date(y, m - 1, d); // Local construction is fine as we just want to format it
+
+                const dayLabel = formatZonedDate(loopDate, { weekday: 'long', month: 'short', day: 'numeric' });
 
                 let html = `<div class="day-header">${dayLabel}</div>`;
                 list.forEach(e => {
-                    const timeStr = formatZonedTime(e.start);
+                    let timeStr;
+                    if (e.isAllDay) {
+                        timeStr = "All day";
+                    } else {
+                        // Format Start - End
+                        const startStr = formatZonedTime(e.start);
+                        const endStr = e.end ? formatZonedTime(e.end) : formatZonedTime(new Date(new Date(e.start).getTime() + 3600000)); // Default 1h
+                        timeStr = `${startStr} – ${endStr}`;
+                    }
+
                     // Add delete button only for Native mode (not google, not caldav)
                     const isReadOnly = googleEnabled || calDavUrl;
                     const delBtn = (!isReadOnly) ? `<span class="del-event-btn" onclick="deleteEvent('${e.id}')">×</span>` : '';
@@ -881,7 +928,7 @@
                 });
                 dayDiv.innerHTML = html;
                 wrapper.appendChild(dayDiv);
-            }
+            });
             container.appendChild(wrapper);
         }
 
@@ -942,17 +989,19 @@
                 const key = year + '-' + month + '-' + i;
                 const dayEvents = (eventsMap && eventsMap[key]) ? eventsMap[key] : [];
 
-                let dotsHtml = '';
-                if (dayEvents.length > 0) {
-                    dotsHtml = '<div class="day-dots">';
-                    // Max 5 dots to fit
-                    for (let j = 0; j < Math.min(dayEvents.length, 5); j++) {
-                        dotsHtml += '<div class="event-dot"></div>';
-                    }
-                    dotsHtml += '</div>';
+                let eventsHtml = '';
+                // Limit to 4 events to avoid overflow
+                const maxEvents = 4;
+                for (let j = 0; j < Math.min(dayEvents.length, maxEvents); j++) {
+                    const evt = dayEvents[j];
+                    eventsHtml += `<div class="month-event">${evt.title}</div>`;
+                }
+                if (dayEvents.length > maxEvents) {
+                    eventsHtml += `<div class="month-event" style="text-align:center;">+${dayEvents.length - maxEvents} more</div>`;
                 }
 
-                cell.innerHTML = `<div class="day-number">${i}</div>${dotsHtml}`;
+
+                cell.innerHTML = `<div class="day-number">${i}</div>${eventsHtml}`;
                 cell.onclick = () => jumpToDay(i);
                 grid.appendChild(cell);
             }
@@ -1003,7 +1052,14 @@
 
                         let eventHtml = '';
                         hourEvents.forEach(e => {
-                            const timeStr = formatZonedTime(e.start);
+                            let timeStr;
+                            if (e.isAllDay) {
+                                timeStr = "All day";
+                            } else {
+                                const startStr = formatZonedTime(e.start);
+                                const endStr = e.end ? formatZonedTime(e.end) : formatZonedTime(new Date(new Date(e.start).getTime() + 3600000));
+                                timeStr = `${startStr} – ${endStr}`;
+                            }
                             eventHtml += `<div class="day-event-chip">${timeStr} - ${e.title}</div>`;
                         });
 
@@ -1106,14 +1162,27 @@
                     'orderBy': 'startTime'
                 });
 
-                events = (res.result.items || []).map(i => ({
-                    id: i.id,
-                    title: i.summary,
-                    start: i.start.dateTime || i.start.date
-                }));
+                events = (res.result.items || []).map(i => {
+                    let start;
+                    if (i.start.date) {
+                        // All-day event (YYYY-MM-DD). Use target zone midnight.
+                        start = getUTCFromWallClock(i.start.date, '00:00');
+                    } else {
+                        // Timed event (ISO string)
+                        start = i.start.dateTime;
+                    }
+
+                    return {
+                        id: i.id,
+                        title: i.summary,
+                        start: start,
+                        isAllDay: !!i.start.date
+                    };
+                });
                 renderView();
                 document.getElementById('status-msg').innerText = "Synced.";
             } catch (e) {
+                console.error(e);
                 document.getElementById('status-msg').innerText = "Error.";
                 if (e.status === 401) {
                     // Token expired during use -> Re-auth
@@ -1150,7 +1219,7 @@
                     events = [];
                     snap.forEach(doc => {
                         const d = doc.data();
-                        events.push({ id: doc.id, title: d.title, start: d.start });
+                        events.push({ id: doc.id, title: d.title, start: d.start, end: d.end, isAllDay: d.isAllDay });
                     });
                     renderView();
                 });
@@ -1191,26 +1260,48 @@
 
                 const summaryMatch = /SUMMARY:(.*)/.exec(block);
                 const dtStartMatch = /DTSTART(?:;.*)?:(\w+)/.exec(block);
+                const dtEndMatch = /DTEND(?:;.*)?:(\w+)/.exec(block);
 
                 if (summaryMatch && dtStartMatch) {
                     const title = summaryMatch[1].trim();
                     const rawDate = dtStartMatch[1].trim();
+                    const rawEndDate = dtEndMatch ? dtEndMatch[1].trim() : null;
 
                     // Basic date parsing (YYYYMMDDTHHMMSS or YYYYMMDD)
                     let isoDate = null;
-                    if (rawDate.length === 8) {
-                        // Date only
-                        isoDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
-                    } else if (rawDate.length >= 15) {
-                        // DateTime
-                        isoDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}T${rawDate.slice(9, 11)}:${rawDate.slice(11, 13)}:${rawDate.slice(13, 15)}`;
+                    let isoEndDate = null;
+                    let isAllDay = false;
+
+                    const parseICSTime = (raw) => {
+                        if (raw.length === 8) {
+                            // Date only
+                            return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`, allDay: true };
+                        } else if (raw.length >= 15) {
+                            // DateTime
+                            return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}T${raw.slice(9, 11)}:${raw.slice(11, 13)}:${raw.slice(13, 15)}`, allDay: false };
+                        }
+                        return null;
+                    };
+
+                    const startObj = parseICSTime(rawDate);
+                    if (startObj) {
+                        isoDate = startObj.date;
+                        isAllDay = startObj.allDay;
                     }
+
+                    if (rawEndDate) {
+                        const endObj = parseICSTime(rawEndDate);
+                        if (endObj) isoEndDate = endObj.date;
+                    }
+
 
                     if (isoDate) {
                         eventsFound.push({
                             id: 'caldav_' + Math.random(), // generate temp id
                             title: title,
-                            start: isoDate
+                            start: isoDate,
+                            end: isoEndDate,
+                            isAllDay: isAllDay
                         });
                     }
                 }
@@ -1225,17 +1316,44 @@
             const defaultDate = viewDate.toISOString().split('T')[0];
             document.getElementById('evt-date').value = defaultDate;
             document.getElementById('evt-time').value = '';
+            document.getElementById('evt-end-time').value = '';
         }
 
         function saveNativeEvent() {
             const title = document.getElementById('evt-title').value;
             const date = document.getElementById('evt-date').value;
-            const time = document.getElementById('evt-time').value || "00:00";
+            const time = document.getElementById('evt-time').value;
+            const endTime = document.getElementById('evt-end-time').value;
 
             if (!title || !date) return alert("Title and Date required");
 
-            const dateTime = getUTCFromWallClock(date, time);
-            const newEvt = { title: title, start: dateTime };
+            let isAllDay = false;
+            let startDateTime, endDateTime;
+
+            if (!time) {
+                isAllDay = true;
+                // Treat as all day
+                startDateTime = getUTCFromWallClock(date, "00:00");
+                // End is next day 00:00 for storage consistency? Or just null if we handle it
+                // Let's increment date by 1 for end
+                const d = new Date(date);
+                d.setDate(d.getDate() + 1);
+                // Simple YYYY-MM-DD next day
+                const nextDay = d.toISOString().split('T')[0];
+                endDateTime = getUTCFromWallClock(nextDay, "00:00");
+            } else {
+                startDateTime = getUTCFromWallClock(date, time);
+                if (endTime) {
+                    endDateTime = getUTCFromWallClock(date, endTime); // Assume same day for simplicity in this Basic UI
+                } else {
+                    // Default 1 hour
+                    const s = new Date(startDateTime);
+                    s.setHours(s.getHours() + 1);
+                    endDateTime = s.toISOString();
+                }
+            }
+
+            const newEvt = { title: title, start: startDateTime, end: endDateTime, isAllDay: isAllDay };
 
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('events').add(newEvt);
