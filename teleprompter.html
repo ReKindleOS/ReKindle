@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teleprompter</title>
-    
+
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -51,18 +52,19 @@
             max-width: 800px;
             position: relative;
         }
-        
+
         .window.fullscreen {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
             max-width: none;
             max-height: none;
             border: none;
             box-shadow: none;
             z-index: 2000;
+            transform-origin: top left !important;
         }
 
         /* TITLE BAR */
@@ -80,7 +82,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -124,10 +129,17 @@
         .controls {
             position: absolute;
             right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
             z-index: 1;
             background: white;
             display: flex;
+            align-items: center;
             gap: 10px;
+        }
+
+        .controls>button+button {
+            margin-left: 10px;
         }
 
         .sys-btn {
@@ -148,6 +160,40 @@
             box-shadow: none;
         }
 
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Icon State Toggles */
+        .icon-contract {
+            display: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
         /* WINDOW CONTENT */
         .window-content {
             flex-grow: 1;
@@ -161,12 +207,13 @@
         /* VIEWS */
         .view {
             flex-grow: 1;
-            display: none; /* Hidden by default */
+            display: none;
+            /* Hidden by default */
             flex-direction: column;
             overflow: hidden;
             height: 100%;
         }
-        
+
         .view.active {
             display: flex;
         }
@@ -176,7 +223,7 @@
             padding: 0;
             overflow-y: auto;
         }
-        
+
         .explainer {
             padding: 20px;
             background: #eee;
@@ -205,7 +252,7 @@
             background: white;
             color: black;
         }
-        
+
         #teleprompter-view.inverted {
             background: black;
             color: white;
@@ -217,7 +264,7 @@
             padding: 20px;
             line-height: 1.2;
         }
-        
+
         .nav-zone {
             position: absolute;
             top: 0;
@@ -226,9 +273,14 @@
             z-index: 10;
             cursor: pointer;
         }
-        
-        #prev-zone { left: 0; }
-        #next-zone { right: 0; }
+
+        #prev-zone {
+            left: 0;
+        }
+
+        #next-zone {
+            right: 0;
+        }
 
         /* STATUS BAR */
         #status-bar {
@@ -242,6 +294,7 @@
     </style>
     <script src="theme.js"></script>
 </head>
+
 <body>
 
     <div class="window" id="main-window">
@@ -254,14 +307,21 @@
             <span class="title-text">Teleprompter</span>
             <div class="controls" id="teleprompter-controls" style="display:none;">
                 <button class="sys-btn" onclick="toggleInvert()">Invert</button>
-                <button class="sys-btn" onclick="toggleFullScreen()">Full Screen</button>
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6" />
+                    </svg>
+                </button>
             </div>
         </div>
 
         <div class="window-content">
             <!-- LIST VIEW -->
             <div id="list-view" class="view active">
-                <div class="explainer">Select a note to begin. Add notes from the Notes app; they will be shown here line-by-line.</div>
+                <div class="explainer">Select a note to begin. Add notes from the Notes app; they will be shown here
+                    line-by-line.</div>
                 <div id="notes-container">
                     <div style="padding:20px; text-align:center; color:#666;">Loading notes...</div>
                 </div>
@@ -303,7 +363,7 @@
         window.onload = () => {
             loadWallpaper();
             window.addEventListener('resize', resizeText);
-            
+
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
@@ -393,14 +453,14 @@
         function resizeText() {
             const container = document.getElementById('teleprompter-view');
             const textElement = document.getElementById('teleprompter-text');
-            
+
             if (!container.classList.contains('active') || !textElement || !textElement.innerText) {
                 return;
             }
 
             const containerWidth = container.clientWidth;
             const containerHeight = container.clientHeight;
-            
+
             const maxWidth = containerWidth - 40; // Account for 20px padding on each side
             const maxHeight = containerHeight - 40;
 
@@ -442,9 +502,9 @@
                     currentNoteLines = ["(No lines found in this note)"];
                 }
             }
-            
+
             currentLineIndex = 0;
-            
+
             document.getElementById('list-view').classList.remove('active');
             document.getElementById('teleprompter-view').classList.add('active');
             document.getElementById('teleprompter-controls').style.display = 'flex';
@@ -482,13 +542,13 @@
                 displayCurrentLine();
             }
         }
-        
+
         function toggleInvert() {
             isInverted = !isInverted;
             document.getElementById('teleprompter-view').classList.toggle('inverted');
             saveInversionState();
         }
-        
+
         function toggleFullScreen() {
             document.getElementById('main-window').classList.toggle('fullscreen');
             // Use a minimal timeout to allow the browser to reflow before resizing text.
@@ -497,7 +557,7 @@
 
 
         loadWallpaper();
-        
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
@@ -509,6 +569,8 @@
             }
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
+
 </html>
