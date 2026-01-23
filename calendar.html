@@ -70,6 +70,20 @@
             position: relative;
         }
 
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
         .title-bar {
             height: 35px;
             border-bottom: 2px solid black;
@@ -126,10 +140,54 @@
             box-shadow: none;
         }
 
-        /* ADD BTN */
-        .add-btn {
+
+
+        /* CONTROLS (Right side of Title Bar) */
+        .title-controls {
             position: absolute;
             right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Icon State Toggles */
+        .icon-contract {
+            display: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        /* ADD BTN */
+        .add-btn {
             z-index: 2;
             background: white;
             border: 2px solid black;
@@ -475,7 +533,16 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" id="app-title">Calendar</span>
-            <button class="add-btn" id="add-btn" onclick="openAddModal()">+ Add</button>
+            <div class="title-controls">
+                <button class="add-btn" id="add-btn" onclick="openAddModal()">+ Add</button>
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6" />
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <div class="tabs">
@@ -548,16 +615,54 @@
         let calDavUrl = localStorage.getItem('rekindle_caldav_url');
 
         // --- TIMEZONE HANDLING ---
+        // --- TIMEZONE HANDLING ---
+        let _cachedTimeZone = null;
+        let _cachedDateFormatter = null;
+
         function getGlobalTimeZone() {
-            const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            return globalLoc && globalLoc.zone ? globalLoc.zone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (_cachedTimeZone) return _cachedTimeZone;
+            try {
+                const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                _cachedTimeZone = globalLoc && globalLoc.zone ? globalLoc.zone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+            } catch (e) {
+                _cachedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            }
+            return _cachedTimeZone;
+        }
+
+        // Clear cache if needed (e.g. if we had a settings listener, but simple refresh for now is fine)
+        function clearTimeZoneCache() {
+            _cachedTimeZone = null;
+            _cachedDateFormatter = null;
         }
 
         function getZonedDate(date = new Date()) {
             const zone = getGlobalTimeZone();
             try {
-                const zonedStr = date.toLocaleString('en-US', { timeZone: zone });
-                return new Date(zonedStr);
+                if (!_cachedDateFormatter) {
+                    _cachedDateFormatter = new Intl.DateTimeFormat('en-US', {
+                        timeZone: zone,
+                        year: 'numeric', month: 'numeric', day: 'numeric',
+                        hour: 'numeric', minute: 'numeric', second: 'numeric',
+                        hour12: false
+                    });
+                }
+                const parts = _cachedDateFormatter.formatToParts(date);
+                const p = {};
+                // Simple loop is faster than forEach for hot paths
+                for (let i = 0; i < parts.length; i++) {
+                    p[parts[i].type] = parts[i].value;
+                }
+
+                // Return a "wall clock" date object (local components match target zone)
+                return new Date(
+                    parseInt(p.year, 10),
+                    parseInt(p.month, 10) - 1,
+                    parseInt(p.day, 10),
+                    parseInt(p.hour, 10),
+                    parseInt(p.minute, 10),
+                    parseInt(p.second, 10)
+                );
             } catch (e) {
                 console.error("Timezone error:", e);
                 return date;
@@ -584,14 +689,34 @@
 
         function getUTCFromWallClock(dateStr, timeStr) {
             const zone = getGlobalTimeZone();
-            const wallDate = new Date(`${dateStr}T${timeStr}Z`); // Treat input as UTC for offset math
 
+            // 1. Get current offset for the target zone
             const now = new Date();
-            const zonedStr = now.toLocaleString('en-US', { timeZone: zone });
-            const zonedDate = new Date(zonedStr);
-            const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-            const offsetMs = zonedDate.getTime() - utcDate.getTime();
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: zone,
+                year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: 'numeric', second: 'numeric',
+                hour12: false
+            });
+            const parts = formatter.formatToParts(now);
+            const p = {};
+            parts.forEach(part => p[part.type] = part.value);
 
+            const zonedNow = new Date(
+                parseInt(p.year, 10),
+                parseInt(p.month, 10) - 1,
+                parseInt(p.day, 10),
+                parseInt(p.hour, 10),
+                parseInt(p.minute, 10),
+                parseInt(p.second, 10)
+            );
+
+            // 2. Calculate offset from real UTC now
+            const offsetMs = zonedNow.getTime() - now.getTime();
+
+            // 3. Apply offset to the wall clock input
+            // dateStr is YYYY-MM-DD, timeStr is HH:mm
+            const wallDate = new Date(`${dateStr}T${timeStr || '00:00'}:00`);
             return new Date(wallDate.getTime() - offsetMs).toISOString();
         }
 
@@ -657,11 +782,16 @@
         }
 
         function refreshData() {
+            clearTimeZoneCache(); // Ensure we pick up any timezone changes
             if (googleEnabled) loadGoogleEvents();
             else if (calDavUrl) loadCalDAVEvents();
             else if (currentUser) loadCloudEvents();
             else loadLocalEvents();
         }
+
+        window.onfocus = function () {
+            clearTimeZoneCache();
+        };
 
         function switchView(view) {
             currentView = view;
@@ -686,12 +816,23 @@
             // Sort events by date
             events.sort((a, b) => new Date(a.start) - new Date(b.start));
 
+            // OPTIMIZATION: Build an efficient lookup map
+            // Key: "Year-MonthIdx-Day" (e.g. "2023-0-15" for Jan 15)
+            // This avoids O(N) lookup inside the O(D) day loop
+            const eventsMap = {};
+            events.forEach(e => {
+                const z = getZonedDate(new Date(e.start));
+                const key = z.getFullYear() + '-' + z.getMonth() + '-' + z.getDate();
+                if (!eventsMap[key]) eventsMap[key] = [];
+                eventsMap[key].push(e);
+            });
+
             if (currentView === 'agenda') {
-                renderAgenda(container);
+                renderAgenda(container, eventsMap);
             } else if (currentView === 'month') {
-                renderMonthView(container);
+                renderMonthView(container, eventsMap);
             } else if (currentView === 'day') {
-                renderDayView(container);
+                renderDayView(container, eventsMap);
             }
         }
 
@@ -745,7 +886,7 @@
         }
 
         // --- MONTH RENDERER ---
-        function renderMonthView(container) {
+        function renderMonthView(container, eventsMap) {
             // Header Controls
             const header = document.createElement('div');
             header.className = 'nav-header';
@@ -797,11 +938,9 @@
                     cell.classList.add('today');
                 }
 
-                // Find Events
-                const dayEvents = events.filter(e => {
-                    const eDate = getZonedDate(new Date(e.start));
-                    return eDate.getDate() === i && eDate.getMonth() === month && eDate.getFullYear() === year;
-                });
+                // Find Events - OPTIMIZED
+                const key = year + '-' + month + '-' + i;
+                const dayEvents = (eventsMap && eventsMap[key]) ? eventsMap[key] : [];
 
                 let dotsHtml = '';
                 if (dayEvents.length > 0) {
@@ -822,7 +961,7 @@
         }
 
         // --- DAY RENDERER ---
-        function renderDayView(container) {
+        function renderDayView(container, eventsMap) {
             // Header
             const header = document.createElement('div');
             header.className = 'nav-header';
@@ -834,14 +973,9 @@
             `;
             container.appendChild(header);
 
-            // Filter Events
-            const dayStart = new Date(viewDate); dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(viewDate); dayEnd.setHours(23, 59, 59, 999);
-
-            const dayEvents = events.filter(e => {
-                const d = getZonedDate(new Date(e.start));
-                return d >= dayStart && d <= dayEnd;
-            });
+            // Filter Events - OPTIMIZED
+            const key = viewDate.getFullYear() + '-' + viewDate.getMonth() + '-' + viewDate.getDate();
+            const dayEvents = (eventsMap && eventsMap[key]) ? eventsMap[key] : [];
 
             // Content List (Hourly blocks or just a list)
             // A scrollable list of time slots is cleaner for E-ink than a complex grid
@@ -1145,6 +1279,10 @@
 
 
         loadWallpaper();
+
+        function toggleFullScreen() {
+            document.querySelector('.window').classList.toggle('fullscreen');
+        }
 
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
