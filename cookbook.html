@@ -288,6 +288,21 @@
             gap: 10px;
         }
 
+        /* SEARCH RADIO BUTTONS */
+        .search-mode-selector {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .search-mode-selector label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
         /* SEARCH AREA */
         .search-area {
             padding: 15px;
@@ -483,20 +498,33 @@
         <div class="window-content">
             <div id="search-view">
                 <div class="search-area">
+                    <div class="search-mode-selector">
+                        <label>
+                            <input type="radio" name="searchMode" value="ingredients" checked
+                                onchange="toggleSearchMode()">
+                            By Ingredients
+                        </label>
+                        <label>
+                            <input type="radio" name="searchMode" value="name" onchange="toggleSearchMode()">
+                            By Recipe Name
+                        </label>
+                    </div>
                     <div class="input-group">
                         <input type="text" id="search-input" placeholder="Add an ingredient (e.g. Chicken)">
-                        <button class="action-btn" onclick="addSearchIngredient()">Add</button>
+                        <button class="action-btn" id="add-btn" onclick="addSearchIngredient()">Add</button>
                     </div>
                     <div class="search-tags" id="search-tags">
                         <span class="search-empty">Add ingredients you have...</span>
                     </div>
                     <div class="search-buttons">
                         <button class="action-btn" onclick="searchRecipes()">Find Recipes</button>
-                        <button class="action-btn" onclick="clearSearch()" style="background:#eee;">Clear All</button>
+                        <button class="action-btn" id="clear-btn" onclick="clearSearch()" style="background:#eee;">Clear
+                            All</button>
                     </div>
                 </div>
                 <div class="recipe-list" id="results-container">
-                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; font-style: italic;">
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; font-style: italic;"
+                        id="search-placeholder-text">
                         Add ingredients above, then click "Find Recipes"
                     </div>
                 </div>
@@ -543,13 +571,20 @@
         let currentUser = null;
         let savedRecipes = []; // Array of recipe objects
         let currentRecipe = null; // The one open in modal
+        let searchMode = 'ingredients'; // 'ingredients' or 'name'
 
         // --- INIT ---
         window.onload = function () {
             loadWallpaper();
             // Attach Enter key listener for search input
             document.getElementById('search-input').addEventListener('keypress', e => {
-                if (e.key === 'Enter') addSearchIngredient();
+                if (e.key === 'Enter') {
+                    if (searchMode === 'ingredients') {
+                        addSearchIngredient();
+                    } else {
+                        searchRecipes();
+                    }
+                }
             });
 
             auth.onAuthStateChanged(user => {
@@ -581,10 +616,52 @@
             }
         }
 
+        // --- SEARCH MODES ---
+        function toggleSearchMode() {
+            const radios = document.getElementsByName('searchMode');
+            for (const radio of radios) {
+                if (radio.checked) {
+                    searchMode = radio.value;
+                    break;
+                }
+            }
+
+            const input = document.getElementById('search-input');
+            const addBtn = document.getElementById('add-btn');
+            const tags = document.getElementById('search-tags');
+            const clearBtn = document.getElementById('clear-btn');
+            const placeholderText = document.getElementById('search-placeholder-text');
+
+            // Reset UI
+            input.value = '';
+            document.getElementById('results-container').innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px; font-style: italic;" id="search-placeholder-text"></div>
+            `;
+            const newPlaceholder = document.getElementById('search-placeholder-text');
+
+            if (searchMode === 'ingredients') {
+                input.placeholder = "Add an ingredient (e.g. Chicken)";
+                addBtn.style.display = 'block';
+                tags.style.display = 'flex';
+                clearBtn.style.display = 'block'; // Or 'inline-block' based on layout
+                newPlaceholder.innerText = 'Add ingredients above, then click "Find Recipes"';
+                // Restore tags if any
+                renderSearchTags();
+            } else {
+                input.placeholder = "Enter recipe name (e.g. Arrabiata)";
+                addBtn.style.display = 'none';
+                tags.style.display = 'none';
+                clearBtn.style.display = 'none';
+                newPlaceholder.innerText = 'Enter a recipe name above, then click "Find Recipes"';
+            }
+        }
+
         // --- SEARCH INGREDIENT FEATURE ---
         let searchIngredients = [];
 
         function addSearchIngredient() {
+            if (searchMode !== 'ingredients') return; // Safety
+
             const input = document.getElementById('search-input');
             const ingredient = input.value.trim();
             if (!ingredient) return;
@@ -606,11 +683,16 @@
         }
 
         function clearSearch() {
-            searchIngredients = [];
-            renderSearchTags();
+            if (searchMode === 'ingredients') {
+                searchIngredients = [];
+                renderSearchTags();
+            } else {
+                document.getElementById('search-input').value = '';
+            }
+
             document.getElementById('results-container').innerHTML = `
-                <div style="grid-column: 1/-1; text-align: center; padding: 40px; font-style: italic;">
-                    Add ingredients above, then click "Find Recipes"
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px; font-style: italic;" id="search-placeholder-text">
+                    ${searchMode === 'ingredients' ? 'Add ingredients above, then click "Find Recipes"' : 'Enter a recipe name above, then click "Find Recipes"'}
                 </div>
             `;
         }
@@ -631,70 +713,89 @@
         }
 
         async function searchRecipes() {
-            if (searchIngredients.length === 0) return;
-
             const container = document.getElementById('results-container');
+            const inputVal = document.getElementById('search-input').value.trim();
+
+            if (searchMode === 'ingredients' && searchIngredients.length === 0) return;
+            if (searchMode === 'name' && !inputVal) return;
+
             container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">Searching recipes...</div>';
 
             try {
-                // Fetch recipes for first ingredient
-                const firstIngredient = searchIngredients[0];
-                const res = await fetch(`${API_BASE}filter.php?i=${encodeURIComponent(firstIngredient)}`);
-                const data = await res.json();
+                let meals = [];
 
-                if (!data.meals) {
-                    container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">No recipes found with those ingredients.</div>';
-                    return;
-                }
+                if (searchMode === 'ingredients') {
+                    // --- EXISTING INGREDIENT SEARCH LOGIC ---
 
-                // If only one ingredient, show all results
-                if (searchIngredients.length === 1) {
-                    renderSearchResults(data.meals);
-                    return;
-                }
+                    // Fetch recipes for first ingredient
+                    const firstIngredient = searchIngredients[0];
+                    const res = await fetch(`${API_BASE}filter.php?i=${encodeURIComponent(firstIngredient)}`);
+                    const data = await res.json();
 
-                // Multiple ingredients: fetch details and filter
-                container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">Finding matching recipes...</div>';
+                    if (!data.meals) {
+                        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">No recipes found with those ingredients.</div>';
+                        return;
+                    }
 
-                const matchingMeals = [];
-                const lowerIngredients = searchIngredients.map(i => i.toLowerCase());
+                    // If only one ingredient, use these results
+                    if (searchIngredients.length === 1) {
+                        meals = data.meals;
+                    } else {
+                        // Multiple ingredients: fetch details and filter
+                        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">Finding matching recipes...</div>';
 
-                // Check each recipe for all ingredients
-                for (const meal of data.meals) {
-                    try {
-                        const detailRes = await fetch(`${API_BASE}lookup.php?i=${meal.idMeal}`);
-                        const detailData = await detailRes.json();
-                        const fullMeal = detailData.meals[0];
+                        const matchingMeals = [];
+                        const lowerIngredients = searchIngredients.map(i => i.toLowerCase());
 
-                        // Get all ingredients from this recipe
-                        const recipeIngredients = [];
-                        for (let i = 1; i <= 20; i++) {
-                            const ing = fullMeal[`strIngredient${i}`];
-                            if (ing && ing.trim()) {
-                                recipeIngredients.push(ing.toLowerCase());
+                        // Check each recipe for all ingredients
+                        // Limit to 20 to avoid spamming API too much if first ingredient is generic like "egg"
+                        // But sticking to previous logic for now (which iterates all)
+                        for (const meal of data.meals) {
+                            try {
+                                const detailRes = await fetch(`${API_BASE}lookup.php?i=${meal.idMeal}`);
+                                const detailData = await detailRes.json();
+                                const fullMeal = detailData.meals[0];
+
+                                // Get all ingredients from this recipe
+                                const recipeIngredients = [];
+                                for (let i = 1; i <= 20; i++) {
+                                    const ing = fullMeal[`strIngredient${i}`];
+                                    if (ing && ing.trim()) {
+                                        recipeIngredients.push(ing.toLowerCase());
+                                    }
+                                }
+
+                                // Check if all search ingredients are in this recipe
+                                const hasAll = lowerIngredients.every(userIng =>
+                                    recipeIngredients.some(recipeIng => recipeIng.includes(userIng) || userIng.includes(recipeIng))
+                                );
+
+                                if (hasAll) {
+                                    matchingMeals.push(meal);
+                                }
+                            } catch (e) {
+                                // Skip
                             }
                         }
-
-                        // Check if all search ingredients are in this recipe
-                        const hasAll = lowerIngredients.every(userIng =>
-                            recipeIngredients.some(recipeIng => recipeIng.includes(userIng) || userIng.includes(recipeIng))
-                        );
-
-                        if (hasAll) {
-                            matchingMeals.push(meal);
-                        }
-                    } catch (e) {
-                        // Skip this meal on error
+                        meals = matchingMeals;
                     }
+
+                } else {
+                    // --- NEW NAME SEARCH LOGIC ---
+                    const res = await fetch(`${API_BASE}search.php?s=${encodeURIComponent(inputVal)}`);
+                    const data = await res.json();
+                    meals = data.meals || [];
                 }
 
-                if (matchingMeals.length === 0) {
-                    container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">No recipes found using all those ingredients.</div>';
+                // Render Results
+                if (meals.length === 0) {
+                    container.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:20px;">No recipes found ${searchMode === 'ingredients' ? 'using all those ingredients' : 'with that name'}.</div>`;
                 } else {
-                    renderSearchResults(matchingMeals);
+                    renderSearchResults(meals);
                 }
 
             } catch (e) {
+                console.error(e);
                 container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">Error connecting to recipe database.</div>';
             }
         }
@@ -863,7 +964,7 @@
                 </div>
 
                 <div class="instruction-text">
-                    ${meal.strInstructions}
+                    ${window.rekindleConvertTemperatureContext ? window.rekindleConvertTemperatureContext(meal.strInstructions) : meal.strInstructions}
                 </div>
                 
                 <br><br>
