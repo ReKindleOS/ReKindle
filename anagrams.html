@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -45,11 +46,12 @@
             background-color: #e5e5e5;
             /* Default Background (Overridden by JS) */
             /* Background managed by settings */
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center; /* FIX: Centers vertically */
+            justify-content: center;
+            /* FIX: Centers vertically */
             user-select: none;
             box-sizing: border-box;
         }
@@ -61,7 +63,8 @@
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            height: fit-content; /* ADAPTIVE HEIGHT */
+            height: fit-content;
+            /* ADAPTIVE HEIGHT */
             max-height: 95vh;
             width: 90%;
             max-width: 600px;
@@ -83,7 +86,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -179,7 +185,8 @@
 
         .slot.filled {
             background-color: var(--slot-filled);
-            border-bottom: 6px solid black; /* Thicker bottom to indicate placed */
+            border-bottom: 6px solid black;
+            /* Thicker bottom to indicate placed */
         }
 
         /* FEEDBACK */
@@ -232,7 +239,8 @@
         }
 
         .key.action {
-            background: #ddd; /* Grey dither look */
+            background: #ddd;
+            /* Grey dither look */
             flex: 1.5;
             font-size: 1rem;
         }
@@ -242,9 +250,32 @@
             color: white;
         }
 
+
+        /* GIVE UP BUTTON */
+        #give-up-btn {
+            margin-top: 10px;
+            margin-bottom: 20px;
+            background: white;
+            border: 2px solid black;
+            font-family: inherit;
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 5px 15px;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 #000;
+            font-size: 0.9rem;
+        }
+
+        #give-up-btn:active {
+            box-shadow: none;
+            transform: translate(2px, 2px);
+            background: black;
+            color: white;
+        }
     </style>
     <script src="theme.js"></script>
 </head>
+
 <body>
 
     <div class="window">
@@ -252,19 +283,21 @@
             <div class="title-stripes"></div>
             <!-- Home Button -->
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            
+
             <span class="title-text">Anagrams</span>
             <div id="score-display">Score: 0</div>
         </div>
 
         <div class="window-content">
             <div id="source-word">LOADING</div>
-            
+
             <div id="input-row">
                 <!-- Slots injected here -->
             </div>
 
             <div id="message-area"></div>
+
+            <button id="give-up-btn" onclick="giveUp()">Give Up</button>
 
             <div id="keyboard">
                 <div class="key-row" id="row1"></div>
@@ -298,6 +331,7 @@
         let scrambled = "";
         let userInput = [];
         let score = 0;
+        let isProcessing = false; // Prevent multiple clicks
 
         // --- INIT ---
         window.onload = () => {
@@ -309,9 +343,10 @@
         // --- WALLPAPER LOADER ---
 
         function newLevel() {
+            isProcessing = false;
             // 1. Pick Word
             currentWord = WORDS[Math.floor(Math.random() * WORDS.length)];
-            
+
             // 2. Scramble
             scrambled = shuffleWord(currentWord);
             while (scrambled === currentWord) {
@@ -321,7 +356,9 @@
             // 3. Reset State
             userInput = [];
             document.getElementById('message-area').innerText = "";
-            
+            document.getElementById('give-up-btn').disabled = false;
+            document.getElementById('give-up-btn').style.opacity = "1";
+
             // 4. Render
             renderGame();
         }
@@ -343,7 +380,7 @@
             // Render Input Slots
             const inputRow = document.getElementById('input-row');
             inputRow.innerHTML = '';
-            
+
             for (let i = 0; i < currentWord.length; i++) {
                 const slot = document.createElement('div');
                 slot.className = 'slot';
@@ -361,18 +398,18 @@
                 "ASDFGHJKL".split(""),
                 ["ENTER", ..."ZXCVBNM".split(""), "⌫"]
             ];
-            
+
             const keyboardEl = document.getElementById('keyboard');
             keyboardEl.innerHTML = '<div class="key-row" id="row1"></div><div class="key-row" id="row2"></div><div class="key-row" id="row3"></div>';
 
             rows.forEach((keys, i) => {
-                const rowEl = document.getElementById(`row${i+1}`);
+                const rowEl = document.getElementById(`row${i + 1}`);
                 keys.forEach(key => {
                     const btn = document.createElement('div');
                     btn.innerText = key;
                     btn.className = 'key';
                     if (key.length > 1) btn.classList.add('action');
-                    
+
                     btn.onclick = () => handleInput(key);
                     rowEl.appendChild(btn);
                 });
@@ -381,6 +418,8 @@
 
         // --- LOGIC ---
         function handleInput(key) {
+            if (isProcessing) return; // Block input during reveal
+
             if (key === 'ENTER') {
                 checkWin();
             } else if (key === '⌫') {
@@ -396,17 +435,18 @@
 
         function checkWin() {
             const guess = userInput.join("");
-            
+
             if (guess.length !== currentWord.length) {
                 showMessage("Too short");
                 return;
             }
 
             if (guess === currentWord) {
+                isProcessing = true;
                 score += 10;
                 document.getElementById('score-display').innerText = "Score: " + score;
                 showMessage("Correct!");
-                
+
                 // Invert screen effect (Window only)
                 const content = document.querySelector('.window');
                 content.style.filter = "invert(1)";
@@ -419,6 +459,26 @@
                 userInput = [];
                 renderGame();
             }
+        }
+
+        function giveUp() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            // Show correct answer
+            userInput = currentWord.split('');
+            renderGame();
+
+            showMessage("Answer: " + currentWord);
+
+            const btn = document.getElementById('give-up-btn');
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+
+            // Wait then new level
+            setTimeout(() => {
+                newLevel();
+            }, 1000);
         }
 
         function showMessage(msg) {
@@ -443,7 +503,7 @@
             return '';
         }
 
-        
+
         loadWallpaper();
 
         function loadWallpaper() {
@@ -457,6 +517,8 @@
             }
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
+
 </html>
