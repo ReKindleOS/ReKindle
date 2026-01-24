@@ -409,6 +409,7 @@
             </div>
             <div class="toolbar-right">
                 <button class="sys-btn" id="edit-btn" onclick="toggleEditMode()">Edit</button>
+                <button class="sys-btn" onclick="exportMindmap()">Export</button>
                 <button class="sys-btn" onclick="resetView()">Center</button>
             </div>
         </div>
@@ -1401,6 +1402,94 @@
 
             render();
             saveData();
+        }
+
+        function exportMindmap() {
+            if (nodes.length === 0) return;
+            const svgContent = generateSVG();
+            const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            let title = "mindmap";
+            const titleElem = document.getElementById('mindmap-title');
+            if (titleElem && titleElem.innerText) title = titleElem.innerText;
+
+            link.download = `${title}.svg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function generateSVG() {
+            // 1. Calculate Bounds
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            nodes.forEach(node => {
+                const w = node.width || 120;
+                const h = node.height || 40;
+                minX = Math.min(minX, node.x - w / 2);
+                minY = Math.min(minY, node.y - h / 2);
+                maxX = Math.max(maxX, node.x + w / 2);
+                maxY = Math.max(maxY, node.y + h / 2);
+            });
+
+            const padding = 50;
+            const width = (maxX - minX) + (padding * 2);
+            const height = (maxY - minY) + (padding * 2);
+            const viewboxMinX = minX - padding;
+            const viewboxMinY = minY - padding;
+
+            // 2. Build SVG String
+            let svg = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+            <svg width="${width}" height="${height}" viewBox="${viewboxMinX} ${viewboxMinY} ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+                <style>
+                    text { font-family: "Geneva", "Verdana", sans-serif; font-weight: bold; font-size: 14px; }
+                    .node-rect { fill: white; stroke: black; stroke-width: 2px; }
+                    .link { stroke: #999; stroke-width: 2px; }
+                </style>
+                <rect x="${viewboxMinX}" y="${viewboxMinY}" width="${width}" height="${height}" fill="#fafafa"/>
+            `;
+
+            // 3. Draw Links
+            links.forEach(link => {
+                const fromNode = nodes.find(n => n.id === link.from);
+                const toNode = nodes.find(n => n.id === link.to);
+                if (fromNode && toNode) {
+                    svg += `<line x1="${fromNode.x}" y1="${fromNode.y}" x2="${toNode.x}" y2="${toNode.y}" class="link" />\n`;
+                }
+            });
+
+            // 4. Draw Nodes
+            nodes.forEach(node => {
+                const cx = node.x;
+                const cy = node.y;
+                const w = node.width || 120;
+                const h = node.height || 40;
+                const x = cx - w / 2;
+                const y = cy - h / 2;
+
+                svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" class="node-rect" />\n`;
+
+                // Recalculate text layout to ensure it matches
+                // We assume ctx is available and configured from the main script
+                ctx.font = 'bold 14px Geneva, Verdana, sans-serif';
+                const lines = getWrappedLines(ctx, node.text, 200); // 200 is hardcoded maxWidth in render()
+                const lineHeight = 18;
+
+                // Calculate starting Y for text to be vertically centered
+                const textBlockHeight = lines.length * lineHeight;
+                const startTextY = cy - (textBlockHeight / 2) + (lineHeight / 2) + 1; // +1 to fine tune vertical alignment for SVG
+
+                lines.forEach((line, i) => {
+                    // Escape XML characters in text
+                    const escapedLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    svg += `<text x="${cx}" y="${startTextY + (i * lineHeight)}" text-anchor="middle" dominant-baseline="middle">${escapedLine}</text>\n`;
+                });
+            });
+
+            svg += `</svg>`;
+            return svg;
         }
 
 
