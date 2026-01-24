@@ -22,6 +22,16 @@ const APPS = [
         icon: '<rect x="4" y="6" width="24" height="20"/><line x1="8" y1="6" x2="8" y2="26"/><rect x="12" y="10" width="12" height="10" fill="none" stroke="black"/><circle cx="18" cy="14" r="2.5" fill="black"/><path d="M14 20 Q18 24 22 20" fill="black"/>'
     },
     {
+        id: 'mail',
+        name: 'Gmail',
+        cat: 'essentials',
+        featured: true,
+        featuredOrder: 3,
+        newBadge: true,
+        desc: 'Read & send emails',
+        icon: '<rect x="4" y="8" width="24" height="16" rx="2"/><path d="M4 10 L16 18 L28 10" fill="none"/>'
+    },
+    {
         id: 'newspaper',
         name: 'News',
         cat: 'essentials',
@@ -252,7 +262,7 @@ const APPS = [
         name: 'RSS Reader',
         cat: 'lifestyle',
         featured: true,
-        featuredOrder: 3,
+        featuredOrder: 2,
         desc: 'Stay in the know',
         icon: '<circle cx="6" cy="26" r="3" fill="black"/><path d="M6 18 A 8 8 0 0 1 14 26 M6 10 A 16 16 0 0 1 22 26" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>'
     },
@@ -261,8 +271,6 @@ const APPS = [
         name: 'Mindmap',
         icon: '<path d="M16 4a4 4 0 100 8a4 4 0 100-8zM8 20a4 4 0 100 8a4 4 0 100-8zM24 20a4 4 0 100 8a4 4 0 100-8zM16 8v12M16 20L8 24M16 20L24 24"/>',
         cat: 'tools',
-        featured: true,
-        featuredOrder: 6,
         desc: 'Visually organize your ideas.'
     },
     {

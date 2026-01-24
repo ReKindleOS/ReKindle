@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail</title>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --highlight: #000000;
+            --highlight-text: #ffffff;
+        }
+
+        body {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Geneva", "Verdana", sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px black;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .title-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .icon-contract {
+            display: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        /* TOOLBAR */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 2px solid black;
+            background: #f5f5f5;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+        }
+
+        .toolbar-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .toolbar-btn.primary {
+            background: black;
+            color: white;
+        }
+
+        .toolbar-btn.primary:active {
+            background: white;
+            color: black;
+        }
+
+        .folder-select {
+            padding: 4px 8px;
+            font-size: 0.85rem;
+            border: 2px solid black;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+        }
+
+        .toolbar-spacer {
+            flex-grow: 1;
+        }
+
+        .content-area {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .email-list-pane {
+            width: 40%;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .search-box {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            border: 2px solid black;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        #list-container {
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .email-item {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ccc;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .email-item:hover {
+            background: #f5f5f5;
+        }
+
+        .email-item.selected {
+            background-color: var(--highlight);
+            color: var(--highlight-text);
+        }
+
+        .email-item.unread {
+            font-weight: bold;
+        }
+
+        .email-sender {
+            font-weight: bold;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .email-subject {
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .email-snippet {
+            font-size: 0.8rem;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .email-item.selected .email-snippet {
+            color: #ccc;
+        }
+
+        .email-date {
+            font-size: 0.75rem;
+            color: #888;
+            float: right;
+        }
+
+        .email-item.selected .email-date {
+            color: #ccc;
+        }
+
+        .details-pane {
+            width: 60%;
+            padding: 20px;
+            overflow-y: auto;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .email-header {
+            border-bottom: 4px double black;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .email-title {
+            font-size: 1.4rem;
+            font-weight: 900;
+            margin: 0 0 10px 0;
+        }
+
+        .email-meta {
+            font-size: 0.85rem;
+            color: #555;
+        }
+
+        .email-meta span {
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        .email-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .email-body {
+            font-size: 1rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #auth-overlay {
+            position: absolute;
+            top: 35px;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 35px);
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .sys-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: white;
+            color: black;
+            border: 2px solid black;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .load-more-btn {
+            width: 100%;
+            padding: 10px;
+            background: #eee;
+            border: none;
+            border-top: 1px solid #ccc;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+
+        .load-more-btn:hover {
+            background: #ddd;
+        }
+
+        /* COMPOSE MODAL */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-box h3 {
+            margin: 0 0 15px 0;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 4px;
+            font-size: 0.85rem;
+        }
+
+        .modal-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: flex-end;
+        }
+
+        /* CONFIRM MODAL */
+        .confirm-modal {
+            text-align: center;
+        }
+
+        .confirm-modal p {
+            margin: 15px 0;
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Gmail</span>
+            <div class="title-controls">
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <button class="toolbar-btn primary" onclick="openComposeModal()">✎ Compose</button>
+            <select class="folder-select" id="folder-select" onchange="changeFolder()">
+                <option value="INBOX">Inbox</option>
+                <option value="SENT">Sent</option>
+                <option value="DRAFT">Drafts</option>
+                <option value="STARRED">Starred</option>
+                <option value="ALL">All Mail (Archive)</option>
+                <option value="SPAM">Spam</option>
+                <option value="TRASH">Trash</option>
+                <option value="IMPORTANT">Important</option>
+            </select>
+            <div class="toolbar-spacer"></div>
+            <button class="toolbar-btn" onclick="loadEmails()">↻ Refresh</button>
+        </div>
+
+        <div class="content-area">
+            <div class="email-list-pane">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Search emails..." onkeyup="filterEmails()">
+                </div>
+                <div id="list-container"></div>
+            </div>
+            <div class="details-pane" id="details-pane">
+                <div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Select an email to read.
+                </div>
+            </div>
+        </div>
+
+        <div id="status-bar">Loading...</div>
+
+        <div id="auth-overlay">
+            <h2 style="margin-bottom:10px;">Gmail</h2>
+            <p style="margin-bottom:20px;">Connect to access your inbox.</p>
+            <button class="sys-btn" onclick="oauthSignIn()">Connect</button>
+        </div>
+    </div>
+
+    <!-- COMPOSE MODAL -->
+    <div class="modal-overlay" id="compose-modal">
+        <div class="modal-box">
+            <h3>Compose Email</h3>
+            <div class="form-group">
+                <label>To:</label>
+                <input type="text" id="compose-to" placeholder="recipient@example.com">
+            </div>
+            <div class="form-group">
+                <label>Subject:</label>
+                <input type="text" id="compose-subject" placeholder="Subject">
+            </div>
+            <div class="form-group">
+                <label>Message:</label>
+                <textarea id="compose-body" placeholder="Write your message..." style="height: 150px;"></textarea>
+            </div>
+            <div class="modal-btns">
+                <button class="toolbar-btn" onclick="closeComposeModal()">Cancel</button>
+                <button class="toolbar-btn primary" onclick="sendEmail()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRM DELETE MODAL -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal-box confirm-modal">
+            <h3 id="confirm-title">Confirm</h3>
+            <p id="confirm-message">Are you sure?</p>
+            <div class="modal-btns" style="justify-content: center;">
+                <button class="toolbar-btn" onclick="closeConfirmModal()">Cancel</button>
+                <button class="toolbar-btn primary" id="confirm-btn" onclick="">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+
+    <script>
+        // Google Config - Full access for send/modify
+        const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send';
+        const DISCOVERY_DOC = 'https://gmail.googleapis.com/$discovery/rest?version=v1';
+
+        let emails = [];
+        let allEmails = [];
+        let nextPageToken = null;
+        let currentFolder = 'INBOX';
+        let currentEmail = null;
+        let userEmail = '';
+
+        window.onload = function () {
+            loadWallpaper();
+            initGmailMode();
+        };
+
+        function initGmailMode() {
+            gapi.load('client', async () => {
+                try {
+                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+
+                    const fragmentString = location.hash.substring(1);
+                    const params = new URLSearchParams(fragmentString);
+                    const newAccessToken = params.get('access_token');
+
+                    if (newAccessToken) {
+                        localStorage.setItem('google_gmail_token', newAccessToken);
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        gapi.client.setToken({ access_token: newAccessToken });
+                        document.getElementById('auth-overlay').style.display = 'none';
+                        getUserEmail();
+                        loadEmails();
+                    } else {
+                        const token = localStorage.getItem('google_gmail_token');
+                        if (token) {
+                            gapi.client.setToken({ access_token: token });
+                            document.getElementById('auth-overlay').style.display = 'none';
+                            getUserEmail();
+                            loadEmails();
+                        } else {
+                            // Auto-login logic: check for error to avoid loops, else redirect
+                            if (!location.hash.includes('error=')) {
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                                document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
+                                document.querySelector('#auth-overlay p').innerText = "Connecting to Gmail";
+                                oauthSignIn();
+                            } else {
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to initialize Gmail API:', e);
+                    document.getElementById('status-bar').innerText = 'Error loading Gmail API';
+                }
+            });
+        }
+
+        async function getUserEmail() {
+            try {
+                const res = await gapi.client.gmail.users.getProfile({ userId: 'me' });
+                userEmail = res.result.emailAddress;
+            } catch (e) {
+                console.error('Error getting user email:', e);
+            }
+        }
+
+        function oauthSignIn() {
+            const endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            const form = document.createElement('form');
+            form.setAttribute('method', 'GET');
+            form.setAttribute('action', endpoint);
+            const params = {
+                'client_id': CLIENT_ID,
+                'redirect_uri': window.location.href.split('#')[0],
+                'response_type': 'token',
+                'scope': SCOPES
+            };
+            for (var p in params) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'hidden');
+                input.setAttribute('name', p);
+                input.setAttribute('value', params[p]);
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function changeFolder() {
+            currentFolder = document.getElementById('folder-select').value;
+            allEmails = [];
+            nextPageToken = null;
+            loadEmails();
+        }
+
+        async function loadEmails(pageToken = null) {
+            try {
+                document.getElementById('status-bar').innerText = 'Loading emails...';
+
+                const params = {
+                    'userId': 'me',
+                    'maxResults': 25
+                };
+
+                // "ALL" means All Mail - don't filter by label
+                // Other folders use their specific label
+                if (currentFolder !== 'ALL') {
+                    params.labelIds = [currentFolder];
+                }
+
+                if (pageToken) {
+                    params.pageToken = pageToken;
+                }
+
+                const res = await gapi.client.gmail.users.messages.list(params);
+
+                nextPageToken = res.result.nextPageToken || null;
+                const messages = res.result.messages || [];
+
+                if (messages.length === 0 && !pageToken) {
+                    document.getElementById('list-container').innerHTML =
+                        '<div style="padding:20px;text-align:center;">No emails found.</div>';
+                    document.getElementById('status-bar').innerText = currentFolder + ' empty';
+                    return;
+                }
+
+                // Fetch details for each message
+                const emailDetails = await Promise.all(
+                    messages.map(msg => gapi.client.gmail.users.messages.get({
+                        'userId': 'me',
+                        'id': msg.id,
+                        'format': 'metadata',
+                        'metadataHeaders': ['From', 'To', 'Subject', 'Date']
+                    }))
+                );
+
+                const newEmails = emailDetails.map(response => {
+                    const msg = response.result;
+                    const headers = msg.payload.headers;
+                    const getHeader = (name) => {
+                        const h = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
+                        return h ? h.value : '';
+                    };
+
+                    return {
+                        id: msg.id,
+                        threadId: msg.threadId,
+                        from: getHeader('From'),
+                        to: getHeader('To'),
+                        subject: getHeader('Subject') || '(No Subject)',
+                        date: getHeader('Date'),
+                        snippet: msg.snippet,
+                        labelIds: msg.labelIds || [],
+                        unread: msg.labelIds && msg.labelIds.includes('UNREAD')
+                    };
+                });
+
+                if (pageToken) {
+                    allEmails = [...allEmails, ...newEmails];
+                } else {
+                    allEmails = newEmails;
+                }
+
+                emails = allEmails;
+                renderList(emails);
+                document.getElementById('status-bar').innerText = `${currentFolder}: ${allEmails.length} emails`;
+
+            } catch (e) {
+                console.error('Error loading emails:', e);
+                if (e.status === 401) {
+                    localStorage.removeItem('google_gmail_token');
+                    oauthSignIn();
+                } else {
+                    document.getElementById('status-bar').innerText = 'Error loading emails';
+                }
+            }
+        }
+
+        function renderList(list) {
+            const container = document.getElementById('list-container');
+            container.innerHTML = '';
+
+            if (!list || list.length === 0) {
+                container.innerHTML = '<div style="padding:20px;text-align:center;">No emails.</div>';
+                return;
+            }
+
+            list.forEach(email => {
+                const div = document.createElement('div');
+                div.className = 'email-item' + (email.unread ? ' unread' : '');
+
+                // For Sent folder, show "To" instead of "From"
+                const displayPerson = currentFolder === 'SENT' ? email.to : email.from;
+
+                div.innerHTML = `
+                    <span class="email-date">${formatDate(email.date)}</span>
+                    <div class="email-sender">${escapeHtml(extractName(displayPerson))}</div>
+                    <div class="email-subject">${escapeHtml(email.subject)}</div>
+                    <div class="email-snippet">${escapeHtml(email.snippet)}</div>
+                `;
+                div.onclick = () => showEmailDetails(email, div);
+                container.appendChild(div);
+            });
+
+            if (nextPageToken) {
+                const loadMoreBtn = document.createElement('button');
+                loadMoreBtn.className = 'load-more-btn';
+                loadMoreBtn.innerText = 'Load More...';
+                loadMoreBtn.onclick = () => loadEmails(nextPageToken);
+                container.appendChild(loadMoreBtn);
+            }
+        }
+
+        async function showEmailDetails(email, el) {
+            document.querySelectorAll('.email-item').forEach(e => e.classList.remove('selected'));
+            el.classList.add('selected');
+            currentEmail = email;
+
+            const pane = document.getElementById('details-pane');
+            pane.innerHTML = '<div style="text-align:center; padding:20px;">Loading...</div>';
+
+            try {
+                const res = await gapi.client.gmail.users.messages.get({
+                    'userId': 'me',
+                    'id': email.id,
+                    'format': 'full'
+                });
+
+                const msg = res.result;
+                email.labelIds = msg.labelIds || [];
+                const body = getEmailBody(msg.payload);
+                const isUnread = email.labelIds.includes('UNREAD');
+
+                pane.innerHTML = `
+                    <div class="email-header">
+                        <h2 class="email-title">${escapeHtml(email.subject)}</h2>
+                        <div class="email-meta">
+                            <span><strong>From:</strong> ${escapeHtml(email.from)}</span>
+                            <span><strong>To:</strong> ${escapeHtml(email.to)}</span>
+                            <span><strong>Date:</strong> ${email.date}</span>
+                        </div>
+                    </div>
+                    <div class="email-actions">
+                        <button class="toolbar-btn" onclick="replyToEmail()">↩ Reply</button>
+                        <button class="toolbar-btn" onclick="toggleReadStatus()">${isUnread ? '✓ Mark Read' : '○ Mark Unread'}</button>
+                        <button class="toolbar-btn" onclick="archiveEmail()">📥 Archive</button>
+                        <button class="toolbar-btn" onclick="confirmDeleteEmail()" style="color: red;">🗑 Delete</button>
+                    </div>
+                    <div class="email-body">${body}</div>
+                `;
+            } catch (e) {
+                console.error('Error loading email:', e);
+                pane.innerHTML = '<div style="text-align:center; padding:20px; color:red;">Error loading email.</div>';
+            }
+        }
+
+        // --- EMAIL ACTIONS ---
+
+        async function toggleReadStatus() {
+            if (!currentEmail) return;
+
+            const isUnread = currentEmail.labelIds.includes('UNREAD');
+
+            try {
+                document.getElementById('status-bar').innerText = 'Updating...';
+
+                if (isUnread) {
+                    await gapi.client.gmail.users.messages.modify({
+                        userId: 'me',
+                        id: currentEmail.id,
+                        resource: { removeLabelIds: ['UNREAD'] }
+                    });
+                    currentEmail.labelIds = currentEmail.labelIds.filter(l => l !== 'UNREAD');
+                    currentEmail.unread = false;
+                } else {
+                    await gapi.client.gmail.users.messages.modify({
+                        userId: 'me',
+                        id: currentEmail.id,
+                        resource: { addLabelIds: ['UNREAD'] }
+                    });
+                    currentEmail.labelIds.push('UNREAD');
+                    currentEmail.unread = true;
+                }
+
+                document.getElementById('status-bar').innerText = isUnread ? 'Marked as read' : 'Marked as unread';
+
+                // Refresh the email view
+                const selectedEl = document.querySelector('.email-item.selected');
+                if (selectedEl) {
+                    selectedEl.classList.toggle('unread', currentEmail.unread);
+                    showEmailDetails(currentEmail, selectedEl);
+                }
+            } catch (e) {
+                console.error('Error updating read status:', e);
+                document.getElementById('status-bar').innerText = 'Error updating email';
+            }
+        }
+
+        async function archiveEmail() {
+            if (!currentEmail) return;
+
+            try {
+                document.getElementById('status-bar').innerText = 'Archiving...';
+
+                await gapi.client.gmail.users.messages.modify({
+                    userId: 'me',
+                    id: currentEmail.id,
+                    resource: { removeLabelIds: ['INBOX'] }
+                });
+
+                document.getElementById('status-bar').innerText = 'Email archived';
+
+                // Remove from list and reload
+                allEmails = allEmails.filter(e => e.id !== currentEmail.id);
+                emails = allEmails;
+                renderList(emails);
+                document.getElementById('details-pane').innerHTML =
+                    '<div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Email archived. Select another email.</div>';
+                currentEmail = null;
+            } catch (e) {
+                console.error('Error archiving email:', e);
+                document.getElementById('status-bar').innerText = 'Error archiving email';
+            }
+        }
+
+        function confirmDeleteEmail() {
+            if (!currentEmail) return;
+
+            document.getElementById('confirm-title').innerText = 'Delete Email?';
+            document.getElementById('confirm-message').innerText = 'This will move the email to Trash.';
+            document.getElementById('confirm-btn').onclick = deleteEmail;
+            document.getElementById('confirm-modal').style.display = 'flex';
+        }
+
+        async function deleteEmail() {
+            closeConfirmModal();
+            if (!currentEmail) return;
+
+            try {
+                document.getElementById('status-bar').innerText = 'Deleting...';
+
+                await gapi.client.gmail.users.messages.trash({
+                    userId: 'me',
+                    id: currentEmail.id
+                });
+
+                document.getElementById('status-bar').innerText = 'Email deleted';
+
+                allEmails = allEmails.filter(e => e.id !== currentEmail.id);
+                emails = allEmails;
+                renderList(emails);
+                document.getElementById('details-pane').innerHTML =
+                    '<div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Email deleted. Select another email.</div>';
+                currentEmail = null;
+            } catch (e) {
+                console.error('Error deleting email:', e);
+                document.getElementById('status-bar').innerText = 'Error deleting email';
+            }
+        }
+
+        // --- COMPOSE ---
+
+        function openComposeModal(to = '', subject = '', body = '') {
+            document.getElementById('compose-to').value = to;
+            document.getElementById('compose-subject').value = subject;
+            document.getElementById('compose-body').value = body;
+            document.getElementById('compose-modal').style.display = 'flex';
+        }
+
+        function closeComposeModal() {
+            document.getElementById('compose-modal').style.display = 'none';
+        }
+
+        function replyToEmail() {
+            if (!currentEmail) return;
+
+            const replyTo = currentEmail.from;
+            const subject = currentEmail.subject.startsWith('Re:') ? currentEmail.subject : 'Re: ' + currentEmail.subject;
+            const body = '\n\n--- Original Message ---\n' + currentEmail.snippet;
+
+            openComposeModal(replyTo, subject, body);
+        }
+
+        async function sendEmail() {
+            const to = document.getElementById('compose-to').value.trim();
+            const subject = document.getElementById('compose-subject').value.trim();
+            const body = document.getElementById('compose-body').value;
+
+            if (!to) {
+                alert('Please enter a recipient email address.');
+                return;
+            }
+
+            try {
+                document.getElementById('status-bar').innerText = 'Sending...';
+
+                // Build RFC 2822 email
+                const email = [
+                    'Content-Type: text/plain; charset="UTF-8"',
+                    'MIME-Version: 1.0',
+                    'Content-Transfer-Encoding: 7bit',
+                    `To: ${to}`,
+                    `From: ${userEmail}`,
+                    `Subject: ${subject}`,
+                    '',
+                    body
+                ].join('\r\n');
+
+                // Base64 URL-safe encode
+                const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, '');
+
+                await gapi.client.gmail.users.messages.send({
+                    userId: 'me',
+                    resource: { raw: encodedEmail }
+                });
+
+                document.getElementById('status-bar').innerText = 'Email sent!';
+                closeComposeModal();
+
+            } catch (e) {
+                console.error('Error sending email:', e);
+                document.getElementById('status-bar').innerText = 'Error sending email';
+                alert('Failed to send email. Please try again.');
+            }
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+        }
+
+        // --- HELPERS ---
+
+        function getEmailBody(payload) {
+            let body = '';
+
+            if (payload.body && payload.body.data) {
+                body = decodeBase64(payload.body.data);
+            } else if (payload.parts) {
+                const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+                const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+
+                if (textPart && textPart.body && textPart.body.data) {
+                    body = decodeBase64(textPart.body.data);
+                } else if (htmlPart && htmlPart.body && htmlPart.body.data) {
+                    body = htmlToText(decodeBase64(htmlPart.body.data));
+                } else {
+                    for (const part of payload.parts) {
+                        if (part.parts) {
+                            const nestedText = part.parts.find(p => p.mimeType === 'text/plain');
+                            if (nestedText && nestedText.body && nestedText.body.data) {
+                                body = decodeBase64(nestedText.body.data);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return escapeHtml(body);
+        }
+
+        function decodeBase64(data) {
+            try {
+                const decoded = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
+                return decodeURIComponent(escape(decoded));
+            } catch (e) {
+                return data;
+            }
+        }
+
+        function htmlToText(html) {
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            temp.querySelectorAll('script, style').forEach(el => el.remove());
+            return temp.textContent || temp.innerText || '';
+        }
+
+        function filterEmails() {
+            const q = document.getElementById('search-input').value.toLowerCase();
+            const filtered = allEmails.filter(e => {
+                return e.from.toLowerCase().includes(q) ||
+                    e.subject.toLowerCase().includes(q) ||
+                    e.snippet.toLowerCase().includes(q);
+            });
+            emails = filtered;
+            renderList(filtered);
+        }
+
+        function formatDate(dateStr) {
+            try {
+                const date = new Date(dateStr);
+                const now = new Date();
+                const isToday = date.toDateString() === now.toDateString();
+
+                if (isToday) {
+                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } else {
+                    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                }
+            } catch (e) {
+                return dateStr;
+            }
+        }
+
+        function extractName(fromStr) {
+            if (!fromStr) return '';
+            const match = fromStr.match(/^(.+?)\s*<.+>$/);
+            if (match) {
+                return match[1].replace(/"/g, '');
+            }
+            return fromStr;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function toggleFullScreen() {
+            document.querySelector('.window').classList.toggle('fullscreen');
+        }
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+    </script>
+
+</body>
+
+</html>
