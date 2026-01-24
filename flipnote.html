@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Animate</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --active-color: #000000;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            /* Default Background */
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            /* Restrict width for that handheld feel */
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 10px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* CLOSE BUTTON (HOME) */
+        .close-box {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TOOLBAR */
+        .toolbar {
+            display: flex;
+            padding: 4px;
+            /* Reduced from 8 to account for button margins */
+            border-bottom: 2px solid black;
+            background: #f0f0f0;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .tool-group {
+            display: flex;
+            border-right: 2px solid #ccc;
+            padding-right: 4px;
+            margin-right: 4px;
+        }
+
+        .tool-group:last-child {
+            border-right: none;
+            margin-right: 0;
+            padding-right: 0;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+            min-width: 24px;
+            text-align: center;
+            margin: 4px;
+            /* Added margin for spacing */
+        }
+
+        .sys-btn:active,
+        .sys-btn.active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        .color-btn {
+            width: 20px;
+            height: 20px;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+            cursor: pointer;
+        }
+
+        .color-btn.active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            border: 2px solid black;
+            /* Ensure border stays */
+            outline: 2px solid #aaa;
+            /* Highlight selection */
+        }
+
+
+        /* WINDOW CONTENT / CANVAS CONTAINER */
+        .window-content {
+            flex-grow: 1;
+            position: relative;
+            background-color: #ffffff;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image:
+                linear-gradient(45deg, #ccc 25%, transparent 25%),
+                linear-gradient(-45deg, #ccc 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #ccc 75%),
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        canvas {
+            display: block;
+            background: white;
+            border: 2px solid black;
+            /* FLIPNOTE RESOLUTION: 256x192 */
+            /* We will scale it up with CSS */
+            width: 512px;
+            height: 384px;
+            /* Max width for mobile */
+            max-width: 95%;
+            max-height: 95%;
+            aspect-ratio: 4/3;
+
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+
+            touch-action: none;
+            cursor: crosshair;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        /* FRAME COUNTER */
+        .status-bar {
+            height: 25px;
+            border-top: 2px solid black;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        /* TRANSPORT CONTROLS */
+        .transport {
+            display: flex;
+            align-items: center;
+        }
+
+        .transport * {
+            margin: 0 5px;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            font-size: 0.7rem;
+        }
+
+        .speed-control * {
+            margin: 0 2px;
+        }
+
+        /* Override global scaling - only scale title-bar, not canvas */
+        .window {
+            zoom: 1 !important;
+            transform: none !important;
+        }
+
+        .title-bar {
+            zoom: var(--rekindle-scale, 1);
+        }
+
+        @supports not (zoom: 1) {
+            .title-bar {
+                transform: scale(var(--rekindle-scale, 1));
+                transform-origin: top center;
+            }
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Animate</span>
+            <div style="width:18px;"></div> <!-- Spacer -->
+        </div>
+
+        <!-- Tools -->
+        <div class="toolbar">
+            <div class="tool-group">
+                <button class="sys-btn active" id="tool-pen" onclick="setTool('pen')" title="Pen">Pen</button>
+                <button class="sys-btn" id="tool-eraser" onclick="setTool('eraser')" title="Eraser">Eraser</button>
+            </div>
+
+            <div class="tool-group">
+                <button class="sys-btn" onclick="clearFrame()" title="Clear Frame">Clear</button>
+            </div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="window-content" id="canvas-container">
+            <canvas id="drawing-board" width="256" height="192"></canvas>
+        </div>
+
+        <!-- Timeline / Playback -->
+        <div class="toolbar" style="border-bottom:none; border-top:2px solid black;">
+            <div class="transport">
+                <button class="sys-btn" onclick="prevFrame()">◀</button>
+                <span id="frame-indicator">1 / 1</span>
+                <button class="sys-btn" onclick="nextFrame()">▶</button>
+                <button class="sys-btn" onclick="addFrame()">+</button>
+                <button class="sys-btn" style="color:red;" onclick="deleteFrame()">-</button>
+            </div>
+            <div style="flex-grow:1"></div>
+            <div class="transport">
+                <button class="sys-btn" id="play-btn" onclick="togglePlay()">▶ Play</button>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="speed-control">
+                <span>Speed:</span>
+                <button class="sys-btn" style="padding:2px 6px;" onclick="decreaseFPS()">-</button>
+                <span id="fps-display">6 FPS</span>
+                <button class="sys-btn" style="padding:2px 6px;" onclick="increaseFPS()">+</button>
+            </div>
+            <div id="status-msg">Ready</div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS ---
+        const CANVAS_WIDTH = 256;
+        const CANVAS_HEIGHT = 192;
+
+        // --- STATE ---
+        let frames = []; // Array of ImageData objects
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let fps = 6;
+        let playTimer = null;
+        let onionSkin = true; // Default onion skin on
+
+        let currentTool = 'pen';
+        let currentColor = 'black';
+        let isDrawing = false;
+
+        // --- DOM ELEMENTS ---
+        const canvas = document.getElementById('drawing-board');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const frameIndicator = document.getElementById('frame-indicator');
+        const playBtn = document.getElementById('play-btn');
+        const statusMsg = document.getElementById('status-msg');
+
+        // --- INIT ---
+        window.onload = () => {
+            loadWallpaper();
+
+            // Initialize with one blank frame
+            addFrame();
+            updateUI();
+        };
+
+        // --- DRAWING LOGIC ---
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            // Handle both Mouse and Touch events
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            return {
+                x: Math.floor((clientX - rect.left) * scaleX),
+                y: Math.floor((clientY - rect.top) * scaleY)
+            };
+        }
+
+        function startDrawing(e) {
+            if (isPlaying) return;
+            // Only accept primary pointer (stylus/finger)
+            if (!e.isPrimary) return;
+
+            e.preventDefault(); // Stop scrolling
+            isDrawing = true;
+
+            const pos = getPointerPos(e);
+
+            // Set tool styles
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (currentTool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = 4;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+            }
+
+            ctx.beginPath();
+            // Draw a single dot in case it's just a tap
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+
+            // Reset path to start valid stroke
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault(); // Stop scrolling
+
+            // Coalesced events help catch points between frames for smoother curves
+            // Essential for high-frequency stylus input
+            if (e.getCoalescedEvents) {
+                const events = e.getCoalescedEvents();
+                for (const event of events) {
+                    const pos = getPointerPos(event);
+                    ctx.lineTo(pos.x, pos.y);
+                }
+            } else {
+                const pos = getPointerPos(e);
+                ctx.lineTo(pos.x, pos.y);
+            }
+
+            ctx.stroke();
+
+            // PERFORMANCE: Keeping one path open ensures smoother joints
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            if (e && e.preventDefault) e.preventDefault();
+            isDrawing = false;
+            ctx.closePath();
+            saveCurrentFrame();
+        }
+
+        // Attach Pointer Events (Modern standard, handles Mouse + Touch + Pen)
+        canvas.addEventListener('pointerdown', startDrawing);
+        canvas.addEventListener('pointermove', draw);
+        canvas.addEventListener('pointerup', stopDrawing);
+        canvas.addEventListener('pointerout', stopDrawing);
+        canvas.addEventListener('pointercancel', stopDrawing);
+
+        // --- FRAME MANAGEMENT ---
+        function createBlankFrame() {
+            // Create a temp canvas to generate blank ImageData
+            const temp = document.createElement('canvas');
+            temp.width = CANVAS_WIDTH;
+            temp.height = CANVAS_HEIGHT;
+            const tCtx = temp.getContext('2d');
+            return tCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        function addFrame() {
+            // If we are at the end, append. If in middle, insert after current.
+            // For flipbook style, usually you copy the current frame or add blank?
+            // Let's add blank for now.
+
+            // Save current work before switching/adding
+            if (frames.length > 0) saveCurrentFrame();
+
+            const newFrame = createBlankFrame();
+
+            // Insert after current frame
+            frames.splice(currentFrameIndex + 1, 0, newFrame);
+
+            // Move to new frame
+            if (frames.length > 1) {
+                currentFrameIndex++;
+            }
+
+            renderCanvas();
+            updateUI();
+        }
+
+        function deleteFrame() {
+            if (frames.length <= 1) {
+                clearFrame();
+                return;
+            }
+
+            frames.splice(currentFrameIndex, 1);
+            if (currentFrameIndex >= frames.length) {
+                currentFrameIndex = frames.length - 1;
+            }
+            renderCanvas();
+            updateUI();
+        }
+
+        function nextFrame() {
+            // Save current before moving
+            saveCurrentFrame();
+
+            if (currentFrameIndex < frames.length - 1) {
+                currentFrameIndex++;
+                renderCanvas();
+                updateUI();
+            } else {
+                // Auto-create new frame if at end?
+                // Flipnote behavior: pressing right at end creates new frame?
+                // Let's stick to explicit add for now to avoid accidental creation.
+                statusMsg.textContent = "End of animation";
+                setTimeout(() => statusMsg.textContent = "Ready", 1000);
+            }
+        }
+
+        function prevFrame() {
+            saveCurrentFrame();
+            if (currentFrameIndex > 0) {
+                currentFrameIndex--;
+                renderCanvas();
+                updateUI();
+            }
+        }
+
+        function saveCurrentFrame() {
+            if (frames.length === 0) return;
+            frames[currentFrameIndex] = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        function clearFrame() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            saveCurrentFrame();
+        }
+
+        // --- RENDERING ---
+        function renderCanvas() {
+            // Clear
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Onion Skin (Draw previous frame faintly)
+            if (onionSkin && currentFrameIndex > 0 && !isPlaying) {
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                // Draw prev frame
+                const prev = frames[currentFrameIndex - 1];
+                // PutImageData ignores alpha context, so we must draw it via temp canvas
+                const temp = document.createElement('canvas');
+                temp.width = CANVAS_WIDTH;
+                temp.height = CANVAS_HEIGHT;
+                temp.getContext('2d').putImageData(prev, 0, 0);
+
+                ctx.drawImage(temp, 0, 0);
+                ctx.restore();
+            }
+
+            // Draw current frame
+            if (frames[currentFrameIndex]) {
+                // We can use putImageData but it overwrites onion skin.
+                // We need to draw the current frame ON TOP.
+                // Ideally frames are transparent layers.
+                // But our blank frames are transparent black (0,0,0,0) so it works.
+
+                // However, putImageData wipes the context beneath it (it's a direct pixel set).
+                // So we must use drawImage for composition.
+                const temp = document.createElement('canvas');
+                temp.width = CANVAS_WIDTH;
+                temp.height = CANVAS_HEIGHT;
+                temp.getContext('2d').putImageData(frames[currentFrameIndex], 0, 0);
+
+                ctx.globalAlpha = 1.0;
+                ctx.drawImage(temp, 0, 0);
+            }
+        }
+
+        // --- PLAYBACK ---
+        function togglePlay() {
+            if (isPlaying) {
+                stopPlaying();
+            } else {
+                startPlaying();
+            }
+        }
+
+        function startPlaying() {
+            saveCurrentFrame();
+            isPlaying = true;
+            playBtn.textContent = "■ Stop";
+            playBtn.classList.add('active');
+
+            // Disable tools
+            canvas.style.pointerEvents = 'none';
+
+            playLoop();
+        }
+
+        function stopPlaying() {
+            isPlaying = false;
+            clearTimeout(playTimer);
+            playBtn.textContent = "▶ Play";
+            playBtn.classList.remove('active');
+
+            // Re-enable tools
+            canvas.style.pointerEvents = 'auto';
+
+            // Render current frame with onion skin if applicable
+            renderCanvas();
+        }
+
+        function playLoop() {
+            if (!isPlaying) return;
+
+            // Draw current
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const temp = document.createElement('canvas');
+            temp.width = CANVAS_WIDTH;
+            temp.height = CANVAS_HEIGHT;
+            temp.getContext('2d').putImageData(frames[currentFrameIndex], 0, 0);
+            ctx.drawImage(temp, 0, 0);
+
+            updateUI(); // Move slider/text
+
+            // Advance
+            currentFrameIndex++;
+            if (currentFrameIndex >= frames.length) {
+                currentFrameIndex = 0; // Loop
+            }
+
+            const interval = 1000 / fps;
+            playTimer = setTimeout(playLoop, interval);
+        }
+
+        // --- UI UPDATES ---
+        function updateUI() {
+            frameIndicator.textContent = `${currentFrameIndex + 1} / ${frames.length}`;
+            statusMsg.textContent = `${frames.length} frames`;
+        }
+
+        function updateFPS(val) {
+            fps = Math.max(1, Math.min(30, val));
+            document.getElementById('fps-display').textContent = `${fps} FPS`;
+        }
+
+        function increaseFPS() {
+            updateFPS(fps + 2);
+        }
+
+        function decreaseFPS() {
+            updateFPS(fps - 2);
+        }
+
+        // --- TOOLS ---
+        function setTool(tool) {
+            currentTool = tool;
+
+            document.getElementById('tool-pen').classList.remove('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+
+            document.getElementById(`tool-${tool}`).classList.add('active');
+        }
+
+
+
+        function loadWallpaper() {
+            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            if (wallpaperImg) {
+                document.body.style.backgroundImage = wallpaperImg;
+            }
+            if (wallpaperSize) {
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+        }
+
+    </script>
+</body>
+
+</html>
