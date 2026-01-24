@@ -414,6 +414,7 @@
 
             <div class="controls" id="main-controls">
                 <button class="sys-btn" onclick="openAddDeckModal()">+ Deck</button>
+                <button class="sys-btn" onclick="openImportModal()">Import</button>
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
                         stroke-linecap="square" stroke-linejoin="miter">
@@ -497,6 +498,20 @@
             <p id="delete-msg">Are you sure?</p>
             <div class="modal-btns">
                 <button class="sys-btn" onclick="confirmDelete()">Delete</button>
+                <button class="sys-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- IMPORT MODAL -->
+        <div class="modal-box" id="modal-import" style="display:none; width: 400px;">
+            <h3>Import CSV</h3>
+            <input type="text" id="import-deck-name" placeholder="Deck Name (New or Existing)" list="deck-list-options">
+            <datalist id="deck-list-options"></datalist>
+            <input type="file" id="import-file" accept=".csv" style="border: 1px solid #ccc; padding: 5px;">
+            <div style="font-size:0.75rem; color:#666; margin-bottom:10px; margin-top:10px;">Format: Front,
+                Back<br>Quote commas: "Front, with comma", Back</div>
+            <div class="modal-btns">
+                <button class="sys-btn" onclick="importFlashcards()">Import</button>
                 <button class="sys-btn" onclick="closeModal()">Cancel</button>
             </div>
         </div>
@@ -616,6 +631,134 @@
             document.getElementById('modal-delete').style.display = 'none';
             document.getElementById('new-deck-name').value = '';
             document.getElementById('new-deck-name').focus();
+        }
+
+        function openImportModal() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-deck').style.display = 'none';
+            document.getElementById('modal-card').style.display = 'none';
+            document.getElementById('modal-delete').style.display = 'none';
+            document.getElementById('modal-import').style.display = 'block';
+
+            // Populate datalist
+            const datalist = document.getElementById('deck-list-options');
+            datalist.innerHTML = '';
+            decks.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.name;
+                datalist.appendChild(opt);
+            });
+
+            document.getElementById('import-deck-name').value = '';
+            document.getElementById('import-file').value = '';
+            document.getElementById('import-deck-name').focus();
+        }
+
+        function importFlashcards() {
+            const deckName = document.getElementById('import-deck-name').value.trim();
+            const fileInput = document.getElementById('import-file');
+            const file = fileInput.files[0];
+
+            if (!deckName || !file) {
+                alert("Please provide a deck name and select a CSV file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const csvData = e.target.result;
+                processImport(deckName, csvData);
+            };
+            reader.readAsText(file);
+        }
+
+        function processImport(deckName, csvData) {
+            // Find or Create Deck
+            let targetDeck = decks.find(d => d.name === deckName);
+            let targetDeckId;
+
+            const processCards = (deckId) => {
+                const lines = parseCSV(csvData);
+                let count = 0;
+
+                const batchPromises = [];
+
+                lines.forEach(row => {
+                    if (row.length < 2) return;
+                    const front = row[0].trim();
+                    const back = row[1].trim();
+                    if (!front || !back) return;
+
+                    const newCard = {
+                        deckId: deckId,
+                        front: front,
+                        back: back,
+                        nextReview: Date.now(),
+                        interval: 0,
+                        ease: 2.5,
+                        reps: 0
+                    };
+
+                    if (currentUser) {
+                        batchPromises.push(db.collection('users').doc(currentUser.uid).collection('flashcards').add(newCard));
+                    } else {
+                        newCard.id = Date.now().toString() + Math.random().toString().slice(2, 5);
+                        cards.push(newCard);
+                    }
+                    count++;
+                });
+
+                if (currentUser) {
+                    Promise.all(batchPromises).then(() => {
+                        closeModal();
+                        alert(`Imported ${count} cards into "${deckName}"`);
+                    });
+                } else {
+                    saveData();
+                    closeModal();
+                    alert(`Imported ${count} cards into "${deckName}"`);
+                    renderDeckList();
+                }
+            };
+
+            if (!targetDeck) {
+                // Create new deck
+                if (currentUser) {
+                    db.collection('users').doc(currentUser.uid).collection('flashcard_decks').add({ name: deckName })
+                        .then(docRef => {
+                            processCards(docRef.id);
+                        });
+                } else {
+                    targetDeckId = Date.now().toString();
+                    decks.push({ id: targetDeckId, name: deckName });
+                    saveData();
+                    processCards(targetDeckId);
+                }
+            } else {
+                processCards(targetDeck.id);
+            }
+        }
+
+        function parseCSV(str) {
+            const arr = [];
+            let quote = false;
+            let col = 0, row = 0;
+
+            for (let c = 0; c < str.length; c++) {
+                let cc = str[c], nc = str[c + 1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+
+                if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc == '"') { quote = !quote; continue; }
+                if (cc == ',' && !quote) { ++col; continue; }
+                if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+
+                arr[row][col] += cc;
+            }
+            return arr;
         }
 
         function createDeck() {
