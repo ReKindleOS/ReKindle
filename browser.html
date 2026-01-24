@@ -357,6 +357,139 @@
             font-style: italic;
         }
     </style>
+    <style>
+        /* TAB BAR */
+        #tab-bar {
+            display: flex;
+            background: #ccc;
+            border-bottom: 2px solid black;
+            padding: 4px 4px 0 4px;
+            gap: 4px;
+            overflow-x: auto;
+            flex-shrink: 0;
+            height: 32px;
+            align-items: flex-end;
+            /* Align tabs to bottom */
+        }
+
+        .tab {
+            background: #eee;
+            border: 2px solid black;
+            border-bottom: none;
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 80px;
+            max-width: 150px;
+            height: 24px;
+            /* Fixed height for consistency */
+            position: relative;
+            user-select: none;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+        }
+
+        .tab-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+        }
+
+        .tab.active {
+            background: white;
+            height: 26px;
+            /* Slightly taller to overlap border */
+            margin-bottom: -2px;
+            /* Overlap border */
+            z-index: 10;
+            font-weight: bold;
+            padding-bottom: 6px;
+        }
+
+        .tab:hover:not(.active) {
+            background: #ddd;
+        }
+
+        .tab-close {
+            font-weight: bold;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0 4px;
+            border-radius: 2px;
+        }
+
+        .tab-close:hover {
+            background: black;
+            color: white;
+        }
+
+        .new-tab-btn {
+            background: #eee;
+            border: 2px solid black;
+            font-weight: bold;
+            font-size: 1.2rem;
+            line-height: 1;
+            padding: 0 8px;
+            margin-bottom: 2px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
+        }
+
+        .new-tab-btn:hover {
+            background: white;
+        }
+
+        /* Ensure content takes available space */
+        .content-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Individual Tab Content Wrappers */
+        .tab-content {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            background: white;
+            padding: 20px;
+            box-sizing: border-box;
+            display: none;
+            /* Hidden by default */
+            font-family: "Georgia", serif;
+            line-height: 1.6;
+            flex-grow: 1;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .tab-content img {
+            max-width: 100%;
+            height: auto;
+            filter: grayscale(100%);
+        }
+
+        .tab-content a {
+            color: black;
+            text-decoration: underline;
+        }
+
+        .tab-content h1,
+        .tab-content h2 {
+            border-bottom: 1px solid black;
+        }
+    </style>
     <script src="theme.js"></script>
 </head>
 
@@ -379,15 +512,21 @@
             </div>
         </div>
 
+        <!-- TAB BAR -->
+        <div id="tab-bar">
+            <!-- Tabs injected here -->
+            <div class="new-tab-btn" onclick="addTab()">+</div>
+        </div>
+
         <div class="toolbar">
             <button class="nav-btn" id="home-nav-btn" onclick="showStartScreen()">Home</button>
             <input type="text" id="search-input" placeholder="Search..." onkeypress="handleEnter(event)">
             <button class="go-btn" onclick="handleGo()">Go</button>
         </div>
 
-        <div class="content">
+        <div class="content" id="main-content-area">
 
-            <!-- START SCREEN -->
+            <!-- START SCREEN (Shared) -->
             <div id="start-screen">
                 <div class="logo-area">
                     <h1>NetLite</h1>
@@ -403,8 +542,8 @@
                 </div>
             </div>
 
-            <!-- BROWSER VIEW -->
-            <div id="browser-view"></div>
+            <!-- TAB CONTENTS (Dynamic) -->
+            <!-- <div class="tab-content" id="tab-content-ID"></div> -->
 
         </div>
     </div>
@@ -413,10 +552,16 @@
         // --- STATE ---
         let history = JSON.parse(localStorage.getItem('netlite_history')) || [];
 
+        let tabs = [];
+        let activeTabId = null;
+        let tabCounter = 0;
+        const MAX_TABS = 6;
+
         // --- INIT ---
         window.onload = () => {
             loadWallpaper();
             renderHistory();
+            addTab(); // Start with one tab
         };
 
 
@@ -424,7 +569,133 @@
             if (e.key === 'Enter') handleGo();
         }
 
-        // --- LOGIC ---
+        // --- TAB LOGIC ---
+
+        function addTab() {
+            if (tabs.length >= MAX_TABS) {
+                alert("Max tabs reached.");
+                return;
+            }
+
+            const id = `tab-${Date.now()}-${tabCounter++}`;
+            const newTab = {
+                id: id,
+                title: "New Tab",
+                url: null,
+                contentDiv: createContentDiv(id)
+            };
+
+            tabs.push(newTab);
+            renderTabs();
+            switchTab(id);
+        }
+
+        function createContentDiv(id) {
+            const div = document.createElement('div');
+            div.className = 'tab-content';
+            div.id = `content-${id}`;
+            document.getElementById('main-content-area').appendChild(div);
+            return div;
+        }
+
+        function closeTab(e, id) {
+            e.stopPropagation(); // Prevent switching to tab when closing
+
+            if (tabs.length === 1) {
+                // If closing last tab, just reset it to start screen
+                const tab = tabs[0];
+                tab.title = "New Tab";
+                tab.url = null;
+                tab.contentDiv.innerHTML = '';
+                switchTab(tab.id); // Triggers showStartScreen
+                renderTabs();
+                return;
+            }
+
+            const index = tabs.findIndex(t => t.id === id);
+            if (index === -1) return;
+
+            // Remove DOM
+            const tabToRemove = tabs[index];
+            tabToRemove.contentDiv.remove();
+
+            // Remove from array
+            tabs.splice(index, 1);
+
+            // Switch if we closed the active tab
+            if (activeTabId === id) {
+                // Try sending to previous tab, or next if 0
+                const nextTab = tabs[index - 1] || tabs[0];
+                switchTab(nextTab.id);
+            } else {
+                renderTabs();
+            }
+        }
+
+        function switchTab(id) {
+            activeTabId = id;
+            const activeTab = tabs.find(t => t.id === id);
+
+            // Hide all contents
+            document.querySelectorAll('.tab-content').forEach(d => d.style.display = 'none');
+
+            // Show Active Content or Start Screen
+            if (activeTab.url) {
+                document.getElementById('start-screen').style.display = 'none';
+                activeTab.contentDiv.style.display = 'block';
+                document.getElementById('search-input').value = activeTab.url;
+                document.getElementById('home-nav-btn').style.display = 'block'; // Show Home button when browsing
+            } else {
+                // Empty tab -> Start Screen
+                document.getElementById('start-screen').style.display = 'flex';
+                // Hide active content div (it's empty anyway) but ensure logic holds
+                activeTab.contentDiv.style.display = 'none';
+                document.getElementById('search-input').value = '';
+                document.getElementById('home-nav-btn').style.display = 'none';
+            }
+
+            renderTabs();
+        }
+
+        function renderTabs() {
+            const tabBar = document.getElementById('tab-bar');
+            // Keep the "New Tab" button
+            const newBtn = tabBar.querySelector('.new-tab-btn');
+
+            // Clear current tabs (keep button)
+            const existingTabs = tabBar.querySelectorAll('.tab');
+            existingTabs.forEach(t => t.remove());
+
+            tabs.forEach(tab => {
+                const tabEl = document.createElement('div');
+                tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`;
+                tabEl.onclick = () => switchTab(tab.id);
+
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'tab-text';
+                titleSpan.textContent = tab.title;
+
+                const closeBtn = document.createElement('span');
+                closeBtn.className = 'tab-close';
+                closeBtn.textContent = 'x';
+                closeBtn.onclick = (e) => closeTab(e, tab.id);
+
+                tabEl.appendChild(titleSpan);
+                tabEl.appendChild(closeBtn);
+
+                tabBar.insertBefore(tabEl, newBtn);
+            });
+        }
+
+        function updateTabTitle(id, title) {
+            const tab = tabs.find(t => t.id === id);
+            if (tab) {
+                tab.title = title;
+                renderTabs();
+            }
+        }
+
+        // --- BROWSER LOGIC ---
         function handleGo() {
             const input = document.getElementById('search-input').value.trim();
             if (!input) return;
@@ -432,12 +703,16 @@
             let url = "";
             let label = input;
 
+            // Determine Input Type
+            let displayUrl = input; // What we show in the bar/history
+
             // FrogFind Search or URL?
             if (isUrl(input)) {
                 let targetUrl = input;
                 if (!targetUrl.startsWith('http')) targetUrl = 'http://' + targetUrl;
                 // Use FrogFind's read script
                 url = `https://frogfind.com/read.php?a=${encodeURIComponent(targetUrl)}`;
+                displayUrl = targetUrl;
             } else {
                 // Search
                 url = `https://frogfind.com/?q=${encodeURIComponent(input)}`;
@@ -447,22 +722,29 @@
             // PROXY URL (Using CodeTabs - usually more reliable for raw HTML text)
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
 
-            addToHistory(label, input);
-            loadContent(proxyUrl);
+            const currentTab = tabs.find(t => t.id === activeTabId);
+            if (currentTab) {
+                currentTab.url = displayUrl; // Save for input box
+                updateTabTitle(activeTabId, label);
+                addToHistory(label, displayUrl);
+                loadContent(currentTab, proxyUrl);
+            }
         }
 
         function isUrl(string) {
             return string.includes('.') && !string.includes(' ');
         }
 
-        async function loadContent(proxyUrl) {
-            const view = document.getElementById('browser-view');
+        async function loadContent(tab, proxyUrl) {
+            const view = tab.contentDiv;
             const start = document.getElementById('start-screen');
             const homeBtn = document.getElementById('home-nav-btn');
 
             start.style.display = 'none';
             view.style.display = 'block';
             homeBtn.style.display = 'block';
+
+            // Clear content and show loading
             view.innerHTML = '<div class="loading-msg">Fetching simplified content...</div>';
 
             // TIMEOUT HELPER
@@ -507,10 +789,12 @@
 
                                 const nextProxy = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(nextUrl)}`;
 
-                                // Update Search Bar visually? Optional.
-                                // document.getElementById('search-input').value = nextUrl; 
+                                // Update URL State if needed (optional for sub-navigation)
+                                // For now, we just load content in same tab without changing "url" property
+                                // to avoid replacing the clean URL with a messy proxy one.
+                                // Or we could try to resolve it.
 
-                                loadContent(nextProxy);
+                                loadContent(tab, nextProxy);
                             }
                         };
                     });
@@ -534,12 +818,19 @@
             }
         }
 
+
         function showStartScreen() {
-            document.getElementById('browser-view').style.display = 'none';
-            document.getElementById('start-screen').style.display = 'flex';
-            document.getElementById('home-nav-btn').style.display = 'none';
-            document.getElementById('search-input').value = "";
-            renderHistory();
+            // Find current tab
+            const tab = tabs.find(t => t.id === activeTabId);
+            if (!tab) return;
+
+            // Reset tab state
+            tab.url = null;
+            tab.title = "New Tab";
+            tab.contentDiv.innerHTML = ''; // Clear loaded content to save RAM
+
+            updateTabTitle(tab.id, "New Tab");
+            switchTab(tab.id); // Will trigger Start Screen show
         }
 
         // --- HISTORY ---
@@ -548,6 +839,7 @@
             history.unshift({ label, url: urlVal });
             if (history.length > 5) history.pop();
             localStorage.setItem('netlite_history', JSON.stringify(history));
+            renderHistory();
         }
 
         function renderHistory() {
@@ -604,8 +896,6 @@
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
         }
-
-        loadWallpaper();
 
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
