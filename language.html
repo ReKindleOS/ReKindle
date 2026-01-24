@@ -1018,26 +1018,25 @@
                 const response = await fetchRandomSentencePair(id);
                 if (!response || !response.results || response.results.length === 0) throw new Error("No sentences found");
 
-                const q = generateSentenceQuestionFromTatoeba(response.results);
-                if (!q) throw new Error("Could not generate question");
+                const qList = generateSentenceQuestionsFromTatoeba(response.results);
+                if (!qList || qList.length === 0) throw new Error("Could not generate questions");
 
-                questions = [q];
+                questions = qList;
                 qIndex = 0;
                 showQuestion();
             } catch (e) {
                 console.warn("Tatoeba fetch failed, using local bank:", e);
                 // Fallback to local bank
                 const bank = SENTENCE_BANK[id] || SENTENCE_BANK['spa'];
-                const pair = bank[Math.floor(Math.random() * bank.length)];
-                const q = generateSentenceQuestionFromBank(pair, bank);
-                questions = [q];
+                questions = generateSentenceQuestionsFromBank(bank);
                 qIndex = 0;
                 showQuestion();
             }
         }
 
         async function fetchRandomSentencePair(lang) {
-            const tatoebaUrl = `https://tatoeba.org/en/api_v0/search/display?from=eng&to=${lang}&sort=random&limit=10`;
+            // Add cache busting timestamp
+            const tatoebaUrl = `https://tatoeba.org/en/api_v0/search/display?from=eng&to=${lang}&sort=random&limit=15&t=${Date.now()}`;
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(tatoebaUrl)}`;
 
             const res = await fetch(proxyUrl);
@@ -1049,156 +1048,157 @@
             return entry ? entry.name : code;
         }
 
-        function generateSentenceQuestionFromTatoeba(results) {
-            let pair = null;
-            let translated = null;
-
-            for (const res of results) {
-                if (res.translations && res.translations.length > 0) {
-                    for (const tSet of res.translations) {
+        function generateSentenceQuestionsFromTatoeba(results) {
+            const generated = [];
+            
+            results.forEach(pair => {
+                let translated = null;
+                if (pair.translations && pair.translations.length > 0) {
+                    for (const tSet of pair.translations) {
                         if (tSet && tSet.length > 0) {
-                            pair = res;
                             translated = tSet[0].text;
                             break;
                         }
                     }
                 }
-                if (pair) break;
-            }
 
-            if (!pair || !translated) return null;
+                if (!translated) return;
 
-            const english = pair.text;
-            const langName = getLangName(targetLang);
+                const english = pair.text;
+                const langName = getLangName(targetLang);
+                let sentenceWithBlank = "";
+                let correctWord = "";
 
-            let sentenceWithBlank = "";
-            let correctWord = "";
-
-            // Special handling for character-based scripts (Japanese, Chinese)
-            if (targetLang === 'jpn' || targetLang === 'cmn') {
-                const chars = Array.from(translated);
-                // Avoid blanking punctuation
-                const pool = chars.map((c, i) => ({ c, i })).filter(item => item.c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
-                if (pool.length > 0) {
-                    const selectedChar = pool[Math.floor(Math.random() * pool.length)];
-                    correctWord = selectedChar.c;
-                    chars[selectedChar.i] = "___";
-                    sentenceWithBlank = chars.join('');
+                if (targetLang === 'jpn' || targetLang === 'cmn') {
+                    const chars = Array.from(translated);
+                    const pool = chars.map((c, i) => ({ c, i })).filter(item => item.c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
+                    if (pool.length > 0) {
+                        const selectedChar = pool[Math.floor(Math.random() * pool.length)];
+                        correctWord = selectedChar.c;
+                        chars[selectedChar.i] = "___";
+                        sentenceWithBlank = chars.join('');
+                    } else {
+                        correctWord = chars[0];
+                        chars[0] = "___";
+                        sentenceWithBlank = chars.join('');
+                    }
                 } else {
-                    // Fallback
-                    correctWord = chars[0];
-                    chars[0] = "___";
-                    sentenceWithBlank = chars.join('');
+                    const words = translated.split(' ');
+                    let pool = words.map((w, i) => ({ w, i })).filter(item => item.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").length > 3);
+                    if (pool.length === 0) pool = words.map((w, i) => ({ w, i }));
+
+                    const selected = pool[Math.floor(Math.random() * pool.length)];
+                    correctWord = selected.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+                    words[selected.i] = "________";
+                    sentenceWithBlank = words.join(' ');
                 }
-            } else {
-                const words = translated.split(' ');
-                let pool = words.map((w, i) => ({ w, i })).filter(item => item.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").length > 3);
-                if (pool.length === 0) pool = words.map((w, i) => ({ w, i }));
 
-                const selected = pool[Math.floor(Math.random() * pool.length)];
-                correctWord = selected.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
-
-                words[selected.i] = "________";
-                sentenceWithBlank = words.join(' ');
-            }
-
-            const prompt = `Translate to ${langName}:<br><br><b>"${english}"</b>`;
-
-            let distractorsPool = [];
-            for (const other of results) {
-                if (other === pair) continue;
-                if (other.translations && other.translations.length > 0) {
-                    for (const tSet of other.translations) {
-                        if (tSet && tSet.length > 0) {
-                            let otherContent = tSet[0].text;
-                            let extracted = [];
-                            if (targetLang === 'jpn' || targetLang === 'cmn') {
-                                extracted = Array.from(otherContent).filter(c => c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
-                            } else {
-                                extracted = otherContent.split(' ').map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")).filter(w => w.length > 2 && /^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]+$/.test(w));
+                const prompt = `Translate to ${langName}:<br><br><b>"${english}"</b>`;
+                
+                // Get distractors from other results
+                let distractorsPool = [];
+                results.forEach(other => {
+                    if (other === pair) return;
+                    if (other.translations && other.translations.length > 0) {
+                        for (const tSet of other.translations) {
+                            if (tSet && tSet.length > 0) {
+                                let otherText = tSet[0].text;
+                                let extracted = [];
+                                if (targetLang === 'jpn' || targetLang === 'cmn') {
+                                    extracted = Array.from(otherText).filter(c => c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
+                                } else {
+                                    extracted = otherText.split(' ').map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")).filter(w => w.length > 2);
+                                }
+                                distractorsPool.push(...extracted.filter(w => w !== correctWord));
                             }
-                            distractorsPool.push(...extracted.filter(w => w !== correctWord));
                         }
                     }
+                });
+
+                distractorsPool = [...new Set(distractorsPool)].sort(() => 0.5 - Math.random());
+                const finalDistractors = distractorsPool.slice(0, 3);
+                while (finalDistractors.length < 3) {
+                    const fallbacks = (targetLang === 'jpn' || targetLang === 'cmn') ? ["大", "人", "子", "日", "本"] : ["el", "la", "de", "que", "un"];
+                    finalDistractors.push(fallbacks[finalDistractors.length % fallbacks.length]);
                 }
-            }
 
-            distractorsPool = [...new Set(distractorsPool)].sort(() => 0.5 - Math.random());
-            const finalDistractors = distractorsPool.slice(0, 3);
-            while (finalDistractors.length < 3) {
-                const fallbacks = (targetLang === 'jpn' || targetLang === 'cmn') ? ["大", "人", "子", "日", "本"] : ["el", "la", "de", "que", "un"];
-                finalDistractors.push(fallbacks[finalDistractors.length % fallbacks.length]);
-            }
-
-            return {
-                type: 'choice',
-                prompt: prompt,
-                sentence: sentenceWithBlank,
-                correct: correctWord,
-                choices: shuffle([correctWord, ...finalDistractors])
-            };
-        }
-
-        function generateSentenceQuestionFromBank(pair, bank) {
-            const english = pair.en;
-            const translated = pair.tr;
-            const langName = getLangName(targetLang);
-
-            let sentenceWithBlank = "";
-            let correctWord = "";
-
-            if (targetLang === 'jpn' || targetLang === 'cmn') {
-                const chars = Array.from(translated);
-                const pool = chars.map((c, i) => ({ c, i })).filter(item => item.c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
-                if (pool.length > 0) {
-                    const selectedChar = pool[Math.floor(Math.random() * pool.length)];
-                    correctWord = selectedChar.c;
-                    chars[selectedChar.i] = "___";
-                    sentenceWithBlank = chars.join('');
-                } else {
-                    correctWord = chars[0];
-                    chars[0] = "___";
-                    sentenceWithBlank = chars.join('');
-                }
-            } else {
-                const words = translated.split(' ');
-                let pool = words.map((w, i) => ({ w, i })).filter(item => item.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").length > 3);
-                if (pool.length === 0) pool = words.map((w, i) => ({ w, i }));
-
-                const selected = pool[Math.floor(Math.random() * pool.length)];
-                correctWord = selected.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
-                words[selected.i] = "________";
-                sentenceWithBlank = words.join(' ');
-            }
-
-            const prompt = `Translate to ${langName}:<br><br><b>"${english}"</b>`;
-
-            let distractorsPool = [];
-            bank.forEach(other => {
-                if (other === pair) return;
-                let extracted = [];
-                if (targetLang === 'jpn' || targetLang === 'cmn') {
-                    extracted = Array.from(other.tr).filter(c => c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
-                } else {
-                    extracted = other.tr.split(' ').map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")).filter(w => w.length > 2 && /^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]+$/.test(w));
-                }
-                distractorsPool.push(...extracted.filter(w => w !== correctWord));
+                generated.push({
+                    type: 'choice',
+                    prompt: prompt,
+                    sentence: sentenceWithBlank,
+                    correct: correctWord,
+                    choices: shuffle([correctWord, ...finalDistractors])
+                });
             });
 
-            distractorsPool = [...new Set(distractorsPool)].sort(() => 0.5 - Math.random());
-            const finalDistractors = distractorsPool.slice(0, 3);
-            while (finalDistractors.length < 3) {
-                const fallbacks = (targetLang === 'jpn' || targetLang === 'cmn') ? ["大", "人", "子", "日", "本"] : ["el", "la", "de", "que", "un"];
-                finalDistractors.push(fallbacks[finalDistractors.length % fallbacks.length]);
-            }
+            return shuffle(generated);
+        }
 
-            return {
-                type: 'choice',
-                prompt: prompt,
-                sentence: sentenceWithBlank,
-                correct: correctWord,
-                choices: shuffle([correctWord, ...finalDistractors])
-            };
+        function generateSentenceQuestionsFromBank(bank) {
+            const generated = [];
+            bank.forEach(pair => {
+                const english = pair.en;
+                const translated = pair.tr;
+                const langName = getLangName(targetLang);
+
+                let sentenceWithBlank = "";
+                let correctWord = "";
+
+                if (targetLang === 'jpn' || targetLang === 'cmn') {
+                    const chars = Array.from(translated);
+                    const pool = chars.map((c, i) => ({ c, i })).filter(item => item.c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
+                    if (pool.length > 0) {
+                        const selectedChar = pool[Math.floor(Math.random() * pool.length)];
+                        correctWord = selectedChar.c;
+                        chars[selectedChar.i] = "___";
+                        sentenceWithBlank = chars.join('');
+                    } else {
+                        correctWord = chars[0];
+                        chars[0] = "___";
+                        sentenceWithBlank = chars.join('');
+                    }
+                } else {
+                    const words = translated.split(' ');
+                    let pool = words.map((w, i) => ({ w, i })).filter(item => item.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").length > 3);
+                    if (pool.length === 0) pool = words.map((w, i) => ({ w, i }));
+
+                    const selected = pool[Math.floor(Math.random() * pool.length)];
+                    correctWord = selected.w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+                    words[selected.i] = "________";
+                    sentenceWithBlank = words.join(' ');
+                }
+
+                const prompt = `Translate to ${langName}:<br><br><b>"${english}"</b>`;
+
+                let distractorsPool = [];
+                bank.forEach(other => {
+                    if (other === pair) return;
+                    let extracted = [];
+                    if (targetLang === 'jpn' || targetLang === 'cmn') {
+                        extracted = Array.from(other.tr).filter(c => c.match(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/));
+                    } else {
+                        extracted = other.tr.split(' ').map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")).filter(w => w.length > 2);
+                    }
+                    distractorsPool.push(...extracted.filter(w => w !== correctWord));
+                });
+
+                distractorsPool = [...new Set(distractorsPool)].sort(() => 0.5 - Math.random());
+                const finalDistractors = distractorsPool.slice(0, 3);
+                while (finalDistractors.length < 3) {
+                    const fallbacks = (targetLang === 'jpn' || targetLang === 'cmn') ? ["大", "人", "子", "日", "本"] : ["el", "la", "de", "que", "un"];
+                    finalDistractors.push(fallbacks[finalDistractors.length % fallbacks.length]);
+                }
+
+                generated.push({
+                    type: 'choice',
+                    prompt: prompt,
+                    sentence: sentenceWithBlank,
+                    correct: correctWord,
+                    choices: shuffle([correctWord, ...finalDistractors])
+                });
+            });
+
+            return shuffle(generated);
         }
 
         function selectLessonLanguage(id) {
@@ -1497,13 +1497,16 @@
         }
 
         window.nextQuestion = function () {
-            if (currentMode === 'sentences') {
-                // Sentences mode is "endless" or just fetches a new one
-                startSentences(targetLang);
+            qIndex++;
+            if (qIndex >= questions.length) {
+                if (currentMode === 'sentences') {
+                    // Fetch a fresh batch
+                    startSentences(targetLang);
+                } else {
+                    finishUnit();
+                }
                 return;
             }
-
-            qIndex++;
             showQuestion();
         }
 
