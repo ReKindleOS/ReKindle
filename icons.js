@@ -177,7 +177,6 @@ const APPS = [
         id: 'language',
         name: 'Languages',
         cat: 'lifestyle',
-        newBadge: true,
         beta: true,
         desc: 'Learn a language for free',
         icon: '<path d="M4 6 h14 v12 h-4 l-4 4 v-4 h-6 z" fill="white" stroke="black" stroke-width="2"/><path d="M14 14 h14 v12 h-6 l-4 4 v-4 h-4 z" fill="black" stroke="white" stroke-width="2"/>'
@@ -293,7 +292,6 @@ const APPS = [
         id: 'flipnote',
         name: 'Animate',
         cat: 'lifestyle',
-        newBadge: true,
         beta: true,
         icon: '<rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><circle cx="14" cy="15" r="2" fill="black"/><line x1="14" y1="17" x2="14" y2="21" stroke="black" stroke-width="1.5"/><path d="M11 19 l6 -1" stroke="black" stroke-width="1.5"/><path d="M11 25 l3 -4 l3 4" stroke="black" stroke-width="1.5" fill="none"/>',
         desc: 'Create pixel animations.'
