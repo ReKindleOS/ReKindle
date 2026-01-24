@@ -102,7 +102,7 @@ const APPS = [
     },
     {
         id: 'pomodoro',
-        name: 'Focus Timer',
+        name: 'Timers',
         cat: 'tools',
         icon: '<circle cx="16" cy="18" r="10" stroke-width="2" /> <path d="M16 18 V8 M16 8 L20 4 M16 8 L12 4" stroke-width="2"/>'
     },

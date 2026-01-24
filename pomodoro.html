@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Focus Timer</title>
+    <title>Timer</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -41,7 +42,7 @@
             height: 100vh;
             overflow: hidden;
             background-color: #e5e5e5;
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -78,7 +79,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -118,27 +122,116 @@
             box-shadow: none;
         }
 
+        /* ADD BUTTON (Multi-Timer Only) */
+        .add-btn {
+            position: absolute;
+            right: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: none;
+            /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 1.1rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .add-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TAB BAR */
+        .tab-bar {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: white;
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border-right: 2px solid black;
+            background: #eee;
+            text-transform: uppercase;
+        }
+
+        .tab-btn:last-child {
+            border-right: none;
+        }
+
+        .tab-btn.active {
+            background: white;
+            box-shadow: inset 0 -4px 0 white;
+            /* Cover bottom border (visual trick) */
+            position: relative;
+        }
+
+        /* Ensures tab content area connects to tab */
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: white;
+            pointer-events: none;
+        }
+
+
         /* WINDOW CONTENT */
         .window-content {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 20px;
             background: white;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            position: relative;
         }
 
-        /* TASK INPUT */
-        .task-input-container {
+        /* VIEWS */
+        .view-section {
+            display: none;
+            flex-grow: 1;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        /* --- FOCUS VIEW STYLES --- */
+        #view-focus {
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .focus-task-container {
             width: 100%;
             max-width: 400px;
             margin-bottom: 20px;
             position: relative;
         }
 
-        #task-input {
+        #focus-task-input {
             width: 100%;
             border: none;
             border-bottom: 2px solid black;
@@ -151,8 +244,7 @@
             border-radius: 0;
         }
 
-        /* CIRCULAR TIMER */
-        .timer-wrapper {
+        .focus-timer-wrapper {
             position: relative;
             width: 280px;
             height: 280px;
@@ -162,18 +254,19 @@
             align-items: center;
         }
 
-        .timer-ring {
+        .focus-ring-svg {
             transform: rotate(-90deg);
             width: 100%;
             height: 100%;
             overflow: visible;
         }
 
-        .timer-ring circle {
+        .focus-ring-svg circle {
             fill: transparent;
             stroke-width: 8;
         }
 
+        /* REUSED RING STYLES */
         .ring-bg {
             stroke: #eee;
         }
@@ -181,13 +274,10 @@
         .ring-progress {
             stroke: black;
             stroke-linecap: round;
-            /* Circumference of r=130 is ~817 */
-            stroke-dasharray: 817; 
-            stroke-dashoffset: 0;
             transition: stroke-dashoffset 1s linear;
         }
 
-        .timer-content {
+        .focus-timer-content {
             position: absolute;
             text-align: center;
             width: 100%;
@@ -196,23 +286,22 @@
             transform: translate(-50%, -50%);
         }
 
-        #time-display {
+        #focus-time-display {
             font-size: 4rem;
             font-weight: 900;
             line-height: 1;
-            font-family: "Courier New", monospace; /* Monospace prevents jitter */
+            font-family: "Courier New", monospace;
             margin-bottom: 5px;
         }
 
-        #time-label {
+        #focus-time-label {
             font-size: 1.2rem;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 2px;
         }
 
-        /* CONTROLS */
-        .controls {
+        .focus-controls {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
@@ -221,28 +310,7 @@
             margin-bottom: 30px;
         }
 
-        button.ctrl-btn {
-            background: white;
-            color: black;
-            border: 3px solid black;
-            padding: 12px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            text-transform: uppercase;
-            cursor: pointer;
-            border-radius: 8px;
-            box-shadow: 4px 4px 0 black;
-        }
-
-        button.ctrl-btn:active {
-            background: black;
-            color: white;
-            transform: translate(2px, 2px);
-            box-shadow: none;
-        }
-
-        /* MODES */
-        .modes {
+        .focus-modes {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
@@ -251,18 +319,213 @@
             max-width: 500px;
         }
 
-        .mode-btn {
+
+        /* --- MULTI TIMER VIEW STYLES --- */
+        #view-multi {
+            padding: 20px;
+            gap: 20px;
+        }
+
+        #timer-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .timer-card {
+            width: 100%;
+            max-width: 350px;
+            border: 2px solid black;
+            padding: 15px;
+            position: relative;
+            background: white;
+        }
+
+        .timer-card.finished {
+            background: black;
+            color: white;
+        }
+
+        /* Specific override for finished elements within card */
+        .timer-card.finished .timer-label {
+            color: white;
+            border-bottom-color: white;
+        }
+
+        .timer-card.finished .ring-bg {
+            stroke: #333;
+        }
+
+        .timer-card.finished .ring-progress {
+            stroke: white;
+        }
+
+        .timer-card.finished .ctrl-btn {
+            background: black;
+            color: white;
+            border-color: white;
+            box-shadow: 2px 2px 0 white;
+        }
+
+        .timer-card.finished .ctrl-btn:active {
+            background: white;
+            color: black;
+        }
+
+        .timer-card.finished .mode-btn {
+            border-color: white;
+            color: white;
+            box-shadow: 2px 2px 0 white;
+        }
+
+        .timer-card.finished .mode-btn.active {
+            background: white;
+            color: black;
+        }
+
+        .timer-card.finished .delete-timer-btn {
+            color: #aaa;
+        }
+
+        .delete-timer-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 20px;
+            height: 20px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 1rem;
+            color: #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .delete-timer-btn:hover {
+            color: red;
+        }
+
+        .timer-label {
+            width: calc(100% - 30px);
+            border: none;
+            border-bottom: 2px solid black;
+            font-family: "Geneva", "Verdana", sans-serif;
+            font-size: 1rem;
+            text-align: center;
+            padding: 5px;
+            background: transparent;
+            outline: none;
+            border-radius: 0;
+            margin-bottom: 10px;
+        }
+
+        .timer-display-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .timer-ring-small {
+            width: 80px;
+            height: 80px;
+            transform: rotate(-90deg);
+            flex-shrink: 0;
+        }
+
+        .timer-ring-small circle {
+            fill: transparent;
+            stroke-width: 6;
+        }
+
+        .timer-time-info {
+            text-align: center;
+        }
+
+        .time-display {
+            font-size: 2.5rem;
+            font-weight: 900;
+            line-height: 1;
+            font-family: "Courier New", monospace;
+        }
+
+        .time-status {
+            font-size: 0.9rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .timer-modes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        /* SHARED BUTTON STYLES */
+        .ctrl-btn {
+            background: white;
+            color: black;
+            border: 2px solid black;
+            /* Multi has 2px */
+            /* Focus had 3px before, unifying to 2px for consistency or specific override */
             padding: 8px 16px;
             font-size: 0.9rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .focus-controls .ctrl-btn {
+            /* Focus specific bigger buttons */
+            padding: 12px;
+            font-size: 1.1rem;
+            border: 3px solid black;
+            border-radius: 8px;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .ctrl-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .mode-btn {
+            padding: 5px 10px;
+            font-size: 0.8rem;
             font-weight: bold;
             border: 2px solid black;
             background: white;
             cursor: pointer;
             box-shadow: 2px 2px 0 black;
+        }
+
+        .focus-modes .mode-btn {
+            padding: 8px 16px;
+            font-size: 0.9rem;
             flex: 1;
             min-width: 60px;
         }
-        
+
         .mode-btn:active {
             transform: translate(1px, 1px);
             box-shadow: none;
@@ -275,12 +538,23 @@
             transform: translate(1px, 1px);
         }
 
+        /* EMPTY STATE */
+        .empty-state {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            padding: 40px 20px;
+        }
+
         /* MODAL STYLES */
         .modal-overlay {
             display: none;
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.9);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
             z-index: 100;
             flex-direction: column;
             align-items: center;
@@ -311,46 +585,63 @@
             gap: 10px;
             justify-content: center;
         }
-
     </style>
     <script src="theme.js"></script>
 </head>
+
 <body>
 
     <div class="window">
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Focus Timer</span>
+            <span class="title-text">Timer</span>
+            <!-- Add button only visible in Multi-Timer tab -->
+            <div class="add-btn" id="add-multi-btn" onclick="addMultiTimer()">+</div>
+        </div>
+
+        <div class="tab-bar">
+            <div class="tab-btn active" id="tab-focus" onclick="switchTab('focus')">Focus</div>
+            <div class="tab-btn" id="tab-multi" onclick="switchTab('multi')">Timers</div>
         </div>
 
         <div class="window-content">
-            
-            <div class="task-input-container">
-                <input type="text" id="task-input" placeholder="I am focusing on...">
-            </div>
 
-            <div class="timer-wrapper">
-                <svg class="timer-ring">
-                    <circle class="ring-bg" cx="140" cy="140" r="130"></circle>
-                    <circle class="ring-progress" id="ring-progress" cx="140" cy="140" r="130"></circle>
-                </svg>
-                <div class="timer-content">
-                    <div id="time-display">25:00</div>
-                    <div id="time-label">READY</div>
+            <!-- --- FOCUS VIEW --- -->
+            <div id="view-focus" class="view-section active">
+                <div class="focus-task-container">
+                    <input type="text" id="focus-task-input" placeholder="I am focusing on...">
+                </div>
+
+                <div class="focus-timer-wrapper">
+                    <svg class="focus-ring-svg">
+                        <circle class="ring-bg" cx="140" cy="140" r="130"></circle>
+                        <circle class="ring-progress" id="focus-ring-progress" cx="140" cy="140" r="130"></circle>
+                    </svg>
+                    <div class="focus-timer-content">
+                        <div id="focus-time-display">25:00</div>
+                        <div id="focus-time-label">READY</div>
+                    </div>
+                </div>
+
+                <div class="focus-controls">
+                    <button class="ctrl-btn" id="focus-start-btn" onclick="toggleFocusTimer()">Start</button>
+                    <button class="ctrl-btn" onclick="resetFocusTimer()">Reset</button>
+                </div>
+
+                <div class="focus-modes">
+                    <button class="mode-btn active" id="focus-mode-25" onclick="setFocusMode(25)">25m</button>
+                    <button class="mode-btn" id="focus-mode-15" onclick="setFocusMode(15)">15m</button>
+                    <button class="mode-btn" id="focus-mode-5" onclick="setFocusMode(5)">5m</button>
+                    <button class="mode-btn" id="focus-mode-custom" onclick="openCustomModal('focus')">Custom</button>
                 </div>
             </div>
 
-            <div class="controls">
-                <button class="ctrl-btn" id="start-btn" onclick="toggleTimer()">Start</button>
-                <button class="ctrl-btn" onclick="resetTimer()">Reset</button>
-            </div>
-
-            <div class="modes">
-                <button class="mode-btn active" id="mode-25" onclick="setMode(25)">25m</button>
-                <button class="mode-btn" id="mode-15" onclick="setMode(15)">15m</button>
-                <button class="mode-btn" id="mode-5" onclick="setMode(5)">5m</button>
-                <button class="mode-btn" id="mode-custom" onclick="setCustomMode()">Custom</button>
+            <!-- --- MULTI TIMERS VIEW --- -->
+            <div id="view-multi" class="view-section">
+                <div id="timer-list">
+                    <!-- Timers will be dynamically generated here -->
+                </div>
             </div>
 
         </div>
@@ -370,19 +661,42 @@
     </div>
 
     <script>
+        // --- CONSTANTS ---
+        const FOCUS_CIRCUMFERENCE = 817; // r=130
+        const MULTI_CIRCUMFERENCE = 226; // r=36
+
         // --- STATE ---
-        let totalTime = 25 * 60; // Seconds
-        let timeLeft = totalTime;
-        let timerId = null;
-        let isRunning = false;
-        
-        // Circumference = 2 * PI * r (r=130) approx 816.8
-        const CIRCUMFERENCE = 817; 
+        let currentTab = 'focus';
+        let customModalTarget = null; // 'focus' or 'multi:ID'
+
+        // Focus State
+        let focusState = {
+            totalTime: 25 * 60,
+            timeLeft: 25 * 60,
+            isRunning: false,
+            intervalId: null,
+            mode: 25,
+            label: ''
+        };
+
+        // Multi State
+        let multiTimers = [];
+        let nextMultiId = 1;
 
         // --- INIT ---
-        window.onload = function() {
+        window.onload = function () {
             loadWallpaper();
-            
+            loadState();
+
+            // UI Init
+            switchTab(currentTab);
+
+            // If running state isn't saved, we might have reset on reload.
+            // Ideally we'd persist timestamps to recover accurate time, 
+            // but for now we follow the pattern of pausing on reload to be safe/simple.
+            updateFocusUI();
+            renderMultiTimers();
+
             // Request Notification Permission
             if ("Notification" in window) {
                 if (Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -390,103 +704,343 @@
                 }
             }
 
-            // Input Enter key support
-            document.getElementById('custom-min-input').addEventListener("keypress", function(event) {
+            // Input Enter key
+            document.getElementById('custom-min-input').addEventListener("keypress", function (event) {
                 if (event.key === "Enter") {
                     applyCustomTime();
                 }
             });
+
+            // Main Loop for document title fallback
+            setInterval(updateDocumentTitle, 1000);
         };
 
-        // Helper to HTML-escape text
-        function escapeHTML(text) {
-            const div = document.createElement('div');
-            div.appendChild(document.createTextNode(text));
-            return div.innerHTML;
+        // --- TAB MANAGEMENT ---
+        function switchTab(tab) {
+            currentTab = tab;
+
+            // Toggles
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById(`view-${tab}`).classList.add('active');
+
+            // Show/Hide Add Button
+            const addBtn = document.getElementById('add-multi-btn');
+            addBtn.style.display = (tab === 'multi') ? 'flex' : 'none';
+
+            localStorage.setItem('rekindle_timer_tab', tab);
         }
 
-        // Helper to sanitize background image URLs from localStorage
-        function sanitizeBackgroundImage(imageString) {
-            if (!imageString) return '';
-            if (imageString.startsWith('url("data:image/png;base64,')) {
-                return imageString;
-            }
-            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
-                const url = imageString.substring(5, imageString.length - 2);
-                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
-                    return imageString;
-                }
-            }
-            return '';
-        }
+        // --- FOCUS TIMER LOGIC ---
+        function toggleFocusTimer() {
+            const btn = document.getElementById('focus-start-btn');
 
-
-        // --- CORE LOGIC ---
-        
-        function toggleTimer() {
-            const btn = document.getElementById('start-btn');
-            
-            if (isRunning) {
+            if (focusState.isRunning) {
                 // Pause
-                clearInterval(timerId);
-                isRunning = false;
+                clearInterval(focusState.intervalId);
+                focusState.intervalId = null;
+                focusState.isRunning = false;
                 btn.innerText = "Resume";
-                document.getElementById('time-label').innerText = "PAUSED";
+                document.getElementById('focus-time-label').innerText = "PAUSED";
             } else {
                 // Start
-                isRunning = true;
+                if (focusState.timeLeft <= 0) resetFocusTimer(); // Safety
+
+                focusState.isRunning = true;
                 btn.innerText = "Pause";
-                document.getElementById('time-label').innerText = "FOCUS";
-                
-                timerId = setInterval(() => {
-                    timeLeft--;
-                    updateUI();
-                    
-                    if (timeLeft <= 0) {
-                        finishTimer();
+                document.getElementById('focus-time-label').innerText = "FOCUS";
+
+                focusState.intervalId = setInterval(() => {
+                    focusState.timeLeft--;
+                    updateFocusUI();
+
+                    if (focusState.timeLeft <= 0) {
+                        completeFocusTimer();
                     }
+                    saveState();
                 }, 1000);
             }
+            saveState();
         }
 
-        function resetTimer() {
-            clearInterval(timerId);
-            isRunning = false;
-            document.getElementById('start-btn').innerText = "Start";
-            document.getElementById('time-label').innerText = "READY";
-            
-            // Determine active mode to reset to default time
-            const activeBtn = document.querySelector('.mode-btn.active');
-            let min = 25;
-            if (activeBtn) {
-                if(activeBtn.id === 'mode-5') min = 5;
-                if(activeBtn.id === 'mode-15') min = 15;
-                if(activeBtn.id === 'mode-custom') {
-                    // Try to parse existing display if possible, or default to last set
-                    min = Math.round(totalTime / 60);
-                }
-            }
-            
-            // If custom was weird, just reset logic:
-            if(activeBtn && activeBtn.id !== 'mode-custom') {
-                totalTime = min * 60;
-            }
-            
-            timeLeft = totalTime;
-            updateUI();
+        function resetFocusTimer() {
+            if (focusState.intervalId) clearInterval(focusState.intervalId);
+            focusState.intervalId = null;
+            focusState.isRunning = false;
+
+            // Screen flash reset if needed (dirty logic)
+            document.querySelector('#view-focus').style.backgroundColor = "";
+            document.querySelector('#view-focus').style.color = "";
+            document.querySelector('#view-focus .ring-bg').style.stroke = "#eee";
+            document.querySelector('#view-focus .ring-progress').style.stroke = "black";
+
+            // Reset to mode time
+            let mins = focusState.mode;
+            if (typeof mins !== 'number') mins = Math.round(focusState.totalTime / 60);
+
+            focusState.totalTime = mins * 60;
+            focusState.timeLeft = focusState.totalTime;
+
+            document.getElementById('focus-start-btn').innerText = "Start";
+            document.getElementById('focus-time-label').innerText = "READY";
+
+            updateFocusUI();
+            saveState();
         }
 
-        function setMode(minutes) {
+        function setFocusMode(minutes) {
             // Visual Toggle
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-            if(minutes === 5) document.getElementById('mode-5').classList.add('active');
-            else if(minutes === 15) document.getElementById('mode-15').classList.add('active');
-            else if(minutes === 25) document.getElementById('mode-25').classList.add('active');
-            
-            resetLogic(minutes * 60);
+            document.querySelectorAll('.focus-modes .mode-btn').forEach(b => b.classList.remove('active'));
+            if (minutes === 5) document.getElementById('focus-mode-5').classList.add('active');
+            else if (minutes === 15) document.getElementById('focus-mode-15').classList.add('active');
+            else if (minutes === 25) document.getElementById('focus-mode-25').classList.add('active');
+
+            focusState.mode = minutes;
+            resetFocusTimer();
         }
-        
-        function setCustomMode() {
+
+        function completeFocusTimer() {
+            clearInterval(focusState.intervalId);
+            focusState.intervalId = null;
+            focusState.isRunning = false;
+            focusState.timeLeft = 0;
+            updateFocusUI();
+
+            // Flash
+            const view = document.getElementById('view-focus');
+            view.style.transition = 'background 0.2s';
+            view.style.backgroundColor = 'black';
+            view.style.color = 'white';
+
+            document.querySelector('#view-focus .ring-bg').style.stroke = "#333";
+            document.querySelector('#view-focus .ring-progress').style.stroke = "white";
+
+            document.getElementById('focus-time-display').innerText = "DONE";
+            document.getElementById('focus-time-label').innerText = "TAKE A BREAK";
+
+            notify("Focus Complete!", "Great focus session.");
+
+            // Auto Reset
+            setTimeout(() => {
+                view.style.backgroundColor = '';
+                view.style.color = '';
+                document.querySelector('#view-focus .ring-bg').style.stroke = "#eee";
+                document.querySelector('#view-focus .ring-progress').style.stroke = "black";
+                resetFocusTimer();
+            }, 5000);
+        }
+
+        function updateFocusUI() {
+            // Label input
+            const input = document.getElementById('focus-task-input');
+            if (input.value !== focusState.label) input.value = focusState.label;
+
+            // Time
+            const mins = Math.floor(focusState.timeLeft / 60);
+            const secs = focusState.timeLeft % 60;
+            const mStr = String(mins).padStart(2, '0');
+            const sStr = String(secs).padStart(2, '0');
+            document.getElementById('focus-time-display').innerText = `${mStr}:${sStr}`;
+
+            // Ring
+            const ring = document.getElementById('focus-ring-progress');
+            const fraction = focusState.timeLeft / focusState.totalTime;
+            const offset = FOCUS_CIRCUMFERENCE * (1 - fraction);
+            ring.style.strokeDashoffset = offset;
+
+            // Ring setup
+            ring.style.strokeDasharray = FOCUS_CIRCUMFERENCE;
+
+            updateDocumentTitle();
+        }
+
+        // Listener for focus input
+        document.getElementById('focus-task-input').addEventListener('input', (e) => {
+            focusState.label = e.target.value;
+            saveState();
+        });
+
+
+        // --- MULTI TIMER LOGIC ---
+        function addMultiTimer() {
+            const timer = {
+                id: nextMultiId++,
+                label: '',
+                totalTime: 25 * 60,
+                timeLeft: 25 * 60,
+                intervalId: null,
+                isRunning: false,
+                isFinished: false,
+                mode: 25
+            };
+            multiTimers.push(timer);
+            saveState();
+            renderMultiTimers();
+        }
+
+        function renderMultiTimers() {
+            const list = document.getElementById('timer-list');
+
+            if (multiTimers.length === 0) {
+                list.innerHTML = '<div class="empty-state">No timers.<br>Tap + to add one.</div>';
+                return;
+            }
+
+            list.innerHTML = multiTimers.map(t => `
+                <div class="timer-card ${t.isFinished ? 'finished' : ''}" id="timer-${t.id}">
+                    <button class="delete-timer-btn" onclick="deleteMultiTimer(${t.id})">×</button>
+                    
+                    <input type="text" class="timer-label" 
+                           placeholder="Label..."
+                           value="${escapeHTML(t.label)}"
+                           onchange="updateMultiLabel(${t.id}, this.value)">
+                    
+                    <div class="timer-display-row">
+                        <svg class="timer-ring-small" viewBox="0 0 80 80">
+                            <circle class="ring-bg" cx="40" cy="40" r="36"></circle>
+                            <circle class="ring-progress" id="ring-${t.id}" cx="40" cy="40" r="36" 
+                                    style="stroke-dasharray: 226; stroke-dashoffset: ${calculateMultiOffset(t)}"></circle>
+                        </svg>
+                        <div class="timer-time-info">
+                            <div class="time-display" id="display-${t.id}">${formatTime(t.timeLeft)}</div>
+                            <div class="time-status" id="status-${t.id}">${getMultiStatus(t)}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="timer-controls">
+                        <button class="ctrl-btn" id="start-btn-${t.id}" onclick="toggleMultiTimer(${t.id})">
+                             ${t.isRunning ? 'Pause' : (t.timeLeft < t.totalTime && t.timeLeft > 0 ? 'Resume' : 'Start')}
+                        </button>
+                        <button class="ctrl-btn" onclick="resetMultiTimer(${t.id})">Reset</button>
+                    </div>
+                    
+                    <div class="timer-modes">
+                        <button class="mode-btn ${t.mode === 25 ? 'active' : ''}" onclick="setMultiMode(${t.id}, 25)">25m</button>
+                        <button class="mode-btn ${t.mode === 15 ? 'active' : ''}" onclick="setMultiMode(${t.id}, 15)">15m</button>
+                        <button class="mode-btn ${t.mode === 5 ? 'active' : ''}" onclick="setMultiMode(${t.id}, 5)">5m</button>
+                        <button class="mode-btn ${t.mode === 'custom' ? 'active' : ''}" onclick="openCustomModal('multi:${t.id}')">
+                            ${(t.mode === 'custom' || typeof t.mode !== 'number') ? Math.round(t.totalTime / 60) + 'm' : 'Custom'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateMultiLabel(id, val) {
+            const t = multiTimers.find(x => x.id === id);
+            if (t) { t.label = val; saveState(); }
+        }
+
+        function deleteMultiTimer(id) {
+            const t = multiTimers.find(x => x.id === id);
+            if (t && t.intervalId) clearInterval(t.intervalId);
+            multiTimers = multiTimers.filter(x => x.id !== id);
+            saveState();
+            renderMultiTimers();
+        }
+
+        function toggleMultiTimer(id) {
+            const t = multiTimers.find(x => x.id === id);
+            if (!t) return;
+
+            if (t.isFinished) { resetMultiTimer(id); return; }
+
+            if (t.isRunning) {
+                // Pause
+                clearInterval(t.intervalId);
+                t.intervalId = null;
+                t.isRunning = false;
+            } else {
+                // Start
+                t.isRunning = true;
+                t.intervalId = setInterval(() => {
+                    t.timeLeft--;
+                    updateMultiCard(t);
+                    if (t.timeLeft <= 0) completeMultiTimer(t);
+                    saveState();
+                }, 1000);
+            }
+            saveState();
+            renderMultiTimers(); // Lazy re-render for button text update
+        }
+
+        function resetMultiTimer(id) {
+            const t = multiTimers.find(x => x.id === id);
+            if (!t) return;
+
+            if (t.intervalId) clearInterval(t.intervalId);
+            t.intervalId = null;
+            t.isRunning = false;
+            t.isFinished = false;
+
+            let mins = typeof t.mode === 'number' ? t.mode : Math.round(t.totalTime / 60);
+            t.totalTime = mins * 60;
+            t.timeLeft = t.totalTime;
+
+            saveState();
+            renderMultiTimers();
+        }
+
+        function setMultiMode(id, mins) {
+            const t = multiTimers.find(x => x.id === id);
+            if (!t) return;
+
+            t.mode = mins;
+            resetMultiTimer(id);
+        }
+
+        function completeMultiTimer(t) {
+            clearInterval(t.intervalId);
+            t.intervalId = null;
+            t.isRunning = false;
+            t.isFinished = true;
+            t.timeLeft = 0;
+
+            notify("Timer Done", `${t.label || 'Timer'} is complete.`);
+            renderMultiTimers(); // Shows finished style
+
+            // Auto Revert visual
+            setTimeout(() => {
+                if (t.isFinished) {
+                    t.isFinished = false;
+                    t.timeLeft = t.totalTime;
+                    renderMultiTimers();
+                }
+            }, 10000);
+            saveState();
+        }
+
+        function updateMultiCard(t) {
+            // Optimized DOM update without full re-render
+            const display = document.getElementById(`display-${t.id}`);
+            const ring = document.getElementById(`ring-${t.id}`);
+            const status = document.getElementById(`status-${t.id}`);
+
+            if (display) display.innerText = formatTime(t.timeLeft);
+            if (status) status.innerText = getMultiStatus(t);
+            if (ring) ring.style.strokeDashoffset = calculateMultiOffset(t);
+
+            updateDocumentTitle();
+        }
+
+        function calculateMultiOffset(t) {
+            const fraction = t.timeLeft / t.totalTime;
+            return MULTI_CIRCUMFERENCE * (1 - fraction);
+        }
+
+        function getMultiStatus(t) {
+            if (t.isFinished) return "DONE!";
+            if (t.isRunning) return "FOCUS";
+            if (t.timeLeft < t.totalTime && t.timeLeft > 0) return "PAUSED";
+            return "READY";
+        }
+
+
+        // --- SHARED MODAL ---
+        function openCustomModal(target) {
+            customModalTarget = target;
             document.getElementById('custom-modal').style.display = 'flex';
             document.getElementById('custom-min-input').value = '';
             document.getElementById('custom-min-input').focus();
@@ -494,114 +1048,114 @@
 
         function closeModal() {
             document.getElementById('custom-modal').style.display = 'none';
+            customModalTarget = null;
         }
 
         function applyCustomTime() {
-            const input = document.getElementById('custom-min-input').value;
-            if(input) {
-                let mins = parseInt(input);
-                if(!isNaN(mins) && mins > 0) {
-                    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                    const customBtn = document.getElementById('mode-custom');
-                    customBtn.classList.add('active');
-                    customBtn.innerText = `${mins}m`;
-                    
-                    resetLogic(mins * 60);
-                    closeModal();
+            const val = parseInt(document.getElementById('custom-min-input').value);
+            if (!val || val <= 0) { closeModal(); return; }
+
+            if (customModalTarget === 'focus') {
+                document.querySelectorAll('.focus-modes .mode-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('focus-mode-custom').classList.add('active');
+
+                focusState.mode = val;
+                resetFocusTimer();
+            } else if (customModalTarget && customModalTarget.startsWith('multi:')) {
+                const id = parseInt(customModalTarget.split(':')[1]);
+                const t = multiTimers.find(x => x.id === id);
+                if (t) {
+                    t.mode = val; // Store custom minutes effectively as mode
+                    resetMultiTimer(id);
                 }
             }
-        }
-        
-        function resetLogic(seconds) {
-            clearInterval(timerId);
-            isRunning = false;
-            document.getElementById('start-btn').innerText = "Start";
-            document.getElementById('time-label').innerText = "READY";
-            
-            totalTime = seconds;
-            timeLeft = totalTime;
-            updateUI();
+
+            closeModal();
+            saveState();
         }
 
-        function updateUI() {
-            // Text Display
-            const minutes = Math.floor(timeLeft / 60);
-            const seconds = timeLeft % 60;
-            const display = document.getElementById('time-display');
-            
-            const mStr = String(minutes).padStart(2, '0');
-            const sStr = String(seconds).padStart(2, '0');
-            
-            display.innerText = `${mStr}:${sStr}`;
-            
-            // Ring Visualizer
-            const ring = document.getElementById('ring-progress');
-            // Calculate offset. 
-            // Full offset (817) = Empty. 
-            // 0 offset = Full.
-            const fraction = timeLeft / totalTime;
-            const offset = CIRCUMFERENCE * (1 - fraction);
-            
-            ring.style.strokeDashoffset = offset;
-            
-            // Browser Tab Title
-            document.title = `${mStr}:${sStr} - Focus`;
+
+        // --- PERSISTENCE ---
+        function saveState() {
+            // Focus
+            const fSave = { ...focusState, intervalId: null, isRunning: false }; // Don't save running on reload
+            localStorage.setItem('rekindle_focus_state', JSON.stringify(fSave));
+
+            // Multi
+            const mSave = multiTimers.map(t => ({ ...t, intervalId: null, isRunning: false }));
+            localStorage.setItem('rekindle_multi_timers', JSON.stringify(mSave));
+            localStorage.setItem('rekindle_multi_nextId', nextMultiId);
         }
 
-        function finishTimer() {
-            clearInterval(timerId);
-            isRunning = false;
-            timeLeft = 0;
-            updateUI();
-            
-            // Screen Flash
-            const content = document.querySelector('.window-content');
-            content.style.backgroundColor = "black";
-            content.style.color = "white";
-            
-            // Ring Invert
-            document.querySelector('.ring-bg').style.stroke = "#333";
-            document.querySelector('.ring-progress').style.stroke = "white";
-            document.getElementById('task-input').style.borderBottomColor = "white";
-            document.getElementById('task-input').style.color = "white";
-            
-            document.getElementById('time-display').innerText = "DONE";
-            document.getElementById('time-label').innerText = "TAKE A BREAK";
-            
-            // Browser Notification
+        function loadState() {
+            // Tab
+            const tab = localStorage.getItem('rekindle_timer_tab');
+            if (tab) currentTab = tab;
+
+            // Focus
+            try {
+                const fData = JSON.parse(localStorage.getItem('rekindle_focus_state'));
+                if (fData) {
+                    focusState = { ...focusState, ...fData, intervalId: null, isRunning: false };
+                }
+            } catch (e) { }
+
+            // Multi
+            try {
+                const mData = JSON.parse(localStorage.getItem('rekindle_multi_timers'));
+                if (mData) {
+                    multiTimers = mData.map(t => ({ ...t, intervalId: null, isRunning: false }));
+                }
+                const nId = localStorage.getItem('rekindle_multi_nextId');
+                if (nId) nextMultiId = parseInt(nId);
+            } catch (e) { }
+        }
+
+
+        // --- HELPERS ---
+        function formatTime(s) {
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function escapeHTML(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function notify(title, body) {
             if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("Time's up!", { body: "Great focus session." });
+                new Notification(title, { body: body });
             }
-            
-            // Reset styles after 5 seconds
-            setTimeout(() => {
-                content.style.backgroundColor = "white";
-                content.style.color = "black";
-                document.querySelector('.ring-bg').style.stroke = "#eee";
-                document.querySelector('.ring-progress').style.stroke = "black";
-                document.getElementById('task-input').style.borderBottomColor = "black";
-                document.getElementById('task-input').style.color = "black";
-                
-                document.getElementById('start-btn').innerText = "Start";
-                timeLeft = totalTime;
-                updateUI();
-                document.getElementById('time-label').innerText = "READY";
-            }, 5000);
         }
 
-        loadWallpaper();
-        
+        function updateDocumentTitle() {
+            // Priority 1: Focus Timer Running
+            if (focusState.isRunning) {
+                document.title = `${formatTime(focusState.timeLeft)} - Focus`;
+                return;
+            }
+            // Priority 2: Multi Timer Running (First one)
+            const running = multiTimers.find(t => t.isRunning);
+            if (running) {
+                document.title = `${formatTime(running.timeLeft)} - Timer`;
+                return;
+            }
+            document.title = "Timer";
+        }
+
         function loadWallpaper() {
             const wallpaperImg = localStorage.getItem('rekindle_bg_image');
             const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
+            if (wallpaperImg) document.body.style.backgroundImage = wallpaperImg;
+            if (wallpaperSize) document.body.style.backgroundSize = wallpaperSize;
         }
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
+
 </html>
