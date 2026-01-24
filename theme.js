@@ -184,10 +184,95 @@
         }
     }
 
+    // --- UNIT SYSTEM ---
+    const UNIT_KEY = 'rekindle_unit_system'; // 'metric', 'imperial', 'auto'
+    const IMPERIAL_COUNTRIES = ['US', 'LR', 'MM'];
+
+    function getUnitSystem() {
+        const pref = localStorage.getItem(UNIT_KEY) || 'auto';
+        if (pref !== 'auto') return pref;
+
+        // Auto Logic
+        // 1. Check Manual Location
+        try {
+            const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            if (manualLoc && manualLoc.name) {
+                // We stored country code in weather.html setLocation but not explicitly here in theme.js context usually.
+                // However, let's try to infer or fallback.
+                // Actually, weather.html saves it as {name, lat, lon, zone, country_code (maybe?)}.
+                // Let's check what weather.html actually saves. It saves {name, lat, lon, zone}. 
+                // It does NOT save country code in 'rekindle_location_manual'. 
+                // Wait, in my analysis of weather.html lines 1194: 
+                // const locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
+                // It does not save country code. I should probably update weather.html to save country code too if I want to be precise,
+                // OR just rely on timezone? Timezone 'America/New_York' -> US.
+                // Simpler: Allow 'rekindle_weather_settings' to guide us? That has 'autoUnit'.
+
+                // Let's look at available data. 
+                // Option A: Use 'rekindle_weather_settings' which stores 'autoUnit' ('celsius'/'fahrenheit') calculated from country code.
+                // We can proxy that: Celsius -> Metric, Fahrenheit -> Imperial.
+                const weatherSettings = JSON.parse(localStorage.getItem('rekindle_weather_settings'));
+                if (weatherSettings && weatherSettings.autoUnit) {
+                    return weatherSettings.autoUnit === 'fahrenheit' ? 'imperial' : 'metric';
+                }
+            }
+        } catch (e) { }
+
+        // 2. Default if no location data found: Metric (Standard World)
+        return 'metric';
+    }
+
+    function convertDistance(meters) {
+        const system = getUnitSystem();
+        if (system === 'imperial') {
+            const miles = meters * 0.000621371;
+            if (miles < 0.1) {
+                return Math.round(meters * 3.28084) + ' ft';
+            }
+            return miles.toFixed(1) + ' mi';
+        } else {
+            if (meters < 1000) return Math.round(meters) + ' m';
+            return (meters / 1000).toFixed(1) + ' km';
+        }
+    }
+
+    function convertTemperatureContext(text) {
+        if (!text) return text;
+        const system = getUnitSystem();
+
+        // Regex to find temps like 180C, 180°C, 350F, 350° deg, etc.
+        // We assume input text might vary. 
+        // Simple case: Look for C and F explicitly.
+
+        return text.replace(/(\d+)(?:\s?°?\s?)(C|F)\b/gi, (match, val, unit) => {
+            const num = parseInt(val);
+            const u = unit.toUpperCase();
+
+            if (system === 'metric') {
+                if (u === 'F') {
+                    // F -> C
+                    const c = Math.round((num - 32) * (5 / 9));
+                    return `${c}°C`;
+                }
+                return `${num}°C`; // Standardize
+            } else {
+                if (u === 'C') {
+                    // C -> F
+                    const f = Math.round((num * 9 / 5) + 32);
+                    return `${f}°F`;
+                }
+                return `${num}°F`; // Standardize
+            }
+        });
+    }
+
     // Export for Apps to call
     window.rekindleApplyTheme = applyTheme;
     window.rekindleGetDisplayMode = getDisplayMode;
     window.rekindleApplyScale = applyScale;
     window.rekindleAutoDetectScale = autoDetectScale;
+    window.rekindleGetUnitSystem = getUnitSystem;
+    window.rekindleConvertDistance = convertDistance;
+    window.rekindleConvertTemperatureContext = convertTemperatureContext;
 
 })();
