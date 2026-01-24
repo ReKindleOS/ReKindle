@@ -1282,26 +1282,53 @@
         }
 
         function setWallpaper() {
-            // 1. Get Data URL
-            const dataUrl = canvas.toDataURL('image/png');
+            // Create a small tile from the grid data (not the scaled canvas)
+            // This mimics how settings.html creates the 8x8 grid as a 32x32 tile
+
+            // We'll create a tile where each pixel is 1px, then scale via background-size
+            const tileCanvas = document.createElement('canvas');
+            tileCanvas.width = gridSize;
+            tileCanvas.height = gridSize;
+            const tileCtx = tileCanvas.getContext('2d');
+
+            // Fill white background
+            tileCtx.fillStyle = '#ffffff';
+            tileCtx.fillRect(0, 0, gridSize, gridSize);
+
+            // Draw each pixel from the grid
+            for (let row = 0; row < gridSize; row++) {
+                for (let col = 0; col < gridSize; col++) {
+                    const value = grid[row][col];
+                    if (value !== 0) {
+                        // Greyscale mapping (1 = black, 0 = white)
+                        if (value === 1) {
+                            tileCtx.fillStyle = '#000000';
+                        } else {
+                            const shade = Math.round((1 - value) * 255);
+                            tileCtx.fillStyle = `rgb(${shade},${shade},${shade})`;
+                        }
+                        tileCtx.fillRect(col, row, 1, 1);
+                    }
+                }
+            }
+
+            // Get Data URL
+            const dataUrl = tileCanvas.toDataURL('image/png');
             const cssUrl = `url("${dataUrl}")`;
 
-            // 2. Set Size (Tiled logic: if we want pixel perfect tiles, we use the canvas size. 
-            // Ideally we want it to be "physically" correct on the screen, but pixel sizes vary.
-            // If we save it as a 32px sized background, it will look tiny on high DPI.
-            // But existing logic seemed to use explicit pixel sizes.
-            // Using logical canvas width/height is safest for 1:1 reproduction of what is seen.
-            const sizeVal = `${canvas.width}px ${canvas.height}px`;
+            // Display size: same as the tile size for 1:1 pixel mapping
+            // This creates a nice tiling pattern
+            const sizeVal = `${gridSize}px ${gridSize}px`;
 
-            // 3. Save to LocalStorage
+            // Save to LocalStorage
             localStorage.setItem('rekindle_bg_image', cssUrl);
             localStorage.setItem('rekindle_bg_size', sizeVal);
             localStorage.setItem('rekindle_wallpaper_id', 'custom');
 
-            // 4. Apply immediately to current view (so user verifies instantly)
+            // Apply immediately to current view
             loadWallpaper();
 
-            // 5. Notify
+            // Notify
             openModal('wallpaper-modal');
         }
     </script>
