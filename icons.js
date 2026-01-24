@@ -59,6 +59,13 @@ const APPS = [
 
     // --- TOOLS ---
     {
+        id: 'decide',
+        name: 'Decider',
+        cat: 'tools',
+        newBadge: true,
+        icon: '<circle cx="16" cy="18" r="12" fill="white" stroke="black" stroke-width="2"/><path d="M16 6 L16 30 M4 18 L28 18 M7.5 9.5 L24.5 26.5 M24.5 9.5 L7.5 26.5" stroke="black" stroke-width="1"/><path d="M16 2 L13 6 H19 Z" fill="black"/><circle cx="16" cy="18" r="3" fill="black"/>'
+    },
+    {
         id: 'chat',
         name: 'AI Assistant',
         cat: 'tools',
@@ -167,6 +174,14 @@ const APPS = [
 
     // --- LIFESTYLE ---
     {
+        id: 'language',
+        name: 'Languages',
+        cat: 'lifestyle',
+        newBadge: true,
+        desc: 'Learn a language for free',
+        icon: '<path d="M4 6 h14 v12 h-4 l-4 4 v-4 h-6 z" fill="white" stroke="black" stroke-width="2"/><path d="M14 14 h14 v12 h-6 l-4 4 v-4 h-4 z" fill="black" stroke="white" stroke-width="2"/>'
+    },
+    {
         id: 'libby',
         name: 'Libby',
         cat: 'lifestyle',
@@ -274,6 +289,14 @@ const APPS = [
         desc: 'Visually organize your ideas.'
     },
     {
+        id: 'flipnote',
+        name: 'Animate',
+        cat: 'lifestyle',
+        newBadge: true,
+        icon: '<rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><circle cx="14" cy="15" r="2" fill="black"/><line x1="14" y1="17" x2="14" y2="21" stroke="black" stroke-width="1.5"/><path d="M11 19 l6 -1" stroke="black" stroke-width="1.5"/><path d="M11 25 l3 -4 l3 4" stroke="black" stroke-width="1.5" fill="none"/>',
+        desc: 'Create pixel animations.'
+    },
+    {
         id: 'napkin',
         name: 'Sketchpad',
         cat: 'lifestyle',
@@ -354,6 +377,13 @@ const APPS = [
         name: 'Blackjack',
         cat: 'games',
         icon: '<rect x="6" y="6" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-10 13 15)"/><text x="11" y="18" font-size="10" font-weight="bold" transform="rotate(-10 13 15)">A♠</text><rect x="14" y="8" width="14" height="18" rx="2" fill="black" stroke="white" stroke-width="1" transform="rotate(10 21 17)"/><text x="19" y="20" font-size="10" font-weight="bold" fill="white" transform="rotate(10 21 17)">J</text>'
+    },
+    {
+        id: 'texasholdem',
+        name: 'Texas Hold\'em',
+        cat: 'games',
+        newBadge: true,
+        icon: '<rect x="14" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(15 21 17)"/><text x="17" y="21" font-size="10" font-weight="bold" transform="rotate(15 21 17)" fill="black">K♦</text><rect x="4" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-15 11 17)"/><text x="7" y="21" font-size="10" font-weight="bold" transform="rotate(-15 11 17)" fill="black">A♦</text>'
     },
     {
         id: 'checkers',
