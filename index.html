@@ -399,22 +399,6 @@
             color: #555;
         }
 
-        .notify-badge {
-            position: absolute;
-            top: 0;
-            left: 5px;
-            width: 14px;
-            height: 14px;
-            background: black;
-            color: white;
-            border-radius: 50%;
-            font-size: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            display: none;
-        }
 
         .beta-label {
             position: absolute;
@@ -439,6 +423,22 @@
             background: white;
             color: black;
             font-size: 0.6rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            border: 1px solid black;
+            font-weight: bold;
+            z-index: 5;
+            transform: rotate(10deg);
+            box-shadow: 1px 1px 0 black;
+        }
+
+        .disabled-label {
+            position: absolute;
+            top: -4px;
+            right: -8px;
+            background: #999;
+            color: white;
+            font-size: 0.55rem;
             padding: 1px 4px;
             border-radius: 3px;
             border: 1px solid black;
@@ -761,6 +761,15 @@
                 <button class="sys-btn" onclick="closeModal('discord-modal')">Close</button>
             </div>
         </div>
+
+        <div id="generic-modal" class="modal-overlay" style="z-index: 3000;">
+            <div class="modal-box">
+                <h2 id="generic-title" style="margin-top:0; border-bottom: 2px solid black; padding-bottom:10px;">Notice
+                </h2>
+                <p id="generic-msg" style="font-size:1.1rem; line-height:1.5; margin: 20px 0;"></p>
+                <button class="sys-btn" onclick="closeModal('generic-modal')">OK</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -788,6 +797,16 @@
                 firebase.initializeApp(firebaseConfig);
                 auth = firebase.auth();
                 db = firebase.firestore();
+
+                // Enable Offline Persistence
+                db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+                    if (err.code == 'failed-precondition') {
+                        console.warn("Persistence failed: Multiple tabs open");
+                    } else if (err.code == 'unimplemented') {
+                        console.warn("Persistence failed: Browser not supported");
+                    }
+                });
+
                 isFirebaseAvailable = true;
                 console.log("Firebase initialized successfully.");
             } else {
@@ -841,7 +860,6 @@
                         }
 
                         closeModal('login-modal');
-                        monitorGameNotifications(user.uid);
                         monitorFavoriteApps();
                     } else {
                         handleGuestMode();
@@ -993,12 +1011,22 @@
                 a.href = "javascript:void(0)";
             }
 
+            if (app.disabled) {
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    const msg = app.disabledMessage || "This service is currently unavailable.";
+                    const title = app.name + " Unavailable";
+                    showGenericModal(title, msg);
+                };
+                a.href = "javascript:void(0)";
+                a.style.opacity = "0.6";
+            }
+
             const isFav = favoriteApps.includes(app.id);
             const showToggleClass = isEditMode && currentFilter !== 'featured' ? 'show-toggle' : '';
             const isFavClass = isFav ? 'is-favorite' : '';
 
-            let extraHtml = `<div class="notify-badge" id="badge-${app.id}">!</div>`;
-            extraHtml += `
+            let extraHtml = `
                 <div class="favorite-toggle ${isFavClass} ${showToggleClass}" onclick="toggleFavorite('${app.id}', event)">
                     <svg viewBox="0 0 32 32">
                         <path d="M16 2 L20 12 L30 13 L22 20 L24 30 L16 25 L8 30 L10 20 L2 13 L12 12 Z"/>
@@ -1012,6 +1040,10 @@
 
             if (app.newBadge) {
                 extraHtml += `<div class="new-label">NEW</div>`;
+            }
+
+            if (app.disabled) {
+                extraHtml += `<div class="disabled-label">CLOSED</div>`;
             }
 
             a.innerHTML = `
@@ -1174,28 +1206,18 @@
             }
         }
 
-        function monitorGameNotifications(uid) {
-            if (!isFirebaseAvailable || !db) return;
-            db.collection('word_games')
-                .where('status', '==', 'active')
-                .onSnapshot(snap => {
-                    let myTurn = false;
-                    snap.forEach(doc => {
-                        const d = doc.data();
-                        if ((d.p1_uid === uid || d.p2_uid === uid) && d.turn === uid) {
-                            myTurn = true;
-                        }
-                    });
-                    const badge = document.getElementById('badge-words');
-                    if (badge) badge.style.display = myTurn ? 'flex' : 'none';
-                });
-        }
 
         function openLogin() { document.getElementById('login-modal').style.display = 'flex'; }
         function openAbout() { document.getElementById('about-modal').style.display = 'flex'; }
         function openDiscordModal() { document.getElementById('discord-modal').style.display = 'flex'; }
         function openLogoutModal() { document.getElementById('logout-modal').style.display = 'flex'; }
         function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+
+        function showGenericModal(title, message) {
+            document.getElementById('generic-title').innerText = title;
+            document.getElementById('generic-msg').innerText = message;
+            document.getElementById('generic-modal').style.display = 'flex';
+        }
 
         function doLogin() {
             if (!isFirebaseAvailable || !auth) {

@@ -639,17 +639,21 @@
         }
 
         function loadCloudData() {
-            // Load Decks
+            // Load Decks (Metadata is small, keep onSnapshot for UI responsiveness)
             db.collection('users').doc(currentUser.uid).collection('flashcard_decks').onSnapshot(snap => {
                 decks = [];
                 snap.forEach(doc => decks.push({ id: doc.id, ...doc.data() }));
                 renderDeckList();
             });
-            // Load Cards
-            db.collection('users').doc(currentUser.uid).collection('flashcards').onSnapshot(snap => {
-                cards = [];
-                snap.forEach(doc => cards.push({ id: doc.id, ...doc.data() }));
-            });
+
+            // OPTIMIZATION: One-time fetch for all cards to populate due counts without live listening
+            db.collection('users').doc(currentUser.uid).collection('flashcards').get()
+                .then(snap => {
+                    cards = [];
+                    snap.forEach(doc => cards.push({ id: doc.id, ...doc.data() }));
+                    console.log("Flashcards: " + cards.length + " cards loaded (One-time fetch)");
+                    renderDeckList();
+                });
         }
 
         function saveData() {

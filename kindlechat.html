@@ -1018,6 +1018,16 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+
+        // Enable Offline Persistence
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+            if (err.code == 'failed-precondition') {
+                console.warn("Persistence failed: Multiple tabs open");
+            } else if (err.code == 'unimplemented') {
+                console.warn("Persistence failed: Browser not supported");
+            }
+        });
+
         const auth = firebase.auth();
 
         // --- STATE ---
@@ -1261,24 +1271,32 @@
 
         async function cleanupEmptyChats() {
             if (!currentUsername) return;
+
+            // OPTIMIZATION: Only run cleanup once every 24 hours to save reads
+            const lastCleanup = localStorage.getItem('kindlechat_last_cleanup');
+            const now = Date.now();
+            if (lastCleanup && (now - parseInt(lastCleanup)) < 86400000) {
+                console.log("Chat: Cleanup skipped (Recently performed)");
+                return;
+            }
+
             try {
+                // OPTIMIZATION: Limit cleanup to 15 most recent rooms 
+                // instead of checking every single room the user is in.
                 const roomsQuery = await db.collection('rooms')
                     .where('participants', 'array-contains', currentUsername)
-                    // .where('type', '==', 'dm') // REMOVED: Apply to all types per user request
+                    .orderBy('lastMessageAt', 'desc')
+                    .limit(15)
                     .get();
 
                 const cleanupPromises = [];
                 roomsQuery.forEach(doc => {
                     const roomData = doc.data();
-                    // Don't clean up chats with ukiyo
-                    if (roomData.participants.includes('ukiyo')) {
-                        return;
-                    }
+                    if (roomData.participants.includes('ukiyo')) return;
 
                     const messagesRef = db.collection('rooms').doc(doc.id).collection('messages');
                     const promise = messagesRef.limit(1).get().then(messageSnap => {
                         if (messageSnap.empty) {
-                            // This room is empty, remove user from it.
                             return db.collection('rooms').doc(doc.id).update({
                                 participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
                             });
@@ -1287,7 +1305,11 @@
                     cleanupPromises.push(promise);
                 });
                 await Promise.all(cleanupPromises);
-            } catch (e) { console.error("Error during empty chat cleanup:", e); }
+                localStorage.setItem('kindlechat_last_cleanup', now.toString());
+                console.log("Chat: Cleanup completed for active rooms");
+            } catch (e) {
+                console.error("Error during empty chat cleanup:", e);
+            }
         }
 
         function loadRooms() {

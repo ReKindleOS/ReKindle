@@ -619,6 +619,16 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+
+        // Enable Offline Persistence
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+            if (err.code == 'failed-precondition') {
+                console.warn("Persistence failed: Multiple tabs open");
+            } else if (err.code == 'unimplemented') {
+                console.warn("Persistence failed: Browser not supported");
+            }
+        });
+
         db.settings({
             experimentalForceLongPolling: true,
             experimentalAutoDetectLongPolling: false,
@@ -729,13 +739,18 @@
             }
         }
 
-        function setupCloudListener() {
+        async function setupCloudListener() {
+            // OPTIMIZATION: One-time fetch of 50 most recent games instead of live listener
             db.collection('users').doc(currentUser.uid).collection('interactive_games')
-                .onSnapshot(async snapshot => {
+                .orderBy('updated', 'desc')
+                .limit(50)
+                .get()
+                .then(async snapshot => {
                     cloudLibrary = [];
                     snapshot.forEach(doc => {
                         cloudLibrary.push({ ...doc.data(), docId: doc.id });
                     });
+                    console.log("Interactive: Loaded " + cloudLibrary.length + " cloud games");
                     renderMergedLibrary();
                 });
         }
