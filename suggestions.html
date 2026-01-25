@@ -612,6 +612,16 @@
         try {
             firebase.initializeApp(firebaseConfig);
             const db = firebase.firestore();
+
+            // Enable Offline Persistence
+            db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+                if (err.code == 'failed-precondition') {
+                    console.warn("Persistence failed: Multiple tabs open");
+                } else if (err.code == 'unimplemented') {
+                    console.warn("Persistence failed: Browser not supported");
+                }
+            });
+
             const auth = firebase.auth();
 
             let currentUser = null;
@@ -680,9 +690,9 @@
                 renderList();
             };
 
-            // LOAD SUGGESTIONS
+            // LOAD SUGGESTIONS (Optimization: Use .get() instead of .onSnapshot to save reads)
             function loadSuggestions() {
-                db.collection('suggestions').orderBy('createdAt', 'desc').limit(100).onSnapshot(function (snapshot) {
+                db.collection('suggestions').orderBy('createdAt', 'desc').limit(100).get().then(function (snapshot) {
                     allSuggestions = [];
                     snapshot.forEach(function (doc) {
                         var data = doc.data();
@@ -690,7 +700,7 @@
                         allSuggestions.push(data);
                     });
                     renderList();
-                }, function (error) {
+                }).catch(function (error) {
                     console.error("Error loading suggestions:", error);
                     document.getElementById('suggestion-list').innerHTML = '<div style="text-align:center; padding:20px; color:red;">Failed to load suggestions. <br> ' + error.message + '</div>';
                 });
@@ -1075,7 +1085,8 @@
             };
 
 
-            // COMMENTS
+            // COMMENTS (Optimization: Use .get() or keep listener? Comments are only loaded for the active suggestion.
+            // Keeping listener for now as it only affects one doc's subcollection during active viewing.)
             function loadComments(id) {
                 const list = document.getElementById('detail-comments');
                 list.innerHTML = 'Loading comments...';
@@ -1238,7 +1249,8 @@
 
     </script>
 
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
 
 </html>

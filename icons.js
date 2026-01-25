@@ -169,7 +169,9 @@ const APPS = [
         name: 'AirType',
         cat: 'tools',
         desc: 'Phone-based typewriter',
-        icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>'
+        icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>',
+        disabled: true,
+        disabledMessage: "I'm sorry but due to server costs, it's no longer feasible to provide AirType as a free service. I am exploring options."
     },
 
     // --- LIFESTYLE ---

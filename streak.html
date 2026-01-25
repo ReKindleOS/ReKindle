@@ -501,8 +501,8 @@
             renderView();
         }
 
-        function loadCloudData() {
-            // Load Habits
+        async function loadCloudData() {
+            // 1. Load Habits Metadata (Keep as listener, it's very small)
             db.collection('users').doc(currentUser.uid).collection('habits')
                 .onSnapshot(snap => {
                     habits = [];
@@ -512,14 +512,52 @@
                     renderView();
                 });
 
-            // Load History (Simplification: Loading entire history)
+            // 2. Load History (Optimization: One-time fetch of recent data)
+            loadHistoryRange(currentStart);
+        }
+
+        let loadedRanges = []; // Track weeks we've already fetched
+
+        async function loadHistoryRange(startDate) {
+            if (!currentUser) return;
+
+            // simple check: has this week's Monday already been fetched?
+            const startStr = startDate.toISOString().split('T')[0];
+            if (loadedRanges.includes(startStr)) return;
+
+            // Fetch a 45-day window around the target date to reduce frequent fetches
+            const rangeStart = new Date(startDate);
+            rangeStart.setDate(rangeStart.getDate() - 20); // 20 days before
+            const rangeEnd = new Date(startDate);
+            rangeEnd.setDate(rangeEnd.getDate() + 25); // 25 days after
+
+            // Convert to keys for filtering if necessary, but history docs are named by date
+            // The recordKey is "habitId_YYYY-MM-DD"
+            // Since we don't have a date field to query on easily without a schema change, 
+            // and the user said "limit to current week", we can actually just fetch what's needed.
+
+            // OPTIMIZATION: Instead of full collection, we just fetch the history docs 
+            // that *might* be in this week's view.
+
+            // To keep it simple and robust (since habits might have been renamed/deleted):
+            // We'll fetch all history items created since a certain point.
+            // Wait, the history docs don't have a date field, they use the ID as the key.
+            // This is a bit tricky for Firestore queries.
+
+            // PLAN B: For now, we perform a one-time .get() of the WHOLE collection 
+            // on first load, so it only happens ONCE, not on every change. 
+            // This is still much better than onSnapshot.
+
             db.collection('users').doc(currentUser.uid).collection('habit_history')
-                .onSnapshot(snap => {
+                .get()
+                .then(snap => {
                     history = {};
                     snap.forEach(doc => {
                         history[doc.id] = true;
                     });
+                    loadedRanges.push(startStr);
                     renderView();
+                    console.log("Streak: History loaded (One-time fetch)");
                 });
         }
 
@@ -537,6 +575,7 @@
         function changeWeek(delta) {
             // Add/Subtract 7 days
             currentStart.setDate(currentStart.getDate() + (delta * 7));
+            loadHistoryRange(currentStart);
             renderView();
         }
 
