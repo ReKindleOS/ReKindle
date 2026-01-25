@@ -213,13 +213,12 @@
         }
 
         .room-item {
-            padding: 12px 15px;
+            padding: 10px 15px;
             border-bottom: 1px solid #eee;
             cursor: pointer;
-            font-size: 0.95rem;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            align-items: flex-start;
         }
 
         .room-item:hover {
@@ -230,6 +229,31 @@
             background: black;
             color: white;
             font-weight: bold;
+        }
+
+        .room-top {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            align-items: center;
+        }
+
+        .room-time {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 2px;
+            font-weight: normal;
+        }
+
+        .room-item.active .room-time {
+            color: #ccc;
+        }
+
+        .sidebar-separator {
+            height: 1px;
+            background: #eee;
+            margin: 5px 15px;
+            border-bottom: 1px solid #ccc;
         }
 
         /* DELETE BUTTON IN LIST */
@@ -981,6 +1005,12 @@
             </div>
         </div>
 
+        <!-- GENERIC MESSAGE MODAL -->
+        <div class="modal-box" id="generic-modal-content" style="display:none;">
+            <div id="modal-message" class="modal-text"></div>
+            <div id="modal-btns" class="modal-btns"></div>
+        </div>
+
     </div>
 
     <!-- NEW: REACTION SELECTION MODAL -->
@@ -989,8 +1019,14 @@
     </div>
 
     <script>
+        // --- GLOBAL ERROR CATCHER ---
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            console.error('Chat Error: ' + msg + ' at ' + url + ':' + lineNo + ':' + columnNo);
+            return false;
+        };
+
         // --- FIREBASE CONFIG ---
-        const firebaseConfig = {
+        var firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
             projectId: "rekindle-dd1fa",
@@ -1000,15 +1036,21 @@
         };
 
         // --- CONFIGURATION ---
-        function showModal(msg, isConfirm = false, callback = null) {
-            const overlay = document.getElementById('modal-overlay');
-            const messageEl = document.getElementById('modal-message');
-            const btnsEl = document.getElementById('modal-btns');
+        function showModal(msg, isConfirm, callback) {
+            var overlay = document.getElementById('modal-overlay');
+            var messageEl = document.getElementById('modal-message');
+            var btnsEl = document.getElementById('modal-btns');
+
+            // Show generic content, hide Others
+            document.getElementById('create-modal-content').style.display = 'none';
+            document.getElementById('delete-modal-content').style.display = 'none';
+            document.getElementById('generic-modal-content').style.display = 'block';
+
             messageEl.textContent = msg;
             if (isConfirm) {
                 btnsEl.innerHTML = '<button class="modal-btn" id="modal-cancel">Cancel</button><button class="modal-btn" id="modal-ok">OK</button>';
-                document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
-                document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
+                document.getElementById('modal-cancel').onclick = function () { overlay.style.display = 'none'; if (callback) callback(false); };
+                document.getElementById('modal-ok').onclick = function () { overlay.style.display = 'none'; if (callback) callback(true); };
             } else {
                 btnsEl.innerHTML = '<button class="modal-btn" onclick="hideModal()">OK</button>';
             }
@@ -1017,52 +1059,55 @@
         function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 
         firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+        var db = firebase.firestore();
 
-        // Enable Offline Persistence
-        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-            if (err.code == 'failed-precondition') {
-                console.warn("Persistence failed: Multiple tabs open");
-            } else if (err.code == 'unimplemented') {
-                console.warn("Persistence failed: Browser not supported");
-            }
-        });
+        // Fix Safari CORS errors and connection hangs
+        if (db.settings) {
+            db.settings({
+                experimentalForceLongPolling: true,
+                merge: true
+            });
+        }
 
-        const auth = firebase.auth();
+        var auth = firebase.auth();
 
         // --- STATE ---
-        let currentUser = null;
-        let currentUsername = "";
-        let currentRoomId = 'general';
-        let roomToDeleteId = null;
-        let unsubscribeMsg = null;
-        let unsubscribeRooms = null;
-        let oldestMsgDoc = null; // For pagination
-        let isLoadingMore = false; // For pagination
-        let supporterUsers = new Set(); // Store supporter usernames
+        var currentUser = null;
+        var currentUsername = "";
+        var currentRoomId = 'general';
+        var roomToDeleteId = null;
+        var unsubscribeMsg = null;
+        var unsubscribeRooms = null;
+        var unsubscribeGeneral = null;
+        var oldestMsgDoc = null; // For pagination
+        var isLoadingMore = false; // For pagination
+        var supporterUsers = {}; // Store supporter usernames as object for ES5 compatibility
+        var userRooms = [];
+        var generalRoom = { id: 'general', name: 'All of KindleChat', lastMessageAt: null };
 
         // --- Reaction Keys (Simplified to match the new constant button action) ---
-        const FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
+        var FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
 
         // --- ASCII ART DATA ---
         // Moved to emojis.js (ASCII_EMOJIS)
 
         // --- INIT ---
-        window.onload = () => {
+        window.onload = function () {
             loadWallpaper();
             initAsciiPicker(); // Initialize the ASCII picker
             fetchSupporters(); // Load supporters list
 
             // Check Auth
-            auth.onAuthStateChanged(async (user) => {
+            auth.onAuthStateChanged(function (user) {
                 if (user) {
                     currentUser = user;
-                    currentUsername = user.email.split('@')[0];
+                    currentUsername = (user.email || user.uid).split('@')[0];
 
                     document.getElementById('active-input').style.display = 'flex';
                     document.getElementById('locked-input').style.display = 'none';
 
-                    await cleanupEmptyChats();
+                    // Run cleanup in background (non-blocking)
+                    cleanupEmptyChats();
                     loadRooms();
                 } else {
                     currentUser = null;
@@ -1073,7 +1118,7 @@
             });
 
             // Enter key
-            document.getElementById('msg-input').addEventListener("keypress", (e) => {
+            document.getElementById('msg-input').addEventListener("keypress", function (e) {
                 // Shift+Enter should allow newline (for ASCII art)
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1086,8 +1131,8 @@
 
             // Click outside close for ASCII picker
             document.addEventListener('click', function (event) {
-                const picker = document.getElementById('ascii-picker-window');
-                const btn = document.querySelector('.sys-btn[onclick="toggleAsciiPicker()"]');
+                var picker = document.getElementById('ascii-picker-window');
+                var btn = document.querySelector('.sys-btn[onclick="toggleAsciiPicker()"]');
                 if (picker.classList.contains('open') &&
                     !picker.contains(event.target) &&
                     event.target !== btn) {
@@ -1102,17 +1147,17 @@
 
         // --- ASCII PICKER LOGIC ---
         function initAsciiPicker() {
-            const container = document.getElementById('ascii-picker-window');
+            var container = document.getElementById('ascii-picker-window');
             container.innerHTML = ''; // Clear previous content
 
             // ASCII_EMOJIS is defined in emojis.js
             if (typeof ASCII_EMOJIS !== 'undefined' && !Array.isArray(ASCII_EMOJIS)) {
 
                 // Create Layout Containers
-                const sidebar = document.createElement('div');
+                var sidebar = document.createElement('div');
                 sidebar.className = 'ascii-sidebar';
 
-                const content = document.createElement('div');
+                var content = document.createElement('div');
                 content.className = 'ascii-content';
                 content.id = 'ascii-content-area';
 
@@ -1121,11 +1166,11 @@
                 container.appendChild(sidebar);
 
                 // For ScrollSpy
-                let isFirst = true;
-                let autoHighlightEnabled = true; // NEW: Control flag
+                var isFirst = true;
+                var autoHighlightEnabled = true; // NEW: Control flag
 
                 // Helper to re-enable auto highlight on user interaction
-                const enableAutoHighlight = () => { autoHighlightEnabled = true; };
+                var enableAutoHighlight = function () { autoHighlightEnabled = true; };
                 content.addEventListener('wheel', enableAutoHighlight);
                 content.addEventListener('touchmove', enableAutoHighlight);
                 content.addEventListener('keydown', enableAutoHighlight);
@@ -1133,13 +1178,16 @@
 
 
                 // Iterate Categories
-                for (const [category, items] of Object.entries(ASCII_EMOJIS)) {
+                for (var category in ASCII_EMOJIS) {
+                    if (!ASCII_EMOJIS.hasOwnProperty(category)) continue;
+                    var items = ASCII_EMOJIS[category];
+
                     // ID Generation
-                    const cleanName = category.replace(/\s+/g, '-').replace(/[&]/g, '').toLowerCase();
-                    const sectionId = 'cat-' + cleanName;
+                    var cleanName = category.replace(/\s+/g, '-').replace(/[&]/g, '').toLowerCase();
+                    var sectionId = 'cat-' + cleanName;
 
                     // 1. Sidebar Item
-                    const navItem = document.createElement('div');
+                    var navItem = document.createElement('div');
                     navItem.className = 'ascii-sidebar-item';
                     if (isFirst) {
                         navItem.classList.add('active'); // Default active
@@ -1148,107 +1196,111 @@
                     navItem.innerText = category;
                     navItem.dataset.targetId = sectionId; // Store Link
 
-                    navItem.onclick = (e) => {
-                        e.stopPropagation(); // Prevent closing picker
+                    navItem.onclick = (function (targetId, el) {
+                        return function (e) {
+                            e.stopPropagation(); // Prevent closing picker
 
-                        // Disable auto-highlighting temporarily (until user scrolls manually)
-                        autoHighlightEnabled = false;
+                            // Disable auto-highlighting temporarily (until user scrolls manually)
+                            autoHighlightEnabled = false;
 
-                        // Manual activation
-                        document.querySelectorAll('.ascii-sidebar-item').forEach(el => el.classList.remove('active'));
-                        navItem.classList.add('active');
+                            // Manual activation
+                            var siblings = el.parentNode.querySelectorAll('.ascii-sidebar-item');
+                            for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('active');
+                            el.classList.add('active');
 
-                        // Scroll to section INSTANTLY
-                        const target = document.getElementById(sectionId);
-                        if (target) {
-                            target.scrollIntoView({ behavior: 'auto', block: 'start' });
-                        }
-                    };
+                            // Scroll to section INSTANTLY
+                            var target = document.getElementById(targetId);
+                            if (target) {
+                                target.scrollIntoView({ behavior: 'auto', block: 'start' });
+                            }
+                        };
+                    })(sectionId, navItem);
                     sidebar.appendChild(navItem);
 
                     // 2. Content Section
-                    const section = document.createElement('div');
+                    var section = document.createElement('div');
                     section.className = 'ascii-category-section';
                     section.id = sectionId;
 
                     // Grid
-                    const grid = document.createElement('div');
+                    var grid = document.createElement('div');
                     grid.className = 'ascii-grid';
 
                     // Items
-                    items.forEach(item => {
-                        const div = document.createElement('div');
+                    for (var j = 0; j < items.length; j++) {
+                        var item = items[j];
+                        var div = document.createElement('div');
                         div.className = 'ascii-option';
                         div.innerText = item.art;
                         if (item.name) div.title = item.name;
-                        div.onclick = () => insertAscii(item.art);
+                        div.onclick = (function (art) {
+                            return function () { insertAscii(art); };
+                        })(item.art);
                         grid.appendChild(div);
-                    });
+                    }
 
                     section.appendChild(grid);
                     content.appendChild(section);
                 }
 
                 // SCROLL SPY LOGIC: LINEAR INTERPOLATION
-                content.addEventListener('scroll', () => {
+                content.addEventListener('scroll', function () {
                     if (!autoHighlightEnabled) return; // Skip if manually overridden
 
                     // Calculate scroll percentage (0 to 1)
-                    // maxScroll is content height - client height
-                    const maxScroll = content.scrollHeight - content.clientHeight;
+                    var maxScroll = content.scrollHeight - content.clientHeight;
                     if (maxScroll <= 0) return;
 
-                    const scrollPos = content.scrollTop;
-                    const percentage = scrollPos / maxScroll;
+                    var scrollPos = content.scrollTop;
+                    var percentage = scrollPos / maxScroll;
 
                     // Get all sidebar items
-                    const sidebarItems = sidebar.querySelectorAll('.ascii-sidebar-item');
-                    const totalItems = sidebarItems.length;
+                    var sidebarItems = sidebar.querySelectorAll('.ascii-sidebar-item');
+                    var totalItems = sidebarItems.length;
 
                     if (totalItems === 0) return;
 
-                    // Map percentage to index range [0, totalItems - 1]
-                    // We use Math.floor but clamp it to max index.
-                    // We might want to round or floor. Math.floor(perc * count) maps 0..0.99 to 0..?
-
-                    let activeIndex = Math.floor(percentage * totalItems);
+                    var activeIndex = Math.floor(percentage * totalItems);
                     // Clamp
                     if (activeIndex < 0) activeIndex = 0;
                     if (activeIndex >= totalItems) activeIndex = totalItems - 1;
 
                     // Update UI
-                    sidebarItems.forEach((el, index) => {
-                        if (index === activeIndex) {
+                    for (var i = 0; i < sidebarItems.length; i++) {
+                        var el = sidebarItems[i];
+                        if (i === activeIndex) {
                             el.classList.add('active');
-                            el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                            // Smooth scroll into view for the category name if it's outside visible sidebar
+                            if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
                         } else {
                             el.classList.remove('active');
                         }
-                    });
+                    }
                 });
 
             } else if (Array.isArray(ASCII_EMOJIS)) {
-                // ... Fallback omitted for brevity as it was unused ...
-                // But preserving original fallback logic if needed
-                ASCII_EMOJIS.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'ascii-option';
-                    div.innerText = item.art;
-                    div.onclick = () => insertAscii(item.art);
-                    container.appendChild(div);
-                });
+                for (var k = 0; k < ASCII_EMOJIS.length; k++) {
+                    var itemArr = ASCII_EMOJIS[k];
+                    var divArr = document.createElement('div');
+                    divArr.className = 'ascii-option';
+                    divArr.innerText = itemArr.art;
+                    divArr.onclick = (function (art) {
+                        return function () { insertAscii(art); };
+                    })(itemArr.art);
+                    container.appendChild(divArr);
+                }
             }
         }
 
 
 
         function toggleAsciiPicker() {
-            const picker = document.getElementById('ascii-picker-window');
+            var picker = document.getElementById('ascii-picker-window');
             picker.classList.toggle('open');
         }
 
         function insertAscii(text) {
-            const input = document.getElementById('msg-input');
+            var input = document.getElementById('msg-input');
             input.value += text;
             input.focus();
             toggleAsciiPicker(); // Close after selection
@@ -1256,200 +1308,225 @@
 
         // --- REACTION MODAL POPULATION ---
         function populateReactionModal() {
-            const modal = document.getElementById('reaction-selection-modal');
+            var modal = document.getElementById('reaction-selection-modal');
             modal.innerHTML = '';
-            FONT_REACTIONS.forEach(reaction => {
-                const div = document.createElement('div');
+            for (var i = 0; i < FONT_REACTIONS.length; i++) {
+                var reaction = FONT_REACTIONS[i];
+                var div = document.createElement('div');
                 div.className = 'reaction-option';
                 div.innerText = reaction;
                 // Click handler is attached by openReactionTarget to pass the msgId
                 modal.appendChild(div);
-            });
+            }
         }
 
         // --- ROOM LOGIC ---
 
-        async function cleanupEmptyChats() {
+        function cleanupEmptyChats() {
             if (!currentUsername) return;
 
             // OPTIMIZATION: Only run cleanup once every 24 hours to save reads
-            const lastCleanup = localStorage.getItem('kindlechat_last_cleanup');
-            const now = Date.now();
+            var lastCleanup = localStorage.getItem('kindlechat_last_cleanup');
+            var now = Date.now();
             if (lastCleanup && (now - parseInt(lastCleanup)) < 86400000) {
                 console.log("Chat: Cleanup skipped (Recently performed)");
                 return;
             }
 
-            try {
-                // OPTIMIZATION: Limit cleanup to 15 most recent rooms 
-                // instead of checking every single room the user is in.
-                const roomsQuery = await db.collection('rooms')
-                    .where('participants', 'array-contains', currentUsername)
-                    .orderBy('lastMessageAt', 'desc')
-                    .limit(15)
-                    .get();
+            db.collection('rooms')
+                .where('participants', 'array-contains', currentUsername)
+                .orderBy('lastMessageAt', 'desc')
+                .limit(15)
+                .get()
+                .then(function (roomsQuery) {
+                    var cleanupPromises = [];
+                    roomsQuery.forEach(function (doc) {
+                        var roomData = doc.data();
+                        if (roomData.participants.indexOf('ukiyo') !== -1) return;
 
-                const cleanupPromises = [];
-                roomsQuery.forEach(doc => {
-                    const roomData = doc.data();
-                    if (roomData.participants.includes('ukiyo')) return;
-
-                    const messagesRef = db.collection('rooms').doc(doc.id).collection('messages');
-                    const promise = messagesRef.limit(1).get().then(messageSnap => {
-                        if (messageSnap.empty) {
-                            return db.collection('rooms').doc(doc.id).update({
-                                participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
-                            });
-                        }
+                        var messagesRef = db.collection('rooms').doc(doc.id).collection('messages');
+                        var promise = messagesRef.limit(1).get().then(function (messageSnap) {
+                            if (messageSnap.empty) {
+                                return db.collection('rooms').doc(doc.id).update({
+                                    participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
+                                });
+                            }
+                        });
+                        cleanupPromises.push(promise);
                     });
-                    cleanupPromises.push(promise);
-                });
-                await Promise.all(cleanupPromises);
-                localStorage.setItem('kindlechat_last_cleanup', now.toString());
-                console.log("Chat: Cleanup completed for active rooms");
-            } catch (e) {
+                    return Promise.all(cleanupPromises);
+                })
+                .then(function () {
+                    localStorage.setItem('kindlechat_last_cleanup', now.toString());
+                    console.log("Chat: Cleanup completed for active rooms");
+                })
+            ['catch'](function (e) {
                 console.error("Error during empty chat cleanup:", e);
+            });
+        }
+
+        function updateSidebar() {
+            // Sort only user rooms by lastMessageAt descending
+            userRooms.sort(function (a, b) {
+                var timeA = getTimestampMillis(a.lastMessageAt);
+                var timeB = getTimestampMillis(b.lastMessageAt);
+                return timeB - timeA;
+            });
+            renderRoomList(generalRoom, userRooms);
+
+            // Sidebar visibility logic
+            var sidebar = document.getElementById('sidebar');
+            var headerBtn = document.getElementById('header-new-chat-btn');
+
+            // ALWAYS show sidebar if General exists so users can see activity/timestamps
+            if (generalRoom || userRooms.length > 0) {
+                sidebar.style.display = 'flex';
+                headerBtn.style.display = 'none';
+                document.getElementById('app-layout').style.setProperty('--sidebar-width', '252px');
+            } else {
+                sidebar.style.display = 'none';
+                headerBtn.style.display = 'block';
+                document.getElementById('app-layout').style.setProperty('--sidebar-width', '0px');
             }
         }
 
         function loadRooms() {
             if (unsubscribeRooms) unsubscribeRooms();
+            if (unsubscribeGeneral) unsubscribeGeneral();
 
-            const listEl = document.getElementById('room-list');
+            var listEl = document.getElementById('room-list');
             listEl.innerHTML = '<div style="padding:10px;">Loading...</div>';
+
+            // Listen to general room updates for timestamp
+            unsubscribeGeneral = db.collection('rooms').doc('general').onSnapshot(function (doc) {
+                if (doc.exists) {
+                    generalRoom.lastMessageAt = doc.data().lastMessageAt;
+                }
+                updateSidebar();
+            }, function (err) {
+                console.error("Chat: General room snapshot error:", err);
+                updateSidebar(); // Proceed anyway
+            });
 
             unsubscribeRooms = db.collection('rooms')
                 .where('participants', 'array-contains', currentUsername)
-                .onSnapshot(snap => {
-                    let rooms = [];
-                    // 1. General
-                    rooms.push({ id: 'general', name: 'All of KindleChat' });
-
-
-                    snap.forEach(doc => {
-                        let data = doc.data();
-                        let r = {
+                .onSnapshot(function (snap) {
+                    userRooms = [];
+                    snap.forEach(function (doc) {
+                        var data = doc.data();
+                        var r = {
                             id: doc.id,
-                            type: data.type
+                            type: data.type,
+                            lastMessageAt: data.lastMessageAt || data.createdAt // Fallback
                         };
 
-                        // Smart Naming
                         if (data.type === 'dm') {
-                            // Name the room after the OTHER person
-                            const otherPerson = data.participants.find(p => p !== currentUsername);
-
+                            var otherPerson = data.participants.filter(function (p) { return p !== currentUsername; })[0];
                             if (otherPerson === 'ukiyo') {
                                 r.name = "Ukiyo (Developer)";
                             } else {
-                                // Fallback to "Me" if talking to self, otherwise other person's name
                                 r.name = otherPerson || "Me";
                             }
                         } else {
-                            // Group chat
                             r.name = data.name || "Untitled Group";
                         }
-
-                        rooms.push(r);
+                        userRooms.push(r);
                     });
-
-                    // SIDEBAR VISIBILITY LOGIC
-                    const sidebar = document.getElementById('sidebar');
-                    const headerBtn = document.getElementById('header-new-chat-btn');
-
-                    if (rooms.length <= 1) {
-                        sidebar.style.display = 'none';
-                        headerBtn.style.display = 'block'; // Show extra button
-                        document.getElementById('app-layout').style.setProperty('--sidebar-width', '0px');
-                    } else {
-                        sidebar.style.display = 'flex';
-                        headerBtn.style.display = 'none'; // Hide extra button
-                        document.getElementById('app-layout').style.setProperty('--sidebar-width', '252px');
-                    }
-
-                    renderRoomList(rooms);
+                    updateSidebar();
+                }, function (err) {
+                    console.error("User rooms snapshot error:", err);
+                    updateSidebar(); // Proceed anyway
                 });
         }
 
-        function renderRoomList(rooms) {
-            const listEl = document.getElementById('room-list');
+        function renderRoomList(general, rooms) {
+            var listEl = document.getElementById('room-list');
             listEl.innerHTML = '';
 
-            rooms.forEach(room => {
-                const div = document.createElement('div');
-                div.className = `room-item ${room.id === currentRoomId ? 'active' : ''}`;
-
-                // Allow deletion of non-essential rooms
-                let deleteHtml = '';
-                // 'general' cannot be deleted.
-                if (room.id !== 'general') {
-                    deleteHtml = `<span class="del-room-btn" onclick="promptLeaveRoom('${room.id}', event)">×</span>`;
+            // 1. Render General Room
+            if (general) {
+                renderRoomItem(general, listEl);
+                // 2. Add Separator if there are other rooms
+                if (rooms.length > 0) {
+                    var sep = document.createElement('div');
+                    sep.className = 'sidebar-separator';
+                    listEl.appendChild(sep);
                 }
+            }
 
-                div.innerHTML = `<span>${room.name}</span>${deleteHtml}`;
-                div.onclick = () => switchRoom(room.id, room.name);
-                listEl.appendChild(div);
-            });
+            // 3. Render Other Rooms
+            for (var i = 0; i < rooms.length; i++) {
+                renderRoomItem(rooms[i], listEl);
+            }
         }
 
-        async function switchRoom(id, name) {
+        function renderRoomItem(room, listEl) {
+            var div = document.createElement('div');
+            div.className = 'room-item' + (room.id === currentRoomId ? ' active' : '');
+
+            var deleteHtml = '';
+            if (room.id !== 'general') {
+                deleteHtml = '<span class="del-room-btn" onclick="promptLeaveRoom(\'' + room.id + '\', event)">×</span>';
+            }
+
+            var timeStr = formatChatTime(room.lastMessageAt);
+
+            div.innerHTML = '<div class="room-top"><span>' + room.name + '</span>' + deleteHtml + '</div>' +
+                '<div class="room-time">' + timeStr + '</div>';
+            div.onclick = function () { switchRoom(room.id, room.name); };
+            listEl.appendChild(div);
+        }
+
+        function switchRoom(id, name) {
             if (currentRoomId === id) return;
-
-
 
             currentRoomId = id;
             document.getElementById('room-title').innerText = name;
-
-            // Update active state in sidebar
-            document.querySelectorAll('.room-item').forEach(el => {
-                el.classList.remove('active');
-                // Use a check that finds the room by ID or name to robustly apply 'active' class
-                const roomNameInEl = el.querySelector('span:first-child').innerText;
-                if (roomNameInEl === name) el.classList.add('active');
-            });
 
             // Clear previous messages to prevent ghosting
             document.getElementById('chat-history').innerHTML = '';
 
             // Update Pixel Button Visibility (Only show in 'general')
-            const pixelBtn = document.getElementById('pixel-btn');
+            var pixelBtn = document.getElementById('pixel-btn');
             if (pixelBtn) {
-                // sys-btn uses display:flex by default
                 pixelBtn.style.display = (id === 'general') ? 'flex' : 'none';
             }
 
             loadMessages();
+            updateSidebar(); // Refresh highlighting
         }
 
         // --- MESSAGE LOGIC (with pagination) ---
 
-        async function handleScroll() {
-            const historyEl = document.getElementById('chat-history');
+        function handleScroll() {
+            var historyEl = document.getElementById('chat-history');
             if (historyEl.scrollTop === 0 && !isLoadingMore && oldestMsgDoc) {
                 isLoadingMore = true;
-                const oldScrollHeight = historyEl.scrollHeight;
+                var oldScrollHeight = historyEl.scrollHeight;
 
-                try {
-                    const querySnapshot = await db.collection('rooms').doc(currentRoomId).collection('messages')
-                        .orderBy('timestamp', 'desc')
-                        .startAfter(oldestMsgDoc)
-                        .limit(25)
-                        .get();
+                db.collection('rooms').doc(currentRoomId).collection('messages')
+                    .orderBy('timestamp', 'desc')
+                    .startAfter(oldestMsgDoc)
+                    .limit(25)
+                    .get()
+                    .then(function (querySnapshot) {
+                        if (!querySnapshot.empty) {
+                            oldestMsgDoc = querySnapshot.docs[querySnapshot.docs.length - 1]; // New oldest message
 
-                    if (!querySnapshot.empty) {
-                        oldestMsgDoc = querySnapshot.docs[querySnapshot.docs.length - 1]; // New oldest message
+                            querySnapshot.docs.forEach(function (doc) {
+                                renderMessage(doc.data(), doc.id, true); // Prepend messages
+                            });
 
-                        querySnapshot.docs.forEach(doc => {
-                            renderMessage(doc.data(), doc.id, true); // Prepend messages
-                        });
-
-                        // Restore scroll position
-                        historyEl.scrollTop = historyEl.scrollHeight - oldScrollHeight;
-                    }
-                } catch (e) {
+                            // Restore scroll position
+                            historyEl.scrollTop = historyEl.scrollHeight - oldScrollHeight;
+                        }
+                    })
+                ['catch'](function (e) {
                     console.error("Error loading more messages:", e);
-                } finally {
-                    isLoadingMore = false;
-                }
+                })
+                    .then(function () {
+                        isLoadingMore = false;
+                    });
             }
         }
 
@@ -1458,7 +1535,7 @@
             oldestMsgDoc = null;
             isLoadingMore = false;
 
-            const history = document.getElementById('chat-history');
+            var history = document.getElementById('chat-history');
 
             // Only show connecting if empty to avoid flicker
             if (history.children.length === 0) {
@@ -1468,9 +1545,9 @@
             unsubscribeMsg = db.collection('rooms').doc(currentRoomId).collection('messages')
                 .orderBy('timestamp', 'asc')
                 .limitToLast(50)
-                .onSnapshot(snapshot => {
+                .onSnapshot(function (snapshot) {
                     // Remove loading indicator if present
-                    if (history.innerHTML.includes('Connecting...')) {
+                    if (history.innerHTML.indexOf('Connecting...') !== -1) {
                         history.innerHTML = '';
                     }
 
@@ -1478,9 +1555,9 @@
                         history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
                     }
 
-                    const isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                    var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
 
-                    snapshot.docChanges().forEach(change => {
+                    snapshot.docChanges().forEach(function (change) {
                         if (change.type === 'added' || change.type === 'modified') {
                             renderMessage(change.doc.data(), change.doc.id);
                         }
@@ -1494,32 +1571,36 @@
                         oldestMsgDoc = snapshot.docs[0];
                     }
 
-                }, error => {
+                }, function (error) {
                     console.error("Error loading messages:", error);
                     history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
                 });
         }
 
 
-        let profanityRegex = null;
+        var profanityRegex = null;
         function getProfanityRegex() {
             if (profanityRegex) return profanityRegex;
             if (typeof BAD_WORDS === 'undefined') return null;
 
             // Create regex once from the BAD_WORDS array
-            const escaped = BAD_WORDS.filter(w => w).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-            profanityRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi');
+            var escaped = BAD_WORDS.filter(function (w) { return w; }).map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+            profanityRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'gi');
             return profanityRegex;
         }
 
         function censorText(text) {
-            const regex = getProfanityRegex();
+            var regex = getProfanityRegex();
             if (!regex) return text;
-            return text.replace(regex, (match) => '*'.repeat(match.length));
+            return text.replace(regex, function (match) {
+                var stars = '';
+                for (var i = 0; i < match.length; i++) stars += '*';
+                return stars;
+            });
         }
 
         function linkify(inputText) {
-            let replacedText, replacePattern1, replacePattern2;
+            var replacedText, replacePattern1, replacePattern2;
 
             // URLs starting with http://, https://, or ftp://
             replacePattern1 = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gim;
@@ -1532,232 +1613,201 @@
             return replacedText;
         }
 
-        function renderMessage(msg, msgId, prepend = false) {
-            const history = document.getElementById('chat-history');
-            const div = document.createElement('div');
+        function renderMessage(msg, msgId, prepend) {
+            var history = document.getElementById('chat-history');
+            var div = document.createElement('div');
 
-            const isSelf = currentUser && (msg.user === currentUsername);
-            div.className = `msg ${isSelf ? 'self' : 'other'}`;
+            var isSelf = currentUser && (msg.user === currentUsername);
+            div.className = 'msg ' + (isSelf ? 'self' : 'other');
             div.dataset.msgId = msgId;
 
-            let nameHtml = isSelf ? '<span>You</span>' : `<span style="font-weight:bold;">${msg.user}</span>`;
+            var nameHtml = isSelf ? '<span>You</span>' : '<span style="font-weight:bold;">' + msg.user + '</span>';
 
             // Developer Badge in Name
             if (msg.user === 'ukiyo') {
-                const devBadge = `<span class="dev-tag">DEV</span>`;
-                nameHtml = isSelf ? `<span>${devBadge}You</span>` : `<span>${devBadge}<span style="font-weight:bold;">${msg.user}</span></span>`;
-            } else if (supporterUsers.has(msg.user)) {
+                var devBadge = '<span class="dev-tag">DEV</span>';
+                nameHtml = isSelf ? '<span>' + devBadge + 'You</span>' : '<span>' + devBadge + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
+            } else if (supporterUsers[msg.user]) {
                 // Supporter Crown (SVG for Kindle compatibility)
-                const crownSvg = `<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>`;
-                const crown = `<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">${crownSvg}</a>`;
-                nameHtml = isSelf ? `<span>${crown}You</span>` : `<span>${crown}<span style="font-weight:bold;">${msg.user}</span></span>`;
+                var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+                var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
+                nameHtml = isSelf ? '<span>' + crown + 'You</span>' : '<span>' + crown + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
             }
 
-            let timeStr = "";
+            var timeStr = "";
             if (msg.timestamp) {
-                const date = msg.timestamp.toDate();
-                timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                var date = msg.timestamp.toDate();
+                timeStr = formatZonedTime(date);
             }
 
-            let bubbleContent = '';
-            let isSpecialMessage = false;
-            let messageText = msg.text || '';
+            var bubbleContent = '';
+            var isSpecialMessage = false;
+            var messageText = msg.text || '';
 
             // Censor Profanity Logic
-            const censorProfanity = localStorage.getItem('rekindle_censor_profanity');
+            var censorProfanity = localStorage.getItem('rekindle_censor_profanity');
             if (messageText && (censorProfanity === null || censorProfanity === 'true')) {
                 messageText = censorText(messageText);
             }
 
-            // ASCII Art detection: Check for newlines (must have multiple lines)
-            const isAscii = messageText.includes('\n');
+            // ASCII Art detection
+            var isAscii = messageText.indexOf('\n') !== -1;
 
             if (isAscii) {
-                bubbleContent = `<div class="msg-bubble ascii">${escapeHtml(messageText)}</div>`;
+                bubbleContent = '<div class="msg-bubble ascii">' + escapeHtml(messageText) + '</div>';
                 isSpecialMessage = true;
             } else if (msg.is_reaction_image) {
-                // Legacy support for old reactions, though menu is gone
-                bubbleContent = `<div class="msg-bubble ascii">${messageText}</div>`;
+                bubbleContent = '<div class="msg-bubble ascii">' + messageText + '</div>';
                 isSpecialMessage = true;
             } else if (msg.is_game_link) {
-                // Render Game Link
-                const [gameType, gameId] = msg.text.split(':');
-                const gameName = gameType.charAt(0).toUpperCase() + gameType.slice(1);
+                var parts = msg.text.split(':');
+                var gameType = parts[0];
+                var gameId = parts[1];
+                var gameName = gameType.charAt(0).toUpperCase() + gameType.slice(1);
+                var isStarter = msg.user === currentUsername;
 
-                // DETERMINE IF USER IS THE STARTER (AFFECTS CLICKABILITY)
-                const isStarter = msg.user === currentUsername;
-
-                // Determine display message based on game type
-                let displayMsg = '';
+                var displayMsg = '';
                 if (gameType === 'words') {
-                    displayMsg = `
-                        ${msg.user} started a Scrabble Game
-                        ${isStarter ? 'Wait for a player to join!' : 'Click to Join!'}
-                    `.trim();
+                    displayMsg = msg.user + ' started a Scrabble Game\n' + (isStarter ? 'Wait for a player to join!' : 'Click to Join!');
                 } else {
-                    // Default/Fallback
-                    displayMsg = `
-                        New ${gameName} Game Ready! 
-                        Click to Join!
-                    `.trim();
+                    displayMsg = 'New ' + gameName + ' Game Ready!\nClick to Join!';
                 }
 
-                // BUILD THE GAME LINK CONTAINER
-                const linkDestination = isStarter && gameType === 'words' ? '#' : `${gameType}.html?gameId=${gameId}`;
-                const containerClass = isStarter && gameType === 'words' ? 'game-link-container disabled' : 'game-link-container';
+                var linkDestination = isStarter && gameType === 'words' ? '#' : gameType + '.html?gameId=' + gameId;
+                var containerClass = isStarter && gameType === 'words' ? 'game-link-container disabled' : 'game-link-container';
 
-                // CRITICAL FIX: Use the special bubble class to remove standard padding/border
-                bubbleContent = `
-                    <div class="msg-bubble game-link-bubble">
-                        <div class="${containerClass}">
-                             <a href="${linkDestination}" class="game-link" ${isStarter && gameType === 'words' ? 'onclick="event.preventDefault()"' : ''}>
-                                ${displayMsg}
-                            </a>
-                        </div>
-                    </div>
-                `;
+                bubbleContent = '<div class="msg-bubble game-link-bubble">' +
+                    '<div class="' + containerClass + '">' +
+                    '<a href="' + linkDestination + '" class="game-link" ' + (isStarter && gameType === 'words' ? 'onclick="event.preventDefault()"' : '') + '>' +
+                    displayMsg +
+                    '</a></div></div>';
                 isSpecialMessage = true;
             } else if (msg.is_pixel_art) {
-                // Pixel Art Message
-                bubbleContent = `
-                    <div class="msg-bubble" style="padding: 5px; background: white;">
-                         <div style="font-weight:bold; margin-bottom:5px; font-size:0.8rem;">Pixel Art</div>
-                         <img src="${msg.pixel_art}" style="
-                            image-rendering: -webkit-optimize-contrast;
-                            image-rendering: crisp-edges;
-                            image-rendering: pixelated; 
-                            width: 128px; 
-                            height: 128px; 
-                            border: 2px solid black; 
-                            display:block;
-                         ">
-                         ${messageText ? `<div style="margin-top:5px; font-size:0.9rem;">${escapeHtml(messageText)}</div>` : ''}
-                    </div>
-                `;
+                bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white;">' +
+                    '<div style="font-weight:bold; margin-bottom:5px; font-size:0.8rem;">Pixel Art</div>' +
+                    '<img src="' + msg.pixel_art + '" style="' +
+                    'image-rendering: -webkit-optimize-contrast; ' +
+                    'image-rendering: crisp-edges; ' +
+                    'image-rendering: pixelated; ' +
+                    'width: 128px; ' +
+                    'height: 128px; ' +
+                    'border: 2px solid black; ' +
+                    'display:block;' +
+                    '">' +
+                    (messageText ? '<div style="margin-top:5px; font-size:0.9rem;">' + escapeHtml(messageText) + '</div>' : '') +
+                    '</div>';
                 isSpecialMessage = true;
             } else {
-                // Regular Text Message
-                bubbleContent = `<div class="msg-bubble">${linkify(escapeHtml(messageText))}</div>`;
+                bubbleContent = '<div class="msg-bubble">' + linkify(escapeHtml(messageText)) + '</div>';
             }
 
-            // --- THEME INJECTION ---
+            // Theme Injection
             if (msg.user === 'ukiyo') {
-                // Inject developer class
                 bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble developer');
-            } else if (supporterUsers.has(msg.user)) {
-                // Inject supporter class
+            } else if (supporterUsers[msg.user]) {
                 bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble supporter');
             }
 
-            // MODIFIED: Reaction Button (Opens Modal)
-            const reactButton = (currentUser && (!isSpecialMessage || msg.is_pixel_art))
-                ? `<div class="react-btn" onclick="openReactionTarget('${msgId}', this, event)">+</div>`
+            var reactButton = (currentUser && (!isSpecialMessage || msg.is_pixel_art))
+                ? '<div class="react-btn" onclick="openReactionTarget(\'' + msgId + '\', this, event)">+</div>'
                 : '';
 
-            // Build final HTML structure
-            // Wrap bubble and button in a flex container for horizontal alignment
-            div.innerHTML = `
-                <div class="msg-meta">
-                    ${nameHtml}
-                    <span>${timeStr}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap: 5px; min-width: 0;">
-                    <!-- Button on left for self, on right for other -->
-                    ${isSelf ? reactButton : ''}
-                    ${bubbleContent}
-                    ${isSelf ? '' : reactButton}
-                </div>
-            `;
+            div.innerHTML = '<div class="msg-meta">' + nameHtml + '<span>' + timeStr + '</span></div>' +
+                '<div style="display:flex; align-items:center; gap: 5px; min-width: 0;">' +
+                (isSelf ? reactButton : '') +
+                bubbleContent +
+                (isSelf ? '' : reactButton) +
+                '</div>';
 
-            // Render Reactions if present
             if (msg.reactions && Object.keys(msg.reactions).length > 0) {
-                const reactionBar = document.createElement('div');
-                reactionBar.className = isSelf ? 'reaction-bar self-bar' : 'reaction-bar other-bar'; // Added classes for potential styling
+                var reactionBar = document.createElement('div');
+                reactionBar.className = 'reaction-bar' + (isSelf ? ' self-bar' : ' other-bar');
 
-                const groupedReactions = {};
-                for (const userUID in msg.reactions) {
-                    const reaction = msg.reactions[userUID];
+                var groupedReactions = {};
+                for (var userUID in msg.reactions) {
+                    var reaction = msg.reactions[userUID];
                     if (!groupedReactions[reaction]) groupedReactions[reaction] = [];
                     groupedReactions[reaction].push(userUID);
                 }
 
-                for (const reaction in groupedReactions) {
-                    const count = groupedReactions[reaction].length;
-
-                    // if (!FONT_REACTIONS.includes(reaction)) continue; 
-
-                    const el = document.createElement('div');
+                for (var reactionKey in groupedReactions) {
+                    var count = groupedReactions[reactionKey].length;
+                    var el = document.createElement('div');
                     el.className = 'reaction-item';
-                    el.title = groupedReactions[reaction].map(uid => uid.split('@')[0]).join(', '); // Show usernames
-                    el.innerHTML = `${reaction} ${count}`;
-
-                    // Toggle functionality: clicking removes your reaction
-                    el.onclick = () => toggleUserReaction(msgId, reaction);
-
+                    el.title = groupedReactions[reactionKey].map(function (uid) { return uid.split('@')[0]; }).join(', ');
+                    el.innerHTML = reactionKey + ' ' + count;
+                    el.onclick = (function (r) { return function () { toggleUserReaction(msgId, r); }; })(reactionKey);
                     reactionBar.appendChild(el);
                 }
                 if (reactionBar.children.length > 0) div.appendChild(reactionBar);
             }
 
-            const existing = history.querySelector(`.msg[data-msg-id="${msgId}"]`);
+            var existing = history.querySelector('.msg[data-msg-id="' + msgId + '"]');
             if (existing) {
                 history.replaceChild(div, existing);
             } else if (prepend) {
-                history.prepend(div);
+                history.insertBefore(div, history.firstChild);
             } else {
                 history.appendChild(div);
             }
         }
 
-        async function sendMessage() {
-            const inputEl = document.getElementById('msg-input');
-            const text = inputEl.value.trim();
+        function sendMessage() {
+            var inputEl = document.getElementById('msg-input');
+            var text = inputEl.value.trim();
 
             if (!text) return;
             if (!currentUser) return;
 
             inputEl.value = '';
 
-            const messageData = {
+            var messageData = {
                 user: currentUsername,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 text: text // Text can include newlines for ASCII art
             };
 
-            const roomRef = db.collection('rooms').doc(currentRoomId);
+            var roomRef = db.collection('rooms').doc(currentRoomId);
 
-            try {
-                // Add the message first
-                await roomRef.collection('messages').add(messageData);
-
-                // Then, check if we need to "activate" the room for other users
-                const roomDoc = await roomRef.get();
-                if (roomDoc.exists) {
-                    const roomData = roomDoc.data();
-                    // If it's a DM that hasn't been activated yet
-                    if (roomData.type === 'dm' && roomData.intendedParticipants && roomData.participants.length < roomData.intendedParticipants.length) {
-                        // Add all intended participants to the main participants list
-                        await roomRef.update({
-                            participants: roomData.intendedParticipants
-                        });
+            // Add the message first
+            roomRef.collection('messages').add(messageData)
+                .then(function () {
+                    // Update room activity
+                    return roomRef.set({
+                        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                })
+                .then(function () {
+                    // Then, check if we need to "activate" the room for other users
+                    return roomRef.get();
+                })
+                .then(function (roomDoc) {
+                    if (roomDoc.exists) {
+                        var roomData = roomDoc.data();
+                        // If it's a DM that hasn't been activated yet
+                        if (roomData.type === 'dm' && roomData.intendedParticipants && roomData.participants.length < roomData.intendedParticipants.length) {
+                            // Add all intended participants to the main participants list
+                            return roomRef.update({
+                                participants: roomData.intendedParticipants
+                            });
+                        }
                     }
-                }
-
-            } catch (e) {
+                })
+            ['catch'](function (e) {
                 console.error("Error sending message:", e);
-            }
+            });
         }
 
         // --- REACTION FUNCTIONS ---
 
         // Global tracker for currently open reaction menu
-        let activeReactionMsgId = null;
+        var activeReactionMsgId = null;
 
         function openReactionTarget(msgId, btnElement, event) {
             event.stopPropagation();
             if (!currentUser) return;
 
-            const modal = document.getElementById('reaction-selection-modal');
+            var modal = document.getElementById('reaction-selection-modal');
 
             // TOGGLE LOGIC: If clicking the same button while open, close it.
             if (modal.style.display === 'flex' && activeReactionMsgId === msgId) {
@@ -1767,36 +1817,37 @@
 
             activeReactionMsgId = msgId;
 
-            const rect = btnElement.getBoundingClientRect();
+            var rect = btnElement.getBoundingClientRect();
 
             // Position the modal near the button
-            modal.style.top = `${rect.top}px`;
+            modal.style.top = rect.top + 'px';
 
             // Adjust X position based on whether it's a self or other message
-            const isSelf = btnElement.closest('.msg.self');
+            var isSelf = btnElement.parentNode.parentNode.className.indexOf('self') !== -1;
 
             // If self (button on left), position modal to the right of the button
             if (isSelf) {
-                modal.style.left = `${rect.right + 5}px`;
+                modal.style.left = (rect.right + 5) + 'px';
                 modal.style.right = 'auto';
             } else {
                 // If other (button on right), position modal to the left of the button
-                // Width is determined by content, calculate position dynamically 
-                // Using left:auto and adjusting right position relative to the main chat-view width might be safer
-                modal.style.left = `${rect.left - 130}px`; // Estimate width - adjustment
+                modal.style.left = (rect.left - 130) + 'px'; // Estimate width - adjustment
                 modal.style.right = 'auto';
             }
 
             // Bind selection handlers to this message ID
-            modal.querySelectorAll('.reaction-option').forEach(option => {
-                option.onclick = () => selectReaction(msgId, option.innerText);
-            });
+            var options = modal.querySelectorAll('.reaction-option');
+            for (var i = 0; i < options.length; i++) {
+                (function (option) {
+                    option.onclick = function () { selectReaction(msgId, option.innerText); };
+                })(options[i]);
+            }
 
             modal.style.display = 'flex';
         }
 
         function closeReactionModal(event) {
-            const modal = document.getElementById('reaction-selection-modal');
+            var modal = document.getElementById('reaction-selection-modal');
             // If event is defined and click is outside the modal, hide it
             if (event && !modal.contains(event.target) && modal.style.display === 'flex') {
                 modal.style.display = 'none';
@@ -1808,132 +1859,126 @@
             }
         }
 
-        async function selectReaction(msgId, reaction) {
-            await toggleUserReaction(msgId, reaction);
+        function selectReaction(msgId, reaction) {
+            toggleUserReaction(msgId, reaction);
             closeReactionModal();
         }
 
-        async function toggleUserReaction(msgId, reaction) {
+        function toggleUserReaction(msgId, reaction) {
             if (!currentUser) return;
 
-            const messageRef = db.collection('rooms').doc(currentRoomId).collection('messages').doc(msgId);
-            const userUID = currentUser.uid;
+            var messageRef = db.collection('rooms').doc(currentRoomId).collection('messages').doc(msgId);
+            var userUID = currentUser.uid;
 
-            try {
-                const doc = await messageRef.get();
+            messageRef.get().then(function (doc) {
                 if (!doc.exists) return;
 
-                let reactions = doc.data().reactions || {};
-
-                const userReaction = reactions[userUID];
+                var reactions = doc.data().reactions || {};
+                var userReaction = reactions[userUID];
 
                 if (userReaction === reaction) {
                     // REMOVE: User clicks the reaction they already left
-                    const updates = { [`reactions.${userUID}`]: firebase.firestore.FieldValue.delete() };
-                    await messageRef.update(updates);
+                    var updates = {};
+                    updates["reactions." + userUID] = firebase.firestore.FieldValue.delete();
+                    messageRef.update(updates);
                 } else {
-                    // ADD/CHANGE: User clicks a *different* reaction (or the default +1)
-                    // We must update the entire 'reactions' field due to Firestore's limitation on updating sub-fields 
-                    // within a map if the path involves an ID. We only pass the map itself.
+                    // ADD/CHANGE
                     reactions[userUID] = reaction;
-                    await messageRef.update({ reactions: reactions });
+                    messageRef.update({ reactions: reactions });
                 }
-            } catch (e) {
+            })['catch'](function (e) {
                 console.error("Error toggling reaction:", e);
-            }
+            });
         }
 
         // --- MODAL LOGIC ---
         function openCreateModal() {
             if (!currentUser) return showModal("Please log in first.");
-            document.getElementById('create-modal-content').style.display = 'block';
+            document.getElementById('generic-modal-content').style.display = 'none';
             document.getElementById('delete-modal-content').style.display = 'none';
+            document.getElementById('create-modal-content').style.display = 'block';
             document.getElementById('modal-overlay').style.display = 'flex';
         }
 
-        function closeModal(id = 'modal-overlay') {
+        function closeModal(id) {
+            if (!id) id = 'modal-overlay';
             document.getElementById(id).style.display = 'none';
         }
 
         // --- NEW: SEND DIRECT MESSAGE LOGIC ---
-        async function sendDirectMessage() {
-            const usernameInput = document.getElementById('dm-username').value.trim();
-            const messageInput = document.getElementById('dm-message').value.trim();
+        function sendDirectMessage() {
+            var usernameInput = document.getElementById('dm-username').value.trim();
+            var messageInput = document.getElementById('dm-message').value.trim();
 
             if (!usernameInput) return showModal("Please enter a username.");
             if (!messageInput) return showModal("Please enter a message.");
 
             closeModal(); // Close modal immediately
 
-            const otherUser = usernameInput;
-            const participants = [currentUsername, otherUser].sort(); // Sort for consistent querying if possible, though we rely on array-contains
+            var otherUser = usernameInput;
+            var participants = [currentUsername, otherUser].sort();
 
-            try {
-                // 1. Check if a DM room already exists
-                // Note: Firestore array-contains only allows one value. 
-                // To find an exact match for 2 users, we query for current user's rooms and filter client-side.
-                const roomsSnap = await db.collection('rooms')
-                    .where('participants', 'array-contains', currentUsername)
-                    .where('type', '==', 'dm')
-                    .get();
-
-                let existingRoomId = null;
-
-                const roomsWithOther = roomsSnap.docs.filter(doc => {
-                    const data = doc.data();
-                    // Ensure it has exactly these 2 participants
-                    return data.participants.length === 2 && data.participants.includes(otherPerson);
-                });
-
-                if (roomsWithOther.length > 0) {
-                    existingRoomId = roomsWithOther[0].id;
-                }
-
-                if (existingRoomId) {
-                    switchRoom(existingRoomId, otherPerson);
-                } else {
-                    // Create new DM room
-                    const newRoomRef = await db.collection('rooms').add({
-                        type: 'dm',
-                        participants: [currentUsername], // Only start with me
-                        intendedParticipants: participants, // Add the other person later when msg sent
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            // Check if DM exists
+            db.collection('rooms')
+                .where('participants', 'array-contains', currentUsername)
+                .where('type', '==', 'dm')
+                .get()
+                .then(function (roomsSnap) {
+                    var existingRoomId = null;
+                    roomsSnap.forEach(function (doc) {
+                        var data = doc.data();
+                        if (data.participants.length === 2 && data.participants.indexOf(otherUser) !== -1) {
+                            existingRoomId = doc.id;
+                        }
                     });
 
-                    // Add initial message
-                    await newRoomRef.collection('messages').add({
-                        user: currentUsername,
-                        text: messageInput,
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    // Activate room for both
-                    await newRoomRef.update({
-                        participants: participants
-                    });
-
-                    // Reload rooms and switch
-                    // loadRooms(); // loadRooms is onSnapshot, should update auto
-                    // But we want to switch immediately
-                    switchRoom(newRoomRef.id, otherPerson);
-                }
-
-            } catch (e) {
+                    if (existingRoomId) {
+                        switchRoom(existingRoomId, otherUser);
+                    } else {
+                        // Create new DM
+                        var newRoomRef;
+                        db.collection('rooms').add({
+                            type: 'dm',
+                            participants: [currentUsername],
+                            intendedParticipants: participants,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            lastMessageAt: firebase.firestore.FieldValue.serverTimestamp()
+                        })
+                            .then(function (ref) {
+                                newRoomRef = ref;
+                                return newRoomRef.collection('messages').add({
+                                    user: currentUsername,
+                                    text: messageInput,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                            })
+                            .then(function () {
+                                return newRoomRef.update({ participants: participants });
+                            })
+                            .then(function () {
+                                switchRoom(newRoomRef.id, otherUser);
+                            });
+                    }
+                })
+            ['catch'](function (e) {
                 console.error("Error sending DM:", e);
                 showModal("Error starting chat.");
-            }
+            });
         }
 
         // --- SUPPORTER LOGIC ---
-        async function fetchSupporters() {
-            try {
-                const doc = await db.collection('config').doc('supporters').get();
+        function fetchSupporters() {
+            db.collection('config').doc('supporters').get().then(function (doc) {
                 if (doc.exists && doc.data().usernames) {
-                    supporterUsers = new Set(doc.data().usernames);
+                    var list = doc.data().usernames;
+                    supporterUsers = {};
+                    for (var i = 0; i < list.length; i++) {
+                        supporterUsers[list[i]] = true;
+                    }
                 }
-            } catch (e) {
+            })['catch'](function (e) {
                 console.error("Error loading supporters:", e);
-            }
+            });
         }
 
 
@@ -1941,36 +1986,120 @@
         function promptLeaveRoom(roomId, event) {
             event.stopPropagation();
             roomToDeleteId = roomId;
+            document.getElementById('generic-modal-content').style.display = 'none';
             document.getElementById('create-modal-content').style.display = 'none';
             document.getElementById('delete-modal-content').style.display = 'block';
             document.getElementById('modal-overlay').style.display = 'flex';
         }
 
-        async function confirmLeaveRoom() {
+        function confirmLeaveRoom() {
             if (!roomToDeleteId) return;
 
-            try {
-                await db.collection('rooms').doc(roomToDeleteId).update({
-                    participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
-                });
-
-                if (currentRoomId === roomToDeleteId) {
-                    switchRoom('general', 'All of KindleChat');
-                }
-
-                closeModal();
-            } catch (e) {
-                // Replaced with custom modal in larger app context
+            db.collection('rooms').doc(roomToDeleteId).update({
+                participants: firebase.firestore.FieldValue.arrayRemove(currentUsername)
+            })
+                .then(function () {
+                    if (currentRoomId === roomToDeleteId) {
+                        switchRoom('general', 'All of KindleChat');
+                    }
+                    closeModal();
+                })
+            ['catch'](function (e) {
                 console.error("Error leaving chat:", e);
                 closeModal();
-            }
+            });
         }
 
         // Helper to handle escaping for text display within message bubbles
         function escapeHtml(text) {
             if (!text) return "";
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
             return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+        }
+
+        function formatChatTime(timestamp) {
+            if (!timestamp) return "";
+            try {
+                var date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+                if (isNaN(date.getTime())) return "";
+
+                var now = getZonedTime(new Date());
+                var zonedDate = getZonedTime(date);
+                var diff = now - zonedDate;
+                var oneDay = 24 * 60 * 60 * 1000;
+
+                if (diff < oneDay && zonedDate.getDate() === now.getDate()) {
+                    return formatZonedTime(date);
+                } else if (diff < oneDay * 7) {
+                    var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    return days[zonedDate.getDay()] + ' ' + formatZonedTime(date);
+                } else {
+                    return zonedDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                }
+            } catch (e) {
+                return "";
+            }
+        }
+
+        // --- TIMEZONE HELPERS (Kindle Workaround) ---
+
+        function getGlobalTimeZone() {
+            try {
+                var globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                return globalLoc && globalLoc.zone ? globalLoc.zone : (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
+            } catch (e) {
+                return 'UTC';
+            }
+        }
+
+        function getZonedTime(date) {
+            var zone = getGlobalTimeZone();
+            try {
+                if (typeof Intl === 'undefined' || !Intl.DateTimeFormat) return date;
+                var formatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: zone,
+                    year: 'numeric', month: 'numeric', day: 'numeric',
+                    hour: 'numeric', minute: 'numeric', second: 'numeric',
+                    hour12: false
+                });
+                var parts = formatter.formatToParts(date);
+                var p = {};
+                for (var i = 0; i < parts.length; i++) {
+                    p[parts[i].type] = parts[i].value;
+                }
+                return new Date(
+                    parseInt(p.year, 10),
+                    parseInt(p.month, 10) - 1,
+                    parseInt(p.day, 10),
+                    parseInt(p.hour, 10),
+                    parseInt(p.minute, 10),
+                    parseInt(p.second, 10)
+                );
+            } catch (e) {
+                return date;
+            }
+        }
+
+        function formatZonedTime(date) {
+            var zoned = getZonedTime(date);
+            var hours = zoned.getHours();
+            var minutes = zoned.getMinutes();
+            var ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            return hours + ':' + minutes + ' ' + ampm;
+        }
+
+        function getTimestampMillis(ts) {
+            if (!ts) return 0;
+            try {
+                if (typeof ts.toMillis === 'function') return ts.toMillis();
+                if (ts.seconds) return ts.seconds * 1000;
+                if (ts instanceof Date) return ts.getTime();
+                if (typeof ts === 'number') return ts;
+            } catch (e) { }
+            return 0;
         }
 
     </script>
@@ -1979,12 +2108,12 @@
         // Helper to sanitize background image URLs from localStorage
         function sanitizeBackgroundImage(imageString) {
             if (!imageString) return '';
-            if (imageString.startsWith('url("data:image/png;base64,')) {
+            if (imageString.indexOf('url("data:image/png;base64,') === 0) {
                 return imageString;
             }
-            if (imageString.startsWith('url("') && imageString.endsWith('")')) {
-                const url = imageString.substring(5, imageString.length - 2);
-                if ((url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) && !url.includes('javascript:')) {
+            if (imageString.indexOf('url("') === 0 && imageString.lastIndexOf('")') === (imageString.length - 2)) {
+                var url = imageString.substring(5, imageString.length - 2);
+                if ((url.indexOf('http://') === 0 || url.indexOf('https://') === 0 || url.indexOf('/') === 0) && url.indexOf('javascript:') === -1) {
                     return imageString;
                 }
             }
@@ -1993,14 +2122,13 @@
 
 
         function toggleFullScreen() {
-            document.querySelector('.window').classList.toggle('fullscreen');
+            var win = document.querySelector('.window');
+            if (win) win.classList.toggle('fullscreen');
         }
 
-        loadWallpaper();
-
         function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            var wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            var wallpaperSize = localStorage.getItem('rekindle_bg_size');
             if (wallpaperImg) {
                 document.body.style.backgroundImage = wallpaperImg;
             }
@@ -2011,13 +2139,7 @@
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
-    <!-- STANDARD MODAL POPUP -->
-    <div id="modal-overlay">
-        <div class="modal-box">
-            <div id="modal-message" class="modal-text"></div>
-            <div id="modal-btns" class="modal-btns"></div>
-        </div>
-    </div>
+    <!-- Duplicate Modal Removed -->
 </body>
 
 </html>
