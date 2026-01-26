@@ -900,6 +900,7 @@
     <script src="emojis.js"></script>
 
     <script src="bad_words.js?v=2"></script>
+    <script src="time.js"></script>
     <script src="theme.js"></script>
 </head>
 
@@ -2023,73 +2024,36 @@
                 var date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
                 if (isNaN(date.getTime())) return "";
 
-                var now = getZonedTime(new Date());
-                var zonedDate = getZonedTime(date);
-                var diff = now - zonedDate;
-                var oneDay = 24 * 60 * 60 * 1000;
+                // Use Shared Helper
+                var now = window.rekindleGetZonedDate(new Date());
+                var zonedDate = window.rekindleGetZonedDate(date);
 
-                if (diff < oneDay && zonedDate.getDate() === now.getDate()) {
-                    return formatZonedTime(date);
-                } else if (diff < oneDay * 7) {
-                    var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    return days[zonedDate.getDay()] + ' ' + formatZonedTime(date);
+                // Diff logic (robust way)
+                // Set both to noon to compare just dates roughly
+                var nowNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+                var zonedNoon = new Date(zonedDate.getFullYear(), zonedDate.getMonth(), zonedDate.getDate(), 12, 0, 0);
+                var diffDays = Math.round((nowNoon - zonedNoon) / (1000 * 60 * 60 * 24));
+
+                if (diffDays === 0) {
+                    // Same day: Show Time
+                    return window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
+                } else if (diffDays < 7 && diffDays > 0) {
+                    // Within week: Show Day Name + Time
+                    return window.rekindleFormatTime(date, { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
                 } else {
-                    return zonedDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    // Older: Show Date
+                    return window.rekindleFormatTime(date, { month: 'short', day: 'numeric' });
                 }
             } catch (e) {
+                console.error(e);
                 return "";
             }
         }
 
-        // --- TIMEZONE HELPERS (Kindle Workaround) ---
+        // --- TIMEZONE HELPERS (Delegated to theme.js) ---
+        // Legacy functions removed or mapped to shared logic if strict dependency exists
+        // But we replaced usage in formatChatTime, so we can remove them.
 
-        function getGlobalTimeZone() {
-            try {
-                var globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-                return globalLoc && globalLoc.zone ? globalLoc.zone : (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
-            } catch (e) {
-                return 'UTC';
-            }
-        }
-
-        function getZonedTime(date) {
-            var zone = getGlobalTimeZone();
-            try {
-                if (typeof Intl === 'undefined' || !Intl.DateTimeFormat) return date;
-                var formatter = new Intl.DateTimeFormat('en-US', {
-                    timeZone: zone,
-                    year: 'numeric', month: 'numeric', day: 'numeric',
-                    hour: 'numeric', minute: 'numeric', second: 'numeric',
-                    hour12: false
-                });
-                var parts = formatter.formatToParts(date);
-                var p = {};
-                for (var i = 0; i < parts.length; i++) {
-                    p[parts[i].type] = parts[i].value;
-                }
-                return new Date(
-                    parseInt(p.year, 10),
-                    parseInt(p.month, 10) - 1,
-                    parseInt(p.day, 10),
-                    parseInt(p.hour, 10),
-                    parseInt(p.minute, 10),
-                    parseInt(p.second, 10)
-                );
-            } catch (e) {
-                return date;
-            }
-        }
-
-        function formatZonedTime(date) {
-            var zoned = getZonedTime(date);
-            var hours = zoned.getHours();
-            var minutes = zoned.getMinutes();
-            var ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; // the hour '0' should be '12'
-            minutes = minutes < 10 ? '0' + minutes : minutes;
-            return hours + ':' + minutes + ' ' + ampm;
-        }
 
         function getTimestampMillis(ts) {
             if (!ts) return 0;
