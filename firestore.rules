@@ -31,8 +31,16 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
       // Allow write generally, BUT block writes to 'isPro' and 'proExpiresAt' by the user.
       // Service Accounts (Worker) bypass these rules.
-      allow write: if request.auth != null && request.auth.uid == userId &&
-                      (resource == null || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']));
+      // Split write into create, update, delete for better control and to fix delete issue.
+      // 1. Create: Allow if user is authenticated and matches userId.
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // 2. Update: Allow if user matches userId AND they are NOT trying to change protected fields.
+      allow update: if request.auth != null && request.auth.uid == userId &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']);
+
+      // 3. Delete: Allow if user matches userId.
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // 2. KINDLECHAT
