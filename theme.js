@@ -266,6 +266,9 @@
         });
     }
 
+
+
+
     // Export for Apps to call
     window.rekindleApplyTheme = applyTheme;
     window.rekindleGetDisplayMode = getDisplayMode;
@@ -274,5 +277,8 @@
     window.rekindleGetUnitSystem = getUnitSystem;
     window.rekindleConvertDistance = convertDistance;
     window.rekindleConvertTemperatureContext = convertTemperatureContext;
+
+    // Timezone Exports REMOVED (Moved to time.js)
+
 
 })();

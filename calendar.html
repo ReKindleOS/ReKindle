@@ -591,6 +591,7 @@
             box-shadow: none;
         }
     </style>
+    <script src="time.js"></script>
     <script src="theme.js"></script>
 </head>
 
@@ -708,63 +709,15 @@
 
         // --- TIMEZONE HANDLING ---
         // --- TIMEZONE HANDLING ---
-        let _cachedTimeZone = null;
-        let _cachedDateFormatter = null;
+        // --- TIMEZONE HANDLING ---
+        // Delegated to time.js
 
-        function getGlobalTimeZone() {
-            if (_cachedTimeZone) return _cachedTimeZone;
-            try {
-                const globalLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-                _cachedTimeZone = globalLoc && globalLoc.zone ? globalLoc.zone : Intl.DateTimeFormat().resolvedOptions().timeZone;
-            } catch (e) {
-                _cachedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            }
-            return _cachedTimeZone;
-        }
-
-        // Clear cache if needed (e.g. if we had a settings listener, but simple refresh for now is fine)
-        function clearTimeZoneCache() {
-            _cachedTimeZone = null;
-            _cachedDateFormatter = null;
-        }
-
-        function getZonedDate(date = new Date()) {
-            const zone = getGlobalTimeZone();
-            try {
-                if (!_cachedDateFormatter) {
-                    _cachedDateFormatter = new Intl.DateTimeFormat('en-US', {
-                        timeZone: zone,
-                        year: 'numeric', month: 'numeric', day: 'numeric',
-                        hour: 'numeric', minute: 'numeric', second: 'numeric',
-                        hour12: false
-                    });
-                }
-                const parts = _cachedDateFormatter.formatToParts(date);
-                const p = {};
-                // Simple loop is faster than forEach for hot paths
-                for (let i = 0; i < parts.length; i++) {
-                    p[parts[i].type] = parts[i].value;
-                }
-
-                // Return a "wall clock" date object (local components match target zone)
-                return new Date(
-                    parseInt(p.year, 10),
-                    parseInt(p.month, 10) - 1,
-                    parseInt(p.day, 10),
-                    parseInt(p.hour, 10),
-                    parseInt(p.minute, 10),
-                    parseInt(p.second, 10)
-                );
-            } catch (e) {
-                console.error("Timezone error:", e);
-                return date;
-            }
+        function getZonedDate(date) {
+            return window.rekindleGetZonedDate(date);
         }
 
         function formatZonedTime(date) {
-            const zone = getGlobalTimeZone();
-            return new Date(date).toLocaleTimeString('en-US', {
-                timeZone: zone,
+            return window.rekindleFormatTime(date, {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true
@@ -772,43 +725,23 @@
         }
 
         function formatZonedDate(date, options) {
-            const zone = getGlobalTimeZone();
-            return new Date(date).toLocaleDateString('en-US', {
-                ...options,
-                timeZone: zone
-            });
+            return window.rekindleFormatTime(date, options);
         }
 
         function getUTCFromWallClock(dateStr, timeStr) {
-            const zone = getGlobalTimeZone();
+            // dateStr is YYYY-MM-DD, timeStr is HH:mm
 
-            // 1. Get current offset for the target zone
+            // 1. Construct wall clock date
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const [h, min] = (timeStr || '00:00').split(':').map(Number);
+            const wallDate = new Date(y, m - 1, d, h, min, 0);
+
+            // 2. Get offset of current time in target zone relative to local system
             const now = new Date();
-            const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: zone,
-                year: 'numeric', month: 'numeric', day: 'numeric',
-                hour: 'numeric', minute: 'numeric', second: 'numeric',
-                hour12: false
-            });
-            const parts = formatter.formatToParts(now);
-            const p = {};
-            parts.forEach(part => p[part.type] = part.value);
-
-            const zonedNow = new Date(
-                parseInt(p.year, 10),
-                parseInt(p.month, 10) - 1,
-                parseInt(p.day, 10),
-                parseInt(p.hour, 10),
-                parseInt(p.minute, 10),
-                parseInt(p.second, 10)
-            );
-
-            // 2. Calculate offset from real UTC now
+            const zonedNow = window.rekindleGetZonedDate(now);
             const offsetMs = zonedNow.getTime() - now.getTime();
 
-            // 3. Apply offset to the wall clock input
-            // dateStr is YYYY-MM-DD, timeStr is HH:mm
-            const wallDate = new Date(`${dateStr}T${timeStr || '00:00'}:00`);
+            // 3. Apply reverse offset
             return new Date(wallDate.getTime() - offsetMs).toISOString();
         }
 
