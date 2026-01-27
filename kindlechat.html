@@ -428,8 +428,14 @@
             font-size: 0.8rem;
             display: flex;
             align-items: center;
+            gap: 3px;
             line-height: 1;
             font-weight: bold;
+        }
+
+        .reaction-item svg {
+            vertical-align: middle;
+            flex-shrink: 0;
         }
 
         .msg.self .reaction-item {
@@ -696,23 +702,33 @@
             padding: 5px;
             z-index: 10;
             display: none;
-            flex-direction: column;
+            flex-direction: row;
             gap: 5px;
         }
 
         .reaction-option {
-            padding: 5px 10px;
-            font-size: 1.2rem;
-            font-weight: bold;
+            padding: 8px;
             cursor: pointer;
             text-align: center;
             background: #eee;
             border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reaction-option svg {
+            width: 20px;
+            height: 20px;
         }
 
         .reaction-option:hover {
             background: black;
             color: white;
+        }
+
+        .reaction-option:hover svg {
+            fill: white;
         }
 
 
@@ -897,6 +913,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="emojis.js"></script>
 
     <script src="bad_words.js?v=2"></script>
@@ -1016,7 +1033,7 @@
     </div>
 
     <!-- NEW: REACTION SELECTION MODAL -->
-    <div id="reaction-selection-modal" onclick="closeReactionModal(event)">
+    <div id="reaction-selection-modal">
         <!-- Options injected by JS -->
     </div>
 
@@ -1034,7 +1051,8 @@
             projectId: "rekindle-dd1fa",
             storageBucket: "rekindle-dd1fa.firebasestorage.app",
             messagingSenderId: "748026882518",
-            appId: "1:748026882518:web:6877dd4329318070c11c77"
+            appId: "1:748026882518:web:6877dd4329318070c11c77",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com/"
         };
 
         // --- CONFIGURATION ---
@@ -1076,6 +1094,9 @@
         // Note: Persistence disabled for KindleChat due to IndexedDB hangs on some browsers
 
         var auth = firebase.auth();
+        var rtdb = firebase.database();
+        var generalChatRef = rtdb.ref('kindlechat/messages');
+        var generalListener = null;
 
         // --- STATE ---
         var currentUser = null;
@@ -1091,8 +1112,13 @@
         var userRooms = [];
         var generalRoom = { id: 'general', name: 'All of KindleChat', lastMessageAt: null };
 
-        // --- Reaction Keys (Simplified to match the new constant button action) ---
-        var FONT_REACTIONS = ['+1', '-1', '♥', '?', '!', 'XD']; // List of available reactions
+        // --- SPAM PROTECTION FOR GENERAL CHANNEL ---
+        var GENERAL_MSG_WINDOW = 50; // Check last 50 messages
+        var GENERAL_MAX_USER_MSGS = 12; // Max messages from one user in that window (~24%)
+        var recentGeneralMsgUsers = []; // Track usernames of recent messages in general channel
+
+        // --- Reaction Keys (use new SVG-based keys) ---
+        var FONT_REACTIONS = ['rekindle', 'thumbsup', 'thumbsdown', 'heart', 'question', 'exclaim', 'laugh'];
 
         // --- ASCII ART DATA ---
         // Moved to emojis.js (ASCII_EMOJIS)
@@ -1135,14 +1161,21 @@
             // Populate the reaction modal once
             populateReactionModal();
 
-            // Click outside close for ASCII picker
+            // Click outside close for ASCII picker & Reaction picker
             document.addEventListener('click', function (event) {
+                // ASCII Picker
                 var picker = document.getElementById('ascii-picker-window');
                 var btn = document.querySelector('.sys-btn[onclick="toggleAsciiPicker()"]');
-                if (picker.classList.contains('open') &&
+                if (picker && picker.classList.contains('open') &&
                     !picker.contains(event.target) &&
                     event.target !== btn) {
                     picker.classList.remove('open');
+                }
+
+                // Reaction Picker
+                var reactionModal = document.getElementById('reaction-selection-modal');
+                if (reactionModal && reactionModal.style.display === 'flex' && !reactionModal.contains(event.target)) {
+                    closeReactionModal();
                 }
             });
 
@@ -1320,7 +1353,17 @@
                 var reaction = FONT_REACTIONS[i];
                 var div = document.createElement('div');
                 div.className = 'reaction-option';
-                div.innerText = reaction;
+                div.setAttribute('data-reaction', reaction);
+                // Safely get reaction SVG with fallback
+                var reactionDisplay = reaction;
+                try {
+                    if (typeof getReactionSvg === 'function') {
+                        reactionDisplay = getReactionSvg(reaction);
+                    }
+                } catch (e) {
+                    console.error('Error getting reaction SVG:', e);
+                }
+                div.innerHTML = reactionDisplay;
                 // Click handler is attached by openReactionTarget to pass the msgId
                 modal.appendChild(div);
             }
@@ -1558,7 +1601,7 @@
 
         function handleScroll() {
             var historyEl = document.getElementById('chat-history');
-            if (historyEl.scrollTop === 0 && !isLoadingMore && oldestMsgDoc) {
+            if (historyEl.scrollTop <= 50 && !isLoadingMore && oldestMsgDoc) {
                 isLoadingMore = true;
                 var oldScrollHeight = historyEl.scrollHeight;
 
@@ -1671,7 +1714,12 @@
             var titleEl = document.querySelector('.title-text');
             if (titleEl) titleEl.innerText = 'Loading...';
 
+            // Cleanup previous listeners
             if (unsubscribeMsg) unsubscribeMsg();
+            if (generalListener) {
+                generalListener.off();
+                generalListener = null;
+            }
             oldestMsgDoc = null;
             isLoadingMore = false;
 
@@ -1681,6 +1729,13 @@
             var history = document.getElementById('chat-history');
             var roomId = currentRoomId;
 
+            // BRANCH: Use Realtime Database for general channel
+            if (roomId === 'general') {
+                loadGeneralFromRTDB(history);
+                return;
+            }
+
+            // --- DMs: Continue with Firestore ---
             // Show cached messages immediately
             var cachedMsgs = getCachedMessages(roomId);
             if (cachedMsgs.length > 0) {
@@ -1693,7 +1748,8 @@
                 history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
             }
 
-            // SMART SYNC: Optimize reads
+            // SMART SYNC: Use limitToLast(50) to get recent messages
+            // The real-time listener will catch modifications (reactions) to these messages
             var lastCachedTs = getLastCachedTimestamp(roomId);
             var query = db.collection('rooms').doc(roomId).collection('messages').orderBy('timestamp', 'asc');
             var isSmartSync = false;
@@ -1701,9 +1757,10 @@
             if (lastCachedTs && cachedMsgs.length > 0) {
                 var startDate = new Date(lastCachedTs);
                 if (!isNaN(startDate.getTime())) {
-                    query = query.startAfter(startDate).limit(50);
+                    // Use limitToLast instead of startAfter to catch modifications to recent messages
+                    query = query.limitToLast(50);
                     isSmartSync = true;
-                    console.log("Smart Sync: Fetching new messages only");
+                    console.log("Smart Sync: Fetching last 50 with real-time updates");
                 } else {
                     query = query.limitToLast(50);
                 }
@@ -1725,9 +1782,7 @@
                 }
 
                 if (snapshot.empty && history.innerHTML === '') {
-                    if (!isSmartSync) {
-                        history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
-                    }
+                    history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
                 }
 
                 var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
@@ -1781,6 +1836,60 @@
                 var titleEl = document.querySelector('.title-text');
                 if (titleEl) titleEl.innerText = 'KindleChat';
                 console.error("Error loading messages:", error);
+                history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
+            });
+        }
+
+        // --- GENERAL CHANNEL: Realtime Database ---
+        function loadGeneralFromRTDB(history) {
+            history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
+
+            // Query last 50 messages ordered by timestamp
+            generalListener = generalChatRef.orderByChild('timestamp').limitToLast(50);
+
+            generalListener.on('value', function (snapshot) {
+                // Restore title and enable input
+                var titleEl = document.querySelector('.title-text');
+                if (titleEl) titleEl.innerText = 'KindleChat';
+                setChatInputEnabled(true);
+
+                history.innerHTML = '';
+
+                if (!snapshot.exists()) {
+                    history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
+                    return;
+                }
+
+                var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                recentGeneralMsgUsers = []; // Reset for spam protection
+
+                // Convert snapshot to array and sort by timestamp
+                var messages = [];
+                snapshot.forEach(function (child) {
+                    messages.push({ id: child.key, data: child.val() });
+                });
+
+                // Render each message
+                messages.forEach(function (msg) {
+                    renderMessage(msg.data, msg.id);
+                    // Track for spam protection
+                    if (msg.data.user) {
+                        recentGeneralMsgUsers.push(msg.data.user);
+                    }
+                });
+
+                // Keep only last GENERAL_MSG_WINDOW for spam protection
+                if (recentGeneralMsgUsers.length > GENERAL_MSG_WINDOW) {
+                    recentGeneralMsgUsers = recentGeneralMsgUsers.slice(-GENERAL_MSG_WINDOW);
+                }
+
+                if (isScrolledToBottom) {
+                    history.scrollTop = history.scrollHeight;
+                }
+            }, function (error) {
+                var titleEl = document.querySelector('.title-text');
+                if (titleEl) titleEl.innerText = 'KindleChat';
+                console.error("Error loading general messages:", error);
                 history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
             });
         }
@@ -1953,11 +2062,22 @@
                     var el = document.createElement('div');
                     el.className = 'reaction-item';
                     el.title = groupedReactions[reactionKey].map(function (uid) { return uid.split('@')[0]; }).join(', ');
-                    el.innerHTML = reactionKey + ' ' + count;
+                    // Safely get reaction SVG with fallback
+                    var reactionDisplay = reactionKey;
+                    try {
+                        if (typeof getReactionSvg === 'function') {
+                            reactionDisplay = getReactionSvg(reactionKey);
+                        }
+                    } catch (e) {
+                        console.error('Error getting reaction SVG:', e);
+                    }
+                    el.innerHTML = reactionDisplay + ' ' + count;
                     el.onclick = (function (r) { return function () { toggleUserReaction(msgId, r); }; })(reactionKey);
                     reactionBar.appendChild(el);
                 }
-                if (reactionBar.children.length > 0) div.appendChild(reactionBar);
+                if (reactionBar.children.length > 0) {
+                    div.appendChild(reactionBar);
+                }
             }
 
             var existing = history.querySelector('.msg[data-msg-id="' + msgId + '"]');
@@ -1977,12 +2097,49 @@
             if (!text) return;
             if (!currentUser) return;
 
+            // SPAM PROTECTION: Check if user is dominating the general channel
+            if (currentRoomId === 'general') {
+                var userMsgCount = 0;
+                for (var i = 0; i < recentGeneralMsgUsers.length; i++) {
+                    if (recentGeneralMsgUsers[i] === currentUsername) {
+                        userMsgCount++;
+                    }
+                }
+                if (recentGeneralMsgUsers.length >= GENERAL_MSG_WINDOW && userMsgCount >= GENERAL_MAX_USER_MSGS) {
+                    alert('You\'ve sent most of the recent messages. Please wait for others to participate before posting again.');
+                    return;
+                }
+            }
+
             inputEl.value = '';
 
+            // BRANCH: Use Realtime Database for general channel
+            if (currentRoomId === 'general') {
+                sendGeneralMessageToRTDB(text);
+            } else {
+                sendDMToFirestore(text);
+            }
+        }
+
+        // --- GENERAL CHANNEL: Send to Realtime Database ---
+        function sendGeneralMessageToRTDB(text) {
+            var messageData = {
+                user: currentUsername,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                text: text
+            };
+
+            generalChatRef.push(messageData)['catch'](function (e) {
+                console.error("Error sending general message:", e);
+            });
+        }
+
+        // --- DMs: Send to Firestore ---
+        function sendDMToFirestore(text) {
             var messageData = {
                 user: currentUsername,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                text: text // Text can include newlines for ASCII art
+                text: text
             };
 
             var roomRef = db.collection('rooms').doc(currentRoomId);
@@ -2057,21 +2214,16 @@
             var options = modal.querySelectorAll('.reaction-option');
             for (var i = 0; i < options.length; i++) {
                 (function (option) {
-                    option.onclick = function () { selectReaction(msgId, option.innerText); };
+                    option.onclick = function () { selectReaction(msgId, option.getAttribute('data-reaction')); };
                 })(options[i]);
             }
 
             modal.style.display = 'flex';
         }
 
-        function closeReactionModal(event) {
+        function closeReactionModal() {
             var modal = document.getElementById('reaction-selection-modal');
-            // If event is defined and click is outside the modal, hide it
-            if (event && !modal.contains(event.target) && modal.style.display === 'flex') {
-                modal.style.display = 'none';
-                activeReactionMsgId = null;
-            } else if (!event) {
-                // Manual close trigger
+            if (modal) {
                 modal.style.display = 'none';
                 activeReactionMsgId = null;
             }
@@ -2085,17 +2237,58 @@
         function toggleUserReaction(msgId, reaction) {
             if (!currentUser) return;
 
+            // BRANCH: Use RTDB for general, Firestore for DMs
+            if (currentRoomId === 'general') {
+                toggleGeneralReactionRTDB(msgId, reaction);
+            } else {
+                toggleDMReactionFirestore(msgId, reaction);
+            }
+        }
+
+        // --- GENERAL CHANNEL: Toggle reaction in Realtime Database ---
+        function toggleGeneralReactionRTDB(msgId, reaction) {
+            var userUID = currentUser.uid;
+            var reactionRef = rtdb.ref('kindlechat/messages/' + msgId + '/reactions/' + userUID);
+            var msgRef = rtdb.ref('kindlechat/messages/' + msgId);
+
+            // Get current reaction first
+            reactionRef.once('value').then(function (snapshot) {
+                var currentReaction = snapshot.val();
+
+                if (currentReaction === reaction) {
+                    // REMOVE: User clicks same reaction
+                    return reactionRef.remove();
+                } else {
+                    // ADD/CHANGE
+                    return reactionRef.set(reaction);
+                }
+            }).then(function () {
+                // RTDB listener will auto-update the UI, but let's re-fetch and render immediately for responsiveness
+                msgRef.once('value').then(function (snap) {
+                    if (snap.exists()) {
+                        renderMessage(snap.val(), msgId);
+                    }
+                });
+            })['catch'](function (e) {
+                console.error("Error toggling general reaction:", e);
+            });
+        }
+
+        // --- DMs: Toggle reaction in Firestore ---
+        function toggleDMReactionFirestore(msgId, reaction) {
             var messageRef = db.collection('rooms').doc(currentRoomId).collection('messages').doc(msgId);
             var userUID = currentUser.uid;
 
             messageRef.get().then(function (doc) {
                 if (!doc.exists) return;
 
-                var reactions = doc.data().reactions || {};
+                var msgData = doc.data();
+                var reactions = msgData.reactions || {};
                 var userReaction = reactions[userUID];
 
                 if (userReaction === reaction) {
                     // REMOVE: User clicks the reaction they already left
+                    delete reactions[userUID];
                     var updates = {};
                     updates["reactions." + userUID] = firebase.firestore.FieldValue.delete();
                     messageRef.update(updates);
@@ -2104,9 +2297,34 @@
                     reactions[userUID] = reaction;
                     messageRef.update({ reactions: reactions });
                 }
+
+                // UPDATE LOCAL CACHE with new reactions
+                updateCachedMessageReactions(currentRoomId, msgId, reactions);
+
+                // Re-render the message immediately with updated reactions
+                msgData.reactions = reactions;
+                renderMessage(msgData, msgId);
+
             })['catch'](function (e) {
                 console.error("Error toggling reaction:", e);
             });
+        }
+
+        // Helper function to update reactions in cache (for DMs only)
+        function updateCachedMessageReactions(roomId, msgId, newReactions) {
+            try {
+                var cached = getCachedMessages(roomId);
+                for (var i = 0; i < cached.length; i++) {
+                    if (cached[i].id === msgId) {
+                        cached[i].data.reactions = newReactions;
+                        break;
+                    }
+                }
+                var lastTs = getLastCachedTimestamp(roomId) || Date.now();
+                cacheMessages(roomId, cached, lastTs);
+            } catch (e) {
+                console.error("Error updating cache:", e);
+            }
         }
 
         // --- MODAL LOGIC ---
