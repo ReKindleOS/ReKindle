@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Texas Hold'em</title>
     <style>
-        /* SYSTEM 7 AESTHETICS - Shared with Blackjack */
+        /* SYSTEM 7 AESTHETICS */
         :root {
             --bg-color: #ffffff;
             --text-color: #000000;
@@ -19,7 +19,6 @@
 
         body {
             image-rendering: pixelated;
-            /* Universal pixelated for retro feel */
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 20px;
@@ -37,7 +36,6 @@
             box-sizing: border-box;
         }
 
-        /* WINDOW FRAME */
         .window {
             background: white;
             border: 2px solid black;
@@ -47,11 +45,9 @@
             height: 95vh;
             width: 95%;
             max-width: 800px;
-            /* Wider for poker table */
             position: relative;
         }
 
-        /* TITLE BAR */
         .title-bar {
             height: 35px;
             border-bottom: 2px solid black;
@@ -108,7 +104,6 @@
             box-shadow: none;
         }
 
-        /* GAME TABLE */
         .window-content {
             flex-grow: 1;
             padding: 10px;
@@ -118,7 +113,6 @@
             flex-direction: column;
         }
 
-        /* POKER TABLE LAYOUT */
         .poker-table {
             flex-grow: 1;
             border: 2px dashed #ccc;
@@ -131,7 +125,6 @@
             justify-content: center;
         }
 
-        /* COMMUNITY CARDS */
         .community-area {
             display: flex;
             flex-direction: column;
@@ -151,7 +144,6 @@
             box-shadow: 2px 2px 0 #aaa;
         }
 
-        /* CARD STYLES */
         .cards-row {
             display: flex;
             gap: 5px;
@@ -169,7 +161,6 @@
             flex-direction: column;
             justify-content: space-between;
             padding: 2px;
-            /* Smaller padding for smaller cards */
             box-sizing: border-box;
             box-shadow: 2px 2px 0 #ccc;
             font-family: "Courier New", monospace;
@@ -189,7 +180,6 @@
             text-shadow: 1px 1px 0 #000;
         }
 
-        /* Improved visibility for red */
         .suit-black {
             color: black;
         }
@@ -202,7 +192,6 @@
             transform: translate(-50%, -50%);
         }
 
-        /* PLAYERS */
         .player-seat {
             position: absolute;
             width: 120px;
@@ -228,10 +217,6 @@
         .player-seat.winner {
             border: 4px double black;
         }
-
-        /* Positioning Seats around the table */
-        /* Assuming 5 seats: TopLeft, TopRight, Left, Right, Bottom(User) */
-        /* For 4 players (User + 3 AI): Top, Left, Right, Bottom */
 
         .seat-top {
             top: -10px;
@@ -259,8 +244,6 @@
             height: 140px;
         }
 
-        /* Larger for user */
-
         .seat-name {
             font-weight: bold;
             font-size: 0.9rem;
@@ -282,7 +265,6 @@
 
         .user-controls {
             display: none;
-            /* Flex when active */
             flex-wrap: wrap;
             gap: 5px;
             justify-content: center;
@@ -312,7 +294,6 @@
             box-shadow: none;
         }
 
-        /* NOTIFICATIONS */
         #game-message {
             position: absolute;
             top: 30%;
@@ -346,11 +327,7 @@
                 <!-- Community Cards & Pot -->
                 <div class="community-area">
                     <div class="pot-display">Pot: $<span id="pot-amount">0</span></div>
-                    <div class="cards-row" id="community-cards">
-                        <!-- <div class="card back"></div>
-                        <div class="card back"></div>
-                        <div class="card back"></div> -->
-                    </div>
+                    <div class="cards-row" id="community-cards"></div>
                 </div>
 
                 <!-- Opponents -->
@@ -388,9 +365,7 @@
                 <div class="player-seat seat-user" id="seat-0">
                     <div class="seat-name">You <span id="dealer-btn" style="display:none; color:red;">(D)</span></div>
                     <div class="seat-chips" id="user-chips">$1000</div>
-                    <div class="cards-row" id="user-cards">
-                        <!-- Cards dealt here -->
-                    </div>
+                    <div class="cards-row" id="user-cards"></div>
                     <div class="seat-action" id="user-action-text"></div>
 
                     <div class="user-controls" id="user-controls">
@@ -414,72 +389,65 @@
     <script>
         // --- THEME & WALLPAPER ---
         window.onload = () => {
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
         };
 
-        function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            // Note: We use the CSS calc-based size for better scaling, 
-            // but fallback to the stored size if it's explicitly set and not '16px 16px'
-            if (wallpaperSize && wallpaperSize !== '16px 16px') {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
-
-        // --- GAME CONSTANTS & UTILS ---
-        const SUITS = ['♠', '♥', '♣', '♦']; // Spades, Hearts, Clubs, Diamonds
+        // --- CONSTANTS ---
+        const SUITS = ['♠', '♥', '♣', '♦'];
         const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const NUM_PLAYERS = 4;
+        const STARTING_CHIPS = 1000;
+        const SMALL_BLIND = 10;
+        const BIG_BLIND = 20;
 
-        function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        // --- UTILITIES ---
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // --- CLASSES ---
-
+        // --- CARD CLASS ---
         class Card {
-            constructor(suit, val) {
+            constructor(suit, value) {
                 this.suit = suit;
-                this.val = val;
+                this.value = value;
             }
 
-            get rank() { return VALUES.indexOf(this.val); } // 0-12
-
-            toString() { return `${this.val}${this.suit}`; }
+            get rank() {
+                return VALUES.indexOf(this.value);
+            }
 
             render(hidden = false) {
                 const div = document.createElement('div');
                 div.className = 'card';
                 if (hidden) {
-                    div.className += ' back';
+                    div.classList.add('back');
                     return div;
                 }
-
-                const isRed = (this.suit === '♥' || this.suit === '♦');
+                const isRed = this.suit === '♥' || this.suit === '♦';
                 const suitClass = isRed ? 'suit-red' : 'suit-black';
-
                 div.innerHTML = `
-                    <div style="font-size:0.8em; line-height:1;" class="${suitClass}">${this.val}<br>${this.suit}</div>
+                    <div style="font-size:0.8em; line-height:1;" class="${suitClass}">${this.value}<br>${this.suit}</div>
                     <div class="card-center-suit ${suitClass}">${this.suit}</div>
                 `;
                 return div;
             }
         }
 
+        // --- DECK CLASS ---
         class Deck {
             constructor() {
                 this.cards = [];
-                for (let s of SUITS) {
-                    for (let v of VALUES) {
-                        this.cards.push(new Card(s, v));
+                for (const suit of SUITS) {
+                    for (const value of VALUES) {
+                        this.cards.push(new Card(suit, value));
                     }
                 }
                 this.shuffle();
             }
 
             shuffle() {
-                this.cards.sort(() => Math.random() - 0.5);
+                for (let i = this.cards.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+                }
             }
 
             deal() {
@@ -487,639 +455,514 @@
             }
         }
 
+        // --- PLAYER CLASS ---
         class Player {
-            constructor(id, name, chips, isHuman = false) {
+            constructor(id, name, isHuman = false) {
                 this.id = id;
                 this.name = name;
-                this.chips = chips;
                 this.isHuman = isHuman;
-                this.hand = [];
-                this.folded = false;
-                this.currentBet = 0; // Amount bet in current street
-                this.isAllIn = false;
-            }
-
-            resetForRound() {
+                this.chips = STARTING_CHIPS;
                 this.hand = [];
                 this.folded = false;
                 this.currentBet = 0;
-                this.isAllIn = false;
+                this.hasActed = false;
+                this.lastAction = '';
+            }
+
+            reset() {
+                this.hand = [];
+                this.folded = false;
+                this.currentBet = 0;
+                this.hasActed = false;
+                this.lastAction = '';
+            }
+
+            bet(amount) {
+                const actualBet = Math.min(amount, this.chips);
+                this.chips -= actualBet;
+                this.currentBet += actualBet;
+                return actualBet;
             }
         }
 
         // --- HAND EVALUATOR ---
-
         class HandEvaluator {
-            static getRankValue(card) {
-                return VALUES.indexOf(card.val);
-            }
-
             static evaluate(cards) {
-                // Returns { score: numeric_score, name: string_description }
-                // Score = (RankClass * 1000000) + (HighCardValues...)
-                // RankClass: 8=StrFlush, 7=Quads, 6=FullHouse, 5=Flush, 4=Straight, 3=Trips, 2=TwoPair, 1=Pair, 0=HighCard
+                if (cards.length < 5) return { score: 0, name: 'Incomplete' };
 
-                if (cards.length < 5) return { score: 0, name: "Incomplete" };
+                const combinations = this.getCombinations(cards, 5);
+                let best = { score: -1, name: '' };
 
-                // Get all 7 cards (2 hole + 5 community), or just evaluate what's passed (usually 7)
-                // We need to find the BEST 5 card combination from the input cards.
-                // Combinations of 5 from N.
-
-                // Helper to get all combinations of 5 cards
-                const getCombinations = (arr, k) => {
-                    if (k === 0) return [[]];
-                    if (arr.length === 0) return [];
-                    const [first, ...rest] = arr;
-                    const combsWithFirst = getCombinations(rest, k - 1).map(c => [first, ...c]);
-                    const combsWithoutFirst = getCombinations(rest, k);
-                    return [...combsWithFirst, ...combsWithoutFirst];
-                };
-
-                const possibleHands = getCombinations(cards, 5);
-                let bestHand = { score: -1, name: "" };
-
-                for (let hand of possibleHands) {
-                    const res = HandEvaluator.score5CardHand(hand);
-                    if (res.score > bestHand.score) {
-                        bestHand = res;
+                for (const combo of combinations) {
+                    const result = this.evaluateFive(combo);
+                    if (result.score > best.score) {
+                        best = result;
                     }
                 }
-                return bestHand;
+                return best;
             }
 
-            static score5CardHand(hand) {
-                // Sort by rank descending
-                hand.sort((a, b) => HandEvaluator.getRankValue(b) - HandEvaluator.getRankValue(a));
+            static getCombinations(arr, k) {
+                if (k === 0) return [[]];
+                if (arr.length === 0) return [];
+                const [first, ...rest] = arr;
+                const withFirst = this.getCombinations(rest, k - 1).map(c => [first, ...c]);
+                const withoutFirst = this.getCombinations(rest, k);
+                return [...withFirst, ...withoutFirst];
+            }
 
-                const ranks = hand.map(c => HandEvaluator.getRankValue(c));
-                const suits = hand.map(c => c.suit);
+            static evaluateFive(cards) {
+                const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+                const ranks = sorted.map(c => c.rank);
+                const suits = sorted.map(c => c.suit);
 
                 const isFlush = suits.every(s => s === suits[0]);
-
-                // Check Straight
-                let isStraight = true;
-                for (let i = 0; i < 4; i++) {
-                    if (ranks[i] - ranks[i + 1] !== 1) {
-                        isStraight = false;
-                        break;
-                    }
-                }
-                // Wheel Straight (A, 5, 4, 3, 2) -> Ranks: 12, 3, 2, 1, 0
-                if (!isStraight && ranks[0] === 12 && ranks[1] === 3 && ranks[2] === 2 && ranks[3] === 1 && ranks[4] === 0) {
-                    isStraight = true;
-                    // Treat as 5-high straight
-                }
-
-                const rankCounts = {};
-                ranks.forEach(r => rankCounts[r] = (rankCounts[r] || 0) + 1);
-                const counts = Object.values(rankCounts).sort((a, b) => b - a); // e.g. [3, 2] for full house
+                const isStraight = this.checkStraight(ranks);
+                const counts = this.getRankCounts(ranks);
+                const countValues = Object.values(counts).sort((a, b) => b - a);
 
                 let score = 0;
-                let name = "";
-                let baseScore = 0;
+                let name = '';
 
-                // Base score from kickers (lexicographical)
-                // We assume max 5 cards. digit weights: 14^4, 14^3... 
-                ranks.forEach((r, i) => {
-                    baseScore += r * Math.pow(15, 4 - i); // Base 15 to be safe
-                });
+                // Calculate base score from high cards
+                const baseScore = ranks.reduce((acc, r, i) => acc + r * Math.pow(15, 4 - i), 0);
 
-                if (isStraight && isFlush) {
+                if (isFlush && isStraight) {
                     score = 8000000 + baseScore;
-                    name = "Straight Flush";
-                } else if (counts[0] === 4) {
-                    // Quads. Need to prioritize Quad rank then kicker.
-                    const quadRank = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 4));
-                    const kicker = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 1));
-                    score = 7000000 + (quadRank * 100000) + kicker;
-                    name = "Four of a Kind";
-                } else if (counts[0] === 3 && counts[1] === 2) {
-                    const tripRank = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 3));
-                    const pairRank = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 2));
-                    score = 6000000 + (tripRank * 100000) + pairRank;
-                    name = "Full House";
+                    name = ranks[0] === 12 ? 'Royal Flush' : 'Straight Flush';
+                } else if (countValues[0] === 4) {
+                    const quadRank = parseInt(Object.keys(counts).find(r => counts[r] === 4));
+                    score = 7000000 + quadRank * 15000 + baseScore % 15;
+                    name = 'Four of a Kind';
+                } else if (countValues[0] === 3 && countValues[1] === 2) {
+                    const tripRank = parseInt(Object.keys(counts).find(r => counts[r] === 3));
+                    const pairRank = parseInt(Object.keys(counts).find(r => counts[r] === 2));
+                    score = 6000000 + tripRank * 15 + pairRank;
+                    name = 'Full House';
                 } else if (isFlush) {
                     score = 5000000 + baseScore;
-                    name = "Flush";
+                    name = 'Flush';
                 } else if (isStraight) {
                     score = 4000000 + baseScore;
-                    name = "Straight";
-                } else if (counts[0] === 3) {
-                    const tripRank = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 3));
-                    // Remaining kickers
-                    const kickers = ranks.filter(r => r !== tripRank);
-                    score = 3000000 + (tripRank * 100000) + (kickers[0] * 1000) + kickers[1];
-                    name = "Three of a Kind";
-                } else if (counts[0] === 2 && counts[1] === 2) {
-                    // Two Pair
-                    const pairRanks = Object.keys(rankCounts).filter(r => rankCounts[r] === 2).map(Number).sort((a, b) => b - a);
-                    const kicker = Object.keys(rankCounts).find(r => rankCounts[r] === 1);
-                    score = 2000000 + (pairRanks[0] * 100000) + (pairRanks[1] * 1000) + Number(kicker);
-                    name = "Two Pair";
-                } else if (counts[0] === 2) {
-                    // Pair
-                    const pairRank = parseInt(Object.keys(rankCounts).find(r => rankCounts[r] === 2));
-                    const kickers = ranks.filter(r => r !== pairRank);
-                    score = 1000000 + (pairRank * 100000) + (kickers[0] * 1000) + (kickers[1] * 10) + kickers[2]; // Approximation
-                    name = "Pair";
+                    name = 'Straight';
+                } else if (countValues[0] === 3) {
+                    const tripRank = parseInt(Object.keys(counts).find(r => counts[r] === 3));
+                    score = 3000000 + tripRank * 15000 + baseScore % 225;
+                    name = 'Three of a Kind';
+                } else if (countValues[0] === 2 && countValues[1] === 2) {
+                    const pairs = Object.keys(counts).filter(r => counts[r] === 2).map(Number).sort((a, b) => b - a);
+                    score = 2000000 + pairs[0] * 15000 + pairs[1] * 15 + baseScore % 15;
+                    name = 'Two Pair';
+                } else if (countValues[0] === 2) {
+                    const pairRank = parseInt(Object.keys(counts).find(r => counts[r] === 2));
+                    score = 1000000 + pairRank * 15000 + baseScore % 3375;
+                    name = 'Pair';
                 } else {
                     score = baseScore;
-                    name = "High Card";
+                    name = 'High Card';
                 }
 
                 return { score, name };
             }
+
+            static checkStraight(ranks) {
+                // Normal straight
+                for (let i = 0; i < 4; i++) {
+                    if (ranks[i] - ranks[i + 1] !== 1) {
+                        // Check wheel (A-2-3-4-5)
+                        if (ranks[0] === 12 && ranks[1] === 3 && ranks[2] === 2 && ranks[3] === 1 && ranks[4] === 0) {
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            static getRankCounts(ranks) {
+                const counts = {};
+                for (const r of ranks) {
+                    counts[r] = (counts[r] || 0) + 1;
+                }
+                return counts;
+            }
         }
 
         // --- GAME ENGINE ---
-
         class TexasHoldEm {
             constructor() {
                 this.players = [
-                    new Player(0, "You", 1000, true),
-                    new Player(1, "Bot 1", 1000),
-                    new Player(2, "Bot 2", 1000),
-                    new Player(3, "Bot 3", 1000)
+                    new Player(0, 'You', true),
+                    new Player(1, 'Bot 1'),
+                    new Player(2, 'Bot 2'),
+                    new Player(3, 'Bot 3')
                 ];
-
                 this.deck = null;
                 this.communityCards = [];
                 this.pot = 0;
-                this.dealerIdx = 0;
-                this.currentTurnIdx = 0;
-                this.smallBlind = 10;
-                this.bigBlind = 20;
-                this.minBet = 20; // Current highest bet to call
-                this.stage = 'idle';
-
-                // Betting State
-                this.activePlayers = []; // Indexes of players still in hand
-                this.lastAggressorIdx = -1; // Index of last fundraiser
-                this.bettingComplete = false;
+                this.dealerIndex = 0;
+                this.currentBet = 0;
+                this.currentPlayerIndex = 0;
+                this.stage = 'idle'; // idle, preflop, flop, turn, river, showdown
+                this.waitingForPlayer = false;
             }
 
             async startRound() {
                 document.getElementById('start-btn').style.display = 'none';
                 document.getElementById('game-message').style.display = 'none';
 
+                // Reset state
                 this.deck = new Deck();
                 this.communityCards = [];
                 this.pot = 0;
+                this.currentBet = 0;
                 this.stage = 'preflop';
 
                 // Rotate dealer
-                this.dealerIdx = (this.dealerIdx + 1) % 4;
+                this.dealerIndex = (this.dealerIndex + 1) % NUM_PLAYERS;
 
-                this.players.forEach(p => p.resetForRound());
-                this.activePlayers = [0, 1, 2, 3];
+                // Reset players
+                for (const player of this.players) {
+                    player.reset();
+                }
 
-                // Post Blinds
-                const sbIdx = (this.dealerIdx + 1) % 4;
-                const bbIdx = (this.dealerIdx + 2) % 4;
+                // Post blinds
+                const sbIndex = (this.dealerIndex + 1) % NUM_PLAYERS;
+                const bbIndex = (this.dealerIndex + 2) % NUM_PLAYERS;
 
-                this.postBlind(sbIdx, this.smallBlind);
-                this.postBlind(bbIdx, this.bigBlind);
+                this.pot += this.players[sbIndex].bet(SMALL_BLIND);
+                this.players[sbIndex].lastAction = 'SB';
 
-                this.minBet = this.bigBlind;
-                this.lastAggressorIdx = bbIdx; // Betting ends if it comes back to BB and they check, or first caller?
-                // Actually, standard rule: ends when all match max bet. 
-                // Initial aggressor is effectively BB.
-                // But BB has option to raise. So let's track the "stopper" index.
+                this.pot += this.players[bbIndex].bet(BIG_BLIND);
+                this.players[bbIndex].lastAction = 'BB';
 
-                // Deal Hole Cards
+                this.currentBet = BIG_BLIND;
+
+                // Deal hole cards
                 for (let i = 0; i < 2; i++) {
-                    this.players.forEach(p => p.hand.push(this.deck.deal()));
+                    for (const player of this.players) {
+                        player.hand.push(this.deck.deal());
+                    }
                 }
 
                 this.updateUI();
 
-                // Start betting
-                // Turn starts after BB
-                this.currentTurnIdx = (bbIdx + 1) % 4;
-                this.bettingComplete = false;
-
-                await this.gameLoop();
+                // Start betting from UTG (after BB)
+                this.currentPlayerIndex = (bbIndex + 1) % NUM_PLAYERS;
+                await this.runBettingRound();
             }
 
-            postBlind(playerIdx, amount) {
-                const p = this.players[playerIdx];
-                const actual = Math.min(p.chips, amount);
-                p.chips -= actual;
-                p.currentBet = actual;
-                this.pot += actual;
-                this.log(`${p.name} posts blind $${actual}`);
-            }
+            async runBettingRound() {
+                // Reset hasActed for new betting round (except for blinds in preflop)
+                if (this.stage !== 'preflop') {
+                    for (const player of this.players) {
+                        player.hasActed = false;
+                        player.currentBet = 0;
+                    }
+                    this.currentBet = 0;
+                    // First to act is after dealer
+                    this.currentPlayerIndex = (this.dealerIndex + 1) % NUM_PLAYERS;
+                }
 
-            async gameLoop() {
-                // Main loop driving the phases
-                while (this.stage !== 'gameover') {
+                while (true) {
+                    // Check if only one player remains
+                    const activePlayers = this.players.filter(p => !p.folded);
+                    if (activePlayers.length === 1) {
+                        this.endRoundEarly(activePlayers[0]);
+                        return;
+                    }
 
-                    if (!this.bettingComplete) {
-                        // Check if only one player left
-                        if (this.activePlayers.length === 1) {
-                            this.endRound();
-                            return;
-                        }
+                    // Check if betting round is complete
+                    if (this.isBettingComplete()) {
+                        break;
+                    }
 
-                        // Play Turn
-                        const pIdx = this.currentTurnIdx;
-                        const p = this.players[pIdx];
+                    const player = this.players[this.currentPlayerIndex];
 
-                        // Skip folded or all-in players (unless all-in logic needs attention, but usually skipped for action)
-                        if (p.folded || p.isAllIn) {
-                            this.advanceTurn();
-                            continue;
-                        }
+                    // Skip folded players
+                    if (player.folded) {
+                        this.currentPlayerIndex = (this.currentPlayerIndex + 1) % NUM_PLAYERS;
+                        continue;
+                    }
 
-                        this.updateUI(); // Highlight active
+                    // Skip players with no chips (all-in)
+                    if (player.chips === 0) {
+                        player.hasActed = true;
+                        this.currentPlayerIndex = (this.currentPlayerIndex + 1) % NUM_PLAYERS;
+                        continue;
+                    }
 
-                        if (p.isHuman) {
-                            this.enableUserControls();
-                            return; // Break loop, wait for USER_ACTION event
-                        } else {
-                            await wait(800);
-                            this.processBotTurn(p);
-                        }
+                    this.updateUI();
+
+                    if (player.isHuman) {
+                        this.showPlayerControls();
+                        this.waitingForPlayer = true;
+                        return; // Wait for player action
                     } else {
-                        // Move to next stage
-                        await this.advanceStage();
+                        await delay(800);
+                        this.executeBotAction(player);
                     }
 
-                    // Safety break
-                    await wait(50);
+                    this.currentPlayerIndex = (this.currentPlayerIndex + 1) % NUM_PLAYERS;
                 }
+
+                // Advance to next stage
+                await this.advanceStage();
             }
 
-            advanceTurn() {
-                // Check if betting round is done BEFORE moving index?
-                // Logic: A complete round means everyone has had a chance to act AND matched the bet.
+            isBettingComplete() {
+                const activePlayers = this.players.filter(p => !p.folded && p.chips > 0);
 
-                // Check if we reached the stopper?
-                // Better approach:
-                // Check if all active players match the current minBet (or are all-in)
-                // AND (everyone has acted at least once OR it's preflop and BB option used)
+                // All active players must have acted
+                const allActed = activePlayers.every(p => p.hasActed);
+                if (!allActed) return false;
 
-                // Simplified Logic: 
-                // If next player is the LastAggressor, betting is done? 
-                // Wait, if I raise, everyone calls, it comes back to me. I don't act again unless re-raised.
-
-                // Let's use 'lastActionIdx'.
-                // If we iterate full circle to the last person who raised (or BB initially), and they don't raise again, we are done.
-
-                this.currentTurnIdx = (this.currentTurnIdx + 1) % 4;
-
-                // Check completion condition
-                const active = this.players.filter(p => !p.folded && !p.isAllIn);
-                const allMatched = active.every(p => p.currentBet === this.minBet);
-
-                // If all matched, and we went past the last aggressor...
-                // This is tricky to do purely iteratively without state flags.
-                // Let's rely on explicit "isBettingClosed" check.
-
-                if (active.length === 0) {
-                    this.bettingComplete = true; // Everyone all in
-                    this.gameLoop();
-                    return;
-                }
-
-                // If we are back to the person who made the last aggressive action (raise/post), 
-                // AND everyone in between has called/folded.
-                // Actually, just check: Is the NEXT player the LastAggressor? 
-                // If YES, and they matched (which they must have, they set it), then done.
-
-                // Special case: Big Blind Preflop has "Option".
-                // If it comes back to BB and no raises, BB gets to act.
-                // LastAggressor logic covers this if we set LastAggressor = BB initially.
-                // But BB needs to act. So we only stop if we PASS the LastAggressor?
-
-                // ... Let's just track "actions_left".
-                // This is easier.
+                // All active players must have matched the current bet
+                const allMatched = activePlayers.every(p => p.currentBet === this.currentBet);
+                return allMatched;
             }
 
-            // Re-implementing simplified turn logic
-            // We'll track 'playersToAct' list? Or just check condition after every action.
+            showPlayerControls() {
+                const controls = document.getElementById('user-controls');
+                controls.style.display = 'flex';
 
-            actionComplete(p, action) {
-                // Logic after ANY action (Human or Bot)
+                const player = this.players[0];
+                const toCall = this.currentBet - player.currentBet;
 
-                // 1. Move index
-                let nextIdx = (this.currentTurnIdx + 1) % 4;
-
-                // 2. Check if betting round end
-                // Condition: All active players have bet === minBet (or allin)
-                // AND everyone has had a chance (we assume active play continues until equalized).
-                // Issue: BB preflop option.
-
-                // Let's use a simpler heuristic for V1:
-                // If (nextIdx == this.lastAggressorIdx) AND (everyone matches), then Next Stage.
-                // Exception: Preflop, LastAggressor is initially BB. If it comes back to BB and bets are equal, BB gets option.
-                // If BB checks, then round over. If BB raises, LastAggressor moves.
-
-                const active = this.players.filter(x => !x.folded && !x.isAllIn);
-                const allMatched = active.every(x => x.currentBet === this.minBet);
-
-                if (allMatched && this.currentTurnIdx === this.lastAggressorIdx) {
-                    // Round likely over.
-                    // Exception: Preflop Option. 
-                    if (this.stage === 'preflop' && this.minBet === this.bigBlind && p.id === this.players[(this.dealerIdx + 2) % 4].id && action === 'check') {
-                        // BB Checked their option. Done.
-                        this.bettingComplete = true;
-                    }
-                    else if (this.stage === 'preflop' && this.minBet === this.bigBlind && this.currentTurnIdx === (this.dealerIdx + 2) % 4) {
-                        // It is BB turn, bets are equal. Wait for their action. (They haven't acted yet in this flow if we are checking BEFORE move?)
-                        // No, this func is called AFTER action.
-                        // If BB just checked -> Done.
-                        // If BB raised -> Not Done.
-                        if (action !== 'raise') this.bettingComplete = true;
-                    }
-                    else {
-                        this.bettingComplete = true;
-                    }
-                }
-
-                if (this.bettingComplete) {
-                    this.gameLoop(); // Will trigger advanceStage
-                } else {
-                    this.currentTurnIdx = nextIdx;
-                    this.gameLoop(); // Continue betting
-                }
-            }
-
-            processBotTurn(bot) {
-                // Heuristic
-                // Random action weighted by strength?
-                // For V1: Simple.
-                // If bet > 0: 80% Call, 20% Fold. (If Call too high compared to chips? Fold).
-                // If bet == 0: 90% Check, 10% Bet.
-
-                const toCall = this.minBet - bot.currentBet;
-                let action = 'fold';
+                const checkBtn = document.getElementById('btn-check');
+                const callBtn = document.getElementById('btn-call');
+                const raiseBtn = document.getElementById('btn-raise');
 
                 if (toCall === 0) {
-                    // Check or Bet
-                    if (Math.random() < 0.1) action = 'raise'; // Small bluff
-                    else action = 'check';
+                    checkBtn.style.display = 'inline-block';
+                    callBtn.style.display = 'none';
                 } else {
-                    // Call or Fold or Raise
-                    if (toCall > bot.chips) {
-                        // All in call?
-                        action = 'call'; // Always call all in for fun in V1
-                    } else {
-                        if (Math.random() > 0.2) action = 'call';
-                        else action = 'fold';
-                    }
+                    checkBtn.style.display = 'none';
+                    callBtn.style.display = 'inline-block';
+                    callBtn.innerText = `Call $${Math.min(toCall, player.chips)}`;
                 }
 
-                // Execute
-                if (action === 'raise') {
-                    // Min raise or pot?
-                    const raiseAmt = this.minBet + this.bigBlind;
-                    // Actually raise needs to be valid.
-                    // Let's just make it a fixed increment
-                    const totalBet = raiseAmt;
-                    if (totalBet > bot.chips) {
-                        // Not enough to raise, just call
-                        action = 'call';
-                    } else {
-                        bot.chips -= (totalBet - bot.currentBet);
-                        bot.currentBet = totalBet;
-                        this.pot += (totalBet - bot.currentBet); // Bug here? 
-                        // Logic: chips reduced by delta. pot increased by delta.
-                        // Correct logic:
-                        // delta = total - current
-                        // chips -= delta
-                        // pot += delta
-                        // current = total
-                    }
-                }
-
-                if (action === 'call') {
-                    const delta = Math.min(toCall, bot.chips);
-                    bot.chips -= delta;
-                    this.pot += delta;
-                    bot.currentBet += delta;
-                }
-
-                if (action === 'fold') {
-                    bot.folded = true;
-                    // Remove from active?
-                }
-
-                // Update State
-                if (action === 'raise') {
-                    this.minBet = bot.currentBet;
-                    this.lastAggressorIdx = this.players.indexOf(bot);
-                    // Reset 'allMatched' cycle.
-                    // Note: If someone raises, everyone else needs to act again.
-                    // My completion logic checks (next == lastAggressor).
-                    // If Bot 2 raises, lastAggressor becomes 2. 
-                    // Loop continues 3, 0, 1... until 2 is reached again? 
-                    // Yes. And logic checks if matched.
-                }
-
-                // Log
-                this.log(`${bot.name} ${action}s`);
-
-                // Update UI (simplified)
-                this.updateUI();
-
-                this.actionComplete(bot, action);
+                // Disable raise if not enough chips
+                const minRaise = this.currentBet + BIG_BLIND;
+                raiseBtn.disabled = player.chips <= (minRaise - player.currentBet);
             }
 
             playerAction(action) {
+                if (!this.waitingForPlayer) return;
+                this.waitingForPlayer = false;
+
                 document.getElementById('user-controls').style.display = 'none';
-                const p = this.players[0];
-                let logAct = action;
 
-                if (action === 'fold') {
-                    p.folded = true;
-                }
-                else if (action === 'check') {
-                    // pass
-                }
-                else if (action === 'call') {
-                    const toCall = this.minBet - p.currentBet;
-                    const delta = Math.min(toCall, p.chips);
-                    p.chips -= delta;
-                    this.pot += delta;
-                    p.currentBet += delta;
-                }
-                else if (action === 'raise') {
-                    // Simple Min Raise for now: 2x minBet or minBet + BB?
-                    // Limit styles: Raise = Current Bet + Raise Amount.
-                    // Let's do (Current MinBet + BigBlind) as new MinBet.
-                    const newBet = this.minBet + this.bigBlind; // Minimum raise
-                    const delta = newBet - p.currentBet;
+                const player = this.players[0];
+                this.executeAction(player, action);
 
-                    if (p.chips < delta) {
-                        // Not enough -> All in?
-                        // Treat as call/all-in for now or forbid button
-                        return; // Should act as call or error
-                    }
+                this.currentPlayerIndex = (this.currentPlayerIndex + 1) % NUM_PLAYERS;
+                this.runBettingRound();
+            }
 
-                    p.chips -= delta;
-                    this.pot += delta;
-                    p.currentBet = newBet;
-                    this.minBet = newBet;
-                    this.lastAggressorIdx = 0;
+            executeAction(player, action) {
+                player.hasActed = true;
+
+                const toCall = this.currentBet - player.currentBet;
+
+                switch (action) {
+                    case 'fold':
+                        player.folded = true;
+                        player.lastAction = 'Fold';
+                        break;
+
+                    case 'check':
+                        player.lastAction = 'Check';
+                        break;
+
+                    case 'call':
+                        const callAmount = Math.min(toCall, player.chips);
+                        this.pot += player.bet(callAmount);
+                        player.lastAction = `Call $${callAmount}`;
+                        break;
+
+                    case 'raise':
+                        const raiseTotal = this.currentBet + BIG_BLIND;
+                        const raiseAmount = raiseTotal - player.currentBet;
+                        this.pot += player.bet(raiseAmount);
+                        this.currentBet = raiseTotal;
+                        player.lastAction = `Raise to $${raiseTotal}`;
+                        // Reset hasActed for other players
+                        for (const p of this.players) {
+                            if (p !== player && !p.folded && p.chips > 0) {
+                                p.hasActed = false;
+                            }
+                        }
+                        break;
                 }
 
-                this.log(`You ${logAct}`);
                 this.updateUI();
-                this.actionComplete(p, action);
+            }
+
+            executeBotAction(bot) {
+                const toCall = this.currentBet - bot.currentBet;
+
+                let action;
+                if (toCall === 0) {
+                    // Can check or bet
+                    action = Math.random() < 0.15 ? 'raise' : 'check';
+                } else {
+                    // Must call, raise, or fold
+                    const rand = Math.random();
+                    if (rand < 0.65) {
+                        action = 'call';
+                    } else if (rand < 0.75) {
+                        action = 'raise';
+                    } else {
+                        action = 'fold';
+                    }
+                }
+
+                // Can't raise without enough chips
+                if (action === 'raise') {
+                    const minRaise = this.currentBet + BIG_BLIND;
+                    if (bot.chips <= (minRaise - bot.currentBet)) {
+                        action = toCall === 0 ? 'check' : 'call';
+                    }
+                }
+
+                this.executeAction(bot, action);
             }
 
             async advanceStage() {
-                // Reset bets for next street
-                this.players.forEach(p => p.currentBet = 0);
-                this.minBet = 0;
-                this.bettingComplete = false;
-                this.lastAggressorIdx = (this.dealerIdx + 1) % 4; // First to act starts
-                this.currentTurnIdx = this.lastAggressorIdx;
+                const stages = ['preflop', 'flop', 'turn', 'river', 'showdown'];
+                const currentIndex = stages.indexOf(this.stage);
 
-                if (this.stage === 'preflop') {
-                    this.stage = 'flop';
-                    // Burn 1? Nah.
-                    this.communityCards.push(this.deck.deal());
-                    this.communityCards.push(this.deck.deal());
-                    this.communityCards.push(this.deck.deal());
-                }
-                else if (this.stage === 'flop') {
-                    this.stage = 'turn';
-                    this.communityCards.push(this.deck.deal());
-                }
-                else if (this.stage === 'turn') {
-                    this.stage = 'river';
-                    this.communityCards.push(this.deck.deal());
-                }
-                else if (this.stage === 'river') {
-                    this.stage = 'showdown';
-                    this.handleShowdown();
+                if (currentIndex >= stages.length - 1) {
+                    this.showdown();
                     return;
                 }
 
-                this.updateUI();
-                this.log(`--- ${this.stage.toUpperCase()} ---`);
+                this.stage = stages[currentIndex + 1];
 
-                // Start betting for new stage
-                // Check if everyone all-in?
-                const activeWithChips = this.players.filter(p => !p.folded && !p.isAllIn && p.chips > 0);
-                if (activeWithChips.length < 2) {
-                    // Auto-run to end?
-                    // If 0 or 1 player has chips, no more betting possible.
-                    // Just deal remaining cards and showdown.
-                    // For now, let's just loop locally.
-                    this.bettingComplete = true;
-                    // Recursion danger?
+                // Deal community cards
+                if (this.stage === 'flop') {
+                    this.communityCards.push(this.deck.deal(), this.deck.deal(), this.deck.deal());
+                } else if (this.stage === 'turn' || this.stage === 'river') {
+                    this.communityCards.push(this.deck.deal());
                 }
 
-                // Allow UI to update
-                await wait(600);
+                this.updateUI();
+
+                if (this.stage === 'showdown') {
+                    this.showdown();
+                    return;
+                }
+
+                // Check if we can still have betting (need 2+ players with chips)
+                const canBet = this.players.filter(p => !p.folded && p.chips > 0).length >= 2;
+                if (!canBet) {
+                    // Run out remaining cards
+                    await delay(600);
+                    await this.advanceStage();
+                    return;
+                }
+
+                await delay(600);
+                await this.runBettingRound();
             }
 
-            handleShowdown() {
-                this.log("SHOWDOWN!");
+            showdown() {
+                const activePlayers = this.players.filter(p => !p.folded);
 
-                // Reveal all active hands
-                // Evaluate
                 let winner = null;
                 let bestScore = -1;
-                let winningHandName = "";
+                let winningHand = '';
 
-                const active = this.players.filter(p => !p.folded);
+                for (const player of activePlayers) {
+                    const allCards = [...player.hand, ...this.communityCards];
+                    const result = HandEvaluator.evaluate(allCards);
+                    player.handResult = result;
 
-                active.forEach(p => {
-                    const finalCards = [...p.hand, ...this.communityCards];
-                    const evalRes = HandEvaluator.evaluate(finalCards);
-                    p.eval = evalRes;
-                    console.log(`${p.name} has ${evalRes.name} (${evalRes.score})`);
-
-                    if (evalRes.score > bestScore) {
-                        bestScore = evalRes.score;
-                        winner = p;
-                        winningHandName = evalRes.name;
+                    if (result.score > bestScore) {
+                        bestScore = result.score;
+                        winner = player;
+                        winningHand = result.name;
                     }
-                });
+                }
 
-                // Award Pot
                 winner.chips += this.pot;
-                this.log(`${winner.name} wins $${this.pot} with ${winningHandName}!`);
+                this.updateUI(true);
 
-                // Show cards in UI
-                this.updateUI(true); // Showdown mode
-
-                document.getElementById('game-message').innerText = `${winner.name} wins with ${winningHandName}!`;
+                document.getElementById('game-message').innerText = `${winner.name} wins $${this.pot} with ${winningHand}!`;
                 document.getElementById('game-message').style.display = 'block';
-                document.getElementById('start-btn').innerText = "New Round";
+                document.getElementById('start-btn').innerText = 'New Round';
                 document.getElementById('start-btn').style.display = 'block';
             }
 
-            log(msg) {
-                console.log(msg); // TODO: Add on-screen log
-                // document.getElementById('seat-0').querySelector('.seat-action').innerText = msg;
-            }
-
-            endRound() {
-                // Determine winner if everyone folded
-                const winner = this.players.find(p => !p.folded);
+            endRoundEarly(winner) {
                 winner.chips += this.pot;
-                this.log(`${winner.name} wins pot (opponents folded)`);
-                document.getElementById('game-message').innerText = `${winner.name} wins (Fold)`;
+                this.updateUI();
+
+                document.getElementById('game-message').innerText = `${winner.name} wins $${this.pot}!`;
                 document.getElementById('game-message').style.display = 'block';
-                document.getElementById('start-btn').innerText = "New Round";
+                document.getElementById('start-btn').innerText = 'New Round';
                 document.getElementById('start-btn').style.display = 'block';
             }
 
             updateUI(showdown = false) {
-                // Pot
+                // Update pot
                 document.getElementById('pot-amount').innerText = this.pot;
 
-                // Community Cards
+                // Update community cards
                 const commContainer = document.getElementById('community-cards');
                 commContainer.innerHTML = '';
-                this.communityCards.forEach(c => commContainer.appendChild(c.render()));
+                for (const card of this.communityCards) {
+                    commContainer.appendChild(card.render());
+                }
 
-                // Players
-                this.players.forEach((p, idx) => {
+                // Update each player
+                for (let i = 0; i < NUM_PLAYERS; i++) {
+                    const player = this.players[i];
+                    const seat = document.getElementById(`seat-${i}`);
+
                     // Update chips
-                    const seat = document.getElementById(`seat-${idx}`);
-                    seat.querySelector('.seat-chips').innerText = `$${p.chips}`;
-                    seat.querySelector('.seat-action').innerText = p.currentBet > 0 ? `Bet: ${p.currentBet}` : (p.folded ? 'Fold' : 'Check');
-                    if (p.folded) seat.classList.add('folded');
-                    else seat.classList.remove('folded');
+                    seat.querySelector('.seat-chips').innerText = `$${player.chips}`;
 
-                    // Cards
-                    if (p.isHuman) {
+                    // Update action text
+                    seat.querySelector('.seat-action').innerText = player.lastAction;
+
+                    // Update folded state
+                    seat.classList.toggle('folded', player.folded);
+
+                    // Update active turn highlight
+                    seat.classList.toggle('active-turn', !showdown && i === this.currentPlayerIndex && !player.folded);
+
+                    // Update cards
+                    if (player.isHuman) {
                         const handContainer = document.getElementById('user-cards');
                         handContainer.innerHTML = '';
-                        p.hand.forEach(c => handContainer.appendChild(c.render()));
+                        for (const card of player.hand) {
+                            handContainer.appendChild(card.render());
+                        }
                     } else {
-                        // Bot Cards
                         const opCards = seat.querySelector('.op-cards');
                         opCards.innerHTML = '';
-                        if (showdown && !p.folded) {
-                            p.hand.forEach(c => opCards.appendChild(c.render()));
+                        if (showdown && !player.folded) {
+                            for (const card of player.hand) {
+                                const cardEl = card.render();
+                                cardEl.style.width = '30px';
+                                cardEl.style.height = '42px';
+                                opCards.appendChild(cardEl);
+                            }
                         } else {
-                            // Backs
-                            opCards.innerHTML = `<div class="card back" style="width:30px; height:42px;"></div><div class="card back" style="width:30px; height:42px;"></div>`;
+                            opCards.innerHTML = `
+                                <div class="card back" style="width:30px; height:42px;"></div>
+                                <div class="card back" style="width:30px; height:42px;"></div>
+                            `;
                         }
                     }
-
-                    // Highlight Active
-                    if (!showdown && idx === this.currentTurnIdx) {
-                        seat.classList.add('active-turn');
-                    } else {
-                        seat.classList.remove('active-turn');
-                    }
-                });
+                }
             }
         }
 
+        // Initialize game
         const game = new TexasHoldEm();
-
-        // Initial Draw
-        // game.startRound(); // Wait for user trigger
-
     </script>
 </body>
 
