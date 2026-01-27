@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Stocks</title>
-    
+
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -49,11 +50,12 @@
             background-color: #e5e5e5;
             /* Default Background (Overridden by JS) */
             /* Background managed by settings */
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center; /* FIX: Centers vertically */
+            justify-content: center;
+            /* FIX: Centers vertically */
             user-select: none;
             box-sizing: border-box;
         }
@@ -86,7 +88,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -178,13 +183,13 @@
             border-bottom: 2px solid black;
             padding: 0;
         }
-        
+
         .range-btn {
             flex: 1;
             border: none;
             border-top: 1px solid #ccc;
             border-right: 1px solid #ccc;
-            border-bottom: 2px solid transparent; 
+            border-bottom: 2px solid transparent;
             background: #eee;
             padding: 8px 0;
             font-weight: bold;
@@ -193,11 +198,11 @@
             color: #666;
             font-family: inherit;
         }
-        
+
         .range-btn:last-child {
             border-right: none;
         }
-        
+
         .range-btn:active {
             background: #ddd;
         }
@@ -206,9 +211,11 @@
             background: white;
             color: black;
             border-bottom: 2px solid black;
-            margin-bottom: -2px; /* Overlap border */
+            margin-bottom: -2px;
+            /* Overlap border */
             z-index: 1;
-            border-top: 1px solid white; /* Blend with top */
+            border-top: 1px solid white;
+            /* Blend with top */
         }
 
         /* STOCK LIST */
@@ -223,7 +230,8 @@
             align-items: center;
             padding: 10px 15px;
             border-bottom: 1px solid #ccc;
-            height: 60px; /* Fixed height for consistency */
+            height: 60px;
+            /* Fixed height for consistency */
         }
 
         .stock-symbol {
@@ -241,7 +249,7 @@
             display: flex;
             align-items: center;
         }
-        
+
         .stock-graph svg {
             width: 100%;
             height: 100%;
@@ -268,8 +276,16 @@
             gap: 5px;
         }
 
-        .up { color: black; }
-        .down { color: black; text-decoration: underline; } /* E-ink cue for negative */
+        .up {
+            color: black;
+        }
+
+        .down {
+            color: black;
+            text-decoration: underline;
+        }
+
+        /* E-ink cue for negative */
 
         .delete-stock {
             margin-left: 15px;
@@ -279,8 +295,10 @@
             font-size: 1.2rem;
             color: #999;
         }
-        
-        .delete-stock:hover { color: red; }
+
+        .delete-stock:hover {
+            color: red;
+        }
 
         /* AUTH STATUS */
         #auth-status {
@@ -295,8 +313,11 @@
         .modal-overlay {
             display: none;
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.95);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
             z-index: 100;
             align-items: center;
             justify-content: center;
@@ -317,10 +338,10 @@
             gap: 10px;
             margin-top: 15px;
         }
-
     </style>
     <script src="theme.js"></script>
 </head>
+
 <body>
 
     <div class="window">
@@ -338,7 +359,7 @@
                 <button class="sys-btn" onclick="addSymbol()">Add</button>
                 <button class="sys-btn" onclick="refreshData()">↻</button>
             </div>
-            
+
             <div class="range-selector">
                 <button class="range-btn" id="range-1d" onclick="setRange('1d')">1 Day</button>
                 <button class="range-btn active" id="range-5d" onclick="setRange('5d')">1 Week</button>
@@ -348,7 +369,7 @@
             <div class="stock-list" id="stock-container">
                 <div style="padding:20px; text-align:center; font-style:italic;">Loading...</div>
             </div>
-            
+
             <div id="auth-status">Guest Mode</div>
         </div>
 
@@ -380,16 +401,49 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+// Configure for Safari/Mac compatibility (fixes CORS errors)
+
+
+if (db.settings) {
+
+
+    try {
+
+
+        db.settings({
+
+
+            experimentalForceLongPolling: true,
+
+
+            merge: true
+
+
+        });
+
+
+    } catch (e) { console.warn("Settings error:", e); }
+
+
+}
+
+
+
+// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+
+
+// db.enablePersistence({ synchronizeTabs: true }) ...
+
         // --- STATE ---
         let symbols = JSON.parse(localStorage.getItem('rekindle_stocks')) || ['AAPL', 'MSFT', 'BTC-USD'];
         let currentUser = null;
         let deleteTarget = null;
         let currentRange = '5d'; // Default 1 Week
-        
+
         // --- INIT ---
         window.onload = () => {
-            loadWallpaper();
-            
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
             // Setup Auth Listener
             auth.onAuthStateChanged(user => {
                 if (user) {
@@ -427,18 +481,18 @@
 
 
         function handleEnter(e) {
-            if(e.key === 'Enter') addSymbol();
+            if (e.key === 'Enter') addSymbol();
         }
 
         // --- RANGE LOGIC ---
         function setRange(range) {
-            if(currentRange === range) return;
+            if (currentRange === range) return;
             currentRange = range;
-            
+
             // UI Toggle
             document.querySelectorAll('.range-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`range-${range}`).classList.add('active');
-            
+
             // Show loading and fetch
             document.getElementById('stock-container').innerHTML = '<div style="padding:20px; text-align:center;">Updating range...</div>';
             refreshData();
@@ -476,10 +530,10 @@
         }
 
         // --- DATA FETCHING & RENDERING ---
-        
+
         async function refreshData() {
             const container = document.getElementById('stock-container');
-            container.innerHTML = ''; 
+            container.innerHTML = '';
 
             if (symbols.length === 0) {
                 container.innerHTML = '<div style="padding:20px; text-align:center;">No stocks added.</div>';
@@ -501,7 +555,7 @@
         // Creates a stock row (either blank placeholder or full)
         function renderStock(symbol, data) {
             const container = document.getElementById('stock-container');
-            
+
             // Create container div
             const div = document.createElement('div');
             div.className = 'stock-item';
@@ -509,7 +563,7 @@
 
             // Populate content (uses helper to generate inner HTML)
             div.innerHTML = getStockHTML(symbol, data);
-            
+
             container.appendChild(div);
         }
 
@@ -541,7 +595,7 @@
                 const isUp = data.change >= 0;
                 const sign = isUp ? '+' : '';
                 const styleClass = isUp ? 'up' : 'down';
-                
+
                 const graphSvg = generateSparkline(data.history);
 
                 return `
@@ -566,7 +620,7 @@
                     if (data) return data;
                 } catch (e) {
                     // Exponential backoff or simple delay could go here
-                    await new Promise(r => setTimeout(r, 500)); 
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
             return getDemoData(symbol); // Fallback if all retries fail
@@ -582,21 +636,21 @@
 
                 const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${currentRange}`;
                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
-                
+
                 const res = await fetch(proxyUrl);
                 if (!res.ok) throw new Error("Network response was not ok");
-                
+
                 const json = await res.json();
-                
+
                 const result = json.chart.result[0];
                 const meta = result.meta;
                 const quote = result.indicators.quote[0];
-                
+
                 const price = meta.regularMarketPrice;
                 const prevClose = meta.chartPreviousClose;
                 const change = price - prevClose;
                 const percent = (change / prevClose) * 100;
-                
+
                 // Extract History
                 const history = quote.close ? quote.close.filter(p => p !== null) : [];
 
@@ -609,7 +663,7 @@
 
             } catch (e) {
                 console.error("Fetch failed for " + symbol, e);
-                throw e; 
+                throw e;
             }
         }
 
@@ -618,12 +672,12 @@
             const base = Math.random() * 200 + 50;
             const change = (Math.random() * 10) - 5;
             const percent = (change / base) * 100;
-            
+
             const history = [];
             let curr = base - change;
             const points = currentRange === '1d' ? 26 : 30;
-            
-            for(let i=0; i<points; i++) {
+
+            for (let i = 0; i < points; i++) {
                 curr += (Math.random() * 5 - 2.5);
                 history.push(curr);
             }
@@ -662,12 +716,12 @@
         function addSymbol() {
             const input = document.getElementById('symbol-input');
             const val = input.value.toUpperCase().trim();
-            
+
             if (val && !symbols.includes(val)) {
                 symbols.push(val);
                 saveStocks();
                 input.value = '';
-                
+
                 // Show loading state for new item immediately
                 refreshData();
             }
@@ -696,19 +750,11 @@
         }
 
 
-        loadWallpaper();
-        
-        function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
+
+
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
+
 </html>

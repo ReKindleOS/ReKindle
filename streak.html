@@ -436,9 +436,25 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
+        if (db.settings) {
+            try {
+                db.settings({
+                    experimentalForceLongPolling: true,
+                    merge: true
+                });
+            } catch (e) { console.warn("Settings error:", e); }
+        }
+
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // db.enablePersistence({ synchronizeTabs: true }) ...
+
         // --- STATE ---
         let habits = []; // Array of objects {id, name}
         let history = {}; // Object keys "habitId_YYYY-MM-DD" : true
+        // Cache Keys
+        const HABITS_CACHE_KEY = 'streak_habits_cache';
+        const HISTORY_CACHE_KEY = 'streak_history_cache';
 
         let currentStart = new Date(); // Start of the current view
         let today = new Date(); // Actual today
@@ -448,13 +464,15 @@
 
         // --- INIT ---
         window.onload = () => {
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             initCurrentWeek();
 
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
                     document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    // Load Cache immediately
+                    loadCachedData();
                     loadCloudData();
                 } else {
                     document.getElementById('status-bar').innerText = "Guest Mode (Local)";
@@ -501,15 +519,45 @@
             renderView();
         }
 
+        function loadCachedData() {
+            try {
+                // Try load auth cache
+                const h = localStorage.getItem(HABITS_CACHE_KEY);
+                const hist = localStorage.getItem(HISTORY_CACHE_KEY);
+
+                if (h) habits = JSON.parse(h);
+                if (hist) history = JSON.parse(hist);
+
+                if (habits.length > 0) {
+                    renderView();
+                    console.log("Loaded cached data");
+                }
+            } catch (e) { console.warn("Cache error", e); }
+        }
+
+        function updateCache() {
+            if (!currentUser) return;
+            try {
+                localStorage.setItem(HABITS_CACHE_KEY, JSON.stringify(habits));
+                localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(history));
+            } catch (e) { }
+        }
+
         async function loadCloudData() {
             // 1. Load Habits Metadata (Keep as listener, it's very small)
             db.collection('users').doc(currentUser.uid).collection('habits')
                 .onSnapshot(snap => {
-                    habits = [];
+                    const newHabits = [];
                     snap.forEach(doc => {
-                        habits.push({ id: doc.id, ...doc.data() });
+                        newHabits.push({ id: doc.id, ...doc.data() });
                     });
-                    renderView();
+
+                    // Only update if changed
+                    if (JSON.stringify(newHabits) !== JSON.stringify(habits)) {
+                        habits = newHabits;
+                        updateCache();
+                        renderView();
+                    }
                 });
 
             // 2. Load History (Optimization: One-time fetch of recent data)
@@ -521,44 +569,44 @@
         async function loadHistoryRange(startDate) {
             if (!currentUser) return;
 
-            // simple check: has this week's Monday already been fetched?
+            // Check if this week's Monday already been fetched
             const startStr = startDate.toISOString().split('T')[0];
             if (loadedRanges.includes(startStr)) return;
 
-            // Fetch a 45-day window around the target date to reduce frequent fetches
-            const rangeStart = new Date(startDate);
-            rangeStart.setDate(rangeStart.getDate() - 20); // 20 days before
-            const rangeEnd = new Date(startDate);
-            rangeEnd.setDate(rangeEnd.getDate() + 25); // 25 days after
+            // Build list of date strings for the current week (7 days)
+            const weekDates = [];
+            for (let i = 0; i < 7; i++) {
+                const dayDate = new Date(startDate);
+                dayDate.setDate(startDate.getDate() + i);
+                const y = dayDate.getFullYear();
+                const m = String(dayDate.getMonth() + 1).padStart(2, '0');
+                const d = String(dayDate.getDate()).padStart(2, '0');
+                weekDates.push(`${y}-${m}-${d}`);
+            }
 
-            // Convert to keys for filtering if necessary, but history docs are named by date
-            // The recordKey is "habitId_YYYY-MM-DD"
-            // Since we don't have a date field to query on easily without a schema change, 
-            // and the user said "limit to current week", we can actually just fetch what's needed.
+            // Fetch history only for each habit + each day in this week
+            const historyRef = db.collection('users').doc(currentUser.uid).collection('habit_history');
+            const fetchPromises = [];
 
-            // OPTIMIZATION: Instead of full collection, we just fetch the history docs 
-            // that *might* be in this week's view.
-
-            // To keep it simple and robust (since habits might have been renamed/deleted):
-            // We'll fetch all history items created since a certain point.
-            // Wait, the history docs don't have a date field, they use the ID as the key.
-            // This is a bit tricky for Firestore queries.
-
-            // PLAN B: For now, we perform a one-time .get() of the WHOLE collection 
-            // on first load, so it only happens ONCE, not on every change. 
-            // This is still much better than onSnapshot.
-
-            db.collection('users').doc(currentUser.uid).collection('habit_history')
-                .get()
-                .then(snap => {
-                    history = {};
-                    snap.forEach(doc => {
-                        history[doc.id] = true;
-                    });
-                    loadedRanges.push(startStr);
-                    renderView();
-                    console.log("Streak: History loaded (One-time fetch)");
+            habits.forEach(habit => {
+                weekDates.forEach(dateKey => {
+                    const recordKey = `${habit.id}_${dateKey}`;
+                    fetchPromises.push(
+                        historyRef.doc(recordKey).get().then(doc => {
+                            if (doc.exists) {
+                                history[recordKey] = true;
+                            }
+                        })
+                    );
                 });
+            });
+
+            Promise.all(fetchPromises).then(() => {
+                loadedRanges.push(startStr);
+                updateCache(); // Save history to cache
+                renderView();
+                console.log("Streak: History loaded for week " + startStr);
+            });
         }
 
         function saveData() {
@@ -743,6 +791,7 @@
                     docRef.set({ completed: true });
                     history[recordKey] = true;
                 }
+                updateCache();
                 renderView();
             } else {
                 if (history[recordKey]) delete history[recordKey];
@@ -752,22 +801,12 @@
         }
 
 
-        loadWallpaper();
 
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
         }
 
-        function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
+
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
