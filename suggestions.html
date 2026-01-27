@@ -612,18 +612,28 @@
         try {
             firebase.initializeApp(firebaseConfig);
             const db = firebase.firestore();
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-            // Enable Offline Persistence
-            /*
-            db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-                if (err.code == 'failed-precondition') {
-                    console.warn("Persistence failed: Multiple tabs open");
-                } else if (err.code == 'unimplemented') {
-                    console.warn("Persistence failed: Browser not supported");
-                }
-            });
-            */
+        if (db.settings) {
 
+            try {
+
+                db.settings({
+
+                    experimentalForceLongPolling: true,
+
+                    merge: true
+
+                });
+
+            } catch (e) { console.warn("Settings error:", e); }
+
+        }
+
+
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+
+        // db.enablePersistence({ synchronizeTabs: true }) ...
             const auth = firebase.auth();
 
             let currentUser = null;
@@ -642,23 +652,12 @@
                 }
             });
 
-            // WALLPAPER
-            function loadWallpaper() {
-                // MATCHING READING.HTML: No sanitization on this read
-                const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-                const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-                if (wallpaperImg) {
-                    document.body.style.backgroundImage = wallpaperImg;
-                }
-                if (wallpaperSize) {
-                    document.body.style.backgroundSize = wallpaperSize;
-                }
-            }
+
 
             // Call immediately (like reading.html) and on load
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             window.onload = function () {
-                loadWallpaper();
+                if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             };
 
             function sanitizeBackgroundImage(imageString) {

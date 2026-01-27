@@ -1,4 +1,12 @@
 (function () {
+
+    // --- PRETTY URLS (Global) ---
+    // Automatically strip .html from URL bar
+    if (window.location.pathname.endsWith('.html')) {
+        var cleanUrl = window.location.pathname.replace('.html', '');
+        window.history.replaceState(null, '', cleanUrl);
+    }
+
     // --- CONFIGURATION ---
     const THEME_KEY = 'rekindle_theme_mode'; // 'light', 'dark', 'auto'
     const AUTO_START_HOUR = 18; // 6 PM
@@ -277,6 +285,117 @@
     window.rekindleGetUnitSystem = getUnitSystem;
     window.rekindleConvertDistance = convertDistance;
     window.rekindleConvertTemperatureContext = convertTemperatureContext;
+
+    // --- WALLPAPER LOGIC ---
+    function applyWallpaper() {
+        try {
+            let wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            let wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            const wallpaperId = localStorage.getItem('rekindle_wallpaper_id');
+            const hasPixelData = localStorage.getItem('rekindle_pixel_data');
+
+            // MIGRATION LOGIC (From index.html):
+            // 1. If no image exists (New User)
+            // 2. If no pixel data exists (Old User)
+            // 3. If ID is not 'custom' (Old User using legacy preset)
+            if (!wallpaperImg || !hasPixelData || (wallpaperId && wallpaperId !== 'custom')) {
+                // Only run migration if we are in a context that can generate it (requires Canvas)
+                // We'll trust the browser can handle basic canvas here.
+                console.log("Migrating wallpaper to Classic Dither...");
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 32;
+                canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+
+                // Fill Background White
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 32, 32);
+
+                // Draw Black Pixels (Classic Dither Pattern)
+                ctx.fillStyle = '#000000';
+                const ditherPattern = [
+                    1, 0, 1, 0, 1, 0, 1, 0,
+                    0, 1, 0, 1, 0, 1, 0, 1,
+                    1, 0, 1, 0, 1, 0, 1, 0,
+                    0, 1, 0, 1, 0, 1, 0, 1,
+                    1, 0, 1, 0, 1, 0, 1, 0,
+                    0, 1, 0, 1, 0, 1, 0, 1,
+                    1, 0, 1, 0, 1, 0, 1, 0,
+                    0, 1, 0, 1, 0, 1, 0, 1
+                ];
+
+                for (let i = 0; i < 64; i++) {
+                    if (ditherPattern[i] === 1) {
+                        const col = i % 8;
+                        const row = Math.floor(i / 8);
+                        ctx.fillRect(col * 4, row * 4, 4, 4);
+                    }
+                }
+
+                wallpaperImg = `url(${canvas.toDataURL('image/png')})`;
+                wallpaperSize = '16px 16px';
+
+                localStorage.setItem('rekindle_bg_image', wallpaperImg);
+                localStorage.setItem('rekindle_bg_size', wallpaperSize);
+                localStorage.setItem('rekindle_wallpaper_id', 'custom');
+                localStorage.setItem('rekindle_pixel_data', JSON.stringify(ditherPattern));
+            }
+
+            // SANITIZATION (From reader.html fix)
+            function sanitize(imageString) {
+                if (!imageString) return '';
+                // Allow data URIs (quoted or unquoted)
+                if (imageString.startsWith('url(data:image/png;base64,') ||
+                    imageString.startsWith('url("data:image/png;base64,') ||
+                    imageString.startsWith("url('data:image/png;base64,")) {
+                    return imageString;
+                }
+                // Extract URL wrappers
+                let url = '';
+                if (imageString.startsWith('url("') && imageString.endsWith('")')) {
+                    url = imageString.substring(5, imageString.length - 2);
+                } else if (imageString.startsWith("url('") && imageString.endsWith("')")) {
+                    url = imageString.substring(5, imageString.length - 2);
+                } else if (imageString.startsWith('url(') && imageString.endsWith(')')) {
+                    url = imageString.substring(4, imageString.length - 1);
+                }
+                if (url) {
+                    if (url.includes('javascript:') || url.includes('data:')) return '';
+                    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) {
+                        return imageString;
+                    }
+                }
+                return '';
+            }
+
+            if (wallpaperImg) {
+                const safeImg = sanitize(wallpaperImg);
+                if (safeImg) {
+                    document.body.style.backgroundImage = safeImg;
+                }
+            }
+
+            // SCALING LOGIC (From reader.html fix)
+            if (wallpaperSize) {
+                const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
+                const scale = parseFloat(scaleStr);
+
+                if (scale !== 1.0 && wallpaperSize.includes('px')) {
+                    wallpaperSize = wallpaperSize.replace(/(\d+(\.\d+)?)px/g, (match, initialNum) => {
+                        const val = parseFloat(initialNum);
+                        const scaledVal = val * scale;
+                        return `${scaledVal}px`;
+                    });
+                }
+                document.body.style.backgroundSize = wallpaperSize;
+            }
+
+        } catch (e) {
+            console.error("Wallpaper apply failed:", e);
+        }
+    }
+    window.rekindleApplyWallpaper = applyWallpaper;
 
     // Timezone Exports REMOVED (Moved to time.js)
 

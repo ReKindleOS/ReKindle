@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Standard eBooks</title>
-    
+
     <!-- Dependencies -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
-    
+
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
@@ -51,7 +52,7 @@
             overflow: hidden;
             background-color: #e5e5e5;
             /* Background managed by settings */
-            
+
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -89,7 +90,10 @@
 
         .title-stripes {
             position: absolute;
-            top: 4px; bottom: 4px; left: 4px; right: 4px;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
             background-image: var(--stripe-pattern);
             z-index: 0;
         }
@@ -153,7 +157,9 @@
             transition: border-color 0.2s;
         }
 
-        .book-card:hover { border-color: black; }
+        .book-card:hover {
+            border-color: black;
+        }
 
         .cover-img {
             width: 100%;
@@ -190,7 +196,7 @@
             font-size: 0.8rem;
             text-transform: uppercase;
         }
-        
+
         .download-btn:disabled {
             background: #ccc;
             cursor: default;
@@ -230,10 +236,10 @@
             display: none;
             z-index: 100;
         }
-
     </style>
     <script src="theme.js"></script>
 </head>
+
 <body>
 
     <div class="window">
@@ -245,9 +251,9 @@
 
         <div class="window-content">
             <div class="book-grid" id="book-grid">
-                </div>
+            </div>
         </div>
-        
+
         <div id="status-bar">Connecting to Standard Ebooks...</div>
         <div id="toast">Download Started...</div>
     </div>
@@ -265,14 +271,37 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+// Configure for Safari/Mac compatibility (fixes CORS errors)
+
+if (db.settings) {
+
+    try {
+
+        db.settings({
+
+            experimentalForceLongPolling: true,
+
+            merge: true
+
+        });
+
+    } catch (e) { console.warn("Settings error:", e); }
+
+}
+
+
+// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+
+// db.enablePersistence({ synchronizeTabs: true }) ...
+
         const auth = firebase.auth();
 
         // --- STATE ---
         let currentUser = null;
-        
+
         // Feed URLs
         const RSS_FEED_URL = "https://standardebooks.org/feeds/rss/new-releases";
-        
+
         // Use a robust CORS proxy chain to fetch XML/EPUB directly
         const PROXIES = [
             "https://corsproxy.io/?",
@@ -281,11 +310,11 @@
 
         // --- INIT ---
         window.onload = () => {
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             loadFeed(); // Load new releases by default
-            
+
             auth.onAuthStateChanged(user => {
-                if(user) {
+                if (user) {
                     currentUser = user;
                     document.getElementById('status-bar').innerText = "Logged In: " + user.email;
                 } else {
@@ -318,23 +347,23 @@
 
 
         // --- FEED LOGIC (XML + PROXY) ---
-        
+
         async function loadFeed() {
             renderLoading("Fetching new releases...");
-            
+
             try {
                 // Fetch via robust chain
                 const text = await fetchWithProxy(RSS_FEED_URL);
                 if (!text) throw new Error("All proxies failed");
-                
+
                 parseAndRenderXML(text);
-                
-            } catch(e) {
+
+            } catch (e) {
                 console.error("Feed error", e);
                 renderError("Failed to load feed. Standard Ebooks may be unreachable.");
             }
         }
-        
+
         async function fetchWithProxy(url, isBinary = false) {
             for (let proxyBase of PROXIES) {
                 try {
@@ -342,7 +371,7 @@
                     if (res.ok) {
                         return isBinary ? await res.blob() : await res.text();
                     }
-                } catch(e) {
+                } catch (e) {
                     console.warn("Proxy failed:", proxyBase);
                 }
             }
@@ -353,7 +382,7 @@
             try {
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-                
+
                 // Check for parser errors
                 const parserError = xmlDoc.getElementsByTagName("parsererror");
                 if (parserError.length > 0) {
@@ -362,7 +391,7 @@
 
                 // Use getElementsByTagName for better compatibility with Kindle browser
                 const items = Array.from(xmlDoc.getElementsByTagName("item")).slice(0, 15);
-                
+
                 if (items.length > 0) {
                     renderXmlBooks(items);
                 } else {
@@ -378,11 +407,11 @@
         function renderXmlBooks(items) {
             const grid = document.getElementById('book-grid');
             grid.innerHTML = '';
-            
+
             items.forEach(item => {
                 const titleEl = item.getElementsByTagName("title")[0];
                 const rawTitle = titleEl ? titleEl.textContent : "Unknown Title";
-                
+
                 let title = rawTitle;
                 let author = "Unknown Author";
 
@@ -395,7 +424,7 @@
                         title = title.substring(0, lastIndex);
                     }
                 }
-                
+
                 // Find EPUB link (enclosure)
                 let dlUrl = null;
                 const enclosures = item.getElementsByTagName("enclosure");
@@ -406,7 +435,7 @@
                         break;
                     }
                 }
-                
+
                 // Fallback link
                 if (!dlUrl) {
                     const linkEl = item.getElementsByTagName("link")[0];
@@ -418,10 +447,10 @@
                 // Try media:thumbnail or thumbnail
                 const mediaThumb = item.getElementsByTagName("media:thumbnail")[0];
                 const thumb = item.getElementsByTagName("thumbnail")[0];
-                
+
                 if (mediaThumb) coverUrl = mediaThumb.getAttribute("url");
                 else if (thumb) coverUrl = thumb.getAttribute("url");
-                
+
                 // Fallback to parsing description for <img>
                 if (!coverUrl) {
                     const descEl = item.getElementsByTagName("description")[0];
@@ -441,7 +470,7 @@
                     renderCard(grid, title, author, coverUrl, dlUrl);
                 }
             });
-            
+
             if (grid.children.length === 0) renderError("No compatible ebooks found.");
         }
 
@@ -449,7 +478,7 @@
         function renderCard(container, title, author, coverUrl, dlUrl) {
             const div = document.createElement('div');
             div.className = 'book-card';
-            
+
             // Clean title/author for onclick string
             const safeTitle = escapeQuotes(title);
             const safeAuthor = escapeQuotes(author);
@@ -484,7 +513,7 @@
             try {
                 // 1. Fetch File Blob using robust proxy chain
                 const blob = await fetchWithProxy(url, true);
-                
+
                 if (!blob || blob.size < 1000) throw new Error("Invalid file received (too small)");
 
                 // 2. CLEANUP STEP: Remove blank pages
@@ -493,17 +522,17 @@
 
                 // 3. Convert to ArrayBuffer
                 const buffer = await blobToArrayBuffer(cleanedBlob);
-                
+
                 // 4. Generate Key
                 const key = `book_${Date.now()}`;
-                
+
                 // 5. Save to LocalForage (Shared storage with Reader app)
                 await localforage.setItem(key, buffer);
-                
+
                 // 6. Update Index
                 let index = await localforage.getItem('library_index') || [];
                 const exists = index.find(b => b.title === title && b.author === author);
-                
+
                 if (!exists) {
                     index.push({
                         title: title,
@@ -519,7 +548,7 @@
                 if (currentUser) {
                     const snap = await db.collection('users').doc(currentUser.uid).collection('library')
                         .where('url', '==', url).get();
-                    
+
                     if (snap.empty) {
                         await db.collection('users').doc(currentUser.uid).collection('library').add({
                             title: title,
@@ -546,15 +575,15 @@
         async function cleanEpub(blob) {
             try {
                 const zip = await JSZip.loadAsync(blob);
-                
+
                 // 1. Find OPF file path
                 const containerXml = await zip.file("META-INF/container.xml").async("string");
                 const rootfileMatch = containerXml.match(/full-path="([^"]+)"/);
                 if (!rootfileMatch) throw new Error("Invalid Container XML");
-                
+
                 const opfPath = rootfileMatch[1];
                 let opfContent = await zip.file(opfPath).async("string");
-                
+
                 // 2. Parse OPF
                 const parser = new DOMParser();
                 const opfDoc = parser.parseFromString(opfContent, "application/xml");
@@ -567,13 +596,13 @@
                     let item = null;
                     // Try with querySelector if ID is simple
                     try {
-                        if(ns) item = manifest.querySelector(`[id="${id}"]`);
-                    } catch(e) {}
-                    
+                        if (ns) item = manifest.querySelector(`[id="${id}"]`);
+                    } catch (e) { }
+
                     // Fallback loop if querySelector fails or ID has special chars
-                    if(!item) {
-                        for(let i=0; i<manifest.children.length; i++) {
-                            if(manifest.children[i].getAttribute("id") === id) {
+                    if (!item) {
+                        for (let i = 0; i < manifest.children.length; i++) {
+                            if (manifest.children[i].getAttribute("id") === id) {
                                 item = manifest.children[i];
                                 break;
                             }
@@ -585,30 +614,30 @@
                 // 3. Iterate Spine Items
                 const itemrefs = Array.from(spine.getElementsByTagName("itemref"));
                 let removedCount = 0;
-                
+
                 const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
 
                 for (let itemref of itemrefs) {
                     const id = itemref.getAttribute("idref");
                     const href = getItemHref(id);
-                    
+
                     if (href && (href.endsWith('.html') || href.endsWith('.xhtml'))) {
                         const fullPath = opfDir + href;
                         const file = zip.file(fullPath);
-                        
+
                         if (file) {
                             const content = await file.async("string");
-                            
+
                             // 4. FIX: Use textContent for XML/XHTML documents
                             const doc = parser.parseFromString(content, "application/xml");
-                            
+
                             // Robust text extraction
                             const text = doc.documentElement.textContent.trim();
-                            
+
                             const hasImg = doc.getElementsByTagName("img").length > 0;
                             const hasSvg = doc.getElementsByTagName("svg").length > 0;
                             const hasImage = doc.getElementsByTagName("image").length > 0;
-                            
+
                             // If text is very short (< 50 chars) AND no images/graphics
                             if (text.length < 50 && !hasImg && !hasSvg && !hasImage) {
                                 spine.removeChild(itemref);
@@ -624,12 +653,12 @@
                     zip.file(opfPath, newOpfContent);
                     return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
                 }
-                
-                return blob; 
+
+                return blob;
 
             } catch (e) {
                 console.error("Clean failed, returning original", e);
-                return blob; 
+                return blob;
             }
         }
 
@@ -650,19 +679,11 @@
         }
 
 
-        loadWallpaper();
-        
-        function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
+
+
     </script>
-<script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 </body>
+
 </html>
