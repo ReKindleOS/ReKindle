@@ -956,8 +956,9 @@
                     <button class="sys-btn" onclick="toggleAsciiPicker()"
                         style="font-size:1.2rem; padding: 0 10px;">☺</button>
 
-                    <textarea id="msg-input" placeholder="Type a message..." rows="3"></textarea>
-                    <button class="sys-btn" id="send-btn" onclick="sendMessage()" style="height: 100%;">Send</button>
+                    <textarea id="msg-input" placeholder="Connecting..." rows="3" disabled></textarea>
+                    <button class="sys-btn" id="send-btn" onclick="sendMessage()" style="height: 100%; opacity: 0.5;"
+                        disabled>Send</button>
                 </div>
 
                 <div id="locked-input">
@@ -1062,13 +1063,17 @@
         firebase.initializeApp(firebaseConfig);
         var db = firebase.firestore();
 
-        // Fix Safari CORS errors and connection hangs
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
         if (db.settings) {
-            db.settings({
-                experimentalForceLongPolling: true,
-                merge: true
-            });
+            try {
+                db.settings({
+                    experimentalForceLongPolling: true,
+                    merge: true
+                });
+            } catch (e) { console.warn("Settings error:", e); }
         }
+
+        // Note: Persistence disabled for KindleChat due to IndexedDB hangs on some browsers
 
         var auth = firebase.auth();
 
@@ -1094,7 +1099,7 @@
 
         // --- INIT ---
         window.onload = function () {
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             initAsciiPicker(); // Initialize the ASCII picker
             fetchSupporters(); // Load supporters list
 
@@ -1336,7 +1341,6 @@
 
             db.collection('rooms')
                 .where('participants', 'array-contains', currentUsername)
-                .orderBy('lastMessageAt', 'desc')
                 .limit(15)
                 .get()
                 .then(function (roomsQuery) {
@@ -1391,12 +1395,62 @@
             }
         }
 
+        // --- ROOM CACHING (localStorage) ---
+        var ROOMS_CACHE_KEY = 'kindlechat_rooms_cache';
+
+        function getCachedRooms() {
+            try {
+                var cached = localStorage.getItem(ROOMS_CACHE_KEY);
+                if (cached) {
+                    var data = JSON.parse(cached);
+                    // Cache valid for 1 hour
+                    if (data.timestamp && (Date.now() - data.timestamp) < 3600000) {
+                        return data.rooms || [];
+                    }
+                }
+            } catch (e) { }
+            return [];
+        }
+
+        function cacheRooms(rooms) {
+            try {
+                localStorage.setItem(ROOMS_CACHE_KEY, JSON.stringify({
+                    timestamp: Date.now(),
+                    rooms: rooms.map(function (r) {
+                        // Store timestamp as millis for robust serialization
+                        var ts = r.lastMessageAt;
+                        var tsMillis = ts ? (ts.toMillis ? ts.toMillis() : ts) : null;
+
+                        // Also handle numeric timestamps from plain objects if previously cached
+                        if (typeof ts === 'object' && ts !== null && ts.seconds) {
+                            tsMillis = ts.seconds * 1000;
+                        }
+
+                        return {
+                            id: r.id,
+                            name: r.name,
+                            type: r.type,
+                            lastMessageAt: tsMillis
+                        };
+                    })
+                }));
+            } catch (e) { }
+        }
+
         function loadRooms() {
             if (unsubscribeRooms) unsubscribeRooms();
             if (unsubscribeGeneral) unsubscribeGeneral();
 
             var listEl = document.getElementById('room-list');
-            listEl.innerHTML = '<div style="padding:10px;">Loading...</div>';
+
+            // Show cached rooms immediately for instant display
+            var cachedRooms = getCachedRooms();
+            if (cachedRooms.length > 0) {
+                userRooms = cachedRooms;
+                updateSidebar();
+            } else {
+                listEl.innerHTML = '<div style="padding:10px;">Loading...</div>';
+            }
 
             // Listen to general room updates for timestamp
             unsubscribeGeneral = db.collection('rooms').doc('general').onSnapshot(function (doc) {
@@ -1433,6 +1487,9 @@
                         }
                         userRooms.push(r);
                     });
+
+                    // Cache the fresh rooms
+                    cacheRooms(userRooms);
                     updateSidebar();
                 }, function (err) {
                     console.error("User rooms snapshot error:", err);
@@ -1531,51 +1588,201 @@
             }
         }
 
+        // --- MESSAGE CACHING (localStorage) ---
+        var MSG_CACHE_PREFIX = 'kindlechat_msg_';
+        var MAX_CACHED_MESSAGES = 50;
+
+        function getMessageCacheKey(roomId) {
+            return MSG_CACHE_PREFIX + roomId;
+        }
+
+        function getCachedMessages(roomId) {
+            try {
+                var cached = localStorage.getItem(getMessageCacheKey(roomId));
+                if (cached) {
+                    var data = JSON.parse(cached);
+                    return data.messages || [];
+                }
+            } catch (e) { }
+            return [];
+        }
+
+        function getLastCachedTimestamp(roomId) {
+            try {
+                var cached = localStorage.getItem(getMessageCacheKey(roomId));
+                if (cached) {
+                    var data = JSON.parse(cached);
+                    return data.lastTimestamp || null;
+                }
+            } catch (e) { }
+            return null;
+        }
+
+        function cacheMessages(roomId, messages, lastTimestamp) {
+            try {
+                // Only keep last N messages
+                var toCache = messages.slice(-MAX_CACHED_MESSAGES);
+                localStorage.setItem(getMessageCacheKey(roomId), JSON.stringify({
+                    lastTimestamp: lastTimestamp,
+                    messages: toCache
+                }));
+            } catch (e) { }
+        }
+
+        function addMessageToCache(roomId, msgData, msgId) {
+            try {
+                var cached = getCachedMessages(roomId);
+                // Avoid duplicates
+                var exists = cached.some(function (m) { return m.id === msgId; });
+                if (!exists) {
+                    cached.push({ id: msgId, data: msgData });
+                    // Keep only last N
+                    if (cached.length > MAX_CACHED_MESSAGES) {
+                        cached = cached.slice(-MAX_CACHED_MESSAGES);
+                    }
+                    var ts = msgData.timestamp ? (msgData.timestamp.toMillis ? msgData.timestamp.toMillis() : msgData.timestamp) : Date.now();
+                    localStorage.setItem(getMessageCacheKey(roomId), JSON.stringify({
+                        lastTimestamp: ts,
+                        messages: cached
+                    }));
+                }
+            } catch (e) { }
+        }
+
+        // --- UI HELPERS ---
+        function setChatInputEnabled(enabled) {
+            var input = document.getElementById('msg-input');
+            var btn = document.getElementById('send-btn');
+            if (input) input.disabled = !enabled;
+            if (btn) btn.disabled = !enabled;
+
+            // Visual feedback
+            if (enabled) {
+                if (btn) btn.style.opacity = '1';
+                if (input) input.placeholder = "Type a message...";
+            } else {
+                if (btn) btn.style.opacity = '0.5';
+                if (input) input.placeholder = "Connecting...";
+            }
+        }
+
         function loadMessages() {
+            // Update Title to Loading
+            var titleEl = document.querySelector('.title-text');
+            if (titleEl) titleEl.innerText = 'Loading...';
+
             if (unsubscribeMsg) unsubscribeMsg();
             oldestMsgDoc = null;
             isLoadingMore = false;
 
-            var history = document.getElementById('chat-history');
+            // Disable input while loading
+            setChatInputEnabled(false);
 
-            // Only show connecting if empty to avoid flicker
-            if (history.children.length === 0) {
+            var history = document.getElementById('chat-history');
+            var roomId = currentRoomId;
+
+            // Show cached messages immediately
+            var cachedMsgs = getCachedMessages(roomId);
+            if (cachedMsgs.length > 0) {
+                history.innerHTML = '';
+                cachedMsgs.forEach(function (m) {
+                    renderMessage(m.data, m.id);
+                });
+                history.scrollTop = history.scrollHeight;
+            } else if (history.children.length === 0) {
                 history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
             }
 
-            unsubscribeMsg = db.collection('rooms').doc(currentRoomId).collection('messages')
-                .orderBy('timestamp', 'asc')
-                .limitToLast(50)
-                .onSnapshot(function (snapshot) {
-                    // Remove loading indicator if present
-                    if (history.innerHTML.indexOf('Connecting...') !== -1) {
-                        history.innerHTML = '';
-                    }
+            // SMART SYNC: Optimize reads
+            var lastCachedTs = getLastCachedTimestamp(roomId);
+            var query = db.collection('rooms').doc(roomId).collection('messages').orderBy('timestamp', 'asc');
+            var isSmartSync = false;
 
-                    if (snapshot.empty && history.innerHTML === '') {
+            if (lastCachedTs && cachedMsgs.length > 0) {
+                var startDate = new Date(lastCachedTs);
+                if (!isNaN(startDate.getTime())) {
+                    query = query.startAfter(startDate).limit(50);
+                    isSmartSync = true;
+                    console.log("Smart Sync: Fetching new messages only");
+                } else {
+                    query = query.limitToLast(50);
+                }
+            } else {
+                query = query.limitToLast(50);
+            }
+
+            unsubscribeMsg = query.onSnapshot(function (snapshot) {
+                // Restore Title
+                var titleEl = document.querySelector('.title-text');
+                if (titleEl) titleEl.innerText = 'KindleChat';
+
+                // Connection successful - enable input
+                setChatInputEnabled(true);
+
+                // Remove loading indicator if present
+                if (history.innerHTML.indexOf('Connecting...') !== -1) {
+                    history.innerHTML = '';
+                }
+
+                if (snapshot.empty && history.innerHTML === '') {
+                    if (!isSmartSync) {
                         history.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No messages yet.</div>';
                     }
+                }
 
-                    var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                var allMessages = [];
 
-                    snapshot.docChanges().forEach(function (change) {
-                        if (change.type === 'added' || change.type === 'modified') {
-                            renderMessage(change.doc.data(), change.doc.id);
+                snapshot.docChanges().forEach(function (change) {
+                    if (change.type === 'added' || change.type === 'modified') {
+                        var msgData = change.doc.data();
+                        var msgId = change.doc.id;
+                        renderMessage(msgData, msgId);
+                        allMessages.push({ id: msgId, data: msgData });
+                    }
+                });
+
+                // Cache messages for next load
+                if (snapshot.docs.length > 0) {
+                    var lastDoc = snapshot.docs[snapshot.docs.length - 1];
+                    var lastTsData = lastDoc.data().timestamp;
+                    var newLastTs = lastTsData ? (lastTsData.toMillis ? lastTsData.toMillis() : lastTsData) : Date.now();
+
+                    var newMsgs = snapshot.docs.map(function (doc) {
+                        return { id: doc.id, data: doc.data() };
+                    });
+
+                    // Merge new messages with existing cache
+                    var currentCache = getCachedMessages(roomId);
+                    var merged = currentCache;
+
+                    newMsgs.forEach(function (nm) {
+                        // Update or Append
+                        var idx = merged.findIndex(function (cm) { return cm.id === nm.id; });
+                        if (idx !== -1) {
+                            merged[idx] = nm;
+                        } else {
+                            merged.push(nm);
                         }
                     });
 
-                    if (isScrolledToBottom) {
-                        history.scrollTop = history.scrollHeight;
-                    }
+                    cacheMessages(roomId, merged, newLastTs);
+                }
 
-                    if (snapshot.docs.length > 0) {
-                        oldestMsgDoc = snapshot.docs[0];
-                    }
+                if (isScrolledToBottom) {
+                    history.scrollTop = history.scrollHeight;
+                }
 
-                }, function (error) {
-                    console.error("Error loading messages:", error);
-                    history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
-                });
+                if (snapshot.docs.length > 0) {
+                    oldestMsgDoc = snapshot.docs[0];
+                }
+
+            }, function (error) {
+                var titleEl = document.querySelector('.title-text');
+                if (titleEl) titleEl.innerText = 'KindleChat';
+                console.error("Error loading messages:", error);
+                history.innerHTML = '<div style="text-align:center; padding:20px;">Error connecting.</div>';
+            });
         }
 
 
@@ -1637,7 +1844,17 @@
 
             var timeStr = "";
             if (msg.timestamp) {
-                var date = msg.timestamp.toDate();
+                var date;
+                // Handle various timestamp formats (Firestore object vs Cached JSON)
+                if (msg.timestamp.toDate && typeof msg.timestamp.toDate === 'function') {
+                    date = msg.timestamp.toDate();
+                } else if (msg.timestamp.seconds) {
+                    // Serialized Firestore timestamp
+                    date = new Date(msg.timestamp.seconds * 1000);
+                } else {
+                    // Millis or Date string
+                    date = new Date(msg.timestamp);
+                }
                 timeStr = formatZonedTime(date);
             }
 
@@ -2071,44 +2288,31 @@
             return window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
         }
 
+        function toggleFullScreen() {
+            document.querySelector('.window').classList.toggle('fullscreen');
+        }
+
     </script>
 
     <script>
-        // Helper to sanitize background image URLs from localStorage
-        function sanitizeBackgroundImage(imageString) {
-            if (!imageString) return '';
-            if (imageString.indexOf('url("data:image/png;base64,') === 0) {
-                return imageString;
-            }
-            if (imageString.indexOf('url("') === 0 && imageString.lastIndexOf('")') === (imageString.length - 2)) {
-                var url = imageString.substring(5, imageString.length - 2);
-                if ((url.indexOf('http://') === 0 || url.indexOf('https://') === 0 || url.indexOf('/') === 0) && url.indexOf('javascript:') === -1) {
-                    return imageString;
-                }
-            }
-            return '';
-        }
 
-
-        function toggleFullScreen() {
-            var win = document.querySelector('.window');
-            if (win) win.classList.toggle('fullscreen');
-        }
-
-        function loadWallpaper() {
-            var wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            var wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
     <!-- Duplicate Modal Removed -->
+    <script>
+        // --- SERVICE WORKER REGISTRATION ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(function (registration) {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    }, function (err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
 </body>
 
 </html>
