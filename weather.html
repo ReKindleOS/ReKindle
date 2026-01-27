@@ -544,6 +544,29 @@
             document.getElementById('current-date').innerText = window.rekindleFormatTime(new Date(), options);
 
             fetchWeather();
+
+            // Cloud Sync for Settings
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    const db = firebase.firestore();
+                    db.collection('users').doc(user.uid).collection('settings').doc('general').get().then(doc => {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.manualLocation) {
+                                localStorage.setItem('rekindle_location_manual', JSON.stringify(data.manualLocation));
+
+                                // Update local vars
+                                userSettings.lat = data.manualLocation.lat;
+                                userSettings.long = data.manualLocation.lon;
+                                userSettings.city = data.manualLocation.name;
+
+                                document.getElementById('current-city').innerText = userSettings.city;
+                                fetchWeather(); // Refresh with new location
+                            }
+                        }
+                    });
+                }
+            });
         };
 
         // Helper to HTML-escape text
@@ -680,7 +703,7 @@
                 document.getElementById('wind-stat').style.borderRight = 'none';
 
                 // 2. Render Hourly
-                renderHourly(data.hourly);
+                renderHourly(data.hourly, data.timezone);
 
                 // 3. Render Forecast 
                 renderForecast(data.daily);
@@ -691,15 +714,21 @@
             }
         }
 
-        function renderHourly(hourly) {
+        function renderHourly(hourly, timezone) {
             const container = document.getElementById('hourly-container');
             container.innerHTML = '';
 
-            const now = new Date();
+            // Calculate "Now" in the target timezone to filter correctly
+            // hourly.time strings are "YYYY-MM-DDTHH:MM" (Wall Clock)
+            // We need to compare them against the current Wall Clock in that zone
+            const nowZoned = window.rekindleGetDateInZone(new Date(), timezone);
+
             let startIdx = -1;
 
             for (let i = 0; i < hourly.time.length; i++) {
-                if (new Date(hourly.time[i]) >= now) {
+                // Parse hourly time as if it were local to avoid offset shifts, 
+                // matching how nowZoned is constructed
+                if (new Date(hourly.time[i]) >= nowZoned) {
                     startIdx = i;
                     break;
                 }
@@ -709,7 +738,7 @@
 
             for (let i = startIdx; i < startIdx + 24 && i < hourly.time.length; i++) {
                 const date = new Date(hourly.time[i]);
-                const hourLabel = date.toLocaleTimeString([], { hour: 'numeric' });
+                const hourLabel = date.toLocaleTimeString([], { hour: 'numeric', hour12: true });
 
                 const temp = Math.round(hourly.temperature_2m[i]);
                 const code = hourly.weathercode[i];
