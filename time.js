@@ -11,8 +11,8 @@
         }
     }
 
-    function getZonedDate(date = new Date()) {
-        const zone = getGlobalTimeZone();
+    function getDateInZone(date = new Date(), zone) {
+        if (!zone) zone = getGlobalTimeZone();
         try {
             const options = {
                 timeZone: zone,
@@ -34,6 +34,10 @@
         }
     }
 
+    function getZonedDate(date = new Date()) {
+        return getDateInZone(date, getGlobalTimeZone());
+    }
+
     // Format a date object (which acts as source timestamp) into a specific format string relative to Global Zone
     function formatGlobalTime(date, options = {}) {
         const zone = getGlobalTimeZone();
@@ -47,6 +51,7 @@
     // Timezone Exports
     window.rekindleGetGlobalTimeZone = getGlobalTimeZone;
     window.rekindleGetZonedDate = getZonedDate;
+    window.rekindleGetDateInZone = getDateInZone;
     window.rekindleFormatTime = formatGlobalTime;
 
 })();

@@ -523,6 +523,7 @@
             box-shadow: none;
         }
     </style>
+    <script src="time.js"></script>
     <script src="theme.js"></script>
 </head>
 
@@ -635,6 +636,18 @@
         window.onload = function () {
             loadWallpaper();
             initGmailMode();
+
+            // Cloud Sync for Settings (Location/Timezone)
+            if (localStorage.getItem('google_gmail_token')) { // Only check if likely logged in or will log in
+                // Defer slightly to ensure auth fully loaded if needed, though this is independent usually
+            }
+
+            // We need auth to read settings, so hook into the auth flow or check if we have a user
+            // Since gapi auth is different from firebase auth used in other apps, we might trigger firebase auth just for settings
+            // However, mail.html currently uses GAPI solely. Does it use Firebase?
+            // Checking imports... No Firebase SDKs imported in mail.html step 102.
+            // Wait, other apps use Firebase for settings sync. Mail needs Firebase SDKs to read 'users/{uid}/settings'.
+            // I must add Firebase SDKs to mail.html header first.
         };
 
         function initGmailMode() {
@@ -1134,12 +1147,16 @@
             try {
                 const date = new Date(dateStr);
                 const now = new Date();
-                const isToday = date.toDateString() === now.toDateString();
+
+                // Use time.js helpers for proper timezone handling
+                const zonedDate = window.rekindleGetZonedDate(date);
+                const zonedNow = window.rekindleGetZonedDate(now);
+                const isToday = zonedDate.toDateString() === zonedNow.toDateString();
 
                 if (isToday) {
-                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
                 } else {
-                    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    return window.rekindleFormatTime(date, { month: 'short', day: 'numeric' });
                 }
             } catch (e) {
                 return dateStr;
