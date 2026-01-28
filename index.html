@@ -448,6 +448,28 @@
             box-shadow: 1px 1px 0 black;
         }
 
+        .plus-label {
+            position: absolute;
+            top: -4px;
+            right: -8px;
+            background: black;
+            color: white;
+            font-size: 0.8rem;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid white;
+            font-weight: bold;
+            z-index: 5;
+            box-shadow: 1px 1px 0 black;
+            box-sizing: border-box;
+            padding-bottom: 2px;
+            /* Nudge text up for vertical center */
+        }
+
         .favorite-toggle {
             position: absolute;
             top: 0px;
@@ -644,7 +666,8 @@
     <div class="dashboard">
         <div class="sidebar">
             <div class="system-header">
-                <h1 class="os-title">ReKindle</h1>
+                <h1 class="os-title">ReKindle<span id="title-plus"
+                        style="vertical-align: super; font-size: 0.6em; display: inline-block;">+</span></h1>
                 <div class="user-info" id="user-display">Guest Mode</div>
                 <div class="info-btn" onclick="openAbout()">i</div>
             </div>
@@ -779,7 +802,9 @@
         let favoriteApps = [];
         let isEditMode = false;
         let isFirebaseAvailable = false;
+        let isPro = (localStorage.getItem('rekindle_is_pro') !== 'false'); // Global Pro Status (Optimistic UI: Assume Pro until verified)
         const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
+        // const CACHE_TTL_MS = 60 * 60 * 1000; // REMOVED: Using Signal Field Strategy
 
         let auth, db;
 
@@ -797,18 +822,28 @@
                 firebase.initializeApp(firebaseConfig);
                 auth = firebase.auth();
                 db = firebase.firestore();
+                // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-                // Enable Offline Persistence
-                /*
-                db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-                    if (err.code == 'failed-precondition') {
-                        console.warn("Persistence failed: Multiple tabs open");
-                    } else if (err.code == 'unimplemented') {
-                        console.warn("Persistence failed: Browser not supported");
-                    }
-                });
-                */
+                if (db.settings) {
 
+                    try {
+
+                        db.settings({
+
+                            experimentalForceLongPolling: true,
+
+                            merge: true
+
+                        });
+
+                    } catch (e) { console.warn("Settings error:", e); }
+
+                }
+
+
+                // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+
+                // db.enablePersistence({ synchronizeTabs: true }) ...
                 isFirebaseAvailable = true;
                 console.log("Firebase initialized successfully.");
             } else {
@@ -833,7 +868,7 @@
             }
 
             checkExitButtonVisibility();
-            loadWallpaper();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             gamesDisabled = areGamesDisabled();
             autoDetectScale();
 
@@ -841,8 +876,19 @@
             filterApps('all', document.querySelector('#nav-all'));
             renderAboutContent();
 
+            let lastUid = localStorage.getItem('rekindle_uid');
+
             if (isFirebaseAvailable && auth) {
                 auth.onAuthStateChanged(user => {
+                    const currentUid = user ? user.uid : null;
+
+                    // If user changed (login, logout, or switch)
+                    if (currentUid !== lastUid) {
+                        console.log("User changed. Last UID:", lastUid, "Current UID:", currentUid);
+                        clearServiceWorkerCache();
+                        lastUid = currentUid;
+                    }
+
                     if (user) {
                         currentUser = user;
                         localStorage.setItem('rekindle_uid', user.uid);
@@ -861,8 +907,24 @@
                             modalAuthBtn.onclick = openLogoutModal;
                         }
 
+
+
                         closeModal('login-modal');
-                        monitorFavoriteApps();
+                        // syncFavorites(); // Sync is now triggered by monitorUserProfile if needed
+
+                        // FIX: Always load local cache first, otherwise we start with [] 
+                        // and if monitorUserProfile says "no change", we stay empty!
+                        const cachedFavs = localStorage.getItem('rekindle_favorites');
+                        if (cachedFavs) {
+                            try {
+                                favoriteApps = JSON.parse(cachedFavs);
+                                renderFavoriteSection();
+                            } catch (e) {
+                                console.error("Error parsing favorites cache", e);
+                            }
+                        }
+
+                        monitorUserProfile(user.uid); // Check Pro Status & Favorites Signal
                     } else {
                         handleGuestMode();
                     }
@@ -876,6 +938,11 @@
         };
 
         function handleGuestMode() {
+            const wasPro = isPro;
+            isPro = false; // Guests are not Pro
+            localStorage.setItem('rekindle_is_pro', isPro.toString());
+            localStorage.removeItem('rekindle_uid');
+
             document.getElementById('user-display').innerText = "Guest Mode";
             document.getElementById('auth-btn').innerText = "Log In";
             document.getElementById('auth-btn').onclick = openLogin;
@@ -887,7 +954,14 @@
                 modalAuthBtn.onclick = openLogin;
             }
             favoriteApps = JSON.parse(localStorage.getItem('rekindle_favorites')) || [];
+
+            // If we optimistically showed Pro icons, we must re-render now
+            if (wasPro) {
+                renderAppGrid(currentFilter);
+                if (currentFilter === 'all') renderFeaturedSection();
+            }
             renderFavoriteSection();
+            updateProUI();
         }
 
 
@@ -919,18 +993,95 @@
             }
         }
 
-        function monitorFavoriteApps() {
+        function syncFavorites() {
             if (!currentUser || !isFirebaseAvailable || !db) return;
+
+            const lastSync = parseInt(localStorage.getItem('rekindle_fav_last_sync') || '0');
+            const now = Date.now();
+
+            // Signal Field Strategy:
+            // We only fetch if explicitly called (which happens if monitorUserProfile detects a change)
+            // or if we have absolutely no data (fresh install / clear cache)
+            if (favoriteApps.length > 0 && localStorage.getItem('rekindle_favorites')) {
+                // If we have data, we trust the Signal Field to tell us if we are stale.
+                // If this function was called, it means we ARE stale or empty.
+                // BUT: on initial load, we might call this.
+                // Wait, if we use signal field, we don't need to call this on load unless cache is empty.
+            }
+
+            console.log("Fetching favorites from server...");
             db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites')
-                .onSnapshot(doc => {
+                .get()
+                .then(doc => {
                     if (doc.exists) {
                         favoriteApps = doc.data().appIds || [];
                     } else {
                         favoriteApps = [];
                     }
+                    // Update Local Cache + Timestamp
+                    localStorage.setItem('rekindle_favorites', JSON.stringify(favoriteApps));
+                    localStorage.setItem('rekindle_fav_last_sync', Date.now().toString());
+
                     renderFavoriteSection();
                     if (currentFilter === 'all') renderAppGrid('all');
+                })
+                .catch(err => {
+                    console.error("Error fetching favorites:", err);
                 });
+        }
+
+        function monitorUserProfile(uid) {
+            if (!isFirebaseAvailable || !db) return;
+            // Listen for changes to Pro status AND Favorites Signal
+            db.collection('users').doc(uid).onSnapshot(doc => {
+                const now = Date.now();
+                let expires = 0;
+                let newProStatus = false;
+                let serverFavTimestamp = 0;
+
+                if (doc.exists) {
+                    const data = doc.data();
+
+                    // 1. Pro Status Logic
+                    if (data.proExpiresAt) {
+                        expires = typeof data.proExpiresAt.toMillis === 'function'
+                            ? data.proExpiresAt.toMillis()
+                            : new Date(data.proExpiresAt).getTime();
+                    }
+                    newProStatus = (expires > now);
+
+                    // 2. Favorites Signal Logic
+                    if (data.favoritesLastUpdated) {
+                        serverFavTimestamp = typeof data.favoritesLastUpdated.toMillis === 'function'
+                            ? data.favoritesLastUpdated.toMillis()
+                            : new Date(data.favoritesLastUpdated).getTime();
+                    }
+                }
+
+                // Handle Pro Status Change
+                const wasPro = isPro;
+                isPro = newProStatus;
+                if (wasPro !== isPro) {
+                    console.log("Pro Status Changed:", isPro);
+                    localStorage.setItem('rekindle_is_pro', isPro.toString());
+                    renderAppGrid(currentFilter);
+                    if (currentFilter === 'all') renderFeaturedSection();
+                    renderFavoriteSection();
+                    updateProUI();
+                }
+
+                // Handle Favorites Sync Signal
+                const localFavTimestamp = parseInt(localStorage.getItem('rekindle_fav_last_sync') || '0');
+
+                // If server has a newer timestamp than our local sync, we must fetch.
+                // OR: If we have never synced (local is 0), we must fetch at least once.
+                if (serverFavTimestamp > localFavTimestamp || localFavTimestamp === 0) {
+                    console.log("Remote favorites changed (or first run). Syncing...", serverFavTimestamp, localFavTimestamp);
+                    syncFavorites(); // This will fetch & update local timestamp
+                } else {
+                    // Debug: console.log("Favorites are up to date.");
+                }
+            });
         }
 
         function toggleFavorite(appId, event) {
@@ -945,9 +1096,27 @@
             }
 
             if (currentUser && isFirebaseAvailable && db) {
-                db.collection('users').doc(currentUser.uid).collection('settings').doc('favorites').set({
-                    appIds: favoriteApps
-                }).catch(e => console.error("Error saving favorites:", e));
+                // Update Local Cache + Timestamp Immediately (Optimistic UI)
+                const now = Date.now();
+                localStorage.setItem('rekindle_favorites', JSON.stringify(favoriteApps));
+                // Set local timestamp to future (10s buffer) to prevent re-reading our own write
+                localStorage.setItem('rekindle_fav_last_sync', (now + 10000).toString());
+
+                // BATCH WRITE: Update List + Signal
+                const batch = db.batch();
+                const userRef = db.collection('users').doc(currentUser.uid);
+                const favRef = userRef.collection('settings').doc('favorites');
+
+                batch.set(favRef, { appIds: favoriteApps });
+
+                // Use set with merge: true to ensure we don't fail if the user doc is missing
+                batch.set(userRef, {
+                    favoritesLastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                batch.commit().catch(e => {
+                    console.error("Error saving favorites:", e);
+                });
             } else {
                 localStorage.setItem('rekindle_favorites', JSON.stringify(favoriteApps));
             }
@@ -1023,6 +1192,25 @@
                 a.href = "javascript:void(0)";
                 a.style.opacity = "0.6";
             }
+            // PAYWALL INTERCEPTION
+            else if (app.plus && !isPro) {
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    // Custom modal or redirect? Let's use a nice generic modal with action
+                    document.getElementById('generic-title').style.display = 'none';
+                    document.getElementById('generic-msg').innerHTML =
+                        `I'm committed to keeping ReKindle ad-free and open. To cover the growing server costs for AI and cloud-based tools, I'm introducing a supporter tier: ReKindle+. Upgrading helps keep development active and unlocks <b>${app.name}</b> & more.<br><br>` +
+                        `The basic apps you know and love will remain free.<br><br>` +
+                        `Donators check your Ko-Fi inbox for a coupon code.<br><br>` +
+                        `<div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">` +
+                        `<button class="sys-btn" onclick="location.href='pay.html'">Subscribe Now</button>` +
+                        `<button class="sys-btn" onclick="location.href='pay.html?plan=lifetime'">I don't like subscriptions</button>` +
+                        `</div>`;
+                    document.getElementById('generic-modal').style.display = 'flex';
+                };
+                a.href = "javascript:void(0)";
+                a.style.opacity = "0.6";
+            }
 
             const isFav = favoriteApps.includes(app.id);
             const showToggleClass = isEditMode && currentFilter !== 'featured' ? 'show-toggle' : '';
@@ -1046,6 +1234,8 @@
 
             if (app.disabled) {
                 extraHtml += `<div class="disabled-label">CLOSED</div>`;
+            } else if (app.plus && !isPro) {
+                extraHtml += `<div class="plus-label">+</div>`;
             }
 
             a.innerHTML = `
@@ -1089,60 +1279,91 @@
                 editBtn.style.display = 'none';
             }
 
-            const featuredContainer = document.getElementById('featured-section');
-            const featuredGrid = document.getElementById('featured-grid');
-
             if (category === 'all') {
-                featuredContainer.style.display = 'block';
-                featuredGrid.innerHTML = '';
-
-                const fragment = document.createDocumentFragment();
-                let featuredApps = APPS.filter(a => a.featured);
-
-                if (gamesDisabled) {
-                    featuredApps = featuredApps.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
-                }
-
-                featuredApps.sort((a, b) => {
-                    const orderA = a.featuredOrder !== undefined ? a.featuredOrder : 999;
-                    const orderB = b.featuredOrder !== undefined ? b.featuredOrder : 999;
-                    return orderA - orderB;
-                });
-
-                featuredApps.forEach(app => {
-                    const a = document.createElement('a');
-                    a.href = `${app.id}.html`;
-                    if (app.id === 'discord') {
-                        a.onclick = (e) => {
-                            e.preventDefault();
-                            openDiscordModal();
-                        };
-                        a.href = "javascript:void(0)";
-                    }
-                    a.className = 'featured-card';
-                    const subheading = app.desc || '';
-                    const newBadgeHtml = app.newBadge ? '<div class="new-label">NEW</div>' : '';
-                    a.innerHTML = `
-                        <div class="featured-icon">
-                            <svg viewBox="0 0 32 32" style="width:100%;height:100%;">${app.icon}</svg>
-                        </div>
-                        <div class="featured-info">
-                            <span class="featured-title">${app.name}</span>
-                            <span class="featured-sub">${subheading}</span>
-                        </div>
-                        ${newBadgeHtml}
-                    `;
-                    fragment.appendChild(a);
-                });
-                featuredGrid.appendChild(fragment);
-
-                renderFavoriteSection();
+                renderFeaturedSection();
             } else {
-                featuredContainer.style.display = 'none';
+                document.getElementById('featured-section').style.display = 'none';
                 document.getElementById('favorites-section').style.display = 'none';
             }
 
             renderAppGrid(category);
+        }
+
+        function renderFeaturedSection() {
+            const featuredContainer = document.getElementById('featured-section');
+            const featuredGrid = document.getElementById('featured-grid');
+
+            featuredContainer.style.display = 'block';
+            featuredGrid.innerHTML = '';
+
+            const fragment = document.createDocumentFragment();
+            let featuredApps = APPS.filter(a => a.featured);
+
+            if (gamesDisabled) {
+                featuredApps = featuredApps.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
+            }
+
+            featuredApps.sort((a, b) => {
+                const orderA = a.featuredOrder !== undefined ? a.featuredOrder : 999;
+                const orderB = b.featuredOrder !== undefined ? b.featuredOrder : 999;
+                return orderA - orderB;
+            });
+
+            featuredApps.forEach(app => {
+                const a = document.createElement('a');
+                a.href = `${app.id}.html`;
+                if (app.id === 'discord') {
+                    a.onclick = (e) => {
+                        e.preventDefault();
+                        openDiscordModal();
+                    };
+                    a.href = "javascript:void(0)";
+                }
+                a.className = 'featured-card';
+                const subheading = app.desc || '';
+
+                // BADGE LOGIC
+                let badgeHtml = '';
+                if (app.newBadge) {
+                    badgeHtml = '<div class="new-label">NEW</div>';
+                } else if (app.plus && !isPro) {
+                    badgeHtml = '<div class="plus-label" style="right:5px; top:5px;">+</div>';
+                }
+
+                // PAYWALL INTERCEPTION
+                if (app.plus && !isPro) {
+                    a.onclick = (e) => {
+                        e.preventDefault();
+                        document.getElementById('generic-title').style.display = 'none';
+                        document.getElementById('generic-msg').innerHTML =
+                            `I'm committed to keeping ReKindle ad-free and open. To cover the growing server costs for AI and cloud-based tools, I'm introducing a supporter tier: ReKindle+. Upgrading helps keep development active and unlocks <b>${app.name}</b> & more.<br><br>` +
+                            `The basic apps you know and love will remain free.<br><br>` +
+                            `Donators check your Ko-Fi inbox for a coupon code.<br><br>` +
+                            `<div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">` +
+                            `<button class="sys-btn" onclick="location.href='pay.html'">Subscribe Now</button>` +
+                            `<button class="sys-btn" onclick="location.href='pay.html?plan=lifetime'">I don't like subscriptions</button>` +
+                            `</div>`;
+                        document.getElementById('generic-modal').style.display = 'flex';
+                    };
+                    a.href = "javascript:void(0)";
+                    a.style.opacity = "0.6";
+                }
+
+                a.innerHTML = `
+                    <div class="featured-icon">
+                        <svg viewBox="0 0 32 32" style="width:100%;height:100%;">${app.icon}</svg>
+                    </div>
+                    <div class="featured-info">
+                        <span class="featured-title">${app.name}</span>
+                        <span class="featured-sub">${subheading}</span>
+                    </div>
+                    ${badgeHtml}
+                `;
+                fragment.appendChild(a);
+            });
+            featuredGrid.appendChild(fragment);
+
+            renderFavoriteSection();
         }
 
         function renderAppGrid(category) {
@@ -1285,86 +1506,44 @@
             location.reload();
         }
 
-        function loadWallpaper() {
-            let wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            let wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            const wallpaperId = localStorage.getItem('rekindle_wallpaper_id');
-            const hasPixelData = localStorage.getItem('rekindle_pixel_data');
 
-            // MIGRATION LOGIC:
-            // 1. If no image exists (New User)
-            // 2. If no pixel data exists (Old User)
-            // 3. If ID is not 'custom' (Old User using legacy preset)
-            if (!wallpaperImg || !hasPixelData || (wallpaperId && wallpaperId !== 'custom')) {
-                console.log("Migrating wallpaper to Classic Dither...");
-
-                const canvas = document.createElement('canvas');
-                canvas.width = 32;
-                canvas.height = 32;
-                const ctx = canvas.getContext('2d');
-
-                // Fill Background White
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, 32, 32);
-
-                // Draw Black Pixels (Classic Dither Pattern)
-                ctx.fillStyle = '#000000';
-                const ditherPattern = [
-                    1, 0, 1, 0, 1, 0, 1, 0,
-                    0, 1, 0, 1, 0, 1, 0, 1,
-                    1, 0, 1, 0, 1, 0, 1, 0,
-                    0, 1, 0, 1, 0, 1, 0, 1,
-                    1, 0, 1, 0, 1, 0, 1, 0,
-                    0, 1, 0, 1, 0, 1, 0, 1,
-                    1, 0, 1, 0, 1, 0, 1, 0,
-                    0, 1, 0, 1, 0, 1, 0, 1
-                ];
-
-                for (let i = 0; i < 64; i++) {
-                    if (ditherPattern[i] === 1) {
-                        const col = i % 8;
-                        const row = Math.floor(i / 8);
-                        // Draw 4x4px blocks to match the 32px generation logic
-                        ctx.fillRect(col * 4, row * 4, 4, 4);
-                    }
-                }
-
-                // Generate new values
-                wallpaperImg = `url(${canvas.toDataURL('image/png')})`;
-                wallpaperSize = '16px 16px';
-
-                // Overwrite LocalStorage with new format
-                localStorage.setItem('rekindle_bg_image', wallpaperImg);
-                localStorage.setItem('rekindle_bg_size', wallpaperSize);
-                localStorage.setItem('rekindle_wallpaper_id', 'custom');
-                localStorage.setItem('rekindle_pixel_data', JSON.stringify(ditherPattern));
-            }
-
-            document.body.style.backgroundImage = wallpaperImg;
-            document.body.style.backgroundSize = wallpaperSize;
-        }
 
         function autoDetectScale() {
             if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
         }
+
+        function updateProUI() {
+            const titlePlus = document.getElementById('title-plus');
+            if (isPro) {
+                if (titlePlus) titlePlus.style.display = 'inline-block';
+            } else {
+                if (titlePlus) titlePlus.style.display = 'none';
+            }
+        }
     </script>
 
-    <!--    
+
+    <!-- Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw-killswitch.js')
-                    .then((registration) => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
                         console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    }, (err) => {
+                    })
+                    .catch(err => {
                         console.log('ServiceWorker registration failed: ', err);
                     });
             });
         }
 
-
+        function clearServiceWorkerCache() {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                console.log('Requesting service worker to clear cache...');
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+            }
+        }
     </script>
--->
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
 </body>

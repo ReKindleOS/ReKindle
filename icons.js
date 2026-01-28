@@ -27,7 +27,8 @@ const APPS = [
         cat: 'essentials',
         featured: true,
         featuredOrder: 3,
-        newBadge: true,
+
+        plus: true,
         desc: 'Read & send emails',
         icon: '<rect x="4" y="8" width="24" height="16" rx="2"/><path d="M4 10 L16 18 L28 10" fill="none"/>'
     },
@@ -69,6 +70,10 @@ const APPS = [
         id: 'chat',
         name: 'AI Assistant',
         cat: 'tools',
+        id: 'chat',
+        name: 'AI Assistant',
+        cat: 'tools',
+        plus: true,
         icon: '<path d="M16 3 L19 11 L27 14 L19 17 L16 25 L13 17 L5 14 L13 11 Z M10 6 L12 10 L16 11 L12 12 L10 16 L8 12 L4 11 L8 10 Z" fill="black" stroke="none"/>'
     },
     {
@@ -138,8 +143,22 @@ const APPS = [
         es6: true,
         cat: 'tools',
         desc: 'Handwritten, sync-able todos!',
-        icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/>'
+        id: 'quicktodo',
+        name: 'Quick ToDo',
+        es6: true,
+        cat: 'tools',
+        plus: true,
+        desc: 'Handwritten, sync-able todos!',
+        icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/><path d="M28 8h2 M28 16h3 M27 24h3" stroke="black" stroke-width="2" stroke-linecap="round"/>'
     },
+    /*{
+        id: 'quicknotes',
+        name: 'Quick Notes',
+        cat: 'tools',
+        plus: true,
+        desc: 'Handwritten notes',
+        icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M10 10 H22 M10 16 H22 M10 22 H18" stroke="black" stroke-width="2" stroke-linecap="round"/><path d="M28 8h2 M28 16h3 M27 24h3" stroke="black" stroke-width="2" stroke-linecap="round"/>'
+    },*/
     {
         id: 'translate',
         name: 'Translator',
@@ -170,8 +189,12 @@ const APPS = [
         cat: 'tools',
         desc: 'Phone-based typewriter',
         icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>',
-        disabled: true,
-        disabledMessage: "I'm sorry but due to server costs, it's no longer feasible to provide AirType as a free service. I am exploring options."
+        id: 'airtype',
+        name: 'AirType',
+        cat: 'tools',
+        plus: true,
+        desc: 'Phone-based typewriter',
+        icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>',
     },
 
     // --- LIFESTYLE ---
@@ -294,7 +317,10 @@ const APPS = [
         id: 'flipnote',
         name: 'Animate',
         cat: 'lifestyle',
-        beta: true,
+        id: 'flipnote',
+        name: 'Animate',
+        cat: 'lifestyle',
+        plus: true,
         icon: '<rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><circle cx="14" cy="15" r="2" fill="black"/><line x1="14" y1="17" x2="14" y2="21" stroke="black" stroke-width="1.5"/><path d="M11 19 l6 -1" stroke="black" stroke-width="1.5"/><path d="M11 25 l3 -4 l3 4" stroke="black" stroke-width="1.5" fill="none"/>',
         desc: 'Create pixel animations.'
     },
@@ -384,7 +410,7 @@ const APPS = [
         id: 'texasholdem',
         name: 'Texas Hold\'em',
         cat: 'games',
-        newBadge: true,
+        beta: true,
         icon: '<rect x="14" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(15 21 17)"/><text x="17" y="21" font-size="10" font-weight="bold" transform="rotate(15 21 17)" fill="black">K♦</text><rect x="4" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-15 11 17)"/><text x="7" y="21" font-size="10" font-weight="bold" transform="rotate(-15 11 17)" fill="black">A♦</text>'
     },
     {
@@ -469,13 +495,13 @@ const APPS = [
         cat: 'games',
         icon: '<rect x="6" y="6" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><line x1="11" y1="6" x2="11" y2="26"/><line x1="21" y1="6" x2="21" y2="26"/><line x1="6" y1="11" x2="26" y2="11"/><line x1="6" y1="21" x2="26" y2="21"/>'
     },
-    {
-        id: 'words',
-        name: 'Scrabble',
-        es6: true,
-        cat: 'games',
-        icon: '<rect x="4" y="10" width="10" height="12" fill="white"/><text x="9" y="19" font-size="10" text-anchor="middle" stroke="none" fill="black" font-weight="bold">S</text><rect x="16" y="8" width="10" height="12" fill="black" stroke="none"/><text x="21" y="17" font-size="10" text-anchor="middle" stroke="none" fill="white" font-weight="bold">W</text>'
-    },
+    /*     {
+            id: 'words',
+            name: 'Scrabble',
+            es6: true,
+            cat: 'games',
+            icon: '<rect x="4" y="10" width="10" height="12" fill="white"/><text x="9" y="19" font-size="10" text-anchor="middle" stroke="none" fill="black" font-weight="bold">S</text><rect x="16" y="8" width="10" height="12" fill="black" stroke="none"/><text x="21" y="17" font-size="10" text-anchor="middle" stroke="none" fill="white" font-weight="bold">W</text>'
+        }, */
     {
         id: 'snake',
         name: 'Snake',
