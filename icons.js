@@ -322,11 +322,8 @@ const APPS = [
         desc: 'Visually organize your ideas.'
     },
     {
-        id: 'flipnote',
-        name: 'Animate',
-        cat: 'lifestyle',
-        id: 'flipnote',
-        name: 'Animate',
+        id: 'flipbook',
+        name: 'Flipbook',
         cat: 'lifestyle',
         plus: true,
         icon: '<rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><circle cx="14" cy="15" r="2" fill="black"/><line x1="14" y1="17" x2="14" y2="21" stroke="black" stroke-width="1.5"/><path d="M11 19 l6 -1" stroke="black" stroke-width="1.5"/><path d="M11 25 l3 -4 l3 4" stroke="black" stroke-width="1.5" fill="none"/>',

@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flipbook</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        /* CLOSE BUTTON */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* SCREENS */
+        .screen {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* GALLERY SCREEN */
+        #screen-gallery {
+            padding: 0;
+            background: #eee;
+        }
+
+        .gallery-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            flex-shrink: 0;
+        }
+
+        .gallery-grid {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 20px;
+            overflow-y: auto;
+            align-content: start;
+        }
+
+        .gallery-item {
+            background: white;
+            border: 2px solid black;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #ccc;
+            aspect-ratio: 1 / 1.2;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .gallery-item:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #ccc;
+            background: black;
+            color: white;
+        }
+
+        .gallery-preview {
+            width: 100%;
+            aspect-ratio: 1/1;
+            border: 1px solid #ddd;
+            image-rendering: pixelated;
+            background: white;
+            pointer-events: none;
+            flex-shrink: 0;
+            object-fit: contain;
+        }
+
+        .gallery-item.new-btn {
+            justify-content: center;
+            border-style: dashed;
+            background: #fafafa;
+        }
+
+        .gallery-item.new-btn span {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ccc;
+        }
+
+        .item-info {
+            font-size: 0.8rem;
+            margin-top: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: white;
+            border: 2px solid black;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .delete-btn:hover {
+            background: black;
+            color: white;
+        }
+
+        /* EDITOR AREA */
+        .game-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            flex-grow: 1;
+            background: white;
+        }
+
+        #canvas-container {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            position: relative;
+            flex-grow: 1;
+            min-height: 200px;
+        }
+
+        canvas {
+            display: block;
+            background: white;
+            border: 2px solid black;
+            width: 100%;
+            /* Controlled by container */
+            aspect-ratio: 1/1;
+            image-rendering: pixelated;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+            cursor: crosshair;
+        }
+
+        /* CONTROLS */
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 5px;
+            padding-bottom: 5px;
+        }
+
+        .transport {
+            display: flex;
+            align-items: center;
+            background: #eee;
+            border: 2px solid black;
+            padding: 2px;
+            gap: 2px;
+        }
+
+        .transport-btn {
+            min-width: 30px;
+            padding: 4px;
+            font-size: 1rem;
+        }
+
+        /* TOOLBAR */
+        .toolbar-group {
+            display: flex;
+            gap: 2px;
+            background: #eee;
+            border: 2px solid black;
+            padding: 2px;
+        }
+
+        button.sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+
+        button.sys-btn:active,
+        button.sys-btn.active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(229, 229, 229, 0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 320px;
+            text-align: center;
+        }
+
+        #frame-strip-visual {
+            font-family: monospace;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <!-- MODALS -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <div id="modal-message" style="margin-bottom:20px; font-weight:bold;"></div>
+            <div id="modal-btns" style="display:flex; justify-content:center; gap:10px;"></div>
+        </div>
+    </div>
+
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Delete Animation?</h3>
+            <p style="margin-bottom:20px;">Are you sure you want to delete this animation?</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" id="confirm-delete-btn">Delete</button>
+                <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rename-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Rename</h3>
+            <input type="text" id="rename-input" maxlength="20"
+                style="width:80%; padding:5px; margin-bottom:20px; font-family:inherit; font-weight:bold; text-align:center; border:2px solid black;">
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" id="confirm-rename-btn">Rename</button>
+                <button class="sys-btn" onclick="closeModal('rename-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- POST CONFIRM MODAL -->
+    <div id="post-confirm-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Post to KindleChat?</h3>
+            <p style="margin-bottom:20px;">Post this animation to General Chat?</p>
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="confirmPost()">Yes</button>
+                <button class="sys-btn" onclick="closeModal('post-confirm-modal')">No</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="window">
+        <!-- TITLE BAR -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="handleCloseButton()">X</div>
+            <div id="editor-back-btn" class="close-box" style="left:38px; width:auto; padding:0 5px; display:none;"
+                onclick="showGallery()">Back</div>
+            <span class="title-text">Flipbook</span>
+        </div>
+
+        <!-- GALLERY SCREEN -->
+        <div id="screen-gallery" class="screen active">
+            <div class="gallery-header">
+                <span style="font-weight:bold; margin-left:10px;">My Animations</span>
+            </div>
+            <div id="gallery-grid" class="gallery-grid">
+                <!-- Injected via JS -->
+                <div class="gallery-item new-btn" onclick="createNew()">
+                    <span>+</span>
+                    <div class="item-info">New</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EDITOR SCREEN -->
+        <div id="screen-editor" class="screen">
+            <div class="game-content">
+                <div id="canvas-container">
+                    <canvas id="drawing-board" width="256" height="256"></canvas>
+                </div>
+
+                <div id="frame-strip-visual">Frame 1 / 1</div>
+
+                <div class="controls" style="flex-wrap:nowrap; gap:5px; padding:0 5px;">
+                    <!-- Transport -->
+                    <div class="transport">
+                        <button class="sys-btn transport-btn" onclick="prevFrame()">&lt;</button>
+                        <button class="sys-btn transport-btn" onclick="nextFrame()">&gt;</button>
+                        <button class="sys-btn transport-btn" onclick="addFrame()">+</button>
+                        <button class="sys-btn transport-btn" style="color:red;" onclick="deleteFrame()">-</button>
+                    </div>
+                    <div class="transport">
+                        <button class="sys-btn transport-btn" id="play-btn" onclick="togglePlay()">▶</button>
+                    </div>
+                </div>
+
+                <div class="controls" style="flex-wrap:nowrap; gap:5px; padding:0 5px;">
+                    <!-- Tools -->
+                    <button id="tool-pen" class="sys-btn active" onclick="setTool('pen')" style="flex:1;">Pen</button>
+                    <button id="tool-eraser" class="sys-btn" onclick="setTool('eraser')" style="flex:1;">Eraser</button>
+                    <button class="sys-btn" onclick="clearFrame()" style="flex:1;">Clear</button>
+                    <button class="sys-btn" onclick="changeSpeed()" style="flex:1;" id="fps-btn">6 FPS</button>
+                </div>
+
+                <div class="controls" style="flex-wrap:nowrap; gap:5px; padding:0 5px; margin-top:5px;">
+                    <!-- <button class="sys-btn" style="flex:1;" onclick="triggerAutoSave()">Save</button> -->
+                    <button class="sys-btn" style="flex:1;" onclick="openModal('post-confirm-modal')">Post</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS ---
+        const CANVAS_SIZE = 256;
+
+        // --- STATE ---
+        let currentAnimationId = null;
+        let frames = []; // Array of ImageData
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let fps = 6;
+        let playTimer = null;
+        let onionSkin = true;
+
+        let currentTool = 'pen';
+        let isDrawing = false;
+        let autoSaveTimer = null;
+
+        let manifest = [];
+        let db, auth, rtdb, currentUser = null;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // --- DOM Elements ---
+        const canvas = document.getElementById('drawing-board');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const container = document.getElementById('canvas-container');
+
+        // --- BUFFER (Off-screen) ---
+        const bufferCanvas = document.createElement('canvas');
+        bufferCanvas.width = CANVAS_SIZE;
+        bufferCanvas.height = CANVAS_SIZE;
+        const bufferCtx = bufferCanvas.getContext('2d', { willReadFrequently: true });
+
+        // --- INIT ---
+        window.onload = () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+            rtdb = firebase.database();
+
+            if (db.settings) {
+                try { db.settings({ experimentalForceLongPolling: true, merge: true }); } catch (e) { }
+            }
+
+            auth.onAuthStateChanged(user => {
+                currentUser = user;
+                initApp();
+            });
+
+            // Canvas Events
+            canvas.addEventListener('pointerdown', startDrawing);
+            canvas.addEventListener('pointermove', draw);
+            canvas.addEventListener('pointerup', stopDrawing);
+            canvas.addEventListener('pointerout', stopDrawing);
+
+            // Prevent context menu
+            canvas.oncontextmenu = (e) => e.preventDefault();
+
+            window.addEventListener('resize', () => {
+                if (document.getElementById('screen-editor').classList.contains('active')) setupCanvas();
+            });
+        };
+
+        async function initApp() {
+            await loadManifest();
+            migrateLegacyData(); // Just in case
+            renderGallery();
+        }
+
+        // --- MANIFEST LOGIC ---
+        async function loadManifest() {
+            const key = 'flipnote_manifest';
+            if (currentUser) {
+                try {
+                    const doc = await db.collection('users').doc(currentUser.uid).collection('settings').doc('flipnote_manifest').get();
+                    if (doc.exists) {
+                        manifest = doc.data().items || [];
+                        localStorage.setItem(key, JSON.stringify(manifest));
+                        return;
+                    }
+                } catch (e) { console.error("Cloud manifest load failed", e); }
+            }
+            const local = localStorage.getItem(key);
+            if (local) {
+                try { manifest = JSON.parse(local); } catch (e) { manifest = []; }
+            } else {
+                manifest = [];
+            }
+        }
+
+        async function saveManifest() {
+            const key = 'flipnote_manifest';
+            localStorage.setItem(key, JSON.stringify(manifest));
+            if (currentUser) {
+                try {
+                    await db.collection('users').doc(currentUser.uid).collection('settings').doc('flipnote_manifest').set({ items: manifest });
+                } catch (e) { console.error("Cloud manifest save failed", e); }
+            }
+        }
+
+        // --- GALLERY ---
+        function renderGallery() {
+            const gridEl = document.getElementById('gallery-grid');
+            const newBtn = gridEl.firstElementChild;
+            gridEl.innerHTML = '';
+            gridEl.appendChild(newBtn);
+
+            const sorted = [...manifest].sort((a, b) => b.modified - a.modified);
+
+            sorted.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'gallery-item';
+                el.onclick = (e) => {
+                    if (!e.target.closest('.action-btn')) openAnimation(item.id);
+                };
+
+                let thumbHtml = '';
+                if (item.thumbnail) {
+                    thumbHtml = `<img src="${item.thumbnail}" class="gallery-preview">`;
+                } else {
+                    thumbHtml = `<div class="gallery-preview" style="background:#f0f0f0;"></div>`;
+                }
+
+                const title = item.title || "Untitled";
+                const dateStr = new Date(item.modified).toLocaleDateString();
+                const framesCount = item.frameCount || '?';
+
+                el.innerHTML = `
+                    <div class="delete-btn action-btn" onclick="deleteAnimation('${item.id}')">X</div>
+                    ${thumbHtml}
+                    <div class="item-info">
+                        <div onclick="event.stopPropagation(); promptRename('${item.id}')" style="font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100px; cursor:pointer; text-decoration:underline;">${title}</div>
+                        <span style="font-weight:normal; color:#666; font-size:0.7rem;">${framesCount} frames</span>
+                    </div>
+                `;
+                gridEl.appendChild(el);
+            });
+        }
+
+        function migrateLegacyData() {
+            // Not needed since old flipnote had no persistence
+        }
+
+        // --- DRAWING / EDITOR LOGIC ---
+        function createNew() {
+            currentAnimationId = null;
+            frames = [];
+            currentFrameIndex = 0;
+            fps = 6;
+
+            // Initial Frame
+            addFrame(true);
+
+            showEditor();
+            setupCanvas();
+            loadCurrentFrameToBuffer();
+        }
+
+        function addFrame(isFirst = false) {
+            const newData = new ImageData(CANVAS_SIZE, CANVAS_SIZE);
+            // Fill clear (transparent) or white?
+            // Since it's flipnote, transparent background is better for layers but default canvas is white.
+            // We want white background effectively.
+            // But ImageData is transparent by default (0,0,0,0).
+            // Let's rely on renderCanvas to draw white bg.
+
+            if (isFirst) {
+                frames.push(newData);
+            } else {
+                // Insert after current
+                if (frames.length > 0) saveCurrentFrame();
+                // Copy previous? Or Blank? Let's do Blank.
+                frames.splice(currentFrameIndex + 1, 0, newData);
+                currentFrameIndex++;
+            }
+            loadCurrentFrameToBuffer();
+            renderCanvas();
+            updateUI();
+            triggerAutoSave();
+        }
+
+        async function openAnimation(id) {
+            const item = manifest.find(m => m.id === id);
+            if (!item) return;
+            currentAnimationId = id;
+
+            // Load frames
+            let data = null;
+            const key = `flipnote_anim_${id}`;
+
+            if (currentUser) {
+                try {
+                    const doc = await db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(id).get();
+                    if (doc.exists) data = doc.data();
+                } catch (e) { }
+            }
+            if (!data) {
+                const local = localStorage.getItem(key);
+                if (local) data = JSON.parse(local);
+            }
+
+            if (data && data.frames && data.frames.length > 0) {
+                // Convert Base64 strings back to ImageData
+                frames = [];
+                for (let src of data.frames) {
+                    const img = new Image();
+                    img.src = src;
+                    await img.decode();
+                    const temp = document.createElement('canvas');
+                    temp.width = CANVAS_SIZE;
+                    temp.height = CANVAS_SIZE;
+                    temp.getContext('2d').drawImage(img, 0, 0);
+                    frames.push(temp.getContext('2d').getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE));
+                }
+                fps = data.fps || 6;
+            } else {
+                createNew(); // Fallback
+                return;
+            }
+
+            currentFrameIndex = 0;
+            showEditor();
+            setupCanvas();
+            loadCurrentFrameToBuffer();
+            renderCanvas();
+            updateUI();
+        }
+
+        // --- SAVING ---
+        let isSaving = false;
+        async function performSave() {
+            if (isSaving) return;
+            isSaving = true;
+
+            if (!currentAnimationId) {
+                currentAnimationId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+                manifest.unshift({
+                    id: currentAnimationId,
+                    title: "Untitled",
+                    created: Date.now(),
+                    modified: Date.now(),
+                    frameCount: frames.length,
+                    thumbnail: null
+                });
+            }
+
+            // Update Manifest Item
+            const item = manifest.find(m => m.id === currentAnimationId);
+            if (item) {
+                item.modified = Date.now();
+                item.frameCount = frames.length;
+                // Generate thumbnail from current frame
+                await createThumbnail(currentFrameIndex).then(url => item.thumbnail = url);
+            }
+
+            // Convert ImageData frames to Base64
+            const frameUrls = await Promise.all(frames.map((_, i) => createThumbnail(i)));
+
+            const data = {
+                fps: fps,
+                frames: frameUrls
+            };
+
+            // Save Data
+            const key = `flipnote_anim_${currentAnimationId}`;
+            localStorage.setItem(key, JSON.stringify(data));
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(currentAnimationId).set(data).catch(console.error);
+            }
+
+            saveManifest();
+            isSaving = false;
+        }
+
+        function triggerAutoSave() {
+            if (autoSaveTimer) clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(performSave, 1000); // 1s debounce
+        }
+
+        function createThumbnail(index) {
+            return new Promise(resolve => {
+                if (!frames[index]) { resolve(null); return; }
+                const temp = document.createElement('canvas');
+                temp.width = CANVAS_SIZE;
+                temp.height = CANVAS_SIZE;
+                const tx = temp.getContext('2d');
+
+                // Draw white bg
+                tx.fillStyle = 'white';
+                tx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                tx.putImageData(frames[index], 0, 0);
+
+                // If opacity/onion skin logic changes, we might need drawImage logic
+                // But putImageData is raw. We need to handle transparency if frames are transparent layers.
+                // Assuming white bg for output.
+                // Actually putImageData replaces pixels. If frame has transparent pixels, they stay transparent?
+                // No, ImageData has RGBA. 
+                // We want final look. Composite over white.
+
+                const comp = document.createElement('canvas');
+                comp.width = CANVAS_SIZE;
+                comp.height = CANVAS_SIZE;
+                const cx = comp.getContext('2d');
+                cx.fillStyle = 'white';
+                cx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                cx.drawImage(temp, 0, 0); // Composite
+
+                resolve(comp.toDataURL('image/png'));
+            });
+        }
+
+        // --- DRAWING LOGIC ---
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+
+        function startDrawing(e) {
+            if (isPlaying) return;
+            if (!e.isPrimary) return;
+            e.preventDefault();
+            isDrawing = true;
+
+            const pos = getPointerPos(e);
+            bufferCtx.lineCap = 'round';
+            bufferCtx.lineJoin = 'round';
+
+            if (currentTool === 'eraser') {
+                bufferCtx.globalCompositeOperation = 'destination-out';
+                bufferCtx.lineWidth = 10;
+            } else {
+                bufferCtx.globalCompositeOperation = 'source-over';
+                bufferCtx.strokeStyle = 'black';
+                bufferCtx.lineWidth = 2;
+            }
+
+            bufferCtx.beginPath();
+            bufferCtx.moveTo(pos.x, pos.y);
+            bufferCtx.lineTo(pos.x, pos.y);
+            bufferCtx.stroke();
+            bufferCtx.beginPath();
+            bufferCtx.moveTo(pos.x, pos.y);
+
+            renderCanvas();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+
+            let events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            for (let event of events) {
+                const pos = getPointerPos(event);
+                bufferCtx.lineTo(pos.x, pos.y);
+            }
+            bufferCtx.stroke();
+            renderCanvas();
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            isDrawing = false;
+            bufferCtx.closePath();
+            saveCurrentFrame();
+            triggerAutoSave();
+        }
+
+        function saveCurrentFrame() {
+            if (frames[currentFrameIndex]) {
+                frames[currentFrameIndex] = bufferCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            }
+        }
+
+        function loadCurrentFrameToBuffer() {
+            bufferCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            if (frames[currentFrameIndex]) {
+                bufferCtx.putImageData(frames[currentFrameIndex], 0, 0);
+            }
+        }
+
+        // --- RENDERING ---
+        function renderCanvas() {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Onion Skin
+            if (onionSkin && currentFrameIndex > 0 && !isPlaying) {
+                ctx.save();
+                ctx.globalAlpha = 0.2;
+                const prev = frames[currentFrameIndex - 1];
+                const temp = document.createElement('canvas');
+                temp.width = CANVAS_SIZE;
+                temp.height = CANVAS_SIZE;
+                temp.getContext('2d').putImageData(prev, 0, 0);
+                ctx.drawImage(temp, 0, 0);
+                ctx.restore();
+            }
+
+            // Current Frame (From Buffer)
+            ctx.drawImage(bufferCanvas, 0, 0);
+        }
+
+        function clearFrame() {
+            bufferCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            saveCurrentFrame();
+            renderCanvas();
+        }
+
+        // --- FRAMES ---
+        function prevFrame() {
+            saveCurrentFrame();
+            if (currentFrameIndex > 0) {
+                currentFrameIndex--;
+                loadCurrentFrameToBuffer();
+                renderCanvas();
+                updateUI();
+            }
+        }
+
+        function nextFrame() {
+            saveCurrentFrame();
+            if (currentFrameIndex < frames.length - 1) {
+                currentFrameIndex++;
+                loadCurrentFrameToBuffer();
+                renderCanvas();
+                updateUI();
+            }
+        }
+
+        function deleteFrame() {
+            if (frames.length <= 1) { clearFrame(); return; }
+            frames.splice(currentFrameIndex, 1);
+            if (currentFrameIndex >= frames.length) currentFrameIndex = frames.length - 1;
+            loadCurrentFrameToBuffer();
+            renderCanvas();
+            updateUI();
+            triggerAutoSave();
+        }
+
+        function changeSpeed() {
+            const speeds = [3, 6];
+            let idx = speeds.indexOf(fps);
+            if (idx === -1) idx = 1;
+            fps = speeds[(idx + 1) % speeds.length];
+            document.getElementById('fps-btn').textContent = fps + ' FPS';
+            triggerAutoSave();
+        }
+
+        // --- PLAYBACK ---
+        function togglePlay() {
+            if (isPlaying) stopPlaying(); else startPlaying();
+        }
+
+        function startPlaying() {
+            saveCurrentFrame();
+            isPlaying = true;
+            document.getElementById('play-btn').textContent = '■';
+            canvas.style.pointerEvents = 'none';
+            // IMPORTANT: Ensure buffer is synced before playing? saveCurrentFrame called above.
+            bufferCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); // Clear buffer for playback rendering?
+            // Actually playLoop loads frames into buffer? NO.
+            // playLoop uses renderCanvas. renderCanvas uses BUFFER.
+            // So playLoop must load frames into Buffer.
+            playLoop();
+        }
+
+        function stopPlaying() {
+            isPlaying = false;
+            clearTimeout(playTimer);
+            document.getElementById('play-btn').textContent = '▶';
+            canvas.style.pointerEvents = 'auto';
+            loadCurrentFrameToBuffer(); // Restore current frame to buffer
+            renderCanvas();
+        }
+
+        function playLoop() {
+            if (!isPlaying) return;
+
+            // Draw current frame to buffer for rendering
+            if (frames[currentFrameIndex]) {
+                bufferCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                bufferCtx.putImageData(frames[currentFrameIndex], 0, 0);
+            }
+
+            renderCanvas();
+            updateUI();
+
+            currentFrameIndex++;
+            if (currentFrameIndex >= frames.length) currentFrameIndex = 0;
+
+            playTimer = setTimeout(playLoop, 1000 / fps);
+        }
+
+        function updateUI() {
+            document.getElementById('frame-strip-visual').textContent = `Frame ${currentFrameIndex + 1} / ${frames.length}`;
+        }
+
+        // --- HELPERS ---
+        function setTool(t) {
+            currentTool = t;
+            document.querySelectorAll('.controls .sys-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(t === 'pen' ? 'tool-pen' : (t === 'eraser' ? 'tool-eraser' : '')).classList.add('active');
+        }
+
+        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        function showGallery() {
+            if (isSaving) { triggerAutoSave(); }
+            document.getElementById('screen-editor').classList.remove('active');
+            document.getElementById('screen-gallery').classList.add('active');
+            document.getElementById('editor-back-btn').style.display = 'none';
+            renderGallery();
+        }
+
+        function showEditor() {
+            document.getElementById('screen-gallery').classList.remove('active');
+            document.getElementById('screen-editor').classList.add('active');
+            document.getElementById('editor-back-btn').style.display = 'flex';
+        }
+
+        function handleCloseButton() {
+            window.location.href = 'index';
+        }
+
+        function setupCanvas() {
+            // Resize logic similar to pixel.html
+            if (!container.parentElement) return;
+
+            const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
+            const scale = parseFloat(scaleStr);
+
+            // Reset
+            container.style.width = '';
+            container.style.height = '';
+            container.style.zoom = '';
+
+            const containerW = container.clientWidth;
+            const logicalWindowH = window.innerHeight / scale;
+            const uiHeight = 120; // Approx UI height (Title + Toolbar + Controls)
+            const availableH = logicalWindowH - uiHeight;
+
+            const maxDimension = Math.min(containerW, availableH) * scale;
+            const finalSize = Math.max(200, maxDimension);
+
+            // Apply Inverse Scaling
+            if (scale !== 1.0 && scale > 0) container.style.zoom = (1.0 / scale);
+
+            // Adjust container size
+            container.style.width = finalSize + 'px';
+            container.style.height = finalSize + 'px';
+        }
+
+        // --- POSTING ---
+        async function confirmPost() {
+            closeModal('post-confirm-modal');
+            if (!currentUser) { showInfoModal("Please log in."); return; }
+
+            // Ensure we are up to date
+            await performSave();
+
+            const animData = {
+                fps: fps,
+                frames: await Promise.all(frames.map((_, i) => createThumbnail(i)))
+            };
+
+            // Post to RTDB
+            const messageData = {
+                user: currentUser.email.split('@')[0],
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                text: "",
+                is_flipnote: true,
+                flipnote_data: animData
+            };
+
+            rtdb.ref('kindlechat/messages').push(messageData)
+                .then(() => {
+                    showInfoModal("Posted to KindleChat!");
+                })
+                .catch(e => {
+                    console.error(e);
+                    showInfoModal("Error posting.");
+                });
+        }
+
+        function showInfoModal(msg) {
+            document.getElementById('modal-message').textContent = msg;
+            document.getElementById('modal-btns').innerHTML = `<button class="sys-btn" onclick="closeModal('modal-overlay')">OK</button>`;
+            openModal('modal-overlay');
+        }
+
+        // --- DELETE/RENAME ---
+        let deleteId = null;
+        function deleteAnimation(id) {
+            deleteId = id;
+            document.getElementById('confirm-delete-btn').onclick = () => {
+                manifest = manifest.filter(m => m.id !== id);
+                localStorage.removeItem(`flipnote_anim_${id}`);
+                if (currentUser) db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(id).delete();
+                saveManifest();
+                renderGallery();
+                closeModal('delete-modal');
+            };
+            openModal('delete-modal');
+        }
+
+        let renameId = null;
+        function promptRename(id) {
+            renameId = id;
+            const item = manifest.find(m => m.id === id);
+            document.getElementById('rename-input').value = item.title || 'Untitled';
+            document.getElementById('confirm-rename-btn').onclick = () => {
+                const val = document.getElementById('rename-input').value.trim();
+                if (val) renderRename(renameId, val);
+                closeModal('rename-modal');
+            };
+            openModal('rename-modal');
+        }
+
+        function renderRename(id, title) {
+            const item = manifest.find(m => m.id === id);
+            if (item) {
+                item.title = title;
+                item.modified = Date.now();
+                saveManifest();
+                renderGallery();
+            }
+        }
+
+    </script>
+</body>
+
+</html>

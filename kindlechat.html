@@ -2104,6 +2104,7 @@
         function renderMessage(msg, msgId, prepend) {
             var history = document.getElementById('chat-history');
             var div = document.createElement('div');
+            var toggleBtnHtml = '';
 
             var isSelf = currentUser && (msg.user === currentUsername);
             div.className = 'msg ' + (isSelf ? 'self' : 'other');
@@ -2197,6 +2198,22 @@
                     displayMsg +
                     '</a></div></div>';
                 isSpecialMessage = true;
+            } else if (msg.is_flipnote && msg.flipnote_data) {
+                // Register data for playback
+                window.flipnoteData = window.flipnoteData || {};
+                window.flipnoteData[msgId] = msg.flipnote_data;
+
+                var thumb = (msg.flipnote_data.frames && msg.flipnote_data.frames[0]) ? msg.flipnote_data.frames[0] : '';
+
+                bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white; text-align:center;">' +
+                    '<a href="flipbook" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">Flipbook</a>' +
+                    '<div id="flipnote-view-' + msgId + '" style="width:128px; height:128px; border:2px solid black; margin:0 auto; background:white; position:relative; cursor:pointer;" onclick="playFlipnote(\'' + msgId + '\')">' +
+                    '<img id="flipnote-img-' + msgId + '" src="' + thumb + '" style="width:100%; height:100%; image-rendering:pixelated; display:block;">' +
+                    '<div id="flipnote-overlay-' + msgId + '" style="position:absolute; top:0; left:0; width:100%; height:100%; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.1); font-size:2rem; color:white; text-shadow:1px 1px 0 black;">▶</div>' +
+                    '</div>' +
+                    ((messageText && messageText !== 'undefined' && messageText !== 'null') ? ('<div style="margin-top:5px; font-size:0.9rem;">' + escapeHtml(messageText) + '</div>') : '') +
+                    '</div>';
+                isSpecialMessage = true;
             } else if (msg.is_pixel_art) {
                 bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white;">' +
                     '<div style="font-weight:bold; margin-bottom:5px; font-size:0.8rem;">Pixel Art</div>' +
@@ -2250,7 +2267,8 @@
                 : '';
 
             // TRANSLATION BUTTON (Client-side fallback) - REMOVED
-            var transBtnHtml = toggleBtnHtml;
+            // TRANSLATION BUTTON (Client-side fallback) - REMOVED for special messages
+            var transBtnHtml = (isSpecialMessage || msg.is_pixel_art) ? '' : toggleBtnHtml;
 
             div.innerHTML = '<div class="msg-meta">' + nameHtml + '<span>' + timeStr + '</span>' + transBtnHtml + '</div>' +
                 '<div style="display:flex; align-items:center; gap: 5px; min-width: 0;">' +
@@ -2301,6 +2319,11 @@
                 history.insertBefore(div, history.firstChild);
             } else {
                 history.appendChild(div);
+            }
+
+            // Autoplay Flipbook
+            if (msg.is_flipnote && msg.flipnote_data) {
+                setTimeout(function () { playFlipnote(msgId); }, 200);
             }
         }
 
@@ -2799,13 +2822,56 @@
                             })
                             .then(function () {
                                 switchRoom(newRoomRef.id, otherUser);
-                            });
+                            })
+                        ['catch'](function (e) {
+                            console.error("Error creating DM:", e);
+                            showModal("Error creating DM.");
+                        });
                     }
                 })
             ['catch'](function (e) {
                 console.error("Error sending DM:", e);
                 showModal("Error starting chat.");
             });
+        }
+
+        // --- FLIPNOTE PLAYER ---
+        function playFlipnote(msgId) {
+            if (!window.flipnoteData || !window.flipnoteData[msgId]) return;
+
+            var data = window.flipnoteData[msgId];
+            var frames = data.frames;
+            var fps = data.fps || 6;
+            if (!frames || frames.length === 0) return;
+
+            var imgEl = document.getElementById('flipnote-img-' + msgId);
+            var overlay = document.getElementById('flipnote-overlay-' + msgId);
+
+            if (!imgEl || !overlay) return;
+
+            if (imgEl.dataset.playing === "true") {
+                // Stop
+                imgEl.dataset.playing = "false";
+                overlay.style.display = "flex";
+                if (imgEl.playTimer) clearTimeout(imgEl.playTimer);
+                imgEl.src = frames[0]; // Reset to first frame
+                return;
+            }
+
+            // Start
+            imgEl.dataset.playing = "true";
+            overlay.style.display = "none";
+
+            var frameIdx = 0;
+
+            function loop() {
+                if (imgEl.dataset.playing !== "true") return;
+                frameIdx = (frameIdx + 1) % frames.length;
+                imgEl.src = frames[frameIdx];
+                imgEl.playTimer = setTimeout(loop, 1000 / fps);
+            }
+
+            loop();
         }
 
         // --- SUPPORTER LOGIC ---
