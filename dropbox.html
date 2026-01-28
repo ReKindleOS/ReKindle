@@ -722,6 +722,14 @@
 
         <!-- Status Bar -->
         <div class="status-bar" id="status-bar">Not connected</div>
+
+        <div id="paywall-overlay"
+            style="display:none; position:absolute; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:500; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
+            <h2 style="margin-top:0;">ReKindle+</h2>
+            <p>Support ReKindle development and get<br>access to exclusive apps.</p>
+            <button class="sys-btn" onclick="window.location.href='pay.html'">Subscribe / Login</button>
+            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">Checking subscription...</p>
+        </div>
     </div>
 
     <!-- Preview Modal -->
@@ -790,13 +798,90 @@
         // INITIALIZATION
         // =====================
 
-        window.onload = async function () {
-            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+        let isPro = false;
 
+        function waitForFirebase(callback, attempts = 0) {
+            if (typeof firebase !== 'undefined') {
+                callback();
+            } else if (attempts < 50) {
+                setTimeout(() => waitForFirebase(callback, attempts + 1), 100);
+            } else {
+                const overlay = document.getElementById('paywall-overlay');
+                const status = document.getElementById('paywall-status');
+                status.innerText = "Error: Firebase failed to load.";
+                overlay.style.display = 'flex';
+            }
+        }
+
+        window.onload = function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            waitForFirebase(checkSubscription);
+        };
+
+        function checkSubscription() {
+            const overlay = document.getElementById('paywall-overlay');
+            const status = document.getElementById('paywall-status');
+
+            // OPTIMISTIC: Keep overlay hidden by default for pro users
+
+            if (typeof firebase !== 'undefined') {
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        // Timeout fallback in case Firestore query hangs
+                        const timeoutId = setTimeout(() => {
+                            console.warn("Subscription check timed out");
+                            status.innerText = "Verification timed out. Please refresh.";
+                            overlay.style.display = 'flex';
+                        }, 10000);
+
+                        db.collection('users').doc(user.uid).get()
+                            .then(doc => {
+                                clearTimeout(timeoutId);
+                                if (doc.exists) {
+                                    const data = doc.data();
+                                    const now = Date.now();
+                                    let expires = 0;
+                                    if (data.proExpiresAt) {
+                                        expires = typeof data.proExpiresAt.toMillis === 'function'
+                                            ? data.proExpiresAt.toMillis()
+                                            : new Date(data.proExpiresAt).getTime();
+                                    }
+
+                                    if (expires > now) {
+                                        // UNLOCKED - overlay stays hidden
+                                        isPro = true;
+                                        initDropboxApp();
+                                    } else {
+                                        // LOCKED
+                                        status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
+                                        overlay.style.display = 'flex';
+                                    }
+                                } else {
+                                    status.innerText = "Subscription required.";
+                                    overlay.style.display = 'flex';
+                                }
+                            })
+                            .catch(e => {
+                                clearTimeout(timeoutId);
+                                console.error("Error checking sub", e);
+                                status.innerText = "Error verifying. Try again.";
+                                overlay.style.display = 'flex';
+                            });
+                    } else {
+                        // NOT LOGGED IN
+                        status.innerText = "Please log in.";
+                        overlay.style.display = 'flex';
+                    }
+                });
+            } else {
+                status.innerText = "System Error";
+                overlay.style.display = 'flex';
+            }
+        }
+
+        async function initDropboxApp() {
             // Standard Init
             initAuthListener();
-
-            // Check for OAuth callback
 
             // Check for OAuth callback
             const urlParams = new URLSearchParams(window.location.search);
@@ -813,7 +898,7 @@
                     await verifyAndLoadAccount();
                 }
             }
-        };
+        }
 
         // =====================
         // AUTHENTICATION
