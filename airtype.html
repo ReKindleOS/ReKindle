@@ -9,6 +9,7 @@
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
@@ -457,18 +458,13 @@
 <body>
 
     <div class="window" id="main-window">
-        <!-- SERVICE DISABLED OVERLAY -->
-        <div id="disabled-overlay"
-            style="position: absolute; top:0; left:0; width:100%; height:100%; background:white; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px; box-sizing:border-box;">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:20px;">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-            </svg>
-            <h2 style="font-weight:900; margin-bottom:15px;">Service Unavailable</h2>
-            <p style="font-size:1.1rem; line-height:1.5; max-width:400px; margin-bottom:25px;">It's no longer feasible
-                to provide AirType as a free service. I am exploring options.</p>
-            <button class="sys-btn" onclick="window.location.href='index'">Return Home</button>
+        <!-- PAYWALL OVERLAY -->
+        <div id="paywall-overlay"
+            style="display:none; position:absolute; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:9000; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
+            <h2 style="margin-top:0;">ReKindle+</h2>
+            <p>Support ReKindle development and get<br>access to exclusive apps.</p>
+            <button class="sys-btn" onclick="window.location.href='pay.html'">Subscribe / Login</button>
+            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">Checking subscription...</p>
         </div>
         <!-- TITLE BAR -->
         <div class="title-bar" id="app-title-bar">
@@ -539,7 +535,7 @@
         <!-- This is now used as an overlay or switched view for Tablets/Monitors -->
         <div id="qr-setup-view" class="view-content"
             style="display:none; align-items:center; justify-content:center; flex-direction:column; gap:20px; text-align:center;">
-            <h2>Scan to Connect</h2>
+            <h2 id="qr-status-text">Scan to Connect</h2>
             <div id="qrcode" style="padding:10px; background:white; border:2px solid black;"></div>
             <p style="font-family:var(--kindle-font); max-width:300px;">Scan this with your phone to start writing
                 immediately.</p>
@@ -586,10 +582,22 @@
             projectId: "rekindle-dd1fa",
             storageBucket: "rekindle-dd1fa.firebasestorage.app",
             messagingSenderId: "748026882518",
-            appId: "1:748026882518:web:6877dd4329318070c11c77"
+            appId: "1:748026882518:web:6877dd4329318070c11c77",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com/"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
+        try {
+            db.settings({
+                experimentalForceLongPolling: true,
+                merge: true
+            });
+        } catch (e) {
+            // This might still error if another script called it first, but we catch it silently
+            console.warn("Firestore settings already initialized:", e);
+        }
+        const rtdb = firebase.database();
         const auth = firebase.auth();
 
         // --- STATE ---
@@ -605,6 +613,67 @@
         let selectedNoteData = null; // Store note data when clicked
         let userDeviceType = null;   // 'Phone' or 'Tablet'
         let initialJoinAttempted = false;
+        let isPro = false;
+
+        function checkSubscription() {
+            const overlay = document.getElementById('paywall-overlay');
+            const status = document.getElementById('paywall-status');
+
+            // OPTIMISTIC: Keep overlay hidden by default for pro users
+            // Only show if verification fails
+
+            if (typeof firebase === 'undefined') {
+                status.innerText = "Error: Firebase not loaded.";
+                overlay.style.display = 'flex';
+                return;
+            }
+
+            if (!currentUser) {
+                status.innerText = "Please log in.";
+                overlay.style.display = 'flex';
+                return;
+            }
+
+            // Timeout fallback in case Firestore query hangs
+            const timeoutId = setTimeout(() => {
+                console.warn("Subscription check timed out");
+                status.innerText = "Verification timed out. Please refresh.";
+                overlay.style.display = 'flex';
+            }, 10000); // 10 second timeout
+
+            db.collection('users').doc(currentUser.uid).get()
+                .then(doc => {
+                    clearTimeout(timeoutId);
+                    if (doc.exists) {
+                        const data = doc.data();
+                        const now = Date.now();
+                        let expires = 0;
+                        if (data.proExpiresAt) {
+                            expires = typeof data.proExpiresAt.toMillis === 'function'
+                                ? data.proExpiresAt.toMillis()
+                                : new Date(data.proExpiresAt).getTime();
+                        }
+
+                        if (expires > now) {
+                            // UNLOCKED - overlay stays hidden
+                            isPro = true;
+                        } else {
+                            // LOCKED
+                            status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
+                            overlay.style.display = 'flex';
+                        }
+                    } else {
+                        status.innerText = "Subscription required.";
+                        overlay.style.display = 'flex';
+                    }
+                })
+                .catch(e => {
+                    clearTimeout(timeoutId);
+                    console.error("Error checking sub", e);
+                    status.innerText = "Error verifying. Try again.";
+                    overlay.style.display = 'flex';
+                });
+        }
 
         // --- AUTH & INIT ---
         auth.onAuthStateChanged(user => {
@@ -619,6 +688,7 @@
             if (user) {
                 document.getElementById('guest-overlay').style.display = 'none';
                 loadCloudNotes();
+                checkSubscription();
 
                 // If we are joining via URL and haven't done so yet
                 if (isJoining && !initialJoinAttempted) {
@@ -793,11 +863,10 @@
         }
 
         // --- NOTE LIST LOGIC ---
-        async function loadCloudNotes() {
+        function loadCloudNotes() {
             db.collection('users').doc(currentUser.uid).collection('notes')
                 .orderBy('updated', 'desc')
-                .get()
-                .then((snapshot) => {
+                .onSnapshot((snapshot) => {
                     notes = [];
                     snapshot.forEach(doc => {
                         let data = doc.data();
@@ -807,6 +876,7 @@
                     renderNoteList();
                 }, (error) => {
                     console.error("Error getting notes: ", error);
+                    // document.getElementById('status-bar').innerText = "Sync Error. Using Local.";
                 });
         }
 
@@ -864,7 +934,7 @@
             switchView('keyboard-view');
 
             // 1. Create Cloud Session (Ephemeral / Sync)
-            sessionRef = db.collection('freewrite_sessions').doc(sessionId);
+            sessionRef = rtdb.ref('freewrite_sessions/' + sessionId);
 
             // Pre-populate if note selected
             let initialTitle = "";
@@ -892,7 +962,7 @@
                 title: initialTitle,
                 content: initialContent,
                 originalNoteId: originalNoteId,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             });
 
             // Initial save to reserve the spot (if new)
@@ -928,21 +998,34 @@
             switchView('keyboard-view');
 
             // 1. Fetch Cloud Session
-            sessionRef = db.collection('freewrite_sessions').doc(sessionId);
+            sessionRef = rtdb.ref('freewrite_sessions/' + sessionId);
 
             try {
-                const doc = await sessionRef.get();
+                const snapshot = await sessionRef.get();
                 let initialTitle = "";
                 let initialContent = "";
                 let linkedNoteId = null;
                 let sessionOwner = null;
 
-                if (doc.exists) {
-                    const data = doc.data();
-                    initialTitle = data.title || "";
-                    initialContent = data.content || "";
-                    linkedNoteId = data.originalNoteId || null;
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    // PRIORITY FIX: If the phone ALREADY has a note selected, use it.
+                    // Otherwise, take what's in the session (e.g. from the monitor).
+                    if (!selectedNoteData) {
+                        initialTitle = data.title || "";
+                        initialContent = data.content || "";
+                        linkedNoteId = data.originalNoteId || null;
+                    } else {
+                        initialTitle = selectedNoteData.title || "";
+                        initialContent = selectedNoteData.content || "";
+                        linkedNoteId = selectedNoteData.id;
+                    }
                     sessionOwner = data.ownerId;
+                } else if (selectedNoteData) {
+                    // Fallback if session doesn't exist yet but phone has data
+                    initialTitle = selectedNoteData.title || "";
+                    initialContent = selectedNoteData.content || "";
+                    linkedNoteId = selectedNoteData.id;
                 }
 
                 // CHECK OWNERSHIP
@@ -970,12 +1053,16 @@
                     noteRef = db.collection('users').doc(currentUser.uid).collection('notes').doc();
                 }
 
-                // 3. Update Session with OUR ownership (maintain content)
-                await sessionRef.set({
+                // 3. Update Session with OUR ownership and content
+                // If we selected a note on the phone, push its content to the session now
+                await sessionRef.update({
                     ownerId: currentUser.uid,
+                    title: initialTitle,
+                    content: initialContent,
+                    originalNoteId: linkedNoteId,
                     status: 'connected', // Signal to Tablet to switch view
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
 
             } catch (e) {
                 console.error("Error joining session", e);
@@ -984,18 +1071,17 @@
         }
 
         function handleInput() {
-            return; // STOP EXECUTION FOR DISABLED SERVICE
             const title = document.getElementById('title-input').value;
             const text = document.getElementById('input-area').value;
             const indicator = document.getElementById('sync-indicator');
 
             indicator.innerText = "•";
 
-            // DEBOUNCE: 1000ms for monitor update (Optimization: reduced from 10ms)
+            // DEBOUNCE: 100ms for monitor update (Faster than Firestore, but batched for efficiency)
             clearTimeout(typeTimer);
             typeTimer = setTimeout(() => {
                 updateSession(title, text);
-            }, 1000);
+            }, 100);
 
             // DEBOUNCE: 2000ms for persistent cloud save (reduce write pressure)
             clearTimeout(saveTimer);
@@ -1011,7 +1097,7 @@
                 await sessionRef.update({
                     title: title,
                     content: text,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
                 // No specific UI feedback for this, it just happens
             } catch (e) {
@@ -1059,10 +1145,10 @@
             switchView('monitor-view');
 
             // Listen for changes
-            db.collection('freewrite_sessions').doc(sessionId)
-                .onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data();
+            rtdb.ref('freewrite_sessions/' + sessionId)
+                .on('value', snapshot => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
 
                         // CHECK ACCOUNT MISMATCH (If user logs in or session changes owner)
                         if (currentUser && data.ownerId && data.ownerId !== currentUser.uid) {
@@ -1153,7 +1239,6 @@
         // Init & URL Handling
         window.onload = () => {
             loadWallpaper();
-            return; // STOP EXECUTION FOR DISABLED SERVICE
 
             // Check URL Params for direct Host link
             const urlParams = new URLSearchParams(window.location.search);
@@ -1177,27 +1262,20 @@
             }
 
             // Push content and ID to session
+            const sessionData = {
+                ownerId: currentUser.uid,
+                title: selectedNoteData ? (selectedNoteData.title || "") : "",
+                content: selectedNoteData ? (selectedNoteData.content || "") : "",
+                status: "waiting", // Wait for phone
+                originalNoteId: selectedNoteData ? selectedNoteData.id : null,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+
+            rtdb.ref('freewrite_sessions/' + sessionId).set(sessionData);
+
             if (selectedNoteData) {
-                db.collection('freewrite_sessions').doc(sessionId).set({
-                    ownerId: currentUser.uid,
-                    title: selectedNoteData.title || "",
-                    content: selectedNoteData.content || "",
-                    status: "waiting", // Wait for phone
-                    originalNoteId: selectedNoteData.id, // PASS ID FOR SYNC
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
                 // Also render it locally just in case execution is fast
                 renderPaper(selectedNoteData.title, selectedNoteData.content);
-            } else {
-                // Ensure blank session is created so Host can join safely
-                db.collection('freewrite_sessions').doc(sessionId).set({
-                    ownerId: currentUser.uid,
-                    title: "",
-                    content: "",
-                    status: "waiting", // Wait for phone
-                    originalNoteId: null,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
             }
 
             switchView('qr-setup-view');
@@ -1218,38 +1296,26 @@
             });
 
             // Start listening immediately as Monitor
-            db.collection('freewrite_sessions').doc(sessionId)
-                .onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data();
+            rtdb.ref('freewrite_sessions/' + sessionId)
+                .on('value', snapshot => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
 
-                        // CHECK ACCOUNT MISMATCH (If user logs in or session changes owner)
+                        // Update diagnostic text
+                        const qrStatus = document.getElementById('qr-status-text');
+                        if (qrStatus && data.status === 'connected') {
+                            qrStatus.innerText = "Connected! Loading...";
+                        }
                         if (currentUser && data.ownerId && data.ownerId !== currentUser.uid) {
                             showModal("Account Mismatch", "The connected device is using a different account.");
                             return;
                         }
 
-                        // If content starts appearing, switch to monitor view
-                        // If we already had content (from note), we might want to stay on QR view
-                        // until *someone else* connects?
-                        // Actually, if we are Monitor, we want to show QR until user dismisses it or until "connected"?
-                        // The user said "show QR code screen straight away".
-                        // So let's detecting "connection" is hard without a presence system.
-                        // Let's just let them manually cancel to view the paper, OR
-                        // if content *changes*?
-
-                        // For now, keep existing logic: if content exists, show monitor.
-                        // BUT if we just pushed content ourselves, this will trigger immediately.
-                        // So we might skip showing QR code if we have content?
-                        // So we should show QR code even if content exists.
-                        // Let's NOT auto-switch to monitor-view unless we really want to.
-                        // Added a "Cancel" button in QR view to see paper.
-
-                        // FIX: Always render to keep synced
+                        // Always render to keep synced
                         renderPaper(data.title, data.content);
 
-                        // FIX: Switch to monitor view if status becomes connected
-                        if (data.status === 'connected') {
+                        // Switch to monitor view if status becomes connected OR if content starts arriving
+                        if (data.status === 'connected' || (data.content && data.content.length > 0)) {
                             switchView('monitor-view');
                         }
                     }

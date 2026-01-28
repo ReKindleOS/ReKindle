@@ -396,6 +396,14 @@
                     In</button>
             </div>
         </div>
+        <!-- PAYWALL OVERLAY -->
+        <div id="paywall-overlay"
+            style="display:none; position:absolute; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:9000; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
+            <h2 style="margin-top:0;">ReKindle+</h2>
+            <p>Support ReKindle development and get<br>access to exclusive apps.</p>
+            <button class="sys-btn" onclick="window.location.href='pay.html'">Subscribe / Login</button>
+            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">Checking subscription...</p>
+        </div>
     </div>
 
     <!-- SYNC CHOICE MODAL -->
@@ -476,7 +484,9 @@
 
         // --- INIT ---
         window.onload = () => {
-            loadWallpaper();
+            firebase.initializeApp(firebaseConfig);
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            checkSubscription();
             initGrid();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
@@ -486,7 +496,8 @@
                 showInstructions();
             }
 
-            firebase.initializeApp(firebaseConfig);
+            // First launch check was here
+
             const auth = firebase.auth();
 
             auth.onAuthStateChanged(user => {
@@ -498,6 +509,81 @@
                 }
             });
         };
+
+        let isPro = false;
+
+        function checkSubscription() {
+            const overlay = document.getElementById('paywall-overlay');
+            const status = document.getElementById('paywall-status');
+
+            // OPTIMISTIC: Keep overlay hidden by default for pro users
+
+            if (typeof firebase !== 'undefined') {
+                const db = firebase.firestore();
+
+                if (db.settings) {
+                    try {
+                        db.settings({
+                            experimentalForceLongPolling: true,
+                            merge: true
+                        });
+                    } catch (e) { console.warn("Settings error:", e); }
+                }
+
+                const auth = firebase.auth();
+
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        // Timeout fallback in case Firestore query hangs
+                        const timeoutId = setTimeout(() => {
+                            console.warn("Subscription check timed out");
+                            status.innerText = "Verification timed out. Please refresh.";
+                            overlay.style.display = 'flex';
+                        }, 10000);
+
+                        db.collection('users').doc(user.uid).get()
+                            .then(doc => {
+                                clearTimeout(timeoutId);
+                                if (doc.exists) {
+                                    const data = doc.data();
+                                    const now = Date.now();
+                                    let expires = 0;
+                                    if (data.proExpiresAt) {
+                                        expires = typeof data.proExpiresAt.toMillis === 'function'
+                                            ? data.proExpiresAt.toMillis()
+                                            : new Date(data.proExpiresAt).getTime();
+                                    }
+
+                                    if (expires > now) {
+                                        // UNLOCKED - overlay stays hidden
+                                        isPro = true;
+                                    } else {
+                                        // LOCKED
+                                        status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
+                                        overlay.style.display = 'flex';
+                                    }
+                                } else {
+                                    status.innerText = "Subscription required.";
+                                    overlay.style.display = 'flex';
+                                }
+                            })
+                            .catch(e => {
+                                clearTimeout(timeoutId);
+                                console.error("Error checking sub", e);
+                                status.innerText = "Error verifying. Try again.";
+                                overlay.style.display = 'flex';
+                            });
+                    } else {
+                        // Not logged in
+                        status.innerText = "Please log in.";
+                        overlay.style.display = 'flex';
+                    }
+                });
+            } else {
+                status.innerText = "Error: Firebase not loaded.";
+                overlay.style.display = 'flex';
+            }
+        }
 
         // Helper to HTML-escape text
         function escapeHTML(text) {
@@ -1005,18 +1091,8 @@
             }
         }
 
-        loadWallpaper();
 
-        function loadWallpaper() {
-            const wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            const wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            if (wallpaperImg) {
-                document.body.style.backgroundImage = wallpaperImg;
-            }
-            if (wallpaperSize) {
-                document.body.style.backgroundSize = wallpaperSize;
-            }
-        }
+
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>

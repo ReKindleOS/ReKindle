@@ -490,6 +490,28 @@
         </div>
         <div class="window-content">
 
+
+            <!-- PRO UPGRADE BANNER -->
+            <div id="pro-upgrade-banner"
+                style="display:none; border:2px solid black; padding:15px; margin-bottom:20px; background:white; box-shadow: 4px 4px 0 black; text-align:center;">
+                <h3 style="margin-top:0;">Unlock ReKindle+</h3>
+                <p style="font-size:0.9rem; margin-bottom:15px;">Support ReKindle development and get access to
+                    exclusive apps.</p>
+                <button class="sys-btn" onclick="window.location.href='pay.html'"
+                    style="width:100%; max-width:200px; background:black; color:white;">Get ReKindle+</button>
+            </div>
+
+            <!-- PRO STATUS BANNER -->
+            <div id="pro-status-banner"
+                style="display:none; border:2px solid black; padding:15px; margin-bottom:20px; background:white; box-shadow: 4px 4px 0 black; text-align:center;">
+                <h3 style="margin-top:0;">ReKindle+ Active</h3>
+                <p style="font-size:0.9rem; margin-bottom:10px;">Thank you for your support!</p>
+                <p style="font-size:0.8rem; color:#666;" id="pro-expiry-date">Expires: ...</p>
+                <button class="sys-btn" onclick="window.location.href='pay.html'"
+                    style="width:100%; max-width:200px; margin-top:10px; background:black; color:white;">Manage
+                    Subscription</button>
+            </div>
+
             <h2>Desktop Pattern</h2>
 
             <div class="editor-wrapper">
@@ -709,7 +731,104 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+// Configure for Safari/Mac compatibility (fixes CORS errors)
+
+
+if (db.settings) {
+
+
+    try {
+
+
+        db.settings({
+
+
+            experimentalForceLongPolling: true,
+
+
+            merge: true
+
+
+        });
+
+
+    } catch (e) { console.warn("Settings error:", e); }
+
+
+}
+
+
+
+// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+
+
+// db.enablePersistence({ synchronizeTabs: true }) ...
+
         let currentUser = null;
+        let unsubscribeProListener = null;
+
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+
+            // Cleanup previous listener
+            if (unsubscribeProListener) {
+                unsubscribeProListener();
+                unsubscribeProListener = null;
+            }
+
+            const statusEl = document.getElementById('auth-status');
+            if (user) {
+                statusEl.innerHTML = `Logged in as <b>${user.email}</b> <button onclick="auth.signOut()" style="margin-left:5px;">Sign Out</button>`;
+                checkProStatus(user.uid);
+            } else {
+                statusEl.innerText = "Guest Mode";
+                showUpgradeBanner();
+            }
+        });
+
+        function checkProStatus(uid) {
+            unsubscribeProListener = db.collection('users').doc(uid).onSnapshot(doc => {
+                let isPro = false;
+                let expires = 0;
+                let subType = 'recurring'; // default
+
+                if (doc.exists) {
+                    const data = doc.data();
+                    const now = Date.now();
+                    if (data.proExpiresAt) {
+                        expires = typeof data.proExpiresAt.toMillis === 'function'
+                            ? data.proExpiresAt.toMillis()
+                            : new Date(data.proExpiresAt).getTime();
+                    }
+                    if (data.subscriptionType) {
+                        subType = data.subscriptionType;
+                    }
+                    if (expires > now) isPro = true;
+                }
+
+                if (isPro) {
+                    document.getElementById('pro-upgrade-banner').style.display = 'none';
+                    document.getElementById('pro-status-banner').style.display = 'block';
+
+                    if (subType === 'lifetime') {
+                        document.getElementById('pro-expiry-date').innerText = "Lifetime Membership";
+                    } else {
+                        const dateStr = new Date(expires).toLocaleDateString();
+                        document.getElementById('pro-expiry-date').innerText = "Renews: " + dateStr;
+                    }
+                } else {
+                    showUpgradeBanner();
+                }
+            }, error => {
+                console.error("Error listening to pro status update:", error);
+                showUpgradeBanner();
+            });
+        }
+
+        function showUpgradeBanner() {
+            document.getElementById('pro-upgrade-banner').style.display = 'block';
+            document.getElementById('pro-status-banner').style.display = 'none';
+        }
 
         // --- PRESETS ---
         // 0=White, 1=Black. 8x8 Grid flattened.
