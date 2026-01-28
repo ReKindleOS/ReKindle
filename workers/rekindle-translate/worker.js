@@ -176,10 +176,12 @@ async function handleRequest(request) {
                     }
                     const translateResp = await fetch(translateUrl);
                     const translateData = await translateResp.json();
-                    if (translateData && translateData.responseData && translateData.responseData.translatedText) {
-                        if (translateData.responseData.translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
-                            translatedText = translateData.responseData.translatedText;
-                        }
+                    const candidate = translateData.responseData.translatedText;
+                    if (candidate &&
+                        candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
+                        !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
+                        !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
+                        translatedText = candidate;
                     }
                 } catch (e) {
                     console.error("Translation API Failed during reprocess", e);
@@ -224,8 +226,12 @@ async function handleRequest(request) {
                 const translateResp = await fetch(translateUrl);
                 const translateData = await translateResp.json();
                 if (translateData && translateData.responseData && translateData.responseData.translatedText) {
-                    if (translateData.responseData.translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
-                        translatedText = translateData.responseData.translatedText;
+                    const candidate = translateData.responseData.translatedText;
+                    if (candidate &&
+                        candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
+                        !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
+                        !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
+                        translatedText = candidate;
                     }
                 }
             } catch (e) {
