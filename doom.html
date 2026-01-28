@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DOOM</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS (Copied from doom.html) */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            width: 95%;
+            max-width: 640px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            background: black;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            /* Placeholder until managed */
+        }
+
+        /* Game Canvas */
+        canvas {
+            width: 100%;
+            display: block;
+            image-rendering: pixelated;
+            /* Essential for Doom */
+        }
+
+        #status {
+            color: white;
+            font-family: monospace;
+            position: absolute;
+            z-index: 10;
+        }
+
+        /* KEYBOARD CONTROLS (Same as doom.html) */
+        .controls-container {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* gap: 10px; REMOVED for Kindle compatibility */
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .controls-container>div {
+            margin-bottom: 10px;
+            /* Replaces container gap */
+        }
+
+        .d-pad-row {
+            display: flex;
+            justify-content: center;
+        }
+
+        .key-btn {
+            background: #ffffff;
+            border: 2px solid #000000;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0px #000000;
+            user-select: none;
+            font-size: 1.2rem;
+            width: 65px;
+            /* Increased from 50px */
+            height: 65px;
+            /* Increased from 50px */
+            margin: 5px;
+            /* Replaces gap */
+            border-radius: 2px;
+            transition: all 0.05s;
+            position: relative;
+        }
+
+        .key-btn::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            left: 1px;
+            right: 1px;
+            bottom: 1px;
+            border: 1px solid #ddd;
+            pointer-events: none;
+        }
+
+        .key-btn:active,
+        .key-btn.active {
+            background: #000000;
+            color: #ffffff;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .action-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 5px;
+            padding: 4px;
+            background: #eee;
+            border: 1px solid #999;
+            border-radius: 4px;
+        }
+
+        .action-btn {
+            width: auto;
+            padding: 0 15px;
+            font-size: 1rem;
+            height: 50px;
+            /* Increased from 40px */
+        }
+
+        .value-well {
+            background: #fff;
+            border: 2px inset #999;
+            padding: 0 10px;
+            font-family: monospace;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+    </style>
+    <script src="theme.js"></script>
+
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">DOOM</span>
+        </div>
+
+        <!-- Content -->
+        <div class="window-content">
+            <div id="status">Converting WAD...</div>
+            <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+        </div>
+    </div>
+
+
+    <!-- Software Keyboard -->
+    <div class="controls-container">
+        <!-- Rendering Controls -->
+        <div class="action-row" style="margin-bottom: 10px; flex-wrap: wrap;">
+            <div id="renderModeBtn" class="key-btn action-btn" style="min-width: 170px;" onclick="cycleRenderMode()">
+                Mode: Color</div>
+
+            <div style="display: flex; align-items: center; margin-left: 5px;">
+                <span
+                    style="font-weight: bold; font-size: 0.85rem; text-transform: uppercase; margin-right: 5px;">Contrast</span>
+                <div class="key-btn action-btn" style="width: 45px; height: 45px; padding: 0;"
+                    onclick="changeContrast(-10)">-</div>
+                <div class="key-btn action-btn" style="width: 45px; height: 45px; padding: 0;"
+                    onclick="changeContrast(10)">+</div>
+                <div id="contrastValue" class="value-well" style="height: 45px; min-width: 40px; margin-left: 5px;">0
+                </div>
+            </div>
+        </div>
+
+        <!-- D-PAD -->
+        <div class="d-pad-row">
+            <div class="key-btn" onpointerdown="simulateInput(38, true)" onpointerup="simulateInput(38, false)"
+                onpointerleave="simulateInput(38, false)">▲</div>
+        </div>
+        <div class="d-pad-row">
+            <div class="key-btn" onpointerdown="simulateInput(37, true)" onpointerup="simulateInput(37, false)"
+                onpointerleave="simulateInput(37, false)">◀</div>
+            <div class="key-btn" onpointerdown="simulateInput(40, true)" onpointerup="simulateInput(40, false)"
+                onpointerleave="simulateInput(40, false)">▼</div>
+            <div class="key-btn" onpointerdown="simulateInput(39, true)" onpointerup="simulateInput(39, false)"
+                onpointerleave="simulateInput(39, false)">▶</div>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="action-row">
+            <div class="key-btn action-btn" onpointerdown="simulateInput(17, true)"
+                onpointerup="simulateInput(17, false)" onpointerleave="simulateInput(17, false)">FIRE (Ctrl)</div>
+            <div class="key-btn action-btn" onpointerdown="simulateInput(32, true)"
+                onpointerup="simulateInput(32, false)" onpointerleave="simulateInput(32, false)">USE (Space)</div>
+            <div class="key-btn action-btn" onpointerdown="simulateInput(13, true)"
+                onpointerup="simulateInput(13, false)" onpointerleave="simulateInput(13, false)">ENTER</div>
+        </div>
+        <div class="action-row">
+            <div class="key-btn action-btn" onpointerdown="simulateInput(27, true)"
+                onpointerup="simulateInput(27, false)" onpointerleave="simulateInput(27, false)"
+                style="font-size: 0.8rem;">ESC</div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for Graham's Doom Port
+        let wasmMemory = new WebAssembly.Memory({ initial: 108 });
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        // Doom Resolution is 320x200, but this port might output scaled or raw. 
+        // doom.js says: doom_screen_width = 320 * 2, doom_screen_height = 200 * 2
+        const WIDTH = 640;
+        const HEIGHT = 400;
+        canvas.width = WIDTH;
+        canvas.height = HEIGHT;
+        let scratchImageData = ctx.createImageData(WIDTH, HEIGHT);
+
+        // Exported function to be set after WASM loads
+        let globalExports = null;
+
+        // Rendering Modes
+        let renderMode = 0;
+        let contrastBias = 0; // -128 to 128
+        const MODES = [
+            "Color (Full)",
+            "Bayer 4x4 (1-bit)",
+            "Bayer 8x8 (1-bit)",
+            "Blue Noise"
+        ];
+
+        // Bayer Matrices
+        const bayer4x4 = [
+            0, 8, 2, 10,
+            12, 4, 14, 6,
+            3, 11, 1, 9,
+            15, 7, 13, 5
+        ];
+
+        const bayer8x8 = [
+            0, 48, 12, 60, 3, 51, 15, 63,
+            32, 16, 44, 28, 35, 19, 47, 31,
+            8, 56, 4, 52, 11, 59, 7, 55,
+            40, 24, 36, 20, 43, 27, 39, 23,
+            2, 50, 14, 62, 1, 49, 13, 61,
+            34, 18, 46, 30, 33, 17, 45, 29,
+            10, 58, 6, 54, 9, 57, 5, 53,
+            42, 26, 38, 22, 41, 25, 37, 21
+        ];
+
+        // 16x16 Blue Noise Mask (curated for organic look)
+        const blueNoise16x16 = [
+            128, 203, 45, 153, 116, 219, 61, 169, 131, 199, 35, 143, 105, 231, 72, 178,
+            75, 243, 13, 107, 182, 30, 248, 94, 151, 83, 222, 56, 163, 18, 121, 240,
+            140, 113, 215, 58, 134, 87, 175, 42, 210, 126, 11, 196, 99, 148, 228, 67,
+            32, 185, 48, 158, 237, 69, 16, 123, 64, 189, 51, 145, 207, 27, 80, 171,
+            213, 96, 252, 21, 120, 192, 104, 234, 142, 115, 217, 38, 137, 90, 250, 125,
+            63, 166, 155, 77, 226, 53, 150, 25, 180, 47, 160, 71, 191, 59, 168, 14,
+            130, 247, 34, 141, 111, 198, 85, 244, 117, 225, 136, 102, 239, 24, 114, 205,
+            19, 109, 187, 66, 254, 40, 129, 173, 57, 149, 22, 183, 62, 165, 88, 211,
+            217, 52, 133, 92, 212, 73, 10, 201, 154, 139, 98, 245, 132, 33, 194, 146,
+            82, 157, 238, 29, 161, 242, 122, 224, 44, 214, 68, 110, 218, 172, 55, 251,
+            49, 118, 54, 216, 81, 15, 179, 39, 190, 12, 164, 241, 41, 89, 127, 23,
+            249, 206, 147, 103, 233, 135, 195, 112, 144, 230, 86, 204, 138, 197, 65, 159,
+            93, 26, 70, 188, 60, 167, 46, 253, 124, 43, 31, 119, 20, 101, 221, 79,
+            177, 229, 156, 17, 141, 246, 97, 170, 78, 220, 64, 215, 152, 181, 37, 244,
+            36, 114, 208, 128, 76, 184, 50, 137, 193, 11, 162, 115, 232, 126, 95, 209,
+            142, 255, 8, 227, 213, 91, 248, 28, 100, 236, 74, 202, 42, 176, 219, 174
+        ];
+
+        function cycleRenderMode() {
+            renderMode = (renderMode + 1) % MODES.length;
+            const btn = document.getElementById('renderModeBtn');
+            btn.innerText = "Mode: " + MODES[renderMode];
+
+            // Visual feedback on button
+            if (renderMode === 0) {
+                btn.style.background = "white";
+                btn.style.color = "black";
+            } else {
+                btn.style.background = "black";
+                btn.style.color = "white";
+            }
+        }
+
+        function changeContrast(delta) {
+            contrastBias = Math.max(-128, Math.min(128, contrastBias + delta));
+            document.getElementById('contrastValue').innerText = contrastBias;
+        }
+
+        window.onload = () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            initDoom();
+        }
+
+            ;
+
+        async function initDoom() {
+            const status = document.getElementById('status');
+
+            try {
+                status.innerText = "Downloading game data...";
+                const response = await fetch('doom.wasm');
+
+                if (!response.ok) throw new Error(`Failed to load doom.wasm: ${response.status}`);
+                const buffer = await response.arrayBuffer();
+
+                status.innerText = "Initializing...";
+
+                const imports = {
+                    js: {
+                        js_console_log: (offset, len) => {
+                            const msg = readString(offset, len);
+                            console.log("[Doom Log]", msg);
+                        }
+
+                        ,
+                        js_stdout: (offset, len) => {
+                            const msg = readString(offset, len);
+                            console.log("[Doom Stdout]", msg);
+                        }
+
+                        ,
+                        js_stderr: (offset, len) => {
+                            const msg = readString(offset, len);
+                            console.error("[Doom Stderr]", msg);
+                        }
+
+                        ,
+                        js_milliseconds_since_start: () => performance.now(),
+                        js_draw_screen: (ptr) => {
+                            const src = new Uint8ClampedArray(wasmMemory.buffer, ptr, WIDTH * HEIGHT * 4);
+                            const data = scratchImageData.data;
+
+                            if (renderMode === 0) {
+                                // 0: Color (Direct Copy)
+                                data.set(src);
+                            } else {
+                                let p = 0;
+                                for (let y = 0; y < HEIGHT; y++) {
+                                    for (let x = 0; x < WIDTH; x++) {
+                                        // Standard Luma: 0.299R + 0.587G + 0.114B (Approx as int for speed)
+                                        const luma = (src[p] * 77 + src[p + 1] * 150 + src[p + 2] * 29) >> 8;
+                                        let output = 0;
+
+                                        switch (renderMode) {
+                                            case 1: // Bayer 4x4
+                                                const b4 = bayer4x4[(x & 3) + ((y & 3) << 2)];
+                                                // Factor in contrastBias by shifting the threshold
+                                                output = (luma > ((b4 << 4) + 8 + contrastBias)) ? 255 : 0;
+                                                data[p] = data[p + 1] = data[p + 2] = output;
+                                                break;
+                                            case 2: // Bayer 8x8
+                                                const b8 = bayer8x8[(x & 7) + ((y & 7) << 3)];
+                                                output = (luma > ((b8 << 2) + 2 + contrastBias)) ? 255 : 0;
+                                                data[p] = data[p + 1] = data[p + 2] = output;
+                                                break;
+                                            case 3: // Blue Noise
+                                                const blue = blueNoise16x16[(x & 15) + ((y & 15) << 4)];
+                                                output = (luma > (blue + contrastBias)) ? 255 : 0;
+                                                data[p] = data[p + 1] = data[p + 2] = output;
+                                                break;
+                                        }
+                                        data[p + 3] = 255;
+                                        p += 4;
+                                    }
+                                }
+                            }
+                            ctx.putImageData(scratchImageData, 0, 0);
+                        }
+                    }
+
+                    ,
+                    env: {
+                        memory: wasmMemory
+                    }
+                }
+
+                    ;
+
+                const {
+                    instance
+                }
+
+                    = await WebAssembly.instantiate(buffer, imports);
+
+                status.style.display = 'none';
+
+                // Initialize
+                console.log("Calling main()...");
+                globalExports = instance.exports;
+                instance.exports.main();
+
+                // Setup Inputs
+                setupInput(instance.exports);
+
+                // Game Loop
+                console.log("Starting Loop...");
+
+                const step = () => {
+                    instance.exports.doom_loop_step();
+                    requestAnimationFrame(step);
+                }
+
+                    ;
+                requestAnimationFrame(step);
+
+            }
+
+            catch (err) {
+                status.innerText = "Error: " + err.message;
+                status.style.color = "red";
+                console.error(err);
+            }
+        }
+
+        function readString(offset, length) {
+            const bytes = new Uint8Array(wasmMemory.buffer, offset, length);
+            return new TextDecoder("utf8").decode(bytes);
+        }
+
+        // --- INPUT HANDLING ---
+
+        // Key mapping from doom.js source
+        const getDoomKey = (keyCode) => {
+            switch (keyCode) {
+                case 8: return 127; // BACKSPACE
+                case 17: return 0x80 + 0x1d; // RCTRL (using for Fire)
+                case 18: return 0x80 + 0x38; // RALT (using for Strafe)
+                case 37: return 0xac; // LEFT
+                case 38: return 0xad; // UP
+                case 39: return 0xae; // RIGHT
+                case 40: return 0xaf; // DOWN
+                // Standard ASCII mapping for letters
+                default:
+                    if (keyCode >= 65 && keyCode <= 90) return keyCode + 32; // Lowercase
+                    if (keyCode >= 112 && keyCode <= 123) return keyCode + 75; // F-keys
+                    return keyCode;
+            }
+        }
+
+            ;
+
+        function setupInput(exports) {
+
+            // Helper to handle special browser keys (Ctrl, Alt)
+            const handleKey = (e, isDown) => {
+                let code = e.keyCode;
+                // Fix for Control/Alt which might fire differently
+                if (e.key === "Control") code = 17;
+                if (e.key === "Alt") code = 18;
+                if (e.key === "Enter") code = 13;
+                if (e.key === " ") code = 32;
+
+                const doomCode = getDoomKey(code);
+
+                // Prevent scrolling for game keys
+                if ([37, 38, 39, 40, 32, 17, 18].includes(code)) e.preventDefault();
+
+                exports.add_browser_event(isDown ? 0 : 1, doomCode);
+            }
+
+                ;
+
+            window.addEventListener('keydown', (e) => handleKey(e, true));
+            window.addEventListener('keyup', (e) => handleKey(e, false));
+
+            canvas.focus();
+        }
+
+        // Exposed function for HTML buttons
+        function simulateInput(keyCode, isDown) {
+            if (!globalExports) return;
+            const doomCode = getDoomKey(keyCode);
+            globalExports.add_browser_event(isDown ? 0 : 1, doomCode);
+        }
+
+    </script>
+</body>
+
+</html>
