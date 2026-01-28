@@ -122,6 +122,54 @@ function isAsciiEmoji(text) {
     return false;
 }
 
+async function translateWithMyMemory(text) {
+    if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
+        return null;
+    }
+
+    // 1. Mask mentions
+    const mentions = [];
+    const maskedText = text.replace(/@(\w+)/g, (match) => {
+        mentions.push(match);
+        return `__MENTION_${mentions.length - 1}__`;
+    });
+
+    try {
+        let translateUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(maskedText)}&langpair=AUTODETECT|en`;
+        // Check for global env var
+        if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
+            translateUrl += `&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
+        }
+
+        const translateResp = await fetch(translateUrl);
+        const translateData = await translateResp.json();
+
+        if (translateData && translateData.responseData && translateData.responseData.translatedText) {
+            let candidate = translateData.responseData.translatedText;
+
+            // 2. Restore mentions
+            mentions.forEach((mention, index) => {
+                candidate = candidate.replace(`__MENTION_${index}__`, mention);
+            });
+
+            // 3. Validation
+            // Compare masked candidate vs masked original to avoid false positives if only mentions changed? 
+            // Actually, we just want to ensure the CONTENT changed. 
+            // But if we compare lowercase trim of full text, it should work.
+
+            if (candidate &&
+                candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
+                !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
+                !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
+                return candidate;
+            }
+        }
+    } catch (e) {
+        console.error("Translation API Failed", e);
+    }
+    return null;
+}
+
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
 });
@@ -167,26 +215,7 @@ async function handleRequest(request) {
 
         if (reprocess && msgId) {
             // REPROCESS LOGIC
-            let translatedText = null;
-            if (text && text.trim().length > 0 && !isAsciiEmoji(text)) {
-                try {
-                    let translateUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=AUTODETECT|en`;
-                    if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
-                        translateUrl += `&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
-                    }
-                    const translateResp = await fetch(translateUrl);
-                    const translateData = await translateResp.json();
-                    const candidate = translateData.responseData.translatedText;
-                    if (candidate &&
-                        candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
-                        !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
-                        !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
-                        translatedText = candidate;
-                    }
-                } catch (e) {
-                    console.error("Translation API Failed during reprocess", e);
-                }
-            }
+            let translatedText = await translateWithMyMemory(text);
 
             // Update specific message
             let updateUrl = FIREBASE_URL.replace(".json", `/${msgId}.json`);
@@ -214,30 +243,8 @@ async function handleRequest(request) {
             return new Response(JSON.stringify({ error: "Missing user or text" }), { status: 400, headers });
         }
 
-        let translatedText = null;
-
-        // SKIP EMOJIS
-        if (text && text.trim().length > 0 && !isAsciiEmoji(text)) {
-            try {
-                let translateUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=AUTODETECT|en`;
-                if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
-                    translateUrl += `&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
-                }
-                const translateResp = await fetch(translateUrl);
-                const translateData = await translateResp.json();
-                if (translateData && translateData.responseData && translateData.responseData.translatedText) {
-                    const candidate = translateData.responseData.translatedText;
-                    if (candidate &&
-                        candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
-                        !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
-                        !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
-                        translatedText = candidate;
-                    }
-                }
-            } catch (e) {
-                console.error("Translation API Failed", e);
-            }
-        }
+        // SKIP EMOJIS AND TRANSLATE
+        let translatedText = await translateWithMyMemory(text);
 
         const dbPayload = {
             user: user,
