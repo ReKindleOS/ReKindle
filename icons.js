@@ -67,6 +67,14 @@ const APPS = [
         icon: '<circle cx="16" cy="18" r="12" fill="white" stroke="black" stroke-width="2"/><path d="M16 6 L16 30 M4 18 L28 18 M7.5 9.5 L24.5 26.5 M24.5 9.5 L7.5 26.5" stroke="black" stroke-width="1"/><path d="M16 2 L13 6 H19 Z" fill="black"/><circle cx="16" cy="18" r="3" fill="black"/>'
     },
     {
+        id: 'dropbox',
+        name: 'Dropbox',
+        cat: 'tools',
+        beta: true,
+        plus: true,
+        icon: '<g transform="translate(4, 4)"><path d="M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 20.371l6.001 3.822 6-3.822-6-3.822L6 20.371z" fill="black"/></g>'
+    },
+    {
         id: 'chat',
         name: 'AI Assistant',
         cat: 'tools',
