@@ -122,9 +122,9 @@ function isAsciiEmoji(text) {
     return false;
 }
 
-async function translateWithMyMemory(text) {
+async function translateWithMyMemory(text, userIp) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
-        return null;
+        return { text: null, error: "Skipped: Emoji or Empty" };
     }
 
     // 1. Mask mentions
@@ -134,47 +134,106 @@ async function translateWithMyMemory(text) {
         return `__MENTION_${mentions.length - 1}__`;
     });
 
-    try {
-        let translateUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(maskedText)}&langpair=AUTODETECT|en`;
-        // Check for global env var
-        if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
-            translateUrl += `&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
-        }
-
-        const translateResp = await fetch(translateUrl);
-        const translateData = await translateResp.json();
-
-        if (translateData && translateData.responseData && translateData.responseData.translatedText) {
-            let candidate = translateData.responseData.translatedText;
-
-            // 2. Restore mentions
-            mentions.forEach((mention, index) => {
-                candidate = candidate.replace(`__MENTION_${index}__`, mention);
-            });
-
-            // 3. Validation
-            // Compare masked candidate vs masked original to avoid false positives if only mentions changed? 
-            // Actually, we just want to ensure the CONTENT changed. 
-            // But if we compare lowercase trim of full text, it should work.
-
-            if (candidate &&
-                candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
-                !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
-                !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
-                return candidate;
-            }
-        }
-    } catch (e) {
-        console.error("Translation API Failed", e);
+    // Parse emails once
+    let emails = [];
+    if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
+        emails = MYMEMORY_EMAIL.split(/[;,]/).map(e => e.trim()).filter(e => e);
     }
-    return null;
+
+    let translateData;
+    let finalError = "No attempt made";
+    let emailToUse = null;
+
+    // Retry logic: 3 attempts (rotating emails if possible)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            // Reconstruct URL for each attempt to allow email rotation
+            let currentUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(maskedText)}&langpair=AUTODETECT|en`;
+
+            // Add User IP if provided (helps quota management)
+            if (userIp) {
+                currentUrl += `&ip=${encodeURIComponent(userIp)}`;
+            }
+
+            emailToUse = null;
+            if (emails.length > 0) {
+                // Pick random email and REMOVE it so we don't try it again
+                const randomIndex = Math.floor(Math.random() * emails.length);
+                emailToUse = emails[randomIndex];
+                emails.splice(randomIndex, 1); // Remove used email
+                currentUrl += `&de=${encodeURIComponent(emailToUse)}`;
+            }
+
+            const translateResp = await fetch(currentUrl);
+
+            if (translateResp.ok) {
+                translateData = await translateResp.json();
+                if (translateData && translateData.responseData) break; // Success
+            }
+
+            // If we get here, response wasn't OK or data key was missing
+            let errorDetails = `Status ${translateResp.status}`;
+            try {
+                const errJson = await translateResp.json();
+                if (errJson && errJson.responseDetails) {
+                    errorDetails += ` - ${errJson.responseDetails}`;
+                }
+            } catch (e) { /* ignore */ }
+
+            finalError = errorDetails;
+            if (attempt < 3) {
+                // Backoff before next attempt
+                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+                continue;
+            }
+
+            // Final attempt failed
+            throw new Error(finalError);
+
+        } catch (err) {
+            if (attempt === 3) {
+                console.error(`Translation attempt ${attempt} failed:`, err);
+                return { text: null, error: `Failed: ${err.message} (Email: ${emailToUse || 'None'}, Remaining Pool: ${emails.length})` };
+            }
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        }
+    }
+
+    if (translateData && translateData.responseData && translateData.responseData.translatedText) {
+        let candidate = translateData.responseData.translatedText;
+
+        // 2. Restore mentions
+        mentions.forEach((mention, index) => {
+            candidate = candidate.replace(`__MENTION_${index}__`, mention);
+        });
+
+        // 3. Validation
+        // Compare masked candidate vs masked original to avoid false positives if only mentions changed? 
+        // Actually, we just want to ensure the CONTENT changed. 
+        // But if we compare lowercase trim of full text, it should work.
+
+        if (candidate &&
+            candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
+            !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
+            !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
+            return { text: candidate, error: null };
+        }
+
+        // If we're here, it was suppressed
+        return { text: null, error: "Suppressed: Identical or excluded" };
+    }
+    return { text: null, error: finalError };
 }
+
 
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
 });
 
 async function handleRequest(request) {
+    // Extract Client IP (Cloudflare Header)
+    const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("x-forwarded-for") || "127.0.0.1";
+
     const allowedOrigins = [
         "https://beta.rekindle.pages.dev",
         "https://rekindle.ink",
@@ -215,7 +274,7 @@ async function handleRequest(request) {
 
         if (reprocess && msgId) {
             // REPROCESS LOGIC
-            let translatedText = await translateWithMyMemory(text);
+            let { text: translatedText, error: translationError } = await translateWithMyMemory(text, clientIp);
 
             // Update specific message
             let updateUrl = FIREBASE_URL.replace(".json", `/${msgId}.json`);
@@ -235,7 +294,12 @@ async function handleRequest(request) {
                 throw new Error(`Firebase update failed (${firebaseResp.status}): ${errText}`);
             }
 
-            return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
+            return new Response(JSON.stringify({
+                success: true,
+                msgId,
+                translation: translatedText,
+                translationError
+            }), { status: 200, headers });
         }
 
         // NORMAL SEND LOGIC
@@ -244,7 +308,7 @@ async function handleRequest(request) {
         }
 
         // SKIP EMOJIS AND TRANSLATE
-        let translatedText = await translateWithMyMemory(text);
+        let { text: translatedText, error: translationError } = await translateWithMyMemory(text, clientIp);
 
         const dbPayload = {
             user: user,
@@ -268,7 +332,12 @@ async function handleRequest(request) {
         }
 
         const firebaseData = await firebaseResp.json();
-        return new Response(JSON.stringify({ success: true, id: firebaseData.name, translation: translatedText }), { status: 200, headers });
+        return new Response(JSON.stringify({
+            success: true,
+            id: firebaseData.name,
+            translation: translatedText,
+            translationError
+        }), { status: 200, headers });
 
     } catch (err) {
         console.error("Worker Catch:", err.message);
