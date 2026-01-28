@@ -1206,7 +1206,7 @@
 
         // --- SPAM PROTECTION FOR GENERAL CHANNEL ---
         var GENERAL_MSG_WINDOW = 50; // Check last 50 messages
-        var GENERAL_MAX_USER_MSGS = 12; // Max messages from one user in that window (~24%)
+        var GENERAL_MAX_USER_MSGS = 15; // Max messages from one user in that window (~30%)
         var recentGeneralMsgUsers = []; // Track usernames of recent messages in general channel
 
         // --- Reaction Keys (use new SVG-based keys) ---
@@ -2283,16 +2283,26 @@
 
                 var groupedReactions = {};
                 for (var userUID in msg.reactions) {
-                    var reaction = msg.reactions[userUID];
-                    if (!groupedReactions[reaction]) groupedReactions[reaction] = [];
-                    groupedReactions[reaction].push(userUID);
+                    var val = msg.reactions[userUID];
+                    var reactionKey, displayName;
+
+                    if (typeof val === 'object' && val !== null) {
+                        reactionKey = val.reaction;
+                        displayName = val.username || userUID;
+                    } else {
+                        reactionKey = val;
+                        displayName = userUID.split('@')[0];
+                    }
+
+                    if (!groupedReactions[reactionKey]) groupedReactions[reactionKey] = [];
+                    groupedReactions[reactionKey].push(displayName);
                 }
 
                 for (var reactionKey in groupedReactions) {
                     var count = groupedReactions[reactionKey].length;
                     var el = document.createElement('div');
                     el.className = 'reaction-item';
-                    el.title = groupedReactions[reactionKey].map(function (uid) { return uid.split('@')[0]; }).join(', ');
+                    el.title = groupedReactions[reactionKey].join(', ');
                     // Safely get reaction SVG with fallback
                     var reactionDisplay = reactionKey;
                     try {
@@ -2343,7 +2353,7 @@
                     }
                 }
                 if (recentGeneralMsgUsers.length >= GENERAL_MSG_WINDOW && userMsgCount >= GENERAL_MAX_USER_MSGS) {
-                    alert('You\'ve sent most of the recent messages. Please wait for others to participate before posting again.');
+                    showModal('You\'ve sent most of the recent messages. Please wait for others to participate before posting again.', false);
                     return;
                 }
             }
@@ -2682,14 +2692,15 @@
 
             // Get current reaction first
             reactionRef.once('value').then(function (snapshot) {
-                var currentReaction = snapshot.val();
+                var val = snapshot.val();
+                var currentReaction = (typeof val === 'object' && val !== null) ? val.reaction : val;
 
                 if (currentReaction === reaction) {
                     // REMOVE: User clicks same reaction
                     return reactionRef.remove();
                 } else {
                     // ADD/CHANGE
-                    return reactionRef.set(reaction);
+                    return reactionRef.set({ reaction: reaction, username: currentUsername });
                 }
             }).then(function () {
                 // RTDB listener will auto-update the UI, but let's re-fetch and render immediately for responsiveness
@@ -2713,7 +2724,8 @@
 
                 var msgData = doc.data();
                 var reactions = msgData.reactions || {};
-                var userReaction = reactions[userUID];
+                var val = reactions[userUID];
+                var userReaction = (typeof val === 'object' && val !== null) ? val.reaction : val;
 
                 if (userReaction === reaction) {
                     // REMOVE: User clicks the reaction they already left
@@ -2723,7 +2735,7 @@
                     messageRef.update(updates);
                 } else {
                     // ADD/CHANGE
-                    reactions[userUID] = reaction;
+                    reactions[userUID] = { reaction: reaction, username: currentUsername };
                     messageRef.update({ reactions: reactions });
                 }
 
