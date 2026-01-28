@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -45,7 +46,7 @@
             flex-direction: column;
             width: 90%;
             max-width: 800px;
-            max-height: 90vh;
+            max-height: 95vh;
             position: relative;
         }
 
@@ -223,7 +224,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 10px;
+            padding: 5px 10px;
             flex-grow: 1;
             background: white;
         }
@@ -282,7 +283,7 @@
             width: 100%;
             justify-content: center;
             flex-wrap: wrap;
-            margin-top: 10px;
+            margin-top: 5px;
             /* adjusted margin */
             padding-bottom: 10px;
         }
@@ -449,6 +450,39 @@
             transform: translate(1px, 1px);
             box-shadow: none;
         }
+
+        /* MENU BAR (OS 9 Style) */
+        .menu-bar {
+            display: flex;
+            width: 100%;
+            border-bottom: 2px solid black;
+            background: white;
+            padding: 2px 5px;
+            gap: 15px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            align-items: center;
+        }
+
+        .menu-btn {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 2px 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-transform: capitalize;
+            font-weight: normal;
+        }
+
+        .menu-btn:hover,
+        .menu-btn:active {
+            background: black;
+            color: white;
+            transform: none;
+            box-shadow: none;
+        }
     </style>
     <script src="theme.js"></script>
 </head>
@@ -595,9 +629,15 @@
 
         <!-- EDITOR SCREEN -->
         <div id="screen-editor" class="screen">
-            <!-- Removed Header with Title Input -->
+            <!-- Menu Bar -->
+            <div class="menu-bar">
+                <button class="menu-btn" onclick="downloadImage()">Download</button>
+                <button class="menu-btn" onclick="setWallpaper()">Set Background</button>
+                <button class="menu-btn" onclick="openModal('post-confirm-modal')">Post to KindleChat</button>
+            </div>
 
             <div class="game-content">
+
                 <div id="canvas-container">
                     <canvas id="pixel-canvas"></canvas>
                     <canvas id="grid-canvas"></canvas>
@@ -616,15 +656,6 @@
                     <button id="tool-eraser" onclick="setTool('eraser')"
                         style="flex:1; padding:8px 5px;">Eraser</button>
                     <button onclick="clearGrid()" style="flex:1; padding:8px 5px;">Clear</button>
-                </div>
-                <div class="controls" style="flex-wrap:nowrap; gap:5px; padding:0 5px; margin-top:5px;">
-                    <!-- Actions -->
-                    <button class="sys-btn" style="padding: 8px 5px; font-size: 0.8rem; margin-top:0; flex:1;"
-                        onclick="downloadImage()">Save</button>
-                    <button class="sys-btn" style="padding: 8px 5px; font-size: 0.8rem; margin-top:0; flex:1;"
-                        onclick="setWallpaper()">Set BG</button>
-                    <button class="sys-btn" style="padding: 8px 5px; font-size: 0.8rem; margin-top:0; flex:1;"
-                        onclick="openModal('post-confirm-modal')">Post</button>
                 </div>
             </div>
         </div>
@@ -665,7 +696,8 @@
             projectId: "rekindle-dd1fa",
             storageBucket: "rekindle-dd1fa.firebasestorage.app",
             messagingSenderId: "748026882518",
-            appId: "1:748026882518:web:6877dd4329318070c11c77"
+            appId: "1:748026882518:web:6877dd4329318070c11c77",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com/"
         };
 
 
@@ -693,39 +725,40 @@
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
+            rtdb = firebase.database();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
-
-
-if (db.settings) {
+            // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-    try {
+            if (db.settings) {
 
 
-        db.settings({
+                try {
 
 
-            experimentalForceLongPolling: true,
+                    db.settings({
 
 
-            merge: true
+                        experimentalForceLongPolling: true,
 
 
-        });
+                        merge: true
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+                    });
 
 
-}
+                } catch (e) { console.warn("Settings error:", e); }
+
+
+            }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+            // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+            // db.enablePersistence({ synchronizeTabs: true }) ...
 
             auth.onAuthStateChanged(user => {
                 currentUser = user;
@@ -756,28 +789,27 @@ if (db.settings) {
             const dataUrl = canvas.toDataURL('image/png');
 
             try {
-                // Ensure PixelChat room exists or at least we can write to it
-                // We just write to the collection 'rooms/pixelchat/messages'
-                // The KindleChat client handles the room list inclusion regardless of document existence, 
-                // but creating the room doc is good practice if missing.
+                // Use RTDB for 'general' chat messages (where artwork goes)
+                const messagesRef = rtdb.ref('kindlechat/messages');
 
-                const roomRef = db.collection('rooms').doc('general');
-
-                // Optional: Ensure validation exists
-                // await roomRef.set({ name: 'PixelChat', type: 'group' }, { merge: true });
-
-                await roomRef.collection('messages').add({
+                await messagesRef.push({
                     user: currentUser.email.split('@')[0],
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    text: (function () { var found = currentDrawingId ? manifest.find(function (m) { return m.id === currentDrawingId; }) : null; return (found && found.title) ? found.title : "Pixel Art"; })(),
+                    text: 'Shared a pixel art!',
                     pixel_art: dataUrl,
-                    is_pixel_art: true
+                    is_pixel_art: true,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
 
-                openModal('success-modal');
+                closeModal('post-confirm-modal');
+                showModal("Posted to KindleChat!", false, null);
+
+                // Show success modal wrapper
+                const successModal = document.getElementById('success-modal');
+                if (successModal) successModal.style.display = 'flex';
+
             } catch (e) {
                 console.error("Error posting:", e);
-                showModal("Failed to post. Check console.");
+                showModal("Error posting: " + e.message);
             }
         }
 
@@ -1090,32 +1122,27 @@ if (db.settings) {
             const maxWindowHeight = Math.min(logicalWindowH * 0.9, logicalWindowH - (40 / scale));
 
             // Measure UI elements
+            // Measure UI elements
             const titleBarH = document.querySelector('.title-bar').offsetHeight;
-            const headerH = 0; // Removed editor-header
+            const menuBar = document.querySelector('.menu-bar');
+            const menuBarH = (menuBar && menuBar.offsetParent !== null) ? menuBar.offsetHeight : 0;
 
             const sliderEl = document.getElementById('slider-container');
-            // Element might hidden or have margins, getComputedStyle + offsetHeight is safest or just offsetHeight + margin estimation
-            // Slider container has margin-bottom: 10px inline style
-            const sliderH = sliderEl ? (sliderEl.offsetHeight + 10) : 0;
+            const sliderH = sliderEl && sliderEl.offsetParent !== null ? (sliderEl.offsetHeight + 10) : 0;
 
-            const controlsEl = document.querySelector('.controls');
-            // Controls has margin-top: 10px, padding-bottom: 10px in CSS
-            const controlsH = controlsEl ? (controlsEl.offsetHeight + 10) : 0; // Margin top is collapsed or explicit? offsetHeight includes padding. Margin is outside.
+            const controlsList = document.querySelectorAll('.controls');
+            let controlsH = 0;
+            controlsList.forEach(el => {
+                if (el.offsetParent !== null) {
+                    controlsH += el.offsetHeight + 10;
+                }
+            });
 
-            // Sum static UI parts
-            // Margins between flex items? 
-            // title-bar (0 margin)
-            // header (0 margin)
-            // ... flex gap? No gap on .window.
-            // canvas-container (margin-bottom: 10px)
-            // slider (margin-bottom: 10px) - included above
-            // controls (margin-top: 10px) - included above
-
-            // Total non-canvas height
-            const uiHeight = titleBarH + headerH + sliderH + controlsH + 20; // +20 safety buffer/other margins
+            // Total non-canvas height with safety buffer
+            const uiHeight = titleBarH + menuBarH + sliderH + controlsH + 30;
 
             const availableHeight = maxWindowHeight - uiHeight;
-            const containerHeight = container.clientHeight || availableHeight;
+            const containerHeight = availableHeight;
 
 
 
