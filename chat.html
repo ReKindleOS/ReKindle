@@ -222,6 +222,69 @@
             border: 1px solid black;
             font-size: 0.9rem;
         }
+
+        /* MODAL SYSTEM */
+        #settings-modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+            border: 2px solid black;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        /* Model Selector Under Titlebar */
+        #model-selector-bar {
+            display: none;
+            /* hidden by default */
+            background: #f0f0f0;
+            border-bottom: 1px solid #ccc;
+            padding: 4px 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        #model-selector-bar select {
+            font-size: 0.8rem;
+            padding: 2px 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+        }
     </style>
     <script src="theme.js"></script>
 </head>
@@ -236,14 +299,19 @@
             <span class="title-text">AI Assistant</span>
 
             <div class="controls">
+                <button class="sys-btn" onclick="openSettings()" style="margin-right:5px;">Settings</button>
                 <button class="sys-btn" onclick="clearChat()">Clear</button>
             </div>
         </div>
 
+        <!-- MODEL SELECTOR BAR -->
+        <div id="model-selector-bar">
+            <span id="model-provider-label" style="font-weight:bold; color:#666;">Gemini</span>
+            <select id="quick-model-select" onchange="quickUpdateModel()"></select>
+        </div>
+
         <div id="chat-history">
-            <div class="message ai">
-                Hello. I am the Oracle (v2.5). How may I assist you?
-            </div>
+            <!-- Chat starts empty -->
         </div>
 
         <div class="input-area">
@@ -261,6 +329,75 @@
             <p>Support ReKindle development and get<br>access to exclusive apps.</p>
             <button class="sys-btn" onclick="window.location.href='pay.html'">Subscribe / Login</button>
             <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">Checking subscription...</p>
+        </div>
+
+        <!-- SETTINGS MODAL -->
+        <div id="settings-modal">
+            <div class="modal-box">
+                <h3 style="margin-top:0; border-bottom:2px solid black; padding-bottom:10px;">Settings</h3>
+
+                <div class="setting-row">
+                    <label for="byo-toggle" style="font-weight:bold;">Use Custom AI Key</label>
+                    <input type="checkbox" id="byo-toggle" onchange="toggleByoKey()" style="width:20px; height:20px;">
+                </div>
+
+                <!-- ALERT MODAL -->
+                <div id="alert-modal"
+                    style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.95); z-index:2000; align-items:center; justify-content:center; flex-direction:column;">
+                    <div class="modal-box">
+                        <p id="alert-message" style="margin:20px 0;">Message</p>
+                        <button class="sys-btn" onclick="closeAlert()">OK</button>
+                    </div>
+                </div>
+
+                <div id="ai-provider-settings"
+                    style="display:none; background:#eee; padding:5px; border:1px solid #ccc; margin-top:5px;">
+                    <div class="setting-row" style="margin:5px 0;">
+                        <strong style="font-size:0.8rem;">Provider</strong>
+                        <select id="ai-provider-select" onchange="updateAiProviderUI()"
+                            style="font-size:0.8rem; padding:2px;">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="openai">OpenAI</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-row" style="margin:5px 0;">
+                        <strong style="font-size:0.8rem;">Model</strong>
+                        <div style="display:flex; align-items:center; gap:5px;">
+                            <select id="ai-model-select" onchange="saveSettings()"
+                                style="font-size:0.8rem; padding:2px; max-width:150px;">
+                                <!-- Options populated by JS -->
+                            </select>
+                            <button class="sys-btn" onclick="fetchModels(true)"
+                                style="font-size:0.7rem; padding:2px 5px;"
+                                title="Fetch latest models using API Key">↻</button>
+                        </div>
+                    </div>
+
+                    <!-- GEMINI KEY -->
+                    <div id="gemini-key-section">
+                        <label style="font-size:0.8rem;">Gemini Key:</label>
+                        <input type="password" id="ai-api-key" class="modal-input" placeholder="AIMz..."
+                            style="margin:5px 0;">
+                    </div>
+
+                    <!-- OPENAI KEY -->
+                    <div id="openai-key-section" style="display:none;">
+                        <label style="font-size:0.8rem;">OpenAI Key:</label>
+                        <input type="password" id="openai-api-key" class="modal-input" placeholder="sk-..."
+                            style="margin:5px 0;">
+                    </div>
+                </div>
+                <p style="font-size:0.7rem; color:#666; margin-top:5px;">
+                    Key is stored locally. <a href="https://aistudio.google.com/app/apikey" target="_blank">Get Gemini
+                        Key</a> / <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI Key</a>
+                </p>
+
+                <div style="margin-top:20px; display:flex; justify-content:center; gap:10px;">
+                    <button class="sys-btn" onclick="saveSettings()">Save</button>
+                    <button class="sys-btn" onclick="closeSettings()">Cancel</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -288,6 +425,348 @@
         function getTodayString() {
             const now = new Date();
             return now.toISOString().split('T')[0];
+        }
+
+        // --- SETTINGS LOGIC ---
+        let useByoKey = false;
+        let customApiKey = "";
+        let aiProvider = "gemini";
+        let aiModel = "";
+        let openAiKey = "";
+
+        const AI_MODELS = {
+            gemini: [],
+            openai: []
+        };
+
+        // Custom Models Cache
+        let customModels = {
+            gemini: [],
+            openai: []
+        };
+
+        function openSettings() {
+            // Load from storage
+            useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
+            customApiKey = localStorage.getItem('chat_custom_api_key') || "";
+            aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
+            aiModel = localStorage.getItem('chat_ai_model') || "";
+            openAiKey = localStorage.getItem('chat_openai_key') || "";
+
+            try {
+                const cm = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
+                if (cm.gemini) customModels.gemini = cm.gemini;
+                if (cm.openai) customModels.openai = cm.openai;
+            } catch (e) { }
+
+            document.getElementById('byo-toggle').checked = useByoKey;
+
+            // Set fields
+            document.getElementById('ai-provider-select').value = aiProvider;
+
+            updateAiProviderUI(aiModel); // Populate models and set visibility
+
+            document.getElementById('ai-api-key').value = customApiKey;
+            document.getElementById('openai-api-key').value = openAiKey;
+
+            toggleByoKey(); // Ensure top-level visibility
+            updateQuickModelBar(); // Update the top bar
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function toggleByoKey() {
+            const isChecked = document.getElementById('byo-toggle').checked;
+            document.getElementById('ai-provider-settings').style.display = isChecked ? 'block' : 'none';
+            // Update global immediately for UI checks
+            useByoKey = isChecked;
+            updateMessageCounter();
+        }
+
+        function updateQuickModelBar() {
+            const bar = document.getElementById('model-selector-bar');
+
+            // Only show if BYO Key is enabled AND a key is present
+            let hasKey = false;
+            if (aiProvider === 'openai' && openAiKey) hasKey = true;
+            if (aiProvider === 'gemini' && customApiKey) hasKey = true;
+
+            if (useByoKey && hasKey) {
+                bar.style.display = 'flex';
+                document.getElementById('model-provider-label').innerText = (aiProvider === 'openai' ? 'OpenAI' : 'Gemini');
+
+                // Populate quick select
+                const select = document.getElementById('quick-model-select');
+                select.innerHTML = '';
+
+                // Ensure custom models loaded
+                try {
+                    const cm = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
+                    if (cm.gemini) customModels.gemini = cm.gemini;
+                    if (cm.openai) customModels.openai = cm.openai;
+                } catch (e) { }
+
+                const models = (customModels[aiProvider] && customModels[aiProvider].length > 0)
+                    ? customModels[aiProvider]
+                    : (AI_MODELS[aiProvider] || []);
+
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.innerText = m.name;
+                    select.appendChild(opt);
+                });
+
+                // Set value
+                if (aiModel && models.find(m => m.id === aiModel)) {
+                    select.value = aiModel;
+                } else if (models.length > 0) {
+                    select.value = models[0].id;
+                }
+
+            } else {
+                bar.style.display = 'none';
+            }
+        }
+
+        function quickUpdateModel() {
+            const val = document.getElementById('quick-model-select').value;
+            aiModel = val;
+            localStorage.setItem('chat_ai_model', aiModel);
+
+            // Also update firebase if logged in (lazy sync)
+            if (currentUserId) {
+                const db = firebase.firestore();
+                db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').set({
+                    model: aiModel
+                }, { merge: true });
+            }
+        }
+
+        function updateAiProviderUI(selectedModel) {
+            const provider = document.getElementById('ai-provider-select').value;
+            const modelSelect = document.getElementById('ai-model-select');
+
+            // Populate Model Dropdown
+            modelSelect.innerHTML = '';
+
+            // Use custom models if available, otherwise defaults
+            let models = (customModels[provider] && customModels[provider].length > 0)
+                ? customModels[provider]
+                : (AI_MODELS[provider] || []);
+
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.name;
+                modelSelect.appendChild(opt);
+            });
+
+            // Set selected model if valid for provider, else default to first
+            if (selectedModel && models.find(m => m.id === selectedModel)) {
+                modelSelect.value = selectedModel;
+            } else if (models.length > 0) {
+                modelSelect.value = models[0].id;
+            }
+
+            // Show/Hide sections based on provider
+            if (provider === 'openai') {
+                document.getElementById('gemini-key-section').style.display = 'none';
+                document.getElementById('openai-key-section').style.display = 'block';
+            } else {
+                document.getElementById('gemini-key-section').style.display = 'block';
+                document.getElementById('openai-key-section').style.display = 'none';
+            }
+        }
+
+        async function fetchModels(alertUser = false, specificProvider = null, specificKey = null) {
+            const provider = specificProvider || document.getElementById('ai-provider-select').value || aiProvider;
+
+            let key = specificKey;
+            if (!key) {
+                if (provider === 'openai') {
+                    const domEl = document.getElementById('openai-api-key');
+                    key = domEl ? domEl.value.trim() : openAiKey;
+                } else {
+                    const domEl = document.getElementById('ai-api-key');
+                    key = domEl ? domEl.value.trim() : customApiKey;
+                }
+            }
+
+            if (!key) {
+                if (alertUser) showAlert("Please enter an API Key first.");
+                return;
+            }
+
+            if (alertUser) {
+                const btn = document.querySelector('button[title="Fetch latest models using API Key"]');
+                if (btn) btn.innerText = "...";
+            }
+
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'list_models',
+                        provider: provider,
+                        apiKey: key
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.models && data.models.length > 0) {
+                    customModels[provider] = data.models;
+                    localStorage.setItem('chat_custom_models', JSON.stringify(customModels));
+
+                    // Only update UI if settings modal is open or we need to refresh the quick bar
+                    const modelSelect = document.getElementById('ai-model-select');
+                    if (modelSelect && modelSelect.offsetParent !== null) {
+                        updateAiProviderUI(modelSelect.value);
+                    }
+                    updateQuickModelBar();
+
+                    if (alertUser) showAlert("Models updated successfully!");
+                } else if (data.error) {
+                    throw new Error(data.error.message || "Unknown error");
+                } else {
+                    throw new Error("No models returned.");
+                }
+
+            } catch (e) {
+                console.error(e);
+                if (alertUser) showAlert("Error fetching models: " + e.message);
+            } finally {
+                if (alertUser) {
+                    const btn = document.querySelector('button[title="Fetch latest models using API Key"]');
+                    if (btn) btn.innerText = "↻";
+                }
+            }
+        }
+
+        function saveSettings() {
+            const isChecked = document.getElementById('byo-toggle').checked;
+            const provider = document.getElementById('ai-provider-select').value;
+            const model = document.getElementById('ai-model-select').value;
+            const key = document.getElementById('ai-api-key').value.trim();
+            const oKey = document.getElementById('openai-api-key').value.trim();
+
+            localStorage.setItem('chat_use_byo_key', isChecked);
+            localStorage.setItem('chat_ai_provider', provider);
+            localStorage.setItem('chat_ai_model', model);
+            localStorage.setItem('chat_custom_api_key', key);
+            localStorage.setItem('chat_openai_key', oKey);
+
+            useByoKey = isChecked;
+            aiProvider = provider;
+            aiModel = model;
+            customApiKey = key;
+            openAiKey = oKey;
+
+            updateQuickModelBar();
+            updateMessageCounter();
+
+            // Save to Firebase if logged in
+            if (currentUserId) {
+                const db = firebase.firestore();
+                db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').set({
+                    apiKey: key,
+                    openaiKey: oKey,
+                    provider: provider,
+                    model: model,
+                    useByoKey: isChecked,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(console.error);
+            }
+            closeSettings();
+        }
+
+        // Settings Modal Controls
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+
+            // Revert global state to saved values in case of cancel
+            useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
+            customApiKey = localStorage.getItem('chat_custom_api_key') || "";
+            aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
+            aiModel = localStorage.getItem('chat_ai_model') || "";
+            openAiKey = localStorage.getItem('chat_openai_key') || "";
+
+            updateQuickModelBar();
+            updateMessageCounter();
+        }
+
+        function showAlert(msg) {
+            document.getElementById('alert-message').innerText = msg;
+            document.getElementById('alert-modal').style.display = 'flex';
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-modal').style.display = 'none';
+        }
+
+        async function loadSettingsFromFirebase() {
+            if (!currentUserId) return;
+            try {
+                const db = firebase.firestore();
+                const doc = await db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').get();
+                if (doc.exists) {
+                    const data = doc.data();
+
+                    // Helper to sync
+                    const set = (k, v) => localStorage.setItem(k, v);
+
+                    set('chat_use_byo_key', data.useByoKey || false);
+                    if (data.apiKey) set('chat_custom_api_key', data.apiKey);
+                    if (data.provider) set('chat_ai_provider', data.provider);
+                    if (data.model) set('chat_ai_model', data.model);
+                    if (data.openaiKey) set('chat_openai_key', data.openaiKey);
+
+                    // Refresh globals
+                    useByoKey = data.useByoKey || false;
+                    customApiKey = data.apiKey || "";
+                    aiProvider = data.provider || "gemini";
+                    aiModel = data.model || "";
+                    openAiKey = data.openaiKey || "";
+
+                    updateQuickModelBar();
+
+                    // Auto-fetch if we have keys (since defaults are empty)
+                    if (useByoKey) {
+                        if (aiProvider === 'gemini' && customApiKey) fetchModels(false, 'gemini', customApiKey);
+                        if (aiProvider === 'openai' && openAiKey) fetchModels(false, 'openai', openAiKey);
+                    }
+
+                } else {
+                    // Check local storage if no cloud settings
+                    useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
+                    customApiKey = localStorage.getItem('chat_custom_api_key') || "";
+                    aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
+                    aiModel = localStorage.getItem('chat_ai_model') || "";
+                    openAiKey = localStorage.getItem('chat_openai_key') || "";
+
+                    updateQuickModelBar();
+
+                    // Auto-fetch local
+                    if (useByoKey) {
+                        if (aiProvider === 'gemini' && customApiKey) fetchModels(false, 'gemini', customApiKey);
+                        if (aiProvider === 'openai' && openAiKey) fetchModels(false, 'openai', openAiKey);
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading settings", e);
+                // Fallback local
+                useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
+                customApiKey = localStorage.getItem('chat_custom_api_key') || "";
+                aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
+                aiModel = localStorage.getItem('chat_ai_model') || "";
+                openAiKey = localStorage.getItem('chat_openai_key') || "";
+                updateQuickModelBar();
+
+                if (useByoKey && (customApiKey || openAiKey)) {
+                    fetchModels(false);
+                }
+            }
         }
 
         // Load daily message count from Firestore
@@ -338,9 +817,14 @@
         function updateMessageCounter() {
             const counterEl = document.getElementById('message-counter');
             if (counterEl) {
-                const remaining = DAILY_MESSAGE_LIMIT - dailyMessageCount;
-                counterEl.innerText = `${remaining}/${DAILY_MESSAGE_LIMIT} messages left today`;
-                counterEl.style.color = remaining <= 3 ? '#cc0000' : '#666';
+                if (useByoKey) {
+                    counterEl.style.display = 'none';
+                } else {
+                    counterEl.style.display = 'block';
+                    const remaining = DAILY_MESSAGE_LIMIT - dailyMessageCount;
+                    counterEl.innerText = `${remaining}/${DAILY_MESSAGE_LIMIT} messages left today`;
+                    counterEl.style.color = remaining <= 3 ? '#cc0000' : '#666';
+                }
             }
         }
 
@@ -385,6 +869,9 @@
                     if (user) {
                         currentUserId = user.uid;
 
+                        // Load AI Settings
+                        loadSettingsFromFirebase();
+
                         // Timeout fallback in case Firestore query hangs
                         const timeoutId = setTimeout(() => {
                             // Only warn if we haven't already verified via cache
@@ -408,6 +895,9 @@
                                             : new Date(data.proExpiresAt).getTime();
                                     }
 
+                                    // Always load usage for logged in users
+                                    loadDailyMessageCount();
+
                                     // UPDATE CACHE
                                     if (expires > now) {
                                         localStorage.setItem('rekindle_pro_expiry', expires.toString());
@@ -416,20 +906,22 @@
                                     }
 
                                     if (expires > now) {
-                                        // UNLOCKED - overlay stays hidden
+                                        // UNLOCKED - Pro
                                         isPro = true;
                                         if (sendBtn) sendBtn.disabled = false;
                                         // Load daily message count for the user
                                         loadDailyMessageCount();
                                         overlay.style.display = 'none';
                                     } else {
-                                        // LOCKED
+                                        // LOCKED - Expired
                                         isPro = false;
                                         if (sendBtn) sendBtn.disabled = true;
                                         status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
                                         overlay.style.display = 'flex';
                                     }
                                 } else {
+                                    // User exists but no data? Locked.
+                                    isPro = false;
                                     status.innerText = "Subscription required.";
                                     overlay.style.display = 'flex';
                                     if (sendBtn) sendBtn.disabled = true;
@@ -496,8 +988,8 @@
 
             if (!text) return;
 
-            // Check daily message limit
-            if (dailyMessageCount >= DAILY_MESSAGE_LIMIT) {
+            // Check daily message limit (Skip if Custom Key)
+            if (!useByoKey && dailyMessageCount >= DAILY_MESSAGE_LIMIT) {
                 addMessage("You've reached your daily limit of " + DAILY_MESSAGE_LIMIT + " messages. Please try again tomorrow.", 'ai');
                 return;
             }
@@ -517,10 +1009,22 @@
 
             // 3. API Call via Proxy
             try {
+                const payload = { prompt: text };
+
+                if (useByoKey) {
+                    payload.provider = aiProvider; // 'gemini' or 'openai'
+                    payload.model = aiModel;
+                    if (aiProvider === 'openai') {
+                        payload.apiKey = openAiKey;
+                    } else {
+                        payload.apiKey = customApiKey;
+                    }
+                }
+
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -533,8 +1037,10 @@
                     addMessage("Error: " + (data.error.message || "Unknown worker error"), 'ai');
                 } else if (data.text) {
                     addMessage(data.text, 'ai');
-                    // Increment message count only on successful response
-                    await incrementMessageCount();
+                    // Increment message count only if NOT using BYO Key
+                    if (!useByoKey) {
+                        await incrementMessageCount();
+                    }
                 } else {
                     addMessage("Error: Empty response from Oracle.", 'ai');
                 }
