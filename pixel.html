@@ -826,18 +826,71 @@
             }
         };
 
+        function canUserSend(chatHistory, currentUserId) {
+            // 1. CONFIGURATION
+            const MAX_SCORE = 3.0;      // If user's score > 3, block them.
+            const DECAY_RATE = 0.05;    // How much 'less' an older message counts.
+            const SCAN_DEPTH = 50;      // Look at up to 50 messages.
+
+            let score = 0;
+
+            // 2. SAFETY CHECK (If chat is empty, let them send)
+            if (!chatHistory || chatHistory.length === 0) return true;
+
+            // 3. CALCULATE SCORE
+            // Assumes chatHistory[0] is the MOST RECENT message
+            const limit = Math.min(chatHistory.length, SCAN_DEPTH);
+
+            for (let i = 0; i < limit; i++) {
+                // Only count messages from this specific user
+                if (chatHistory[i].userId === currentUserId) {
+
+                    // Calculate weight: 1.0, 0.95, 0.90, etc.
+                    let weight = 1.0 - (i * DECAY_RATE);
+
+                    // If weight drops to 0 or below, we stop counting
+                    if (weight <= 0) break;
+
+                    score += weight;
+                }
+            }
+
+            console.log(`User Score: ${score.toFixed(2)} / ${MAX_SCORE}`);
+
+            // 4. VERDICT
+            return score < MAX_SCORE;
+        }
+
         async function postToPixelChat() {
             if (!currentUser) return showModal("You must be logged in to post.");
 
             // Get data URL from the pixel canvas only (no grid)
             const dataUrl = canvas.toDataURL('image/png');
+            const currentUsername = currentUser.email.split('@')[0];
 
             try {
                 // Use RTDB for 'general' chat messages (where artwork goes)
                 const messagesRef = rtdb.ref('kindlechat/messages');
 
+                // MODERATION CHECK
+                const snapshot = await messagesRef.orderByChild('timestamp').limitToLast(50).once('value');
+                const history = [];
+                snapshot.forEach(child => {
+                    const val = child.val();
+                    if (val.user) {
+                        history.push({ userId: val.user });
+                    }
+                });
+                history.reverse(); // Newest first
+
+                if (!canUserSend(history, currentUsername)) {
+                    closeModal('post-confirm-modal');
+                    showModal('To ensure a good experience for everyone, please slow down. You\'ve been posting a lot recently.', false);
+                    return;
+                }
+
                 await messagesRef.push({
-                    user: currentUser.email.split('@')[0],
+                    user: currentUsername,
                     text: 'Shared a pixel art!',
                     pixel_art: dataUrl,
                     is_pixel_art: true,

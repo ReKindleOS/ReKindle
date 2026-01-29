@@ -1046,8 +1046,9 @@
                         </svg>
                     </button>
 
-                    <button id="flipbook-btn" class="sys-btn" onclick="window.location.href='flipbook?source=kindlechat'"
-                        style="padding: 0 5px;" title="Flipbook">
+                    <button id="flipbook-btn" class="sys-btn"
+                        onclick="window.location.href='flipbook?source=kindlechat'" style="padding: 0 5px;"
+                        title="Flipbook">
                         <svg width="20" height="20" viewBox="0 0 32 32">
                             <rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2" />
                             <rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2" />
@@ -1058,8 +1059,8 @@
                         </svg>
                     </button>
 
-                    <button class="sys-btn" onclick="toggleAsciiPicker()"
-                        style="font-size:1.2rem; padding: 0 10px;" title="ASCII Art">☺</button>
+                    <button class="sys-btn" onclick="toggleAsciiPicker()" style="font-size:1.2rem; padding: 0 10px;"
+                        title="ASCII Art">☺</button>
 
                     <textarea id="msg-input" placeholder="Connecting..." rows="3" disabled></textarea>
                     <button class="sys-btn" id="send-btn" onclick="sendMessage()" style="height: 100%; opacity: 0.5;"
@@ -1735,6 +1736,11 @@
             if (pixelBtn) {
                 pixelBtn.style.display = (id === 'general') ? 'flex' : 'none';
             }
+            // Update Flipbook Button Visibility (Only show in 'general')
+            var flipbookBtn = document.getElementById('flipbook-btn');
+            if (flipbookBtn) {
+                flipbookBtn.style.display = (id === 'general') ? 'flex' : 'none';
+            }
 
             loadMessages();
             updateSidebar(); // Refresh highlighting
@@ -2388,10 +2394,44 @@
                 history.appendChild(div);
             }
 
-            // Autoplay Flipbook
             if (msg.is_flipnote && msg.flipnote_data) {
                 setTimeout(function () { playFlipnote(msgId); }, 200);
             }
+        }
+
+        function canUserSend(chatHistory, currentUserId) {
+            // 1. CONFIGURATION
+            const MAX_SCORE = 3.0;      // If user's score > 3, block them.
+            const DECAY_RATE = 0.05;    // How much 'less' an older message counts.
+            const SCAN_DEPTH = 50;      // Look at up to 50 messages.
+
+            let score = 0;
+
+            // 2. SAFETY CHECK (If chat is empty, let them send)
+            if (!chatHistory || chatHistory.length === 0) return true;
+
+            // 3. CALCULATE SCORE
+            // Assumes chatHistory[0] is the MOST RECENT message
+            const limit = Math.min(chatHistory.length, SCAN_DEPTH);
+
+            for (let i = 0; i < limit; i++) {
+                // Only count messages from this specific user
+                if (chatHistory[i].userId === currentUserId) {
+
+                    // Calculate weight: 1.0, 0.95, 0.90, etc.
+                    let weight = 1.0 - (i * DECAY_RATE);
+
+                    // If weight drops to 0 or below, we stop counting
+                    if (weight <= 0) break;
+
+                    score += weight;
+                }
+            }
+
+            console.log(`User Score: ${score.toFixed(2)} / ${MAX_SCORE}`);
+
+            // 4. VERDICT
+            return score < MAX_SCORE;
         }
 
         function sendMessage() {
@@ -2403,14 +2443,11 @@
 
             // SPAM PROTECTION: Check if user is dominating the general channel
             if (currentRoomId === 'general') {
-                var userMsgCount = 0;
-                for (var i = 0; i < recentGeneralMsgUsers.length; i++) {
-                    if (recentGeneralMsgUsers[i] === currentUsername) {
-                        userMsgCount++;
-                    }
-                }
-                if (recentGeneralMsgUsers.length >= GENERAL_MSG_WINDOW && userMsgCount >= GENERAL_MAX_USER_MSGS) {
-                    showModal('You\'ve sent most of the recent messages. Please wait for others to participate before posting again.', false);
+                // Construct history for algorithm (Newest is index 0)
+                var historyForAlgo = recentGeneralMsgUsers.slice().reverse().map(function (u) { return { userId: u }; });
+
+                if (!canUserSend(historyForAlgo, currentUsername)) {
+                    showModal('To ensure a good experience for everyone, please slow down. You\'ve been posting a lot recently.', false);
                     return;
                 }
             }
