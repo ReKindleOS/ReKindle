@@ -622,6 +622,49 @@
                     <option value="metric">Metric</option>
                     <option value="imperial">Imperial</option>
                 </select>
+                </select>
+            </div>
+
+            <h2>AI Assistant <span class="beta-badge"
+                    style="background:black; color:white; border:none; padding:2px 4px;">+</span></h2>
+
+            <div id="ai-settings-group" style="opacity:0.5; pointer-events:none;">
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <strong>Use Custom AI Key</strong>
+                        <div class="setting-desc">Use your own API Key in Chat.</div>
+                    </div>
+                    <input type="checkbox" id="toggle-byo-key" class="toggle-switch" onchange="saveAiSettings()">
+                </div>
+
+                <div id="ai-provider-settings"
+                    style="display:none; background:#eee; padding:10px; border-bottom:1px solid #ddd; margin-bottom:10px;">
+                    <div class="setting-row" style="border:none; padding:5px 0;">
+                        <strong style="font-size:0.9rem;">Provider</strong>
+                        <select id="ai-provider-select" onchange="updateAiProviderUI()"
+                            style="font-size:0.8rem; padding:2px;">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="openai">OpenAI</option>
+                        </select>
+                    </div>
+
+                    <!-- GEMINI KEY -->
+                    <div id="gemini-key-section">
+                        <span class="dav-label">Gemini API Key</span>
+                        <input type="password" id="ai-api-key" class="dav-input" placeholder="AIMz..."
+                            onchange="saveAiSettings()">
+                    </div>
+
+                    <!-- OPENAI KEY -->
+                    <div id="openai-key-section" style="display:none;">
+                        <span class="dav-label">OpenAI API Key</span>
+                        <input type="password" id="openai-api-key" class="dav-input" placeholder="sk-..."
+                            onchange="saveAiSettings()">
+                    </div>
+
+                    <button class="save-dav-btn" style="margin-top:10px; width:100%;" onclick="saveAiSettings()">Save
+                        Settings</button>
+                </div>
             </div>
 
             <h2>Integrations</h2>
@@ -731,38 +774,38 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         let currentUser = null;
         let unsubscribeProListener = null;
@@ -810,6 +853,13 @@ if (db.settings) {
                     document.getElementById('pro-upgrade-banner').style.display = 'none';
                     document.getElementById('pro-status-banner').style.display = 'block';
 
+                    // Enable AI Settings
+                    const aiGroup = document.getElementById('ai-settings-group');
+                    if (aiGroup) {
+                        aiGroup.style.opacity = '1';
+                        aiGroup.style.pointerEvents = 'auto';
+                    }
+
                     if (subType === 'lifetime') {
                         document.getElementById('pro-expiry-date').innerText = "Lifetime Membership";
                     } else {
@@ -828,6 +878,15 @@ if (db.settings) {
         function showUpgradeBanner() {
             document.getElementById('pro-upgrade-banner').style.display = 'block';
             document.getElementById('pro-status-banner').style.display = 'none';
+
+            // Disable AI Settings
+            const aiGroup = document.getElementById('ai-settings-group');
+            if (aiGroup) {
+                aiGroup.style.opacity = '0.5';
+                aiGroup.style.pointerEvents = 'none';
+                // Optionally uncheck if previously checked, but better to keep state and just disable
+                // document.getElementById('toggle-byo-key').checked = false;
+            }
         }
 
         // --- PRESETS ---
@@ -1031,6 +1090,7 @@ if (db.settings) {
                     document.getElementById('auth-status').innerText = "Guest Mode";
                 }
             });
+            loadAiSettings(); // Initialize AI settings UI
         };
 
         function prevPreset() {
@@ -1242,19 +1302,78 @@ if (db.settings) {
             if (el) el.style.display = show ? 'block' : 'none';
         }
 
-        function saveDavSetting(service) {
-            const id = service === 'calendar' ? 'caldav-url' : 'carddav-url';
-            const key = service === 'calendar' ? 'rekindle_caldav_url' : 'rekindle_carddav_url';
-            const url = document.getElementById(id).value.trim();
-
-            localStorage.setItem(key, url);
+        function saveDavSetting(type) {
+            const urlId = type === 'calendar' ? 'caldav-url' : 'carddav-url';
+            const url = document.getElementById(urlId).value.trim();
+            localStorage.setItem('rekindle_' + type + '_url', url);
 
             if (currentUser) {
                 const update = {};
-                update[service === 'calendar' ? 'caldav_url' : 'carddav_url'] = url;
+                update[type === 'calendar' ? 'caldav_url' : 'carddav_url'] = url;
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set(update, { merge: true });
             }
             showModal("Success", "URL saved.");
+        }
+
+        // --- AI SETTINGS ---
+
+        function loadAiSettings() {
+            const useByo = localStorage.getItem('chat_use_byo_key') === 'true';
+            const key = localStorage.getItem('chat_custom_api_key') || '';
+            const provider = localStorage.getItem('chat_ai_provider') || 'gemini';
+            const openaiKey = localStorage.getItem('chat_openai_key') || '';
+
+            document.getElementById('toggle-byo-key').checked = useByo;
+            document.getElementById('ai-provider-settings').style.display = useByo ? 'block' : 'none';
+
+            document.getElementById('ai-provider-select').value = provider;
+
+            updateAiProviderUI();
+
+            document.getElementById('ai-api-key').value = key;
+            document.getElementById('openai-api-key').value = openaiKey;
+        }
+
+        function updateAiProviderUI() {
+            const provider = document.getElementById('ai-provider-select').value;
+
+            // Show/Hide sections based on provider
+            if (provider === 'openai') {
+                document.getElementById('gemini-key-section').style.display = 'none';
+                document.getElementById('openai-key-section').style.display = 'block';
+            } else {
+                document.getElementById('gemini-key-section').style.display = 'block';
+                document.getElementById('openai-key-section').style.display = 'none';
+            }
+
+            saveAiSettings(); // Save changes triggered by provider switch
+        }
+
+        function saveAiSettings() {
+            const useByo = document.getElementById('toggle-byo-key').checked;
+            const provider = document.getElementById('ai-provider-select').value;
+            const key = document.getElementById('ai-api-key').value.trim();
+            const openaiKey = document.getElementById('openai-api-key').value.trim();
+
+            localStorage.setItem('chat_use_byo_key', useByo);
+            localStorage.setItem('chat_ai_provider', provider);
+            localStorage.setItem('chat_custom_api_key', key);
+            localStorage.setItem('chat_openai_key', openaiKey);
+
+            // Update UI immediately (visibility of inputs)
+            document.getElementById('ai-provider-settings').style.display = useByo ? 'block' : 'none';
+
+            // Sync to Firebase
+            if (currentUser) {
+                // Note: Model is controlled in chat app only now
+                db.collection('users').doc(currentUser.uid).collection('privateSettings').doc('ai').set({
+                    apiKey: key,
+                    openaiKey: openaiKey,
+                    provider: provider,
+                    useByoKey: useByo,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(console.error);
+            }
         }
 
         function showModal(title, msg) {
@@ -1471,6 +1590,19 @@ if (db.settings) {
                         localStorage.setItem('rekindle_censor_profanity', data.censorProfanity);
                         document.getElementById('toggle-profanity').checked = data.censorProfanity;
                     }
+                }
+            });
+
+            // Sync AI Settings from Cloud
+            db.collection('users').doc(currentUser.uid).collection('privateSettings').doc('ai').get().then(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    localStorage.setItem('chat_use_byo_key', data.useByoKey);
+                    if (data.apiKey) localStorage.setItem('chat_custom_api_key', data.apiKey);
+                    if (data.provider) localStorage.setItem('chat_ai_provider', data.provider);
+                    if (data.model) localStorage.setItem('chat_ai_model', data.model);
+                    if (data.openaiKey) localStorage.setItem('chat_openai_key', data.openaiKey);
+                    loadAiSettings(); // Refresh UI
                 }
             });
 
