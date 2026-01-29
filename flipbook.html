@@ -822,6 +822,12 @@
 
         // --- DRAWING / EDITOR LOGIC ---
         function createNew() {
+            if (!isPro) {
+                document.getElementById('paywall-overlay').style.display = 'flex';
+                document.getElementById('paywall-status').innerText = "Pro subscription required to create animations.";
+                return;
+            }
+            if (!confirm('Start new animation? Unsaved changes will be lost.')) return;
             currentAnimationId = null;
             frames = [];
             currentFrameIndex = 0;
@@ -860,6 +866,11 @@
         }
 
         async function openAnimation(id) {
+            if (!isPro) {
+                document.getElementById('paywall-overlay').style.display = 'flex';
+                document.getElementById('paywall-status').innerText = "Pro subscription required to open animations.";
+                return;
+            }
             const item = manifest.find(m => m.id === id);
             if (!item) return;
             currentAnimationId = id;
@@ -1432,12 +1443,24 @@
             const overlay = document.getElementById('paywall-overlay');
             const status = document.getElementById('paywall-status');
 
+            // 1. CACHE CHECK (Instant)
+            try {
+                const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                    isPro = true;
+                    if (overlay) overlay.style.display = 'none';
+                    // We don't return early here because we might want to refresh the cache in background
+                    // but we ensure UI is unlocked.
+                }
+            } catch (e) { }
+
             if (user) {
                 // Timeout fallback
                 const timeoutId = setTimeout(() => {
                     console.warn("Subscription check timed out");
                     status.innerText = "Verification timed out. Please refresh.";
-                    overlay.style.display = 'flex';
+                    // If not already pro by cache, show overlay
+                    if (!isPro) overlay.style.display = 'flex';
                 }, 10000);
 
                 db.collection('users').doc(user.uid).get()
@@ -1453,15 +1476,28 @@
                                     : new Date(data.proExpiresAt).getTime();
                             }
 
+                            // UPDATE CACHE
                             if (expires > now) {
-                                // UNLOCKED - overlay stays hidden
+                                localStorage.setItem('rekindle_pro_expiry', expires.toString());
                             } else {
-                                // LOCKED
-                                status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
-                                overlay.style.display = 'flex';
+                                localStorage.removeItem('rekindle_pro_expiry');
+                            }
+
+                            if (expires > now) {
+                                isPro = true;
+                                // Update UI if needed
+                            } else {
+                                isPro = false;
                             }
                         } else {
-                            status.innerText = "Subscription required.";
+                            isPro = false;
+                        }
+                        // We don't force overlay here, we let actions trigger it or checks elsewhere
+                        // But if we want to mimic other apps behavior of hiding overlay if pro:
+                        if (isPro) {
+                            if (overlay) overlay.style.display = 'none';
+                        } else {
+                            status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
                             overlay.style.display = 'flex';
                         }
                     })
