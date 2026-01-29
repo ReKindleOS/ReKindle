@@ -431,9 +431,17 @@
 
             <!-- TAB BAR -->
             <div class="tab-bar" id="tab-bar">
-                <div class="tab active" onclick="switchTab('suggestion')">Suggestions</div>
-                <div class="tab" onclick="switchTab('problem')">Problems</div>
-                <div class="tab" onclick="switchTab('done')">Done</div>
+                <div class="tab active" onclick="switchTab('suggestion')">Suggestions <span id="cnt-suggestion"
+                        style="display:none; font-size:0.8em; opacity:0.6;"></span></div>
+                <div class="tab" onclick="switchTab('problem')">Problems <span id="cnt-problem"
+                        style="display:none; font-size:0.8em; opacity:0.6;"></span></div>
+                <div style="flex-grow:1;"></div> <!-- Spacer -->
+                <div class="tab" onclick="switchTab('deferred')">Deferred <span id="cnt-deferred"
+                        style="display:none; font-size:0.8em; opacity:0.6;"></span></div>
+                <div class="tab" onclick="switchTab('done')">Done <span id="cnt-done"
+                        style="display:none; font-size:0.8em; opacity:0.6;"></span></div>
+                <div class="tab" onclick="switchTab('closed')">Closed <span id="cnt-closed"
+                        style="display:none; font-size:0.8em; opacity:0.6;"></span></div>
             </div>
 
             <div id="suggestion-list">
@@ -460,7 +468,9 @@
                         <span id="detail-vote-count">0</span>
                     </button>
 
-                    <div style="margin-top:20px; display:flex; justify-content:center; flex-wrap:wrap; gap:10px;">
+                    <div style="margin-top:20px; display:flex; justify-content:center; flex-wrap:wrap; gap:10px;"
+                        id="admin-controls">
+                        <!-- Dynamic Admin Buttons will go here -->
                         <button id="detail-done-btn" class="vote-btn" onclick="cycleStatus()"
                             style="display:none; background:white; color:black; border:1px solid #ccc;">
                             <span>✓ Status</span>
@@ -612,28 +622,28 @@
         try {
             firebase.initializeApp(firebaseConfig);
             const db = firebase.firestore();
-        // Configure for Safari/Mac compatibility (fixes CORS errors)
+            // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-        if (db.settings) {
+            if (db.settings) {
 
-            try {
+                try {
 
-                db.settings({
+                    db.settings({
 
-                    experimentalForceLongPolling: true,
+                        experimentalForceLongPolling: true,
 
-                    merge: true
+                        merge: true
 
-                });
+                    });
 
-            } catch (e) { console.warn("Settings error:", e); }
+                } catch (e) { console.warn("Settings error:", e); }
 
-        }
+            }
 
 
-        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+            // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
-        // db.enablePersistence({ synchronizeTabs: true }) ...
+            // db.enablePersistence({ synchronizeTabs: true }) ...
             const auth = firebase.auth();
 
             let currentUser = null;
@@ -708,28 +718,28 @@
             }
 
             function renderList() {
+                updateTabCounts();
                 const listEl = document.getElementById('suggestion-list');
                 listEl.innerHTML = '';
 
                 // FILTER
                 const filtered = allSuggestions.filter(function (item) {
-                    // If filter is 'done', show only DONE items (any type)
-                    if (currentFilter === 'done') {
-                        return item.status === 'done';
-                    }
-
-                    // If filter is 'suggestion', show type suggestion AND NOT done
-                    // If filter is 'problem', show type problem AND NOT done
-                    const type = item.type || 'suggestion';
                     const status = item.status || '';
+                    const type = item.type || 'suggestion';
 
-                    if (status === 'done') return false; // Hide done items from main tabs
+                    // 1. Status Tabs
+                    if (currentFilter === 'done') return status === 'done';
+                    if (currentFilter === 'closed') return status === 'closed';
+                    if (currentFilter === 'deferred') return status === 'deferred';
 
-                    if (currentFilter === 'problem') {
-                        return type === 'problem';
-                    }
-                    // default suggestion
-                    return type !== 'problem';
+                    // 2. Main Tabs (Suggestion / Problem)
+                    // Must NOT be in any of the special status states
+                    if (['done', 'closed', 'deferred'].includes(status)) return false;
+
+                    if (currentFilter === 'problem') return type === 'problem';
+
+                    // Default: Suggestion
+                    return type !== 'problem'; // Includes 'suggestion' or undefined
                 }); const sorted = [].concat(filtered);
 
                 // Primary Sort: Status (In Progress first, Done last)
@@ -740,10 +750,11 @@
                     const statusA = a.status || '';
                     const statusB = b.status || '';
 
-                    // Weights: In Progress (2), Open (1), Done (0)
+                    // Weights: In Progress (3), Open (2), Deferred (2), Done/Closed (0)
                     const getWeight = s => {
-                        if (s === 'in_progress') return 2;
-                        if (s === 'done') return 0; // Though done are in separate tab, good to keep logic
+                        if (s === 'in_progress') return 3;
+                        if (s === 'deferred') return 2;
+                        if (s === 'done' || s === 'closed') return 0;
                         return 1;
                     };
 
@@ -787,14 +798,18 @@
                     let badgeClass = isProblem ? 'problem-badge' : 'status-badge';
 
                     let badgeStyle = '';
-                    if (!isProblem && !isDone && !isProgress) {
+                    if (!isProblem && !['done', 'closed', 'deferred', 'in_progress'].includes(data.status)) {
                         badgeStyle = 'background:white; color:black; border:1px solid black;';
                     }
 
                     let statusHtml = '';
-                    if (isDone) {
-                        statusHtml = '<span class="status-badge">DONE</span>';
-                    } else if (isProgress) {
+                    if (data.status === 'done') {
+                        statusHtml = '<span class="status-badge" style="background:green;">DONE</span>';
+                    } else if (data.status === 'closed') {
+                        statusHtml = '<span class="status-badge" style="background:red;">CLOSED</span>';
+                    } else if (data.status === 'deferred') {
+                        statusHtml = '<span class="status-badge" style="background:orange;">DEFERRED</span>';
+                    } else if (data.status === 'in_progress') {
                         statusHtml = '<span class="progress-badge">IN PROGRESS</span>';
                     } else {
                         statusHtml = `<span class="${badgeClass}" style="${badgeStyle}">${badgeText}</span>`;
@@ -854,49 +869,71 @@
             };
 
             window.updateAdminControls = function (data) {
-                // Simple check for "ukiyo" in email
-                // Security is handled by rules, this adds UI convenience
-                const isAdmin = currentUser && currentUser.email && currentUser.email.startsWith('ukiyo');
-                const btnDone = document.getElementById('detail-done-btn');
-                const btnType = document.getElementById('detail-type-btn');
-                const btnCat = document.getElementById('detail-cat-btn');
+                // Specific check for ukiyo@rekindle.ink
+                const isOwner = currentUser && currentUser.email === 'ukiyo@rekindle.ink';
+                const adminDiv = document.getElementById('admin-controls');
 
-                if (isAdmin) {
-                    btnDone.style.display = 'inline-flex';
-                    btnType.style.display = 'inline-flex';
-                    btnCat.style.display = 'inline-flex';
+                // Clear existing
+                adminDiv.innerHTML = '';
+                adminDiv.style.display = 'none';
 
-                    // Done Button logic (Cycle: Open -> In Progress -> Done -> Open)
-                    const status = data.status || '';
-                    const span = btnDone.querySelector('span');
+                if (!isOwner) return;
 
-                    if (status === 'done') {
-                        span.textContent = '✓ Done'; // Next: Open
-                        btnDone.style.background = '#ccc';
-                        btnDone.style.color = 'black';
-                    } else if (status === 'in_progress') {
-                        span.textContent = '➜ In Progress'; // Next: Done
-                        btnDone.style.background = '#007bff';
-                        btnDone.style.color = 'white';
-                    } else {
-                        span.textContent = '☐ Open'; // Next: In Progress
-                        btnDone.style.background = 'white';
-                        btnDone.style.color = 'black';
+                adminDiv.style.display = 'flex';
+
+                // Helpers for buttons
+                const createBtn = (text, onClick, bg = 'white', color = 'black') => {
+                    const b = document.createElement('button');
+                    b.className = 'vote-btn';
+                    b.innerHTML = `<span>${text}</span>`;
+                    b.onclick = onClick;
+                    b.style.background = bg;
+                    b.style.color = color;
+                    if (bg === 'black') b.style.borderColor = 'white'; // Contrast
+                    return b;
+                };
+
+                // TYPE BUTTONS
+                const isProb = data.type === 'problem';
+                adminDiv.appendChild(createBtn(isProb ? 'To Suggestion' : 'To Problem', () => toggleType()));
+
+                // EDIT CAT
+                adminDiv.appendChild(createBtn('Edit Cat', () => openEditCategoryModal()));
+
+                // DIVIDER
+                const divider = document.createElement('div');
+                divider.style.width = '100%';
+                divider.style.height = '1px';
+                divider.style.background = '#ccc';
+                divider.style.margin = '5px 0';
+                adminDiv.appendChild(divider);
+
+                // STATUS BUTTONS
+                // [Suggestion] [Problem] [Done] [Closed] [In Review]
+                // 1. Move to Suggestion/Problem (Use existing toggleType logic but we can make it explicit if needed, for now logic is toggle)
+
+                // 2. Status Setters
+                adminDiv.appendChild(createBtn('Open', () => setAdminStatus(null), '#fff'));
+                adminDiv.appendChild(createBtn('Deferred', () => setAdminStatus('deferred'), 'orange', 'white'));
+                adminDiv.appendChild(createBtn('In Progress', () => setAdminStatus('in_progress'), '#007bff', 'white'));
+                adminDiv.appendChild(createBtn('Done', () => setAdminStatus('done'), 'green', 'white'));
+                adminDiv.appendChild(createBtn('Closed', () => setAdminStatus('closed'), 'red', 'white'));
+            };
+
+            window.setAdminStatus = function (status) {
+                if (!currentSuggestionId) return;
+                const docRef = db.collection('suggestions').doc(currentSuggestionId);
+                docRef.update({ status: status }).then(() => {
+                    updateLocalItem(currentSuggestionId, { status: status });
+                    closeDetailView();
+                    // Optional: Switch to that tab
+                    if (status && ['done', 'closed', 'deferred'].includes(status)) {
+                        switchTab(status);
                     }
-
-                    // Type Button
-                    const currentType = data.type || 'suggestion';
-                    if (currentType === 'problem') {
-                        btnType.querySelector('span').textContent = '⇄ To Suggestion';
-                    } else {
-                        btnType.querySelector('span').textContent = '⇄ To Problem';
-                    }
-
-                } else {
-                    btnDone.style.display = 'none';
-                    btnType.style.display = 'none';
-                    btnCat.style.display = 'none';
-                }
+                }).catch(err => {
+                    console.error(err);
+                    showMessage("Error", "Failed to set status.");
+                });
             };
 
             window.cycleStatus = function () {
@@ -1028,6 +1065,44 @@
                     }
                 }
                 renderList();
+            }
+
+            function updateTabCounts() {
+                let counts = {
+                    suggestion: 0,
+                    problem: 0,
+                    deferred: 0,
+                    done: 0,
+                    closed: 0
+                };
+
+                allSuggestions.forEach(item => {
+                    const status = item.status || '';
+                    const type = item.type || 'suggestion';
+
+                    if (status === 'done') counts.done++;
+                    else if (status === 'closed') counts.closed++;
+                    else if (status === 'deferred') counts.deferred++;
+                    else {
+                        // Open items (could be in_progress or null, but NOT done/closed/deferred)
+                        if (type === 'problem') counts.problem++;
+                        else counts.suggestion++;
+                    }
+                });
+
+                const setCnt = (id, count) => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.textContent = count;
+                        el.style.display = 'inline';
+                    }
+                };
+
+                setCnt('cnt-suggestion', counts.suggestion);
+                setCnt('cnt-problem', counts.problem);
+                setCnt('cnt-deferred', counts.deferred);
+                setCnt('cnt-done', counts.done);
+                setCnt('cnt-closed', counts.closed);
             }
 
             window.closeDetailView = function () {
