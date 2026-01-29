@@ -122,7 +122,7 @@ function isAsciiEmoji(text) {
     return false;
 }
 
-async function translateWithMyMemory(text, userIp) {
+async function translateWithGoogle(text) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
         return { text: null, error: "Skipped: Emoji or Empty" };
     }
@@ -134,95 +134,46 @@ async function translateWithMyMemory(text, userIp) {
         return `__MENTION_${mentions.length - 1}__`;
     });
 
-    // Parse emails once
-    let emails = [];
-    if (typeof MYMEMORY_EMAIL !== 'undefined' && MYMEMORY_EMAIL) {
-        emails = MYMEMORY_EMAIL.split(/[;,]/).map(e => e.trim()).filter(e => e);
-    }
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(maskedText)}`;
 
-    let translateData;
-    let finalError = "No attempt made";
-    let emailToUse = null;
+        const response = await fetch(url);
 
-    // Retry logic: 3 attempts (rotating emails if possible)
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            // Reconstruct URL for each attempt to allow email rotation
-            let currentUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(maskedText)}&langpair=AUTODETECT|en`;
-
-            // Add User IP if provided (helps quota management)
-            if (userIp) {
-                currentUrl += `&ip=${encodeURIComponent(userIp)}`;
-            }
-
-            emailToUse = null;
-            if (emails.length > 0) {
-                // Pick random email and REMOVE it so we don't try it again
-                const randomIndex = Math.floor(Math.random() * emails.length);
-                emailToUse = emails[randomIndex];
-                emails.splice(randomIndex, 1); // Remove used email
-                currentUrl += `&de=${encodeURIComponent(emailToUse)}`;
-            }
-
-            const translateResp = await fetch(currentUrl);
-
-            if (translateResp.ok) {
-                translateData = await translateResp.json();
-                if (translateData && translateData.responseData) break; // Success
-            }
-
-            // If we get here, response wasn't OK or data key was missing
-            let errorDetails = `Status ${translateResp.status}`;
-            try {
-                const errJson = await translateResp.json();
-                if (errJson && errJson.responseDetails) {
-                    errorDetails += ` - ${errJson.responseDetails}`;
-                }
-            } catch (e) { /* ignore */ }
-
-            finalError = errorDetails;
-            if (attempt < 3) {
-                // Backoff before next attempt
-                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-                continue;
-            }
-
-            // Final attempt failed
-            throw new Error(finalError);
-
-        } catch (err) {
-            if (attempt === 3) {
-                console.error(`Translation attempt ${attempt} failed:`, err);
-                return { text: null, error: `Failed: ${err.message} (Email: ${emailToUse || 'None'}, Remaining Pool: ${emails.length})` };
-            }
-            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        if (!response.ok) {
+            throw new Error(`Google API Error: ${response.status} ${await response.text()}`);
         }
-    }
 
-    if (translateData && translateData.responseData && translateData.responseData.translatedText) {
-        let candidate = translateData.responseData.translatedText;
+        const data = await response.json();
+
+        // Data structure: [[["Translated","Original",...], ...], null, "detected_lang"]
+        if (!data || !data[0]) {
+            throw new Error("Invalid response format from Google");
+        }
+
+        let translatedText = data[0].map(chunk => chunk[0]).join('');
+        const detectedLang = data[2]; // e.g. "fr"
 
         // 2. Restore mentions
         mentions.forEach((mention, index) => {
-            candidate = candidate.replace(`__MENTION_${index}__`, mention);
+            translatedText = translatedText.replace(`__MENTION_${index}__`, mention);
         });
 
         // 3. Validation
-        // Compare masked candidate vs masked original to avoid false positives if only mentions changed? 
-        // Actually, we just want to ensure the CONTENT changed. 
-        // But if we compare lowercase trim of full text, it should work.
-
-        if (candidate &&
-            candidate.toLowerCase().trim() !== text.toLowerCase().trim() &&
-            !candidate.toUpperCase().includes("PLEASE SELECT TWO DISTINCT LANGUAGES") &&
-            !candidate.toUpperCase().includes("MYMEMORY WARNING")) {
-            return { text: candidate, error: null };
+        // Don't translate if detected language is already English (or close enough)
+        if (detectedLang === 'en') {
+            return { text: null, error: "Skipped: Detected language is English" };
         }
 
-        // If we're here, it was suppressed
-        return { text: null, error: "Suppressed: Identical or excluded" };
+        if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
+            return { text: translatedText, error: null };
+        }
+
+        return { text: null, error: "Suppressed: Identical translation" };
+
+    } catch (err) {
+        console.error("Translation failed:", err);
+        return { text: null, error: `Failed: ${err.message}` };
     }
-    return { text: null, error: finalError };
 }
 
 
@@ -274,7 +225,7 @@ async function handleRequest(request) {
 
         if (reprocess && msgId) {
             // REPROCESS LOGIC
-            let { text: translatedText, error: translationError } = await translateWithMyMemory(text, clientIp);
+            let { text: translatedText, error: translationError } = await translateWithGoogle(text);
 
             // Update specific message
             let updateUrl = FIREBASE_URL.replace(".json", `/${msgId}.json`);
@@ -308,7 +259,7 @@ async function handleRequest(request) {
         }
 
         // SKIP EMOJIS AND TRANSLATE
-        let { text: translatedText, error: translationError } = await translateWithMyMemory(text, clientIp);
+        let { text: translatedText, error: translationError } = await translateWithGoogle(text);
 
         const dbPayload = {
             user: user,
