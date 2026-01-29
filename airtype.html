@@ -398,6 +398,10 @@
             z-index: 999;
             align-items: center;
             justify-content: center;
+
+            /* Fix for Title Bar Visibility */
+            top: 35px;
+            height: calc(100% - 35px);
         }
 
         .modal-box {
@@ -551,24 +555,21 @@
             <div id="paper"></div>
         </div>
 
-    </div>
+        <!-- GUEST OVERLAY HTML -->
+        <div id="guest-overlay">
+            <h2>You need to be logged in to use AirType</h2>
+            <br>
+            <button class="sys-btn" onclick="window.location.href='index?login=true'">Log In</button>
+        </div>
 
-    <!-- GUEST OVERLAY HTML -->
-    <div id="guest-overlay">
-        <h2>You need to be logged in to use AirType</h2>
-        <br>
-        <button class="sys-btn" onclick="window.location.href='index?login=true'">Log In</button>
-    </div>
-
-    </div>
-
-    <!-- GENERIC MODAL -->
-    <div id="modal-overlay">
-        <div class="modal-box" id="modal-content">
-            <h3 id="modal-title">Alert</h3>
-            <p id="modal-text">Message</p>
-            <div class="modal-buttons" id="modal-actions">
-                <button class="sys-btn" onclick="closeModal()">OK</button>
+        <!-- GENERIC MODAL -->
+        <div id="modal-overlay">
+            <div class="modal-box" id="modal-content">
+                <h3 id="modal-title">Alert</h3>
+                <p id="modal-text">Message</p>
+                <div class="modal-buttons" id="modal-actions">
+                    <button class="sys-btn" onclick="closeModal()">OK</button>
+                </div>
             </div>
         </div>
     </div>
@@ -619,8 +620,24 @@
             const overlay = document.getElementById('paywall-overlay');
             const status = document.getElementById('paywall-status');
 
-            // OPTIMISTIC: Keep overlay hidden by default for pro users
-            // Only show if verification fails
+            // Buttons to update
+            const btnDisplay = document.getElementById('btn-startup-display');
+            const btnInput = document.getElementById('btn-startup-input');
+
+            function updateButtons(pro) {
+                if (btnDisplay) btnDisplay.disabled = !pro;
+                if (btnInput) btnInput.disabled = !pro;
+            }
+
+            // 1. CACHE CHECK (Instant)
+            try {
+                const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                    isPro = true;
+                    updateButtons(true);
+                    overlay.style.display = 'none';
+                }
+            } catch (e) { }
 
             if (typeof firebase === 'undefined') {
                 status.innerText = "Error: Firebase not loaded.";
@@ -629,17 +646,19 @@
             }
 
             if (!currentUser) {
-                status.innerText = "Please log in.";
-                overlay.style.display = 'flex';
+                // Not logged in is handled by guest overlay usually
+                overlay.style.display = 'none';
                 return;
             }
 
-            // Timeout fallback in case Firestore query hangs
+            // Timeout fallback
             const timeoutId = setTimeout(() => {
-                console.warn("Subscription check timed out");
-                status.innerText = "Verification timed out. Please refresh.";
-                overlay.style.display = 'flex';
-            }, 10000); // 10 second timeout
+                if (!isPro) {
+                    console.warn("Subscription check timed out");
+                    // Don't block, just leave disabled
+                    overlay.style.display = 'none';
+                }
+            }, 10000);
 
             db.collection('users').doc(currentUser.uid).get()
                 .then(doc => {
@@ -654,24 +673,32 @@
                                 : new Date(data.proExpiresAt).getTime();
                         }
 
+                        // UPDATE CACHE
                         if (expires > now) {
-                            // UNLOCKED - overlay stays hidden
-                            isPro = true;
+                            localStorage.setItem('rekindle_pro_expiry', expires.toString());
                         } else {
-                            // LOCKED
-                            status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
-                            overlay.style.display = 'flex';
+                            localStorage.removeItem('rekindle_pro_expiry');
+                        }
+
+                        if (expires > now) {
+                            isPro = true;
+                            updateButtons(true);
+                        } else {
+                            isPro = false;
+                            updateButtons(false);
                         }
                     } else {
-                        status.innerText = "Subscription required.";
-                        overlay.style.display = 'flex';
+                        isPro = false;
+                        updateButtons(false);
                     }
+                    // Hide overlay regardless, access controlled by buttons
+                    overlay.style.display = 'none';
                 })
                 .catch(e => {
                     clearTimeout(timeoutId);
                     console.error("Error checking sub", e);
-                    status.innerText = "Error verifying. Try again.";
-                    overlay.style.display = 'flex';
+                    // Hide overlay, features disabled
+                    overlay.style.display = 'none';
                 });
         }
 
@@ -762,8 +789,10 @@
             }
 
             // Map internal values: Display -> 'Tablet', Input Device -> 'Phone'
-            const btnDisplay = `<button class="sys-btn" onclick="onStartupConfirmed('Tablet')">Display</button>`;
-            const btnInput = `<button class="sys-btn" onclick="onStartupConfirmed('Phone')">Input Device</button>`;
+            // Added IDs and initial disabled state rooted in isPro logic
+            const disabledAttr = isPro ? '' : 'disabled';
+            const btnDisplay = `<button id="btn-startup-display" class="sys-btn" onclick="onStartupConfirmed('Tablet')" ${disabledAttr}>Display</button>`;
+            const btnInput = `<button id="btn-startup-input" class="sys-btn" onclick="onStartupConfirmed('Phone')" ${disabledAttr}>Input Device</button>`;
 
             showModal("Device Setup", `Will you use this device as a display or as an input device?`, `${btnDisplay} ${btnInput}`);
         }

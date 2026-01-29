@@ -748,7 +748,7 @@
                     <p style="text-align:center; max-width: 300px; margin-bottom: 20px;">
                         Connect to view your files securely.
                     </p>
-                    <button class="sys-btn" onclick="login()">Connect to Dropbox</button>
+                    <button id="btn-login" class="sys-btn" onclick="login()" disabled>Connect to Dropbox</button>
                 </div>
 
                 <!-- Toolbar (hidden until logged in) -->
@@ -907,20 +907,50 @@
             waitForFirebase(checkSubscription);
         };
 
+        let currentUserId = null; // Added for the new checkSubscription logic
+
         function checkSubscription() {
             const overlay = document.getElementById('paywall-overlay');
             const status = document.getElementById('paywall-status');
+            const btnLogin = document.getElementById('btn-login');
 
-            // OPTIMISTIC: Keep overlay hidden by default for pro users
+            // 1. CACHE CHECK (Instant)
+            try {
+                const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                    isPro = true;
+                    if (btnLogin) btnLogin.disabled = false;
+                    overlay.style.display = 'none';
+                    initDropboxApp(); // Initialize app if pro via cache
+                    return; // Exit early if pro via cache
+                }
+            } catch (e) { }
 
             if (typeof firebase !== 'undefined') {
+                const db = firebase.firestore();
+
+                if (db.settings) {
+                    try {
+                        db.settings({
+                            experimentalForceLongPolling: true,
+                            merge: true
+                        });
+                    } catch (e) { console.warn("Settings error:", e); }
+                }
+
+                const auth = firebase.auth();
+
                 auth.onAuthStateChanged(user => {
                     if (user) {
+                        currentUserId = user.uid;
+
                         // Timeout fallback in case Firestore query hangs
                         const timeoutId = setTimeout(() => {
-                            console.warn("Subscription check timed out");
-                            status.innerText = "Verification timed out. Please refresh.";
-                            overlay.style.display = 'flex';
+                            if (!isPro) {
+                                console.warn("Subscription check timed out");
+                                // Don't block, just keep disabled if not verified
+                                overlay.style.display = 'none';
+                            }
                         }, 10000);
 
                         db.collection('users').doc(user.uid).get()
