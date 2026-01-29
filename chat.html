@@ -248,7 +248,7 @@
 
         <div class="input-area">
             <textarea id="user-input" placeholder="Ask a question..."></textarea>
-            <button id="send-btn" class="sys-btn" onclick="sendMessage()">Send</button>
+            <button id="send-btn" class="sys-btn" onclick="sendMessage()" disabled>Send</button>
         </div>
         <div id="message-counter"
             style="text-align:center; font-size:0.8rem; padding:5px; background:#eee; border-top:1px solid #ccc; color:#666;">
@@ -347,9 +347,22 @@
         function checkSubscription() {
             const overlay = document.getElementById('paywall-overlay');
             const status = document.getElementById('paywall-status');
+            const sendBtn = document.getElementById('send-btn');
 
-            // OPTIMISTIC: Keep overlay hidden by default for pro users
-            // Only show if verification fails
+            // 1. CACHE CHECK (Instant)
+            try {
+                const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                    isPro = true;
+                    if (sendBtn) sendBtn.disabled = false;
+                    // Optimistically hide overlay / unlock features
+                    overlay.style.display = 'none';
+                } else {
+                    // If no cache or expired, maybe show overlay? 
+                    // For now, we wait for Firebase to confirm unless we want to be strict.
+                    // But user asked for "instant verification".
+                }
+            } catch (e) { console.warn("Cache error", e); }
 
             if (typeof firebase !== 'undefined') {
                 if (!firebase.apps.length) {
@@ -374,9 +387,12 @@
 
                         // Timeout fallback in case Firestore query hangs
                         const timeoutId = setTimeout(() => {
-                            console.warn("Subscription check timed out");
-                            status.innerText = "Verification timed out. Please refresh.";
-                            overlay.style.display = 'flex';
+                            // Only warn if we haven't already verified via cache
+                            if (!isPro) {
+                                console.warn("Subscription check timed out");
+                                status.innerText = "Verification timed out. Please refresh.";
+                                overlay.style.display = 'flex';
+                            }
                         }, 10000);
 
                         db.collection('users').doc(user.uid).get()
@@ -392,31 +408,47 @@
                                             : new Date(data.proExpiresAt).getTime();
                                     }
 
+                                    // UPDATE CACHE
+                                    if (expires > now) {
+                                        localStorage.setItem('rekindle_pro_expiry', expires.toString());
+                                    } else {
+                                        localStorage.removeItem('rekindle_pro_expiry');
+                                    }
+
                                     if (expires > now) {
                                         // UNLOCKED - overlay stays hidden
                                         isPro = true;
+                                        if (sendBtn) sendBtn.disabled = false;
                                         // Load daily message count for the user
                                         loadDailyMessageCount();
+                                        overlay.style.display = 'none';
                                     } else {
                                         // LOCKED
+                                        isPro = false;
+                                        if (sendBtn) sendBtn.disabled = true;
                                         status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
                                         overlay.style.display = 'flex';
                                     }
                                 } else {
                                     status.innerText = "Subscription required.";
                                     overlay.style.display = 'flex';
+                                    if (sendBtn) sendBtn.disabled = true;
                                 }
                             })
                             .catch(e => {
                                 clearTimeout(timeoutId);
-                                console.error("Error checking sub", e);
-                                status.innerText = "Error verifying. Try again.";
-                                overlay.style.display = 'flex';
+                                if (!isPro) {
+                                    console.error("Error checking sub", e);
+                                    status.innerText = "Error verifying. Try again.";
+                                    overlay.style.display = 'flex';
+                                }
                             });
                     } else {
                         // Not logged in
                         status.innerText = "Please log in.";
                         overlay.style.display = 'flex';
+                        if (sendBtn) sendBtn.disabled = true;
+                        localStorage.removeItem('rekindle_pro_expiry');
                     }
                 });
             } else {
