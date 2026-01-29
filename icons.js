@@ -417,7 +417,7 @@ const APPS = [
         name: 'Texas Hold\'em',
         cat: 'games',
         beta: true,
-        icon: '<rect x="14" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(15 21 17)"/><text x="17" y="21" font-size="10" font-weight="bold" transform="rotate(15 21 17)" fill="black">K♦</text><rect x="4" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-15 11 17)"/><text x="7" y="21" font-size="10" font-weight="bold" transform="rotate(-15 11 17)" fill="black">A♦</text>'
+        icon: '<rect x="14" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(15 21 17)"/><text x="17" y="21" font-size="10" font-weight="bold" transform="rotate(15 21 17)" fill="black">K♦&#xFE0E;</text><rect x="4" y="8" width="14" height="18" rx="2" fill="white" stroke="black" stroke-width="2" transform="rotate(-15 11 17)"/><text x="7" y="21" font-size="10" font-weight="bold" transform="rotate(-15 11 17)" fill="black">A♦&#xFE0E;</text>'
     },
     {
         id: 'checkers',
