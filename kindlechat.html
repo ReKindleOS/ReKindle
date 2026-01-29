@@ -589,6 +589,11 @@
             color: white;
         }
 
+        /* Translated Message Styling */
+        .msg-bubble[data-state="translated"] {
+            font-style: italic;
+        }
+
         /* INPUT AREA */
         .input-area {
             border-top: 2px solid black;
@@ -1100,7 +1105,7 @@
 
             <div style="margin: 15px 0;">
                 <label style="display:flex; align-items:center; cursor:pointer;">
-                    <input type="checkbox" id="setting-show-translations" onchange="saveSettings()"
+                    <input type="checkbox" id="setting-show-translations"
                         style="width:20px; height:20px; margin-right:10px;">
                     <span>Show Translations</span>
                 </label>
@@ -1108,8 +1113,17 @@
                     General chat.</div>
             </div>
 
+            <div id="admin-tools-setting" style="margin: 15px 0; display:none;">
+                <label style="display:flex; align-items:center; cursor:pointer;">
+                    <input type="checkbox" id="setting-show-admin-tools"
+                        style="width:20px; height:20px; margin-right:10px;">
+                    <span>Show Admin Tools</span>
+                </label>
+                <div style="margin-left:34px; font-size:0.8rem; color:#666;">Enable Reprocess and Delete buttons.</div>
+            </div>
+
             <div style="margin-top:20px; display:flex; justify-content:center;">
-                <button class="sys-btn" onclick="closeModal('modal-overlay')">Close</button>
+                <button class="sys-btn" onclick="saveSettings()">Save & Close</button>
             </div>
         </div>
 
@@ -1206,7 +1220,8 @@
 
         // --- SETTINGS ---
         var settings = {
-            showTranslations: true // Default to true (as per "automatically translate" dream)
+            showTranslations: true, // Default to true
+            showAdminTools: false // Default to false
         };
 
         // --- SPAM PROTECTION FOR GENERAL CHANNEL ---
@@ -2129,15 +2144,8 @@
                 nameHtml = isSelf ? '<span>' + crown + 'You</span>' : '<span>' + crown + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
             }
 
-            // ADMIN DELETE BUTTON
+            // ADMIN DELETE BUTTON - REMOVED (Handled in adminControlsHtml below)
             var delBtnHtml = '';
-            // Allow 'ukiyo' to delete everything. 
-            // Also allow anyone to delete their OWN messages if it's RTDB (General) or Firestore? 
-            // Request said "ONLY me to delete...". 
-            // Be safe: currently strict to 'ukiyo'.
-            if (currentUser && currentUsername === 'ukiyo' && currentRoomId === 'general') {
-                delBtnHtml = '<div class="del-btn" onclick="deleteGeneralMessage(\'' + msgId + '\')">✕</div>';
-            }
 
             // TRANSLATE BUTTON (On-Demand)
             // Show for everyone. Simple text button.
@@ -2159,6 +2167,31 @@
                     date = new Date(msg.timestamp);
                 }
                 timeStr = formatZonedTime(date);
+            }
+
+            // ADMIN CONTROLS (Delete + Reprocess)
+            var adminControlsHtml = '';
+            if (currentUser && currentUsername === 'ukiyo') {
+                if (settings.showAdminTools) {
+                    // Escape single quotes in text for the function call
+                    var safeText = msg.text ? msg.text.replace(/'/g, "\\'") : "";
+
+                    // Calculate positioning for Reprocess button (further out than Delete/React)
+                    var posStyle = isSelf ? 'left: -75px; right: auto;' : 'right: -75px; left: auto;';
+
+                    // Reprocess Button
+                    if (currentRoomId === 'general') {
+                        adminControlsHtml += '<div class="del-btn" style="' + posStyle + ' color: blue; border-color: blue;" onclick="reprocessMessage(\'' + msgId + '\', \'' + safeText + '\')" title="Reprocess Translation">Rp</div>';
+                    }
+
+                    // Delete Button (Shifted further left if reprocess is present)
+                    // Actually, let's stack them or put them side by side? 
+                    // To keep it simple, let's use the existing absolute positioning logic but offset them.
+                    // The CSS below defines .del-btn. Let's make a specific class or inline style overrides.
+
+                    // Standard Delete Button
+                    adminControlsHtml += '<div class="del-btn" onclick="deleteGeneralMessage(\'' + msgId + '\')">✕</div>';
+                }
             }
 
             var bubbleContent = '';
@@ -2277,9 +2310,9 @@
 
             div.innerHTML = '<div class="msg-meta">' + nameHtml + '<span>' + timeStr + '</span>' + transBtnHtml + '</div>' +
                 '<div style="display:flex; align-items:center; gap: 5px; min-width: 0;">' +
-                (isSelf ? reactButton + delBtnHtml : '') +
+                (isSelf ? reactButton + adminControlsHtml : '') +
                 bubbleContent +
-                (isSelf ? '' : reactButton + delBtnHtml) +
+                (isSelf ? '' : reactButton + adminControlsHtml) +
                 '</div>';
 
             if (msg.reactions && Object.keys(msg.reactions).length > 0) {
@@ -2374,6 +2407,108 @@
                 }
             } else {
                 sendDMToFirestore(text);
+            }
+        }
+
+        // --- SETTINGS LOGIC ---
+        function openSettingsModal() {
+            var overlay = document.getElementById('modal-overlay');
+            // Reset modal states
+            document.getElementById('create-modal-content').style.display = 'none';
+            document.getElementById('delete-modal-content').style.display = 'none';
+            document.getElementById('generic-modal-content').style.display = 'none';
+
+            var settingsModal = document.getElementById('settings-modal-content');
+            settingsModal.style.display = 'block';
+
+            // Populate Checkboxes
+            document.getElementById('setting-show-translations').checked = settings.showTranslations;
+
+            // Toggle Admin Tools Visibility
+            var adminToolsDiv = document.getElementById('admin-tools-setting');
+            if (currentUsername === 'ukiyo') {
+                adminToolsDiv.style.display = 'block';
+                document.getElementById('setting-show-admin-tools').checked = settings.showAdminTools;
+            } else {
+                adminToolsDiv.style.display = 'none';
+            }
+
+            overlay.style.display = 'flex';
+        }
+
+        function saveSettings() {
+            settings.showTranslations = document.getElementById('setting-show-translations').checked;
+
+            if (currentUsername === 'ukiyo') {
+                settings.showAdminTools = document.getElementById('setting-show-admin-tools').checked;
+            }
+
+            localStorage.setItem('kindlechat_settings', JSON.stringify(settings));
+
+            // Reload messages to apply changes
+            loadMessages();
+
+            hideModal();
+        }
+
+        function loadSettings() {
+            var saved = localStorage.getItem('kindlechat_settings');
+            if (saved) {
+                try {
+                    var parsed = JSON.parse(saved);
+                    settings.showTranslations = parsed.showTranslations !== undefined ? parsed.showTranslations : true;
+                    settings.showAdminTools = parsed.showAdminTools !== undefined ? parsed.showAdminTools : false;
+                } catch (e) { }
+            }
+        }
+
+        // --- ADMIN ACTIONS ---
+        function reprocessMessage(msgId, text) {
+            if (!currentUser) return;
+
+            // Visual feedback?
+            console.log("Reprocessing message:", msgId);
+
+            currentUser.getIdToken().then(function (token) {
+                fetch(TRANSLATION_WORKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        user: currentUsername,
+                        text: text,
+                        msgId: msgId,
+                        reprocess: true
+                    })
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            console.log("Reprocess success:", data);
+                            // No need to reload, RTDB listener will update the translation
+                        } else {
+                            console.error("Reprocess error:", data);
+                            alert("Reprocess failed: " + (data.error || "Unknown error"));
+                        }
+                    })
+                ['catch'](function (err) {
+                    console.error("Reprocess network error:", err);
+                    alert("Network error during reprocess.");
+                });
+            });
+        }
+
+        function deleteGeneralMessage(msgId) {
+            if (!currentUser) return;
+            if (currentRoomId === 'general') {
+                if (confirm("Permanently delete this message?")) {
+                    rtdb.ref('kindlechat/messages/' + msgId).remove()
+                    ['catch'](function (e) {
+                        alert("Delete failed: " + e.message);
+                    });
+                }
             }
         }
 
@@ -2548,14 +2683,7 @@
         }
 
         // --- ADMIN FUNCTIONS ---
-        function deleteGeneralMessage(msgId) {
-            showModal("Delete this message?", true, function (confirmed) {
-                if (confirmed) {
-                    rtdb.ref('kindlechat/messages/' + msgId).remove()
-                    ['catch'](function (e) { showModal("Error deleting: " + e.message); });
-                }
-            });
-        }
+        // (deleteGeneralMessage moved above)
 
         function deleteGeneralReactionType(msgId, reactionType) {
             if (!confirm("Delete ALL '" + reactionType + "' reactions?")) return;
@@ -2659,42 +2787,7 @@
         // LEGACY: Old translateMessage removed.
 
 
-        // --- SETTINGS LOGIC ---
-        function loadSettings() {
-            try {
-                var showTr = localStorage.getItem('kindlechat_show_translations');
-                if (showTr !== null) {
-                    settings.showTranslations = (showTr === 'true');
-                }
-
-                var checkbox = document.getElementById('setting-show-translations');
-                if (checkbox) checkbox.checked = settings.showTranslations;
-            } catch (e) { }
-        }
-
-        function saveSettings() {
-            var checkbox = document.getElementById('setting-show-translations');
-            if (checkbox) {
-                settings.showTranslations = checkbox.checked;
-                localStorage.setItem('kindlechat_show_translations', settings.showTranslations);
-
-                // Reload messages to apply change
-                document.getElementById('chat-history').innerHTML = '';
-                loadMessages();
-            }
-        }
-
-        function openSettingsModal() {
-            var checkbox = document.getElementById('setting-show-translations');
-            if (checkbox) checkbox.checked = settings.showTranslations;
-
-            document.getElementById('create-modal-content').style.display = 'none';
-            document.getElementById('delete-modal-content').style.display = 'none';
-            document.getElementById('generic-modal-content').style.display = 'none';
-
-            document.getElementById('settings-modal-content').style.display = 'block';
-            document.getElementById('modal-overlay').style.display = 'flex';
-        }
+        // --- SETTINGS LOGIC (Moved above) ---
 
         // --- GENERAL CHANNEL: Toggle reaction in Realtime Database ---
         function toggleGeneralReactionRTDB(msgId, reaction) {
