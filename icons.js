@@ -7,7 +7,7 @@ const APPS = [
         id: 'browser',
         name: 'Browser',
         cat: 'essentials',
-        icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><path d="M16 2 C22 10 22 22 16 30"/><path d="M16 2 C10 10 10 22 16 30"/>'
+        icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><path d="M16 3 C22 10 22 22 16 29"/><path d="M16 3 C10 10 10 22 16 29"/>'
     },
     {
         id: 'calendar',
@@ -30,7 +30,9 @@ const APPS = [
 
         plus: true,
         desc: 'Read & send emails',
-        icon: '<rect x="4" y="8" width="24" height="16" rx="2"/><path d="M4 10 L16 18 L28 10" fill="none"/>'
+        plus: true,
+        desc: 'Read & send emails',
+        icon: '<rect x="4" y="8" width="24" height="16" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M4 10 L16 18 L28 10" fill="none" stroke="black" stroke-width="2"/>'
     },
     {
         id: 'newspaper',
@@ -78,11 +80,8 @@ const APPS = [
         id: 'chat',
         name: 'AI Assistant',
         cat: 'tools',
-        id: 'chat',
-        name: 'AI Assistant',
-        cat: 'tools',
         plus: true,
-        icon: '<path d="M16 3 L19 11 L27 14 L19 17 L16 25 L13 17 L5 14 L13 11 Z M10 6 L12 10 L16 11 L12 12 L10 16 L8 12 L4 11 L8 10 Z" fill="black" stroke="none"/>'
+        icon: '<path d="M16 3 L19 11 L27 14 L19 17 L16 25 L13 17 L5 14 L13 11 Z M6 3 L8 7 L12 8 L8 9 L6 13 L4 9 L0 8 L4 7 Z" fill="black" stroke="none"/>'
     },
     {
         id: 'maps',
@@ -141,7 +140,7 @@ const APPS = [
     {
         id: 'teleprompter',
         name: 'Teleprompter',
-        icon: '<path d="M16 18 L 12 28 H 20 Z M10 12 H 22 V 18 H 10 Z M8 4 H 24 V 12 H 8 Z M10 6 H 22 M10 9 H 22" />',
+        icon: '<path d="M16 20 L 12 30 H 20 Z M10 12 H 22 V 18 H 10 Z M8 4 H 24 V 12 H 8 Z M10 6 H 22 M10 9 H 22" />',
         cat: 'tools',
         desc: 'Display notes line-by-line for speeches or practice.'
     },
@@ -229,7 +228,10 @@ const APPS = [
         featured: true,
         featuredOrder: 4,
         desc: 'Now with more pixels!',
-        icon: '<rect x="4" y="6" width="24" height="16"/><path d="M8 22 L8 28 L14 22"/>'
+        featured: true,
+        featuredOrder: 4,
+        desc: 'Now with more pixels!',
+        icon: '<rect x="4" y="6" width="24" height="16" stroke="black" stroke-width="2" fill="none"/><path d="M8 22 L8 28 L14 22" stroke="black" stroke-width="2" fill="none"/>'
     },
     {
         id: 'reader',
@@ -238,7 +240,10 @@ const APPS = [
         featured: true,
         featuredOrder: 1,
         desc: 'Free reading!',
-        icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10"/><line x1="10" y1="14" x2="20" y2="14"/><line x1="10" y1="18" x2="20" y2="18"/>'
+        featured: true,
+        featuredOrder: 1,
+        desc: 'Free reading!',
+        icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="20" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="20" y2="18" stroke="black" stroke-width="2"/>'
     },
     {
         id: 'interactive',
@@ -353,8 +358,9 @@ const APPS = [
         id: 'sheetmusic',
         name: 'Sheet Music',
         cat: 'lifestyle',
+        filled: true,
         desc: 'Browse a library of public domain scores.',
-        icon: '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h8V3h-8z"/>'
+        icon: '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h8V3h-8z" fill="black"/>'
     },
     {
         id: 'chords',
@@ -385,7 +391,8 @@ const APPS = [
         id: 'trivia',
         name: 'Trivia',
         cat: 'games',
-        icon: '<path d="M16 26c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-24C11.5 2 8 5.5 8 10h4c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.9-1.2 3.6-2.9 4.3L15 15.6V18h2v-1.7l2.8-1.5C21.7 13.7 24 11.2 24 10c0-4.5-3.5-8-8-8z"/>'
+        filled: true,
+        icon: '<path d="M16 26c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-24C11.5 2 8 5.5 8 10h4c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.9-1.2 3.6-2.9 4.3L15 15.6V18h2v-1.7l2.8-1.5C21.7 13.7 24 11.2 24 10c0-4.5-3.5-8-8-8z" fill="black"/>'
     },
     {
         id: 'pool',
@@ -398,7 +405,7 @@ const APPS = [
         name: '2048',
         es6: true,
         cat: 'games',
-        icon: '<rect x="2" y="2" width="28" height="28" fill="white" stroke="black" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="2"/><text x="9" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">2</text><text x="23" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">0</text><text x="9" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">4</text><text x="23" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black">8</text>'
+        icon: '<rect x="2" y="2" width="28" height="28" fill="white" stroke="black" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="30" stroke="black" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="black" stroke-width="2"/><text x="9" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black" stroke="none" font-weight="bold">2</text><text x="23" y="13" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black" stroke="none" font-weight="bold">0</text><text x="9" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black" stroke="none" font-weight="bold">4</text><text x="23" y="27" font-size="10" text-anchor="middle" font-family="sans-serif" fill="black" stroke="none" font-weight="bold">8</text>'
     },
     {
         id: 'anagrams',
@@ -492,7 +499,7 @@ const APPS = [
         id: 'nerdle',
         name: 'Nerdle',
         cat: 'games',
-        icon: '<rect x="4" y="6" width="24" height="20" rx="2" stroke="black" stroke-width="2" fill="none"/><text x="16" y="20" font-size="9" font-family="monospace" text-anchor="middle">1+2=3</text>'
+        icon: '<path d="M4 10 V6 H28 V10 M4 22 V26 H28 V22" stroke="black" stroke-width="2" fill="none"/><text x="16" y="19" font-size="9" font-family="monospace" text-anchor="middle" fill="black" stroke="none" font-weight="bold">1+2=3</text>'
     },
     {
         id: 'nonograms',
@@ -515,6 +522,15 @@ const APPS = [
         icon: '<path d="M6 26 l 6 0 l 0 -10 l 12 0 l 0 6 l 4 0" fill="none" stroke="black" stroke-width="4" stroke-linecap="round"/><circle cx="28" cy="22" r="2.5" fill="black"/>'
     },
     {
+        id: 'dino',
+        name: 'Dino',
+        cat: 'games',
+        newBadge: true,
+        filled: true,
+        icon: '<path d="M24 2h16v1h-16zM24 3h16v1h-16zM22 4h20v1h-20zM22 5h4v1h-4zM28 5h14v1h-14zM22 6h4v1h-4zM28 6h14v1h-14zM22 7h20v1h-20zM22 8h20v1h-20zM22 9h20v1h-20zM22 10h20v1h-20zM22 11h20v1h-20zM22 12h20v1h-20zM22 13h10v1h-10zM22 14h10v1h-10zM22 15h16v1h-16zM22 16h16v1h-16zM2 17h2v1h-2zM20 17h10v1h-10zM2 18h2v1h-2zM20 18h10v1h-10zM2 19h2v1h-2zM17 19h13v1h-13zM2 20h2v1h-2zM17 20h13v1h-13zM2 21h4v1h-4zM14 21h20v1h-20zM2 22h4v1h-4zM14 22h20v1h-20zM2 23h6v1h-6zM12 23h18v1h-18zM32 23h2v1h-2zM2 24h6v1h-6zM12 24h18v1h-18zM32 24h2v1h-2zM2 25h28v1h-28zM2 26h28v1h-28zM2 27h28v1h-28zM2 28h28v1h-28zM4 29h26v1h-26zM4 30h24v1h-24zM6 31h22v1h-22zM6 32h22v1h-22zM8 33h18v1h-18zM8 34h18v1h-18zM10 35h14v1h-14zM10 36h14v1h-14zM12 37h6v1h-6zM20 37h4v1h-4zM12 38h6v1h-6zM20 38h4v1h-4zM12 39h4v1h-4zM22 39h2v1h-2zM12 40h4v1h-4zM22 40h2v1h-2zM12 41h2v1h-2zM22 41h2v1h-2zM12 42h2v1h-2zM22 42h2v1h-2zM12 43h4v1h-4zM22 43h4v1h-4zM12 44h4v1h-4zM22 44h4v1h-4z" fill="black" shape-rendering="crispEdges"/>',
+        viewBox: '0 0 44 47'
+    },
+    {
         id: 'solitaire',
         name: 'Solitaire',
         cat: 'games',
@@ -531,7 +547,7 @@ const APPS = [
         name: 'Sudoku',
         es6: true,
         cat: 'games',
-        icon: '<rect x="2" y="2" width="28" height="28" fill="none" stroke="black" stroke-width="2"/><path d="M11 2v28M21 2v28M2 11h28M2 21h28" stroke="black" stroke-width="1"/><text x="16" y="19" font-size="10" font-family="monospace" text-anchor="middle">9</text>'
+        icon: '<rect x="2" y="2" width="28" height="28" fill="none" stroke="black" stroke-width="2"/><path d="M11 2v28M21 2v28M2 11h28M2 21h28" stroke="black" stroke-width="1"/><text x="16" y="19" font-size="10" font-family="monospace" text-anchor="middle" fill="black" stroke="none" font-weight="bold">9</text>'
     },
     {
         id: 'tetris',
@@ -550,7 +566,7 @@ const APPS = [
         id: 'wordsearch',
         name: 'Word Search',
         cat: 'games',
-        icon: '<text x="4" y="10" font-size="8" font-family="monospace">S E A</text><text x="4" y="19" font-size="8" font-family="monospace">R C H</text><text x="4" y="28" font-size="8" font-family="monospace">K E Y</text><rect x="2" y="4" width="28" height="7" rx="3" stroke="black" stroke-width="1.5" fill="none"/>'
+        icon: '<text x="4" y="10" font-size="8" font-family="monospace" fill="black" stroke="none" font-weight="bold">S E A</text><text x="4" y="19" font-size="8" font-family="monospace" fill="black" stroke="none" font-weight="bold">R C H</text><text x="4" y="28" font-size="8" font-family="monospace" fill="black" stroke="none" font-weight="bold">K E Y</text><rect x="1" y="3" width="30" height="9" rx="4" stroke="black" stroke-width="1.5" fill="none"/>'
     },
     {
         id: 'wordle',
