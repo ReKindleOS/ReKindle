@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dino</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        /* SYSTEM 7 AESTHETICS - Copied from snake.html */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 640px;
+            /* Wider for Dino */
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* LEADERBOARD BUTTON */
+        .leaderboard-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .window-content {
+            padding: 0;
+            /* Dino game needs full width */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow: hidden;
+            position: relative;
+            min-height: 150px;
+        }
+
+        /* Game specific styles */
+        #runner-outer {
+            width: 100%;
+            height: 150px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .runner-canvas {
+            display: block;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+        }
+
+        .runner-container {
+            width: 100%;
+            height: 150px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Asset Hiding */
+        #offline-resources {
+            display: none;
+        }
+
+        /* MODALS */
+        #leaderboard-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Dino</span>
+            <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+        </div>
+
+        <!-- content -->
+        <div class="window-content">
+            <div id="runner-outer"></div>
+            <div class="icon-offline" style="visibility: hidden;"></div>
+        </div>
+
+        <div id="leaderboard-modal">
+            <h3>Top Runners</h3>
+            <div class="lb-list" id="lb-content">
+                Loading...
+            </div>
+            <button class="sys-btn"
+                onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+
+    <!-- Hidden Assets -->
+    <div id="offline-resources">
+        <img id="1x-obstacle-large" src="dino_assets/1x-obstacle-large.png">
+        <img id="1x-obstacle-small" src="dino_assets/1x-obstacle-small.png">
+        <img id="1x-cloud" src="dino_assets/1x-cloud.png">
+        <img id="1x-text" src="dino_assets/1x-text.png">
+        <img id="1x-horizon" src="dino_assets/1x-horizon.png">
+        <img id="1x-trex" src="dino_assets/1x-trex.png">
+        <img id="1x-restart" src="dino_assets/1x-restart.png">
+    </div>
+
+
+
+    <script src="dino_assets/runner.js?v=7"></script>
+    <script>
+        // Initialize Game
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+            initializePage();
+
+            // Override global Runner.instance_.gameOver to save score
+            // We need to wait until the runner instance is created
+            var originalRunner = Runner;
+
+            // Define a customized Runner config if needed, or just init
+            var runner = new Runner('#runner-outer');
+
+            // Hook into game over
+            // We use a property setter to detect when the runner calls gameOver
+            const originalGameOver = Runner.prototype.gameOver;
+            Runner.prototype.gameOver = function () {
+                originalGameOver.apply(this, arguments);
+                // Save score logic here
+                // Use getActualDistance to match the displayed score
+                const finalScore = this.distanceMeter.getActualDistance(this.distanceRan);
+                saveHighScore(finalScore);
+            };
+
+            // Tap anywhere to jump / restart
+            document.addEventListener('pointerdown', function () {
+                if (Runner.instance_) {
+                    if (Runner.instance_.crashed) {
+                        Runner.instance_.restart();
+                    } else {
+                        // Generate a spacebar keydown event for the runner
+                        var e = new KeyboardEvent('keydown', { keyCode: 32 });
+                        document.dispatchEvent(e);
+                        // And a keyup shortly after to ensure it completes the jump logic if needed
+                        setTimeout(function () {
+                            var eUp = new KeyboardEvent('keyup', { keyCode: 32 });
+                            document.dispatchEvent(eUp);
+                        }, 100);
+                    }
+                }
+            });
+        });
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app(); // if already initialized, use that one
+        }
+        const db = firebase.firestore();
+        if (db.settings) {
+            try {
+                db.settings({ experimentalForceLongPolling: true, merge: true });
+            } catch (e) { console.warn("Settings error:", e); }
+        }
+
+        const auth = firebase.auth();
+
+        // --- USER STATE ---
+        let uid = null;
+        let username = "Guest";
+        let personalHighScore = 0;
+
+        function initializePage() {
+            const onAuthReady = new Promise((resolve) => {
+                if (auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email.split('@')[0];
+                    return resolve();
+                }
+                const unsubscribe = auth.onAuthStateChanged(user => {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email.split('@')[0];
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(() => {
+                loadPersonalHighScore();
+            });
+        }
+
+        // --- HIGHSCORE LOGIC ---
+        async function loadPersonalHighScore() {
+            // 1. Try LocalStorage first
+            const localHigh = localStorage.getItem('dino_highscore_v1');
+            if (localHigh) personalHighScore = parseInt(localHigh);
+            console.log("Loaded HS:", personalHighScore, "UID:", uid);
+
+            // 2. Try Firebase if logged in
+            if (uid) {
+                try {
+                    const doc = await db.collection('leaderboard_dino_v1').doc(uid).get();
+                    if (doc.exists) {
+                        const cloudHigh = doc.data().score;
+                        if (cloudHigh > personalHighScore) {
+                            personalHighScore = cloudHigh;
+                            localStorage.setItem('dino_highscore_v1', cloudHigh);
+                        }
+                    }
+                } catch (e) { console.error("Error loading cloud score:", e); }
+            }
+            // Update Runner high score if instance exists
+            if (Runner.instance_) {
+                // Convert actual score back to raw distance for the game engine
+                // Default coefficient is 0.025, so raw = score / 0.025
+                let coeff = 0.025;
+                if (Runner.instance_.distanceMeter && Runner.instance_.distanceMeter.config) {
+                    coeff = Runner.instance_.distanceMeter.config.COEFFICIENT;
+                }
+                const rawScore = personalHighScore / coeff;
+                Runner.instance_.highestScore = rawScore;
+
+                if (Runner.instance_.distanceMeter) {
+                    Runner.instance_.distanceMeter.setHighScore(rawScore);
+                }
+            }
+        }
+
+        async function saveHighScore(newScore) {
+            console.log("Attempting save:", newScore, "Current HS:", personalHighScore, "UID:", uid);
+            if (newScore > personalHighScore) {
+                personalHighScore = newScore;
+                localStorage.setItem('dino_highscore_v1', personalHighScore);
+                console.log("Updated local HS to:", personalHighScore);
+
+                // Update Runner display
+                if (Runner.instance_) {
+                    let coeff = 0.025;
+                    if (Runner.instance_.distanceMeter && Runner.instance_.distanceMeter.config) {
+                        coeff = Runner.instance_.distanceMeter.config.COEFFICIENT;
+                    }
+                    const rawScore = personalHighScore / coeff;
+                    Runner.instance_.highestScore = rawScore;
+                    if (Runner.instance_.distanceMeter) {
+                        Runner.instance_.distanceMeter.setHighScore(rawScore);
+                    }
+                }
+
+                // Save to Cloud
+                if (uid) {
+                    console.log("Saving to Firestore...");
+                    db.collection('leaderboard_dino_v1').doc(uid).set({
+                        username: username,
+                        score: newScore,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    }).then(() => console.log("Score saved to Firebase successfully!"))
+                        .catch(e => console.error("Firebase save failed:", e));
+                } else {
+                    console.log("User not logged in, skipping cloud save.");
+                }
+            } else {
+                console.log("Score", newScore, "is not higher than", personalHighScore, "- skipping save.");
+            }
+        }
+
+        // Helper to prevent XSS from usernames in the database
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        // --- LEADERBOARD UI ---
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'block';
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...';
+
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    const snapshot = await db.collection('leaderboard_dino_v1')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    let rank = 1;
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
+                        const scoreSpan = document.createElement('span');
+                        scoreSpan.textContent = data.score;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(scoreSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerHTML = "Error loading scores.";
+                }
+            } else {
+                list.innerHTML = "Log in to see global scores.";
+            }
+        }
+    </script>
+    </script>
+</body>
+
+</html>
