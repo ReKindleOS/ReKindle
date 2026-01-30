@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-no-scale>
 
 <head>
     <meta charset="UTF-8">
@@ -307,7 +307,12 @@
             };
 
             // Tap anywhere to jump / restart
-            document.addEventListener('pointerdown', function () {
+            document.addEventListener('pointerdown', function (event) {
+                // Ignore clicks in the title bar or leaderboard modal
+                if (event.target.closest('.title-bar') || event.target.closest('#leaderboard-modal')) {
+                    return;
+                }
+
                 if (Runner.instance_) {
                     if (Runner.instance_.crashed) {
                         Runner.instance_.restart();
@@ -356,18 +361,16 @@
 
         function initializePage() {
             const onAuthReady = new Promise((resolve) => {
-                if (auth.currentUser) {
-                    uid = auth.currentUser.uid;
-                    username = auth.currentUser.email.split('@')[0];
-                    return resolve();
-                }
                 const unsubscribe = auth.onAuthStateChanged(user => {
-                    if (user) {
+                    if (user && !user.isAnonymous) {
                         uid = user.uid;
-                        username = user.email.split('@')[0];
+                        username = user.email ? user.email.split('@')[0] : ("User_" + uid.substring(0, 5));
+                        console.log("Auth State: Logged in as", username);
+                    } else {
+                        uid = null;
+                        console.log("Auth State: Not logged in (or anonymous)");
                     }
-                    unsubscribe();
-                    return resolve();
+                    resolve();
                 });
             });
 
@@ -499,7 +502,6 @@
                 list.innerHTML = "Log in to see global scores.";
             }
         }
-    </script>
     </script>
 </body>
 
