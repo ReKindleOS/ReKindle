@@ -138,6 +138,12 @@
     }
 
     function applyScale() {
+        if (document.documentElement.hasAttribute('data-no-scale')) {
+            // Remove the style if it exists
+            const style = document.getElementById('rekindle-scaling-style');
+            if (style) style.remove();
+            return;
+        }
         injectScalingStyle();
     }
 
