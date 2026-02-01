@@ -26,20 +26,23 @@ service cloud.firestore {
     // --- Collection Rules ---
 
     // 1. USER PRIVATE DATA (e.g., settings, notes)
-    match /users/{userId}/{document=**} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'ukiyo@rekindle.ink');
+      
       // Allow write generally, BUT block writes to 'isPro' and 'proExpiresAt' by the user.
-      // Service Accounts (Worker) bypass these rules.
-      // Split write into create, update, delete for better control and to fix delete issue.
-      // 1. Create: Allow if user is authenticated and matches userId.
       allow create: if request.auth != null && request.auth.uid == userId;
+      
+      allow update: if request.auth != null && (
+                      (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']))
+                      || request.auth.token.email == 'ukiyo@rekindle.ink'
+                    );
 
-      // 2. Update: Allow if user matches userId AND they are NOT trying to change protected fields.
-      allow update: if request.auth != null && request.auth.uid == userId &&
-                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']);
-
-      // 3. Delete: Allow if user matches userId.
       allow delete: if request.auth != null && request.auth.uid == userId;
+
+      // Subcollections
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // 2. KINDLECHAT
@@ -158,6 +161,15 @@ service cloud.firestore {
                       request.resource.data.moves is number;
     }
 
+    // 10.5 BLOCK BLAST LEADERBOARD
+    match /leaderboard_blockblast/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId 
+                      && request.resource.data.score > resource.data.score;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     // 11. INTERACTIVE BLACKLIST
     match /interactive_blacklist/{gameId} {
       allow read: if true;
@@ -167,6 +179,7 @@ service cloud.firestore {
     // 11.5 CONFIG (Supporters)
     match /config/supporters {
       allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.email == 'ukiyo@rekindle.ink';
     }
 
     // 12. USER UPLOADS
@@ -206,8 +219,8 @@ service cloud.firestore {
           ||
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']))
           ||
-          (request.auth.token.email.matches('ukiyo@.*') && 
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'type', 'category']))
+          (request.auth.token.email == 'ukiyo@rekindle.ink' && 
+           request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'type', 'category', 'isPro', 'title', 'description']))
       );
 
       match /comments/{commentId} {

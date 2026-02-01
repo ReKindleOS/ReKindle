@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 400px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .header-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        .leaderboard-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* WINDOW CONTENT */
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* SCORE BOARD */
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 10px;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 1rem;
+            border-bottom: 2px solid black;
+            padding-bottom: 5px;
+        }
+
+        /* GAME GRID */
+        #grid-container {
+            border: 4px solid black;
+            background: white;
+            display: block;
+            margin-bottom: 15px;
+        }
+
+        /* BLOCK SELECTION */
+        .block-selection {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+
+        .block-slot {
+            width: 90px;
+            height: 90px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .block-slot.selected {
+            background: #ccc;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .block-slot.empty {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        .block-slot canvas {
+            display: block;
+        }
+
+        /* OVERLAY (Game Over) */
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        #game-over h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            border-bottom: 4px double black;
+        }
+
+        #game-over button:active {
+            background-color: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(4px, 4px);
+        }
+
+        /* MODALS */
+        #saving-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 120;
+            width: 70%;
+            max-width: 200px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, .3);
+            border-radius: 50%;
+            border-top-color: #000;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #leaderboard-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 110;
+            width: 85%;
+            max-width: 320px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+    </style>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="exitGame()">X</div>
+            <span class="title-text">Block Blast</span>
+            <div class="header-controls">
+                <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+                <button id="undo-btn" class="sys-btn" onclick="undoMove()" disabled>Undo</button>
+                <button class="sys-btn" onclick="resetGame()">Reset</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div class="score-board">
+                <span>Score: <span id="score">0</span></span>
+                <span>Best: <span id="best">0</span></span>
+            </div>
+
+            <canvas id="grid-container" width="300" height="300"></canvas>
+
+            <div class="block-selection">
+                <div class="block-slot" id="slot-0" onclick="selectBlock(0)">
+                    <canvas width="80" height="80"></canvas>
+                </div>
+                <div class="block-slot" id="slot-1" onclick="selectBlock(1)">
+                    <canvas width="80" height="80"></canvas>
+                </div>
+                <div class="block-slot" id="slot-2" onclick="selectBlock(2)">
+                    <canvas width="80" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h2>Game Over</h2>
+            <p>Score: <span id="final-score">0</span></p>
+            <button class="sys-btn" style="padding: 10px 20px; font-size:1.2rem; margin-top:20px;"
+                onclick="initGame()">Try Again</button>
+        </div>
+
+        <div id="saving-modal">
+            <div class="loading-spinner"></div>
+            <div>Saving...</div>
+        </div>
+
+        <div id="leaderboard-modal">
+            <h3>Top Scores</h3>
+            <div class="lb-list" id="lb-content">
+                Loading...
+            </div>
+            <button class="sys-btn"
+                onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app(); // if already initialized, use that one
+        }
+        const db = firebase.firestore();
+        if (db.settings) {
+            try {
+                db.settings({
+                    experimentalForceLongPolling: true
+                });
+            } catch (e) { console.warn("Settings error:", e); }
+        }
+        const auth = firebase.auth();
+
+        // User Data
+        let uid = null;
+        let username = "Guest";
+
+        // --- CONFIG ---
+        const GRID_SIZE = 10;
+        const CELL_SIZE = 30;
+        const BLOCK_CELL = 16; // Cell size for block preview
+
+        // Block shapes (relative coordinates)
+        const SHAPES = [
+            // Single
+            [[0, 0]],
+            // 2-blocks
+            [[0, 0], [1, 0]],
+            [[0, 0], [0, 1]],
+            // 3-blocks
+            [[0, 0], [1, 0], [2, 0]], // I horizontal
+            [[0, 0], [0, 1], [0, 2]], // I vertical
+            [[0, 0], [1, 0], [0, 1]], // L small
+            [[0, 0], [1, 0], [1, 1]], // L small flipped
+            // 4-blocks
+            [[0, 0], [1, 0], [2, 0], [3, 0]], // I4 horizontal
+            [[0, 0], [0, 1], [0, 2], [0, 3]], // I4 vertical
+            [[0, 0], [1, 0], [0, 1], [1, 1]], // 2x2 square
+            // L shapes
+            [[0, 0], [0, 1], [0, 2], [1, 2]], // L
+            [[0, 0], [1, 0], [2, 0], [0, 1]], // L rotated
+            [[0, 0], [1, 0], [1, 1], [1, 2]], // J
+            [[0, 0], [0, 1], [1, 0], [2, 0]], // J rotated
+            // T shape
+            [[0, 0], [1, 0], [2, 0], [1, 1]], // T
+            [[0, 0], [0, 1], [0, 2], [1, 1]], // T rotated
+            // 5-blocks
+            [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]], // I5 horizontal
+            [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]], // I5 vertical
+            // 3x3 square
+            [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],
+        ];
+
+        let grid = [];
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('blockblast_best')) || 0;
+        let currentBlocks = [null, null, null];
+        let selectedBlockIndex = -1;
+
+        // Undo state
+        let undoState = null;
+
+        let canvas, ctx;
+
+        async function exitGame() {
+            console.log("Exit clicked. Current score:", score, "Best:", bestScore);
+            // If they have a new high score, show saving modal and sync
+            if (score > bestScore) {
+                document.getElementById('saving-modal').style.display = 'block';
+                try {
+                    // Small delay for UI to render on e-ink before heavy firestore op
+                    await new Promise(r => setTimeout(r, 500));
+                    await saveHighScore(score);
+                    console.log("Exit sync complete");
+                    // Another small delay so user sees the "Saving..." finished state before redirect
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (e) {
+                    console.error("Exit sync failed:", e);
+                }
+            }
+            window.location.href = 'index';
+        }
+
+        // --- INIT ---
+        window.onload = () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            document.getElementById('best').innerText = bestScore;
+
+            canvas = document.getElementById('grid-container');
+            ctx = canvas.getContext('2d');
+
+            // Touch/click handling for grid
+            canvas.addEventListener('click', handleGridClick);
+            canvas.addEventListener('touchend', handleGridTouch);
+
+            initializeAuth();
+        };
+
+        function initializeAuth() {
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    uid = user.uid;
+                    username = user.email ? user.email.split('@')[0] : ("User_" + uid.substring(0, 5));
+                    console.log("Auth Status: Logged in as", username);
+                    loadPersonalHighScore();
+                } else {
+                    uid = null;
+                    username = "Guest";
+                    console.log("Auth Status: Not logged in");
+                }
+                initGame();
+            });
+        }
+
+        async function loadPersonalHighScore() {
+            if (!uid) return;
+            try {
+                const doc = await db.collection('leaderboard_blockblast').doc(uid).get();
+                if (doc.exists) {
+                    const cloudHigh = doc.data().score;
+                    if (cloudHigh > bestScore) {
+                        bestScore = cloudHigh;
+                        document.getElementById('best').innerText = bestScore;
+                        localStorage.setItem('blockblast_best', bestScore);
+                    }
+                }
+            } catch (e) { console.error("Error loading high score:", e); }
+        }
+
+        async function saveHighScore(newScore) {
+            console.log("Attempting to save score:", newScore, "Best so far:", bestScore);
+            if (newScore > bestScore) {
+                bestScore = newScore;
+                document.getElementById('best').innerText = bestScore;
+                localStorage.setItem('blockblast_best', bestScore);
+
+                // Save to Cloud
+                if (uid) {
+                    console.log("Saving to Cloud for UID:", uid);
+                    try {
+                        await db.collection('leaderboard_blockblast').doc(uid).set({
+                            username: username,
+                            score: newScore,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        console.log("Cloud save successful");
+                    } catch (e) { console.error("Error saving score to Cloud:", e); }
+                }
+            }
+        }
+
+        // Leaderboard Helper to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'block';
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...';
+
+            if (auth.currentUser) {
+                try {
+                    const snapshot = await db.collection('leaderboard_blockblast')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    let rank = 1;
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
+                        const scoreSpan = document.createElement('span');
+                        scoreSpan.textContent = data.score;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(scoreSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerHTML = "Error loading scores.";
+                }
+            } else {
+                list.innerHTML = "Log in to see global scores.";
+            }
+        }
+
+        function initGame() {
+            const savedSession = localStorage.getItem('blockblast_session');
+            if (savedSession) {
+                try {
+                    const session = JSON.parse(savedSession);
+                    grid = session.grid;
+                    score = session.score;
+                    currentBlocks = session.blocks;
+                    undoState = session.undoState;
+                    selectedBlockIndex = -1;
+                    updateScore(score);
+                    updateUndoButton();
+                    renderBlockSlots();
+                    renderGrid();
+                    document.getElementById('game-over').style.display = 'none';
+                    return;
+                } catch (e) {
+                    console.error("Failed to load session", e);
+                }
+            }
+            startNewGame();
+        }
+
+        function resetGame() {
+            clearSession();
+            startNewGame();
+        }
+
+        function startNewGame() {
+            grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+            score = 0;
+            selectedBlockIndex = -1;
+            undoState = null;
+            updateScore(0);
+            updateUndoButton();
+            document.getElementById('game-over').style.display = 'none';
+
+            // Generate initial blocks
+            generateNewBlocks();
+            renderGrid();
+            saveSession();
+        }
+
+        function generateNewBlocks() {
+            for (let i = 0; i < 3; i++) {
+                if (currentBlocks[i] === null) {
+                    currentBlocks[i] = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                }
+            }
+            renderBlockSlots();
+        }
+
+        function renderBlockSlots() {
+            for (let i = 0; i < 3; i++) {
+                const slot = document.getElementById(`slot-${i}`);
+                const slotCanvas = slot.querySelector('canvas');
+                const slotCtx = slotCanvas.getContext('2d');
+
+                slotCtx.fillStyle = 'white';
+                slotCtx.fillRect(0, 0, 80, 80);
+
+                if (currentBlocks[i]) {
+                    slot.classList.remove('empty');
+                    const shape = currentBlocks[i];
+
+                    // Find bounds
+                    let maxX = 0, maxY = 0;
+                    shape.forEach(([x, y]) => {
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
+                    });
+
+                    const shapeWidth = (maxX + 1) * BLOCK_CELL;
+                    const shapeHeight = (maxY + 1) * BLOCK_CELL;
+                    const offsetX = (80 - shapeWidth) / 2;
+                    const offsetY = (80 - shapeHeight) / 2;
+
+                    slotCtx.fillStyle = 'black';
+                    shape.forEach(([x, y]) => {
+                        slotCtx.fillRect(offsetX + x * BLOCK_CELL + 1, offsetY + y * BLOCK_CELL + 1, BLOCK_CELL - 2, BLOCK_CELL - 2);
+                    });
+                } else {
+                    slot.classList.add('empty');
+                }
+
+                // Highlight selected
+                if (i === selectedBlockIndex) {
+                    slot.classList.add('selected');
+                } else {
+                    slot.classList.remove('selected');
+                }
+            }
+        }
+
+        function selectBlock(index) {
+            if (currentBlocks[index] === null) return;
+
+            if (selectedBlockIndex === index) {
+                selectedBlockIndex = -1;
+            } else {
+                selectedBlockIndex = index;
+            }
+            renderBlockSlots();
+        }
+
+        function handleGridTouch(e) {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            processGridClick(x, y);
+        }
+
+        function handleGridClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            processGridClick(x, y);
+        }
+
+        function processGridClick(x, y) {
+            if (selectedBlockIndex < 0 || currentBlocks[selectedBlockIndex] === null) return;
+
+            const gridX = Math.floor(x / CELL_SIZE);
+            const gridY = Math.floor(y / CELL_SIZE);
+
+            if (canPlaceBlock(currentBlocks[selectedBlockIndex], gridX, gridY)) {
+                saveUndoState();
+                placeBlock(currentBlocks[selectedBlockIndex], gridX, gridY);
+                currentBlocks[selectedBlockIndex] = null;
+                selectedBlockIndex = -1;
+
+                // Check for line clears
+                const cleared = clearLines();
+                if (cleared > 0) {
+                    updateScore(score + cleared * 10 + (cleared > 1 ? cleared * 5 : 0)); // Bonus for combos
+                }
+
+                // Check if all blocks used
+                if (currentBlocks.every(b => b === null)) {
+                    generateNewBlocks();
+                } else {
+                    renderBlockSlots();
+                }
+
+                renderGrid();
+                updateUndoButton();
+                saveSession();
+
+                // Check game over
+                if (checkGameOver()) {
+                    endGame();
+                }
+            }
+        }
+
+        function saveSession() {
+            const session = {
+                grid: grid,
+                score: score,
+                blocks: currentBlocks,
+                undoState: undoState
+            };
+            localStorage.setItem('blockblast_session', JSON.stringify(session));
+        }
+
+        function clearSession() {
+            localStorage.removeItem('blockblast_session');
+        }
+
+        function saveUndoState() {
+            undoState = {
+                grid: grid.map(row => [...row]),
+                score: score,
+                blocks: currentBlocks.map(b => b ? [...b] : null),
+                selectedBlockIndex: selectedBlockIndex
+            };
+        }
+
+        function undoMove() {
+            if (!undoState) return;
+
+            grid = undoState.grid;
+            score = undoState.score;
+            currentBlocks = undoState.blocks;
+            // We don't necessarily want to restore selectedBlockIndex to its state before placement 
+            // because the placement consumes the block. But undo should restore everything.
+            selectedBlockIndex = -1;
+
+            undoState = null; // One undo per move
+
+            updateScore(score);
+            renderBlockSlots();
+            renderGrid();
+            updateUndoButton();
+            saveSession();
+        }
+
+        function updateUndoButton() {
+            const btn = document.getElementById('undo-btn');
+            btn.disabled = !undoState;
+        }
+
+        function canPlaceBlock(shape, startX, startY) {
+            for (const [dx, dy] of shape) {
+                const x = startX + dx;
+                const y = startY + dy;
+
+                if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
+                if (grid[y][x] !== 0) return false;
+            }
+            return true;
+        }
+
+        function placeBlock(shape, startX, startY) {
+            let cellsPlaced = 0;
+            for (const [dx, dy] of shape) {
+                const x = startX + dx;
+                const y = startY + dy;
+                grid[y][x] = 1;
+                cellsPlaced++;
+            }
+            updateScore(score + cellsPlaced);
+        }
+
+        function clearLines() {
+            let totalCleared = 0;
+            const rowsToClear = [];
+            const colsToClear = [];
+
+            // Check rows
+            for (let y = 0; y < GRID_SIZE; y++) {
+                if (grid[y].every(cell => cell !== 0)) {
+                    rowsToClear.push(y);
+                }
+            }
+
+            // Check columns
+            for (let x = 0; x < GRID_SIZE; x++) {
+                let full = true;
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    if (grid[y][x] === 0) {
+                        full = false;
+                        break;
+                    }
+                }
+                if (full) colsToClear.push(x);
+            }
+
+            // Clear rows
+            for (const y of rowsToClear) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    grid[y][x] = 0;
+                    totalCleared++;
+                }
+            }
+
+            // Clear columns
+            for (const x of colsToClear) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    // Don't double-count cells already cleared by row
+                    if (!rowsToClear.includes(y)) {
+                        if (grid[y][x] !== 0) totalCleared++;
+                    }
+                    grid[y][x] = 0;
+                }
+            }
+
+            return totalCleared;
+        }
+
+        function checkGameOver() {
+            // Check if any remaining block can be placed anywhere
+            for (const block of currentBlocks) {
+                if (block === null) continue;
+
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        if (canPlaceBlock(block, x, y)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        function endGame() {
+            clearSession();
+            saveHighScore(score);
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'flex';
+        }
+
+        function updateScore(newScore) {
+            score = newScore;
+            document.getElementById('score').innerText = score;
+
+            // Live update best score in UI if beaten
+            if (score > bestScore) {
+                document.getElementById('best').innerText = score;
+            }
+        }
+
+        function renderGrid() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid lines
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, GRID_SIZE * CELL_SIZE);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(GRID_SIZE * CELL_SIZE, i * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            // Draw filled cells
+            ctx.fillStyle = 'black';
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (grid[y][x] !== 0) {
+                        ctx.fillRect(x * CELL_SIZE + 2, y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+                    }
+                }
+            }
+
+            // Draw preview if block selected
+            if (selectedBlockIndex >= 0 && currentBlocks[selectedBlockIndex]) {
+                // Preview handled on hover - not critical for e-ink
+            }
+        }
+    </script>
+
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
+</body>
+
+</html>

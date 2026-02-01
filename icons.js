@@ -555,6 +555,13 @@ const APPS = [
         cat: 'games',
         icon: '<path d="M6 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/><path d="M16 20 h10 v10 h-10 z" fill="black" stroke="none"/><path d="M16 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/>'
     },
+    {
+        id: 'blockblast',
+        name: 'Block Blast',
+        cat: 'games',
+        newBadge: true,
+        icon: '<rect x="12" y="4" width="8" height="8" stroke="black" fill="none" stroke-width="2"/><rect x="4" y="12" width="8" height="8" stroke="black" fill="none" stroke-width="2"/><rect x="20" y="12" width="8" height="8" fill="black"/><rect x="12" y="20" width="8" height="8" fill="black"/>'
+    },
     /*     {
             id: 'life',
             name: 'Life',
