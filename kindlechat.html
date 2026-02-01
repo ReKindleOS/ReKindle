@@ -795,13 +795,14 @@
         /* MODAL */
         #modal-overlay {
             display: none;
-            position: absolute;
+            position: fixed;
+            /* Changed to fixed for fullscreen */
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             background: rgba(255, 255, 255, 0.95);
-            z-index: 100;
+            z-index: 10000;
             align-items: center;
             justify-content: center;
         }
@@ -837,14 +838,14 @@
 
         /* GUEST OVERLAY (New) */
         #guest-overlay {
-            position: absolute;
-            top: 35px;
-            /* Below title bar */
+            position: fixed;
+            /* Changed to fixed for fullscreen */
+            top: 0;
             bottom: 0;
             left: 0;
             right: 0;
             background: rgba(255, 255, 255, 0.95);
-            z-index: 50;
+            z-index: 10001;
             display: none;
             /* Default hidden */
             align-items: center;
@@ -914,20 +915,6 @@
             fill: black;
         }
 
-        /* STANDARD MODAL SYSTEM */
-        #modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-            font-family: "Geneva", "Verdana", sans-serif;
-        }
 
         .modal-box {
             background: white;
@@ -1226,6 +1213,7 @@
         var TRANSLATION_WORKER_URL = "https://rekindle-translate.timjarnott.workers.dev";
         // Example: "https://rekindle-chat-worker.timothyarnott.workers.dev"
         var currentRoomId = 'general';
+        var isPro = false; // Pro Status
         var roomToDeleteId = null;
         var unsubscribeMsg = null;
         var unsubscribeRooms = null;
@@ -1258,8 +1246,10 @@
         // --- INIT ---
         window.onload = function () {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
             initAsciiPicker(); // Initialize the ASCII picker
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
             initAsciiPicker(); // Initialize the ASCII picker
             loadSettings(); // Load user preferences
             fetchSupporters(); // Load supporters list
@@ -1269,6 +1259,13 @@
                 if (user) {
                     currentUser = user;
                     currentUsername = (user.email || user.uid).split('@')[0];
+
+                    // Check Pro Status (shared with other apps)
+                    isPro = (localStorage.getItem('rekindle_is_pro') !== 'false');
+                    const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
+                    if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                        isPro = true;
+                    }
 
                     document.getElementById('active-input').style.display = 'flex';
                     document.getElementById('locked-input').style.display = 'none';
@@ -2159,10 +2156,11 @@
             var nameHtml = isSelf ? '<span>You</span>' : '<span style="font-weight:bold;">' + msg.user + '</span>';
 
             // Developer Badge in Name
-            if (msg.user === 'ukiyo') {
+            var isDev = (msg.user === 'ukiyo' || msg.user === 'ukiyo@rekindle.ink');
+            if (isDev) {
                 var devBadge = '<span class="dev-tag">DEV</span>';
                 nameHtml = isSelf ? '<span>' + devBadge + 'You</span>' : '<span>' + devBadge + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
-            } else if (supporterUsers[msg.user]) {
+            } else if (supporterUsers[msg.user] || msg.isPro) {
                 // Supporter Crown (SVG for Kindle compatibility)
                 var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
                 var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
@@ -2269,7 +2267,7 @@
                 var thumb = (msg.flipnote_data.frames && msg.flipnote_data.frames[0]) ? msg.flipnote_data.frames[0] : '';
 
                 bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white; text-align:center;">' +
-                    '<a href="flipbook" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">Flipbook</a>' +
+                    '<a href="flipbook?source=kindlechat" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">Flipbook</a>' +
                     '<div id="flipnote-view-' + msgId + '" style="width:128px; height:128px; border:2px solid black; margin:0 auto; background:white; position:relative; cursor:pointer;" onclick="playFlipnote(\'' + msgId + '\')">' +
                     '<img id="flipnote-img-' + msgId + '" src="' + thumb + '" style="width:100%; height:100%; image-rendering:pixelated; display:block;">' +
                     '<div id="flipnote-overlay-' + msgId + '" style="position:absolute; top:0; left:0; width:100%; height:100%; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.1); font-size:2rem; color:white; text-shadow:1px 1px 0 black;">▶</div>' +
@@ -2319,9 +2317,10 @@
             }
 
             // Theme Injection
-            if (msg.user === 'ukiyo') {
+            var isDev = (msg.user === 'ukiyo' || msg.user === 'ukiyo@rekindle.ink');
+            if (isDev) {
                 bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble developer');
-            } else if (supporterUsers[msg.user]) {
+            } else if (supporterUsers[msg.user] || msg.isPro) {
                 bubbleContent = bubbleContent.replace('class="msg-bubble', 'class="msg-bubble supporter');
             }
 
@@ -2585,7 +2584,8 @@
                     },
                     body: JSON.stringify({
                         user: currentUsername,
-                        text: text
+                        text: text,
+                        isPro: isPro
                     })
                 })
                     .then(function (res) {
@@ -2613,7 +2613,8 @@
             var messageData = {
                 user: currentUsername,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
-                text: text
+                text: text,
+                isPro: isPro
             };
 
             generalChatRef.push(messageData)['catch'](function (e) {
@@ -2626,7 +2627,8 @@
             var messageData = {
                 user: currentUsername,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                text: text
+                text: text,
+                isPro: isPro
             };
 
             var roomRef = db.collection('rooms').doc(currentRoomId);
