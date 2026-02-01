@@ -345,13 +345,14 @@
         /* MODAL STYLES */
         #modal-overlay {
             display: none;
-            position: absolute;
+            position: fixed;
+            /* Changed to fixed for fullscreen */
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             background: rgba(255, 255, 255, 0.95);
-            z-index: 2000;
+            z-index: 10000;
             align-items: center;
             justify-content: center;
         }
@@ -625,6 +626,15 @@
                 </select>
             </div>
 
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong>Default Fullscreen</strong>
+                    <div class="setting-desc">Open supported apps in fullscreen mode.</div>
+                </div>
+                <input type="checkbox" id="toggle-fullscreen" class="toggle-switch"
+                    onchange="toggleService('fullscreen')">
+            </div>
+
             <h2>AI Assistant <span class="beta-badge"
                     style="background:black; color:white; border:none; padding:2px 4px;">+</span></h2>
 
@@ -745,7 +755,19 @@
 
     <script>
         function showModal(msg, isConfirm = false, callback = null) {
-            const overlay = document.getElementById('modal-overlay');
+            // Check if this is the (title, msg) signature or (msg, isConfirm, callback)
+            if (typeof isConfirm === 'string') {
+                // Signature (title, msg) -> Use first modal
+                const title = msg;
+                const message = isConfirm;
+                document.getElementById('modal-title').innerText = title;
+                document.getElementById('modal-msg').innerText = message;
+                document.getElementById('modal-overlay').style.display = 'flex';
+                return;
+            }
+
+            // Standard Signature (msg, isConfirm, callback) -> Use generic modal
+            const overlay = document.getElementById('generic-modal-overlay');
             const messageEl = document.getElementById('modal-message');
             const btnsEl = document.getElementById('modal-btns');
             messageEl.textContent = msg;
@@ -758,7 +780,8 @@
             }
             overlay.style.display = 'flex';
         }
-        function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+        function hideModal() { document.getElementById('generic-modal-overlay').style.display = 'none'; }
+        function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 
         // --- FIREBASE CONFIG ---
         const firebaseConfig = {
@@ -1063,6 +1086,8 @@
             const censorProfanity = localStorage.getItem('rekindle_censor_profanity');
             document.getElementById('toggle-profanity').checked = (censorProfanity === null || censorProfanity === 'true');
 
+            document.getElementById('toggle-fullscreen').checked = localStorage.getItem('rekindle_default_fullscreen') === 'true';
+
             document.getElementById('toggle-tasks').checked = localStorage.getItem('rekindle_google_tasks_enabled') === 'true';
             document.getElementById('toggle-calendar').checked = localStorage.getItem('rekindle_google_calendar_enabled') === 'true';
             document.getElementById('toggle-contacts').checked = localStorage.getItem('rekindle_google_contacts_enabled') === 'true';
@@ -1281,6 +1306,16 @@
                 return;
             }
 
+            if (serviceName === 'fullscreen') {
+                key = 'rekindle_default_fullscreen';
+                isEnabled = document.getElementById('toggle-fullscreen').checked;
+                localStorage.setItem(key, isEnabled);
+                if (currentUser) {
+                    db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ defaultFullscreen: isEnabled }, { merge: true });
+                }
+                return;
+            }
+
             const elId = `toggle-${serviceName}`;
             key = `rekindle_google_${serviceName}_enabled`;
             isEnabled = document.getElementById(elId).checked;
@@ -1376,11 +1411,6 @@
             }
         }
 
-        function showModal(title, msg) {
-            document.getElementById('modal-title').innerText = title;
-            document.getElementById('modal-msg').innerText = msg;
-            document.getElementById('modal-overlay').style.display = 'flex';
-        }
 
         function closeModal() {
             document.getElementById('modal-overlay').style.display = 'none';
@@ -1590,6 +1620,10 @@
                         localStorage.setItem('rekindle_censor_profanity', data.censorProfanity);
                         document.getElementById('toggle-profanity').checked = data.censorProfanity;
                     }
+                    if (data.defaultFullscreen !== undefined) {
+                        localStorage.setItem('rekindle_default_fullscreen', data.defaultFullscreen);
+                        document.getElementById('toggle-fullscreen').checked = data.defaultFullscreen;
+                    }
                 }
             });
 
@@ -1639,10 +1673,12 @@
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
     <!-- STANDARD MODAL POPUP -->
-    <div id="modal-overlay">
+    <div id="generic-modal-overlay"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:10001; align-items:center; justify-content:center; font-family: 'Geneva', 'Verdana', sans-serif;">
         <div class="modal-box">
-            <div id="modal-message" class="modal-text"></div>
-            <div id="modal-btns" class="modal-btns"></div>
+            <div id="modal-message" class="modal-text"
+                style="margin-bottom:20px; font-weight:bold; line-height:1.4; color:black;"></div>
+            <div id="modal-btns" class="modal-btns" style="display:flex; gap:10px; justify-content:center;"></div>
         </div>
     </div>
 </body>
