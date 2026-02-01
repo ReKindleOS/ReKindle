@@ -265,7 +265,8 @@ async function handleRequest(request) {
             user: user,
             text: text,
             timestamp: { ".sv": "timestamp" },
-            ...(translatedText && { translation: translatedText })
+            ...(translatedText && { translation: translatedText }),
+            ...(payload.isPro && { isPro: true })
         };
 
         let postUrl = FIREBASE_URL;
