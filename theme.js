@@ -403,6 +403,17 @@
     }
     window.rekindleApplyWallpaper = applyWallpaper;
 
+    // --- DEFAULT FULLSCREEN ---
+    function applyDefaultFullscreen() {
+        if (localStorage.getItem('rekindle_default_fullscreen') === 'true') {
+            const win = document.querySelector('.window');
+            if (win && !win.classList.contains('fullscreen')) {
+                win.classList.add('fullscreen');
+            }
+        }
+    }
+    window.rekindleApplyDefaultFullscreen = applyDefaultFullscreen;
+
     // Timezone Exports REMOVED (Moved to time.js)
 
 
