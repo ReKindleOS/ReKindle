@@ -1,8 +1,103 @@
 export default {
     async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+
+        // --- CORS Handler ---
+        if (request.method === 'OPTIONS') {
+            return new Response(null, {
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, stripe-signature',
+                    'Access-Control-Max-Age': '86400',
+                },
+            });
+        }
+
+        // --- NEW: API Endpoint for Admin ---
+        if (request.method === 'GET' && url.pathname.endsWith('/subscribers')) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader || authHeader !== `Bearer ${env.ADMIN_SECRET}`) {
+                return new Response('Unauthorized', {
+                    status: 401,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            try {
+                const subscribers = await fetchActiveSubscribers(env);
+                return new Response(JSON.stringify(subscribers), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } catch (err) {
+                return new Response('Error fetching subscribers: ' + err.message, {
+                    status: 500,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+        }
+
+        // --- NEW: Resolve UIDs to usernames via Firebase Auth ---
+        if (request.method === 'POST' && url.pathname.endsWith('/resolve-users')) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader || authHeader !== `Bearer ${env.ADMIN_SECRET}`) {
+                return new Response('Unauthorized', {
+                    status: 401,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            try {
+                const body = await request.json();
+                const uids = body.uids || [];
+
+                if (uids.length === 0) {
+                    return new Response(JSON.stringify([]), {
+                        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                    });
+                }
+
+                const resolved = await resolveFirebaseUsers(env, uids);
+                return new Response(JSON.stringify(resolved), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } catch (err) {
+                return new Response('Error resolving users: ' + err.message, {
+                    status: 500,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+        }
+
+        // --- NEW: Sync Pro Users to config/supporters ---
+        if (request.method === 'POST' && url.pathname.endsWith('/sync-pro-users')) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader || authHeader !== `Bearer ${env.ADMIN_SECRET}`) {
+                return new Response('Unauthorized', {
+                    status: 401,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            try {
+                const body = await request.json();
+                const users = body.users || [];
+                const result = await bulkSyncSupporters(env, users);
+                return new Response(JSON.stringify(result), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } catch (err) {
+                return new Response('Error syncing users: ' + err.message, {
+                    status: 500,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+        }
+
         if (request.method !== 'POST') {
             return new Response('Method Not Allowed', { status: 405 });
         }
+
 
         const signature = request.headers.get('stripe-signature');
         if (!signature) {
@@ -265,7 +360,21 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
         throw new Error(`Firestore API Error ${res.status}: ${text}`);
     }
 
-    return await res.json();
+    const result = await res.json();
+
+    // --- SYNC TO config/supporters ---
+    // Try to get the username for this user and add them to the supporters list
+    try {
+        const username = await getUsernameForUid(env, uid, token);
+        if (username) {
+            await addToSupportersConfig(env, token, username, finalExpiryDate, subscriptionType === 'lifetime');
+            console.log(`Added ${username} to config/supporters (expires: ${finalExpiryDate.toISOString()})`);
+        }
+    } catch (e) {
+        console.warn("Failed to sync to config/supporters:", e.message);
+    }
+
+    return result;
 }
 
 // --- EXTEND SUBSCRIPTION BY CUSTOMER ID ---
@@ -388,6 +497,17 @@ async function revokeProByCustomerId(env, stripeCustomerId) {
             throw new Error(`Firestore Revoke Error ${res.status}: ${text}`);
         }
 
+        // --- REMOVE FROM config/supporters ---
+        try {
+            const username = await getUsernameForUid(env, uid, token);
+            if (username) {
+                await removeFromSupportersConfig(env, token, username);
+                console.log(`Removed ${username} from config/supporters`);
+            }
+        } catch (e) {
+            console.warn("Failed to remove from config/supporters:", e.message);
+        }
+
         console.log(`Revoked Pro status for UID: ${uid} due to refund.`);
         return { status: 'revoked', uid };
     } else {
@@ -456,7 +576,7 @@ async function getGoogleAccessToken(env) {
     const now = Math.floor(Date.now() / 1000);
     const claim = {
         iss: clientEmail,
-        scope: "https://www.googleapis.com/auth/datastore",
+        scope: "https://www.googleapis.com/auth/cloud-platform",
         aud: "https://oauth2.googleapis.com/token",
         exp: now + 3600,
         iat: now
@@ -515,4 +635,299 @@ function b64url_encode(buffer) {
         binary += String.fromCharCode(bytes[i]);
     }
     return b64url(binary);
+}
+
+// --- STRIPE FETCH ---
+// Updated to match scripts/get_subscribers.js logic (fetching Checkout Sessions)
+async function fetchActiveSubscribers(env) {
+    if (!env.STRIPE_KEY) throw new Error("Missing STRIPE_KEY env var");
+
+    const subscribers = [];
+    let startingAfter = null;
+    let hasMore = true;
+
+    // We fetch "complete" checkout sessions to capture both Lifetime (payment) and Recurring (subscription)
+    // Note: This lists everyone who has ever paid. It does not verify if a subscription was later cancelled.
+    // However, this matches the behavior of the 'get_subscribers.js' script the user referenced.
+
+    while (hasMore) {
+        let url = `https://api.stripe.com/v1/checkout/sessions?status=complete&limit=100`;
+        if (startingAfter) {
+            url += `&starting_after=${startingAfter}`;
+        }
+
+        const res = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${env.STRIPE_KEY}`
+            }
+        });
+
+        if (!res.ok) {
+            throw new Error(`Stripe API Error: ${res.status} ${await res.text()}`);
+        }
+
+        const data = await res.json();
+        const list = data.data || [];
+
+        for (const session of list) {
+            const uid = session.client_reference_id;
+            const email = session.customer_details ? session.customer_details.email : null;
+
+            if (uid) {
+                // Deduplicate? The script doesn't, but pro-admin might want uniques.
+                // We'll return all and let frontend handle or we push simple objects.
+                subscribers.push({
+                    uid: uid,
+                    email: email,
+                    name: session.customer_details ? session.customer_details.name : null,
+                    stripeId: session.id, // Session ID
+                    type: session.mode === 'payment' ? 'Lifetime' : 'Subscription',
+                    amount: session.amount_total,
+                    currency: session.currency,
+                    created: session.created
+                });
+            }
+        }
+
+        hasMore = data.has_more;
+        if (hasMore && list.length > 0) {
+            startingAfter = list[list.length - 1].id;
+        } else {
+            hasMore = false;
+        }
+    }
+
+    return subscribers;
+}
+
+// --- FIREBASE AUTH LOOKUP ---
+// Uses Identity Toolkit REST API to resolve UIDs to display names
+async function resolveFirebaseUsers(env, uids) {
+    const accessToken = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+
+    // Identity Toolkit API endpoint for batch user lookup
+    const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`;
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            localId: uids
+        })
+    });
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Identity Toolkit API Error: ${res.status} ${errorText}`);
+    }
+
+    const data = await res.json();
+    console.log("Identity Toolkit Response:", JSON.stringify(data));
+    const users = data.users || [];
+
+    // Create a map for easy lookup
+    const result = {};
+    for (const user of users) {
+        result[user.localId] = {
+            uid: user.localId,
+            displayName: user.displayName || null,
+            email: user.email || null
+        };
+    }
+
+    // Return in same order as input, with nulls for not found
+    return uids.map(uid => result[uid] || { uid, displayName: null, email: null });
+}
+
+// --- GET USERNAME FOR UID ---
+// Tries Firebase Auth displayName first, then Firestore user doc
+async function getUsernameForUid(env, uid, existingToken = null) {
+    const token = existingToken || await getGoogleAccessToken(env);
+
+    // 1. Try Firebase Auth (displayName)
+    try {
+        const resolved = await resolveFirebaseUsers(env, [uid]);
+        if (resolved[0] && resolved[0].displayName) {
+            return resolved[0].displayName;
+        }
+    } catch (e) {
+        console.warn("Firebase Auth lookup failed:", e.message);
+    }
+
+    // 2. Fallback to Firestore user doc
+    const projectId = env.FIREBASE_PROJECT_ID;
+    try {
+        const res = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const doc = await res.json();
+            if (doc.fields) {
+                if (doc.fields.username && doc.fields.username.stringValue) {
+                    return doc.fields.username.stringValue;
+                }
+                if (doc.fields.displayName && doc.fields.displayName.stringValue) {
+                    return doc.fields.displayName.stringValue;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Firestore user lookup failed:", e.message);
+    }
+
+    return null;
+}
+
+// --- ADD TO CONFIG/SUPPORTERS ---
+// Updates config/supporters document with username and expiry
+async function addToSupportersConfig(env, token, username, expiresAt, isLifetime = false) {
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    // For lifetime members, use a very far future date (year 2100)
+    const finalExpiry = isLifetime ? new Date('2100-01-01T00:00:00Z') : expiresAt;
+
+    // We need to update a single field within the map. 
+    // Firestore REST API uses field masks with dot notation for nested fields.
+    // config/supporters structure: { "username1": { expiresAt: timestamp }, ... }
+
+    // First, get the current document to merge
+    let existingData = {};
+    try {
+        const getRes = await fetch(`${baseUrl}/config/supporters`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (getRes.ok) {
+            const doc = await getRes.json();
+            if (doc.fields) {
+                existingData = doc.fields;
+            }
+        }
+    } catch (e) {
+        // Document might not exist yet, that's fine
+    }
+
+    // Add/update this user
+    existingData[username] = {
+        mapValue: {
+            fields: {
+                expiresAt: { timestampValue: finalExpiry.toISOString() },
+                isLifetime: { booleanValue: isLifetime }
+            }
+        }
+    };
+
+    // Write the full document back
+    const url = `${baseUrl}/config/supporters`;
+    const body = { fields: existingData };
+
+    const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Failed to update config/supporters: ${res.status} ${text}`);
+    }
+
+    return true;
+}
+
+// --- REMOVE FROM CONFIG/SUPPORTERS ---
+async function removeFromSupportersConfig(env, token, username) {
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    // Get current document
+    let existingData = {};
+    try {
+        const getRes = await fetch(`${baseUrl}/config/supporters`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (getRes.ok) {
+            const doc = await getRes.json();
+            if (doc.fields) {
+                existingData = doc.fields;
+            }
+        }
+    } catch (e) {
+        return; // Nothing to remove
+    }
+
+    // Remove this user
+    delete existingData[username];
+
+    // Write the document back
+    const url = `${baseUrl}/config/supporters`;
+    const body = { fields: existingData };
+
+    const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Failed to update config/supporters: ${res.status} ${text}`);
+    }
+
+    return true;
+}
+
+// --- BULK SYNC SUPPORTERS ---
+// Overwrites/Updates config/supporters with the provided list of resolved users
+async function bulkSyncSupporters(env, users) {
+    const token = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    const fields = {};
+    for (const user of users) {
+        if (!user.username || user.username === user.uid) continue; // Skip if no username
+
+        let expiresAt;
+        if (user.type === 'lifetime' || user.isLifetime) {
+            expiresAt = "2100-01-01T00:00:00Z";
+        } else {
+            // Ensure expiresAt is ISO string
+            expiresAt = user.expiresAt ? new Date(user.expiresAt).toISOString() : new Date().toISOString();
+        }
+
+        fields[user.username] = {
+            mapValue: {
+                fields: {
+                    expiresAt: { timestampValue: expiresAt },
+                    isLifetime: { booleanValue: user.type === 'lifetime' || user.isLifetime }
+                }
+            }
+        };
+    }
+
+    const res = await fetch(`${baseUrl}/config/supporters`, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fields })
+    });
+
+    if (!res.ok) {
+        throw new Error(`Bulk Sync Error: ${res.status} ${await res.text()}`);
+    }
+
+    return { status: 'success', count: Object.keys(fields).length };
 }

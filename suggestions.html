@@ -100,6 +100,63 @@
             box-shadow: none;
         }
 
+        /* CONTROLS (Right side of Title Bar) */
+        .title-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Icon State Toggles */
+        .icon-contract {
+            display: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
         /* APP LAYOUT */
         #app-content {
             flex-grow: 1;
@@ -237,13 +294,13 @@
         /* MODALS */
         #modal-overlay {
             display: none;
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             background: rgba(255, 255, 255, 0.95);
-            z-index: 100;
+            z-index: 10001;
             align-items: center;
             justify-content: center;
         }
@@ -268,13 +325,13 @@
 
         #login-overlay {
             display: none;
-            position: absolute;
+            position: fixed;
             top: 35px;
             bottom: 0;
             left: 0;
             right: 0;
             background: rgba(255, 255, 255, 0.95);
-            z-index: 50;
+            z-index: 10001;
             align-items: center;
             justify-content: center;
             flex-direction: column;
@@ -397,6 +454,40 @@
         .suggestion-item.done .sugg-title {
             text-decoration: line-through;
         }
+
+        /* SUPPORTER / PRO STYLING */
+        .suggestion-item.supporter {
+            background: black !important;
+            color: white !important;
+            border: 2px solid black !important;
+            box-shadow: 4px 4px 0px #999 !important;
+        }
+
+        .suggestion-item.supporter .sugg-meta {
+            color: #ccc;
+        }
+
+        .suggestion-item.supporter .status-badge {
+            border-color: white !important;
+        }
+
+        .supporter-crown {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            vertical-align: middle;
+            fill: black;
+            margin-right: 4px;
+        }
+
+        .suggestion-item.supporter .supporter-crown {
+            fill: white;
+        }
+
+        .comment-item.supporter .comment-author {
+            color: #000;
+            /* Keep author name black or adjust if needed */
+        }
     </style>
 
     <!-- FIREBASE -->
@@ -413,6 +504,15 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text">Suggestions</span>
+            <div class="title-controls">
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6" />
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <!-- MAIN VIEW (LIST) -->
@@ -541,7 +641,7 @@
 
     <!-- MESSAGE MODAL -->
     <div id="msg-modal-overlay"
-        style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center;">
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10002; align-items:center; justify-content:center;">
         <div class="modal-box" style="width:250px;">
             <h3 id="msg-title" style="margin-top:0;">Message</h3>
             <p id="msg-body">Text</p>
@@ -551,7 +651,7 @@
 
     <!-- ADMIN EDIT CATEGORY MODAL -->
     <div id="edit-cat-overlay"
-        style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center;">
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10002; align-items:center; justify-content:center;">
         <div class="modal-box" style="width:250px;">
             <h3>Edit Category</h3>
             <select id="edit-cat-select" class="modal-input"></select>
@@ -649,18 +749,57 @@
             let currentUser = null;
             let currentSuggestionId = null;
             let unsubscribeComments = null;
+            let isPro = false;
+            let supporterUsers = {};
 
             // AUTH LISTENER
             auth.onAuthStateChanged(function (user) {
                 if (user) {
                     currentUser = user;
+                    // Check Pro Status
+                    isPro = (localStorage.getItem('rekindle_is_pro') !== 'false');
+                    if (currentUser.email === 'ukiyo@rekindle.ink') {
+                        isPro = true;
+                    }
+
                     document.getElementById('login-overlay').style.display = 'none';
+                    fetchSupporters();
                     loadSuggestions();
                 } else {
                     currentUser = null;
                     document.getElementById('login-overlay').style.display = 'flex';
                 }
             });
+
+            function fetchSupporters() {
+                db.collection('config').doc('supporters').get().then(function (doc) {
+                    if (doc.exists) {
+                        var data = doc.data();
+                        supporterUsers = {};
+                        // Handle new map format and legacy array formats
+                        if (data.list && Array.isArray(data.list)) {
+                            for (var i = 0; i < data.list.length; i++) {
+                                supporterUsers[data.list[i]] = true;
+                            }
+                        } else if (data.usernames && Array.isArray(data.usernames)) {
+                            for (var i = 0; i < data.usernames.length; i++) {
+                                supporterUsers[data.usernames[i]] = true;
+                            }
+                        } else {
+                            // Map format: keys are usernames
+                            for (var key in data) {
+                                if (key !== 'usernames' && key !== 'list') {
+                                    supporterUsers[key] = true;
+                                }
+                            }
+                        }
+                    }
+                }).catch(function (error) {
+                    console.error("Error loading supporters:", error);
+                });
+            }
+
+            const CROWN_SVG = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z"/></svg>';
 
 
 
@@ -691,6 +830,10 @@
             window.changeSort = function () {
                 currentSort = document.getElementById('sort-select').value;
                 renderList();
+            };
+
+            window.toggleFullScreen = function () {
+                document.querySelector('.window').classList.toggle('fullscreen');
             };
 
             window.switchTab = function (tab) {
@@ -782,11 +925,12 @@
                     const voteCount = (data.upvotes || []).length;
                     const isDone = data.status === 'done';
                     const isProgress = data.status === 'in_progress';
+                    const isAuthorPro = data.isPro || supporterUsers[data.authorName];
                     // SAFE ACCESS: No optional chaining
                     const hasVoted = (data.upvotes || []).includes(currentUser ? currentUser.uid : null);
 
                     const el = document.createElement('div');
-                    el.className = 'suggestion-item' + (isDone ? ' done' : '');
+                    el.className = 'suggestion-item' + (isDone ? ' done' : '') + (isAuthorPro ? ' supporter' : '');
                     el.onclick = function () { openSuggestion(id, data); };
 
 
@@ -817,6 +961,8 @@
 
                     const voteClass = hasVoted ? 'vote-badge voted' : 'vote-badge';
 
+                    const crown = isAuthorPro ? CROWN_SVG : '';
+
                     el.innerHTML = `
                     <div class="sugg-header">
                         <div>
@@ -828,7 +974,7 @@
                     <div style="font-size:0.9rem; margin-bottom:5px; height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                         ${escapeHtml(data.description)}
                     </div>
-                    <div class="sugg-meta">by ${escapeHtml(data.authorName || 'Anon')}</div>
+                    <div class="sugg-meta">${crown}by ${escapeHtml(data.authorName || 'Anon')}</div>
                 `;
                     listEl.appendChild(el);
                 });
@@ -856,12 +1002,16 @@
                     dateStr = new Date(data.createdAt.toDate()).toLocaleDateString();
                 }
 
-                let metaText = `by ${data.authorName || 'Anonymous'} • ${dateStr}`;
-                if (data.device) {
-                    metaText += ` • Device: ${data.device}`;
-                }
+                let isAuthorPro = data.isPro || supporterUsers[data.authorName];
+                let crown = isAuthorPro ? CROWN_SVG : '';
 
-                document.getElementById('detail-meta').textContent = metaText;
+                let authorHtml = `by ${escapeHtml(data.authorName || 'Anonymous')}`;
+                if (isAuthorPro) authorHtml = crown + authorHtml;
+
+                document.getElementById('detail-meta').innerHTML = `${authorHtml} • ${dateStr}`;
+                if (data.device) {
+                    document.getElementById('detail-meta').innerHTML += ` • Device: ${escapeHtml(data.device)}`;
+                }
 
                 updateVoteBtn(data.upvotes || []);
                 updateAdminControls(data);
@@ -900,6 +1050,9 @@
                 // EDIT CAT
                 adminDiv.appendChild(createBtn('Edit Cat', () => openEditCategoryModal()));
 
+                // EDIT CONTENT
+                adminDiv.appendChild(createBtn('Edit Content', () => openEditContentModal()));
+
                 // DIVIDER
                 const divider = document.createElement('div');
                 divider.style.width = '100%';
@@ -918,6 +1071,10 @@
                 adminDiv.appendChild(createBtn('In Progress', () => setAdminStatus('in_progress'), '#007bff', 'white'));
                 adminDiv.appendChild(createBtn('Done', () => setAdminStatus('done'), 'green', 'white'));
                 adminDiv.appendChild(createBtn('Closed', () => setAdminStatus('closed'), 'red', 'white'));
+
+                // PRO TOGGLE
+                const isItemPro = !!data.isPro;
+                adminDiv.appendChild(createBtn(isItemPro ? 'Remove Pro' : 'Mark Pro', () => toggleProStatus(), isItemPro ? '#333' : '#666', 'white'));
             };
 
             window.setAdminStatus = function (status) {
@@ -933,6 +1090,25 @@
                 }).catch(err => {
                     console.error(err);
                     showMessage("Error", "Failed to set status.");
+                });
+            };
+
+            window.toggleProStatus = function () {
+                if (!currentSuggestionId || !currentUser) return;
+                const docRef = db.collection('suggestions').doc(currentSuggestionId);
+
+                db.runTransaction(function (transaction) {
+                    return transaction.get(docRef).then(function (doc) {
+                        if (!doc.exists) throw "Document does not exist!";
+                        const newPro = !doc.data().isPro;
+                        transaction.update(docRef, { isPro: newPro });
+                        return newPro;
+                    });
+                }).then(function (newPro) {
+                    updateLocalItem(currentSuggestionId, { isPro: newPro });
+                }).catch(function (err) {
+                    console.error("Pro toggle failed", err);
+                    showMessage("Error", "Failed to update Pro status.");
                 });
             };
 
@@ -1017,6 +1193,52 @@
                 }).catch(function (err) {
                     console.error(err);
                     showMessage("Error", "Failed to update category.");
+                });
+            };
+
+            // EDIT CONTENT LOGIC
+            window.openEditContentModal = function () {
+                if (!currentSuggestionId) return;
+
+                // Find current item
+                let item = null;
+                for (var i = 0; i < allSuggestions.length; i++) {
+                    if (allSuggestions[i].id === currentSuggestionId) {
+                        item = allSuggestions[i];
+                        break;
+                    }
+                }
+                if (!item) return;
+
+                document.getElementById('edit-title').value = item.title;
+                document.getElementById('edit-desc').value = item.description;
+                document.getElementById('edit-content-overlay').style.display = 'flex';
+            };
+
+            window.submitEditContent = function () {
+                if (!currentSuggestionId) return;
+                const newTitle = document.getElementById('edit-title').value.trim();
+                const newDesc = document.getElementById('edit-desc').value.trim();
+
+                if (!newTitle || !newDesc) {
+                    showMessage("Error", "Title and Description cannot be empty.");
+                    return;
+                }
+
+                db.collection('suggestions').doc(currentSuggestionId).update({
+                    title: newTitle,
+                    description: newDesc
+                }).then(function () {
+                    document.getElementById('edit-content-overlay').style.display = 'none';
+                    updateLocalItem(currentSuggestionId, { title: newTitle, description: newDesc });
+                    showMessage("Success", "Content updated.");
+                    // Update detail view immediately
+                    document.getElementById('detail-title').textContent = newTitle;
+                    document.getElementById('detail-title-bar').textContent = newTitle;
+                    document.getElementById('detail-desc').textContent = newDesc;
+                }).catch(function (err) {
+                    console.error(err);
+                    showMessage("Error", "Failed to update content. Check permissions.");
                 });
             };
 
@@ -1173,10 +1395,12 @@
                         list.innerHTML = '';
                         snapshot.forEach(function (doc) {
                             const c = doc.data();
+                            const isCommentPro = c.isPro || supporterUsers[c.authorName];
+                            const crown = isCommentPro ? CROWN_SVG : '';
                             const el = document.createElement('div');
-                            el.className = 'comment-item';
+                            el.className = 'comment-item' + (isCommentPro ? ' supporter' : '');
                             el.innerHTML = `
-                            <span class="comment-author">${escapeHtml(c.authorName)}:</span>
+                            <span class="comment-author">${crown}${escapeHtml(c.authorName)}:</span>
                             <span>${escapeHtml(c.text)}</span>
                         `;
                             list.appendChild(el);
@@ -1195,6 +1419,7 @@
                     text: text,
                     authorName: currentUser.displayName || currentUser.email.split('@')[0],
                     authorUid: currentUser.uid,
+                    isPro: isPro,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 inp.value = '';
@@ -1224,23 +1449,26 @@
 
                 if (type === 'suggestion') {
                     const opts = ['General', 'App Suggestion', 'Game Suggestion', 'Feature Suggestion', 'Other'];
-                    opts.forEach(function (o) {
-                        const op = document.createElement('option');
-                        op.value = o;
-                        op.text = o;
-                        catSelect.appendChild(op);
-                    });
-                    deviceInput.style.display = 'none';
                 } else {
                     const opts = ['General', 'Visual Problem', 'Technical Problem', 'Performance Issue', 'Accessibility Problem', 'Other'];
-                    opts.forEach(function (o) {
-                        const op = document.createElement('option');
-                        op.value = o;
-                        op.text = o;
-                        catSelect.appendChild(op);
-                    });
+                }
+
+                // Oops, logic error in original code? No, just me copy pasting. Fixed opts usage below
+                let finalOpts = [];
+                if (type === 'suggestion') {
+                    finalOpts = ['General', 'App Suggestion', 'Game Suggestion', 'Feature Suggestion', 'Other'];
+                    deviceInput.style.display = 'none';
+                } else {
+                    finalOpts = ['General', 'Visual Problem', 'Technical Problem', 'Performance Issue', 'Accessibility Problem', 'Other'];
                     deviceInput.style.display = 'block';
                 }
+
+                finalOpts.forEach(function (o) {
+                    const op = document.createElement('option');
+                    op.value = o;
+                    op.text = o;
+                    catSelect.appendChild(op);
+                });
             };
 
             window.closeModal = function () {
@@ -1286,6 +1514,7 @@
                     device: (type === 'problem') ? device : null,
                     authorUid: currentUser.uid,
                     authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                    isPro: isPro,
                     upvotes: [],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 }).then(function () {
