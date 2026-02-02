@@ -269,11 +269,11 @@
 
         .controls {
             display: flex;
-            justify-content: center;
-            gap: 15px;
-            width: 100%;
+            justify-content: space-around;
+            width: 180px;
             padding: 0;
             box-sizing: border-box;
+            margin: 0 auto;
         }
 
         .btn-group {
@@ -386,7 +386,6 @@
         #debug-panel {
             display: none;
             flex-wrap: wrap;
-            gap: 10px;
             justify-content: center;
             margin-top: 20px;
             padding: 15px;
@@ -405,6 +404,7 @@
             cursor: pointer;
             font-family: sans-serif;
             text-transform: uppercase;
+            margin: 5px;
         }
 
         .debug-btn:active {
@@ -489,7 +489,7 @@
 
     <script>
         // --- FIREBASE CONFIG ---
-        const firebaseConfig = {
+        var firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
             projectId: "rekindle-dd1fa",
@@ -501,26 +501,26 @@
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
-        const db = firebase.firestore();
+        var db = firebase.firestore();
         if (db.settings) {
             try {
                 db.settings({ experimentalForceLongPolling: true, merge: true });
             } catch (e) { console.warn("Settings error:", e); }
         }
-        const auth = firebase.auth();
+        var auth = firebase.auth();
 
-        let uid = null;
-        let username = "Guest";
-        let globalHighScore = 0;
+        var uid = null;
+        var username = "Guest";
+        var globalHighScore = 0;
 
-        auth.onAuthStateChanged(user => {
+        auth.onAuthStateChanged(function (user) {
             if (user && !user.isAnonymous) {
                 uid = user.uid;
                 username = user.email ? user.email.split('@')[0] : ("User_" + uid.substring(0, 5));
 
                 // Show debug panel for ukiyo or local dev
-                if (user.email === 'ukiyo@rekindle.ink' || window.location.href.startsWith('http://127.0.0.1:5500')) {
-                    const dp = document.getElementById('debug-panel');
+                if (user.email === 'ukiyo@rekindle.ink' || window.location.href.indexOf('http://127.0.0.1:5500') === 0) {
+                    var dp = document.getElementById('debug-panel');
                     if (dp) dp.style.display = 'flex';
                 }
 
@@ -532,45 +532,46 @@
         });
 
         // Debug functions
-        window.debugAge = (val) => {
-            state.age = Math.max(0, (state.age ?? 0) + val);
+        window.debugAge = function (val) {
+            state.age = Math.max(0, (state.age != null ? state.age : 0) + val);
             saveHighScore(state.age);
         };
-        window.debugStat = (key, val) => {
+        window.debugStat = function (key, val) {
             state[key] = val;
         };
-        window.debugPoop = () => {
+        window.debugPoop = function () {
             state.poops = Math.min(4, state.poops + 1);
         };
-        window.debugEvolve = () => {
+        window.debugEvolve = function () {
             state.stageStart = Date.now() - 2000000; // Trigger evolution
             state.born = Date.now() - 2000000;
         };
-        window.debugStage = (stage) => {
+        window.debugStage = function (stage) {
             state.stage = stage;
             state.stageStart = Date.now();
             if (stage === 'EGG') state.born = Date.now();
             if (stage === 'DEAD') state.died = Date.now();
         };
 
-        async function saveHighScore(newAge) {
+        function saveHighScore(newAge) {
             if (!uid) return;
-            try {
-                // Only update if it's actually higher to save writes
-                const doc = await db.collection('leaderboard_pet_v1').doc(uid).get();
+            return db.collection('leaderboard_pet_v1').doc(uid).get().then(function (doc) {
                 if (doc.exists && doc.data().score >= newAge) return;
 
-                await db.collection('leaderboard_pet_v1').doc(uid).set({
+                return db.collection('leaderboard_pet_v1').doc(uid).set({
                     username: username,
                     score: newAge,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
+            }).then(function () {
                 console.log("Age synced to Firebase:", newAge);
-            } catch (e) { console.error("Firebase sync error:", e); }
+            }).catch(function (e) {
+                console.error("Firebase sync error:", e);
+            });
         }
 
         function escapeHtml(text) {
-            const div = document.createElement('div');
+            var div = document.createElement('div');
             div.appendChild(document.createTextNode(text));
             return div.innerHTML;
         }
@@ -581,17 +582,17 @@
             document.getElementById('confirm-modal').style.display = 'block';
             document.getElementById('modal-overlay').style.display = 'block';
 
-            const yesBtn = document.getElementById('confirm-yes');
-            const noBtn = document.getElementById('confirm-no');
+            var yesBtn = document.getElementById('confirm-yes');
+            var noBtn = document.getElementById('confirm-no');
 
-            const cleanUp = () => {
+            var cleanUp = function () {
                 yesBtn.onclick = null;
                 noBtn.onclick = null;
                 closeModal('confirm-modal');
             };
 
-            yesBtn.onclick = () => { cleanUp(); onYes(); };
-            noBtn.onclick = () => { cleanUp(); };
+            yesBtn.onclick = function () { cleanUp(); onYes(); };
+            noBtn.onclick = function () { cleanUp(); };
         }
 
         function closeModal(id) {
@@ -599,53 +600,53 @@
             document.getElementById('modal-overlay').style.display = 'none';
         }
 
-        async function openLeaderboard() {
-            const modal = document.getElementById('leaderboard-modal');
+        function openLeaderboard() {
+            var modal = document.getElementById('leaderboard-modal');
             modal.style.display = 'block';
             document.getElementById('modal-overlay').style.display = 'block';
-            const list = document.getElementById('lb-content');
+            var list = document.getElementById('lb-content');
             list.innerHTML = 'Loading...';
 
-            try {
-                const snapshot = await db.collection('leaderboard_pet_v1')
-                    .orderBy('score', 'desc')
-                    .limit(10)
-                    .get();
-
-                list.innerHTML = '';
-                let rank = 1;
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const isMe = (uid && doc.id === uid);
-                    const row = document.createElement('div');
-                    row.className = `lb-row ${isMe ? 'me' : ''}`;
-                    row.innerHTML = `<span>${rank}. ${escapeHtml(data.username)}</span><span>${data.score} yrs</span>`;
-                    list.appendChild(row);
-                    rank++;
+            db.collection('leaderboard_pet_v1')
+                .orderBy('score', 'desc')
+                .limit(10)
+                .get()
+                .then(function (snapshot) {
+                    list.innerHTML = '';
+                    var rank = 1;
+                    snapshot.forEach(function (doc) {
+                        var data = doc.data();
+                        var isMe = (uid && doc.id === uid);
+                        var row = document.createElement('div');
+                        row.className = 'lb-row' + (isMe ? ' me' : '');
+                        row.innerHTML = '<span>' + rank + '. ' + escapeHtml(data.username) + '</span><span>' + data.score + ' yrs</span>';
+                        list.appendChild(row);
+                        rank++;
+                    });
+                })
+                .catch(function (e) {
+                    list.innerHTML = "Error loading scores.";
+                    console.error(e);
                 });
-            } catch (e) {
-                list.innerHTML = "Error loading scores.";
-                console.error(e);
-            }
         }
 
         /**
          * PET GAME ENGINE
          */
 
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+        var canvas = document.getElementById('gameCanvas');
+        var ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = false; // Fix blurriness for pixel art
 
         // Game Constants
-        const TICK_RATE = 500; // ms
-        const SAVE_KEY = 'pet_save_v1';
-        const CANVAS_W = 128;
-        const CANVAS_H = 128;
+        var TICK_RATE = 500; // ms
+        var SAVE_KEY = 'pet_save_v1';
+        var CANVAS_W = 128;
+        var CANVAS_H = 128;
 
         // Colors
-        const P = '#000000'; // Pixel (On)
-        const T = null;      // Transparent (Off)
+        var P = '#000000'; // Pixel (On)
+        var T = null;      // Transparent (Off)
 
         // --- SPRITES ---
 
@@ -656,7 +657,7 @@
         function handleInput(btn) {
             // Secret Reset always allowed
             if (state.stage === 'DEAD' && btn === 'C') {
-                showConfirm("New Pet", "Do you want to start over with a new egg?", () => {
+                showConfirm("New Pet", "Do you want to start over with a new egg?", function () {
                     hardReset();
                 });
                 return;
@@ -666,7 +667,7 @@
                 if (btn === 'A') {
                     ui.feedMenuIndex = (ui.feedMenuIndex + 1) % 2;
                 } else if (btn === 'B') {
-                    const type = ui.feedMenuIndex === 0 ? 'FOOD' : 'SNACK';
+                    var type = ui.feedMenuIndex === 0 ? 'FOOD' : 'SNACK';
                     handleFeedSelection(type);
                 } else if (btn === 'C') {
                     ui.screen = 'MAIN';
@@ -707,47 +708,6 @@
 
 
 
-        function createIconOverlay() {
-            const screen = document.querySelector('.lcd-screen');
-            let overlay = screen.querySelector('.icon-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.className = 'icon-overlay';
-
-                // Top 4
-                const top = document.createElement('div');
-                top.className = 'icon-row top';
-                for (let i = 0; i < 4; i++) {
-                    const d = document.createElement('div');
-                    d.className = 'menu-icon';
-                    d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
-                    d.title = ICON_NAMES[i]; // Tooltip
-                    d.onclick = () => handleIconClick(i); // Click handler
-                    top.appendChild(d);
-                }
-                overlay.appendChild(top);
-
-                // Spacer
-                const mid = document.createElement('div');
-                overlay.appendChild(mid);
-
-                // Bottom 3
-                const bot = document.createElement('div');
-                bot.className = 'icon-row bottom';
-                for (let i = 4; i < 7; i++) {
-                    const d = document.createElement('div');
-                    d.className = 'menu-icon';
-                    d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
-                    d.title = ICON_NAMES[i]; // Tooltip
-                    d.onclick = () => handleIconClick(i);
-                    bot.appendChild(d);
-                }
-                overlay.appendChild(bot);
-
-                screen.appendChild(overlay);
-            }
-            return overlay;
-        }
 
         function render() {
             // Clear
@@ -756,14 +716,14 @@
 
             if (!state.lightOn) {
                 // Sleeping Zzz (3x3 native * 3 = 9x9)
-                if (images.zzz) drawSprite('zzz', 60, 40, 9, 9);
+                if (processedImages.zzz) drawSprite('zzz', 60, 40);
                 return;
             }
 
             // NORMAL RENDER
 
             // Determine Sprite Key based on lifecycle stage
-            let key = 'child1'; // Default
+            var key = 'child1'; // Default
 
             if (state.stage === 'EGG') {
                 key = (ui.animFrame % 60 < 30) ? 'egg1' : 'egg2';
@@ -787,11 +747,11 @@
                 }
             } else if (state.stage === 'TEEN') {
                 // Teen (randomly teen1 or teen2 at evolution)
-                const teenType = state.evolutionType || 1;
+                var teenType = state.evolutionType || 1;
                 if (state.sick) {
-                    key = `teen${teenType}_sick`;
+                    key = 'teen' + teenType + '_sick';
                 } else {
-                    key = (ui.animFrame % 60 < 30) ? `teen${teenType}` : `teen${teenType}`;
+                    key = 'teen' + teenType;
                 }
             } else if (state.stage === 'ADULT1') {
                 key = state.sick ? 'adult1_sick' : 'adult1';
@@ -806,26 +766,26 @@
             }
 
             // Base key for animations (stripped of variants like _side, _lips)
-            let baseStageKey = key;
+            var baseStageKey = key;
             if (key.includes('_side')) baseStageKey = key.replace('_side', '');
             if (key.includes('_lips')) baseStageKey = key.replace('_lips', '');
 
-            const SCALE = 3;
-            const px = PIXEL_SIZES[key] || [8, 8];
-            const w = px[0] * SCALE;
-            const h = px[1] * SCALE;
+            var SCALE = 3;
+            var px = PIXEL_SIZES[key] || [8, 8];
+            var w = px[0] * SCALE;
+            var h = px[1] * SCALE;
 
             if (ui.screen === 'MAIN') {
                 // Apply movement if not Egg/Dead
-                let tx = Math.floor((CANVAS_W - w) / 2);
-                let ty = Math.floor((CANVAS_H - h) / 2) + 16;
+                var tx = Math.floor((CANVAS_W - w) / 2);
+                var ty = Math.floor((CANVAS_H - h) / 2) + 16;
 
                 if (state.stage !== 'EGG' && state.stage !== 'DEAD') {
                     // Slower, smaller, more consistent steps
-                    const step = Math.floor(ui.animFrame / 60);
+                    var step = Math.floor(ui.animFrame / 60);
                     // Smaller range: 10px horizontal, 2px vertical
-                    const wanderX = Math.sin(step * 0.5) * 10;
-                    const wanderY = (step % 2 === 0) ? 0 : 2; // Simple alternating hop
+                    var wanderX = Math.sin(step * 0.5) * 10;
+                    var wanderY = (step % 2 === 0) ? 0 : 2; // Simple alternating hop
                     tx += Math.floor(wanderX);
                     ty += Math.floor(wanderY);
                 }
@@ -865,26 +825,16 @@
                 if (ui.animFrame % 30 === 0) {
                     ui.cleanX += 32;
                 }
-                const brushPX = PIXEL_SIZES['cleaning'] || [6, 43];
-                const brushW = brushPX[0] * 3;
+                var brushPX = PIXEL_SIZES['cleaning'] || [6, 43];
+                var brushW = brushPX[0] * 3;
                 drawSprite('cleaning', ui.cleanX - brushW, 0, brushW, 128);
                 if (ui.cleanX > CANVAS_W + brushW + 40) {
                     ui.cleaning = false;
                 }
             }
 
-            // Global Threshold Filter for sharp LCD font/sprites
-            if (state.lightOn) {
-                const imageData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
-                const data = imageData.data;
-                const threshold = 180; // Catch font edges
-                for (let i = 0; i < data.length; i += 4) {
-                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    const val = brightness < threshold ? 0 : 255;
-                    data[i] = data[i + 1] = data[i + 2] = val;
-                }
-                ctx.putImageData(imageData, 0, 0);
-            }
+            // NORMAL RENDER
+            // (Removed per-frame global thresholding for performance)
 
             // Dead Pet prompt - positioned above pet
             if (state.stage === 'DEAD') {
@@ -899,7 +849,7 @@
         // Consolidating into one renderStats below
 
 
-        const ASSETS = {
+        var ASSETS = {
             // EYES / TEEN
             teen1: 'pet_assets/tamaPictures/tamaCharacter/teen1/tama_teen1.svg',
             teen1_sick: 'pet_assets/tamaPictures/tamaCharacter/teen1/tama_teen1sick.svg',
@@ -990,7 +940,7 @@
         };
 
         // Shared Pixel Dimensions for SVGs
-        const PIXEL_SIZES = {
+        var PIXEL_SIZES = {
             'egg1': [10, 11], 'egg2': [12, 10], 'egg3': [16, 13],
             'child1': [6, 6], 'child1_side': [6, 6], 'child1_eat': [6, 7],
             'child1_sick': [8, 3], 'child1_lower': [8, 3],
@@ -1017,37 +967,67 @@
             'cleaning': [6, 43]
         };
 
-        const images = {};
+        var processedImages = {};
 
         function loadAssets() {
-            let loaded = 0;
-            const total = Object.keys(ASSETS).length;
+            var loaded = 0;
+            var keys = [];
+            for (var key in ASSETS) { if (ASSETS.hasOwnProperty(key)) keys.push(key); }
+            var total = keys.length;
 
-            for (const [key, src] of Object.entries(ASSETS)) {
-                const img = new Image();
-                img.src = src;
-                img.onload = () => {
-                    loaded++;
-                    if (loaded === total) {
-                        console.log("All Assets Loaded");
-                        if (typeof buildSpriteGallery === 'function') {
-                            buildSpriteGallery();
+            for (var i = 0; i < total; i++) {
+                (function (key) {
+                    var img = new Image();
+                    img.src = ASSETS[key];
+                    img.onload = function () {
+                        // Pre-render and threshold THIS sprite
+                        var px = PIXEL_SIZES[key] || [16, 16];
+                        var SCALE = 3;
+                        var w = px[0] * SCALE;
+                        var h = px[1] * SCALE;
+
+                        var c = document.createElement('canvas');
+                        c.width = w;
+                        c.height = h;
+                        var x = c.getContext('2d');
+                        x.imageSmoothingEnabled = false;
+                        x.drawImage(img, 0, 0, w, h);
+
+                        var imageData = x.getImageData(0, 0, w, h);
+                        var data = imageData.data;
+                        var threshold = 220;
+
+                        for (var j = 0; j < data.length; j += 4) {
+                            var r = data[j], g = data[j + 1], b = data[j + 2], a = data[j + 3];
+                            var brightness = (r + g + b) / 3;
+                            if (a > 30 && brightness < threshold) {
+                                data[j] = 0; data[j + 1] = 0; data[j + 2] = 0; data[j + 3] = 255;
+                            } else {
+                                data[j + 3] = 0;
+                            }
                         }
-                    }
-                };
-                img.onerror = () => {
-                    console.error("Failed to load asset:", key, src);
-                };
-                images[key] = img;
+                        x.putImageData(imageData, 0, 0);
+                        processedImages[key] = c;
+
+                        loaded++;
+                        if (loaded === total) {
+                            console.log("All Assets Pre-rendered");
+                            if (typeof buildSpriteGallery === 'function') buildSpriteGallery();
+                        }
+                    };
+                    img.onerror = function () {
+                        console.error("Failed to load asset:", key, ASSETS[key]);
+                    };
+                })(keys[i]);
             }
         }
 
-        // Load immediately
         loadAssets();
+        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
 
 
         // State
-        let state = {
+        var state = {
             born: Date.now(),
             lastTick: Date.now(),
             stage: 'EGG', // EGG, BABY, ADULT, DEAD
@@ -1064,7 +1044,7 @@
         };
 
         // UI State
-        let ui = {
+        var ui = {
             menuIndex: -1, // -1 = None, 0..7 = Icons
             screen: 'MAIN', // MAIN, STATS, GAME, ANIMATION
             animTimer: 0,
@@ -1080,7 +1060,7 @@
 
         // Load Logic
         function loadGame() {
-            const saved = localStorage.getItem(SAVE_KEY);
+            var saved = localStorage.getItem(SAVE_KEY);
             if (saved) {
                 try {
                     state = JSON.parse(saved);
@@ -1098,22 +1078,22 @@
             localStorage.setItem(SAVE_KEY, JSON.stringify(state));
         }
 
-        let secretClicks = 0;
-        let secretTimeout = null;
+        var secretClicks = 0;
+        var secretTimeout = null;
         function handleSecretReset() {
             console.log("Secret reset click:", secretClicks + 1);
             secretClicks++;
             clearTimeout(secretTimeout);
             if (secretClicks >= 5) {
-                showConfirm("Reset Game", "Are you sure you want to delete all progress and start over?", () => {
+                showConfirm("Reset Game", "Are you sure you want to delete all progress and start over?", function () {
                     hardReset();
                 });
                 secretClicks = 0;
             }
-            secretTimeout = setTimeout(() => { secretClicks = 0; }, 2000);
+            secretTimeout = setTimeout(function () { secretClicks = 0; }, 2000);
         }
 
-        let isReloading = false;
+        var isReloading = false;
         function hardReset() {
             isReloading = true;
             localStorage.removeItem(SAVE_KEY);
@@ -1121,11 +1101,11 @@
         }
 
         // Icons List
-        const ICONS = ['icon_food', 'icon_game', 'icon_meds', 'icon_bath', 'icon_scale', 'icon_warn'];
-        const ICON_NAMES = ['FEED', 'PLAY', 'MEDS', 'BATH', 'STATS', 'ATTN'];
+        var ICONS = ['icon_food', 'icon_game', 'icon_meds', 'icon_bath', 'icon_scale', 'icon_warn'];
+        var ICON_NAMES = ['FEED', 'PLAY', 'MEDS', 'BATH', 'STATS', 'ATTN'];
 
         // Menu Icons (Binary) - 12x12 Resolution
-        const MENU_ICONS = {
+        var MENU_ICONS = {
             icon_food: [
                 "101010000110",
                 "101010001110",
@@ -1171,9 +1151,9 @@
             icon_bath: [
                 "000011110000",
                 "000100001000",
-                "000100001011",
-                "000100001001",
-                "000011111110",
+                "000100001111",
+                "000100001110",
+                "000011111100",
                 "111100000011",
                 "100000000001",
                 "100000000001",
@@ -1213,69 +1193,36 @@
         };
 
         function getIconDataURI(key) {
-            const c = document.createElement('canvas');
+            var c = document.createElement('canvas');
             c.width = 16; c.height = 16;
-            const x = c.getContext('2d');
-            const sprite = MENU_ICONS[key];
+            var x = c.getContext('2d');
+            var sprite = MENU_ICONS[key];
             if (sprite) {
                 x.fillStyle = 'black';
-                sprite.forEach((row, r) => {
-                    for (let i = 0; i < row.length; i++) {
-                        if (row[i] === '1') x.fillRect(2 + i, 2 + r, 1, 1);
+                for (var r = 0; r < sprite.length; r++) {
+                    var row = sprite[r];
+                    for (var i = 0; i < row.length; i++) {
+                        if (row.charAt(i) === '1') x.fillRect(2 + i, 2 + r, 1, 1);
                     }
-                });
+                }
             }
             return c.toDataURL();
         }
 
-        // Shared temp canvas for processing
-        const offscreenCanvas = document.createElement('canvas');
-        const offscreenCtx = offscreenCanvas.getContext('2d');
-
-        function drawSprite(key, x, y, w = 16, h = 16) {
-            const img = images[key];
-            if (!img || !img.complete) return;
-
-            // Reuse offscreen canvas
-            offscreenCanvas.width = w;
-            offscreenCanvas.height = h;
-            offscreenCtx.imageSmoothingEnabled = false;
-            offscreenCtx.clearRect(0, 0, w, h);
-            offscreenCtx.drawImage(img, 0, 0, w, h);
-
-            // Get pixel data and apply aggressive threshold
-            const imageData = offscreenCtx.getImageData(0, 0, w, h);
-            const data = imageData.data;
-            const threshold = 220; // Very aggressive to catch any non-white pixels
-
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-                const brightness = (r + g + b) / 3;
-
-                // Thresholding: anything not "mostly white" and visible becomes black
-                if (a > 30 && brightness < threshold) {
-                    data[i] = 0;
-                    data[i + 1] = 0;
-                    data[i + 2] = 0;
-                    data[i + 3] = 255;
-                } else {
-                    data[i + 3] = 0;
-                }
-            }
-
-            // Write back and draw to main canvas
-            offscreenCtx.putImageData(imageData, 0, 0);
-            ctx.drawImage(offscreenCanvas, Math.floor(x), Math.floor(y));
+        function drawSprite(key, x, y) {
+            var canvas = processedImages[key];
+            if (!canvas) return;
+            ctx.drawImage(canvas, Math.floor(x), Math.floor(y));
         }
 
         function drawHearts(count, x, y) {
-            const SCALE = 3;
+            var SCALE = 3;
             // Native heart is 7x7. Using 7*3=21
-            const w = 21;
-            const h = 21;
-            const spacing = 24;
-            for (let i = 0; i < 4; i++) {
-                let key = (i < count) ? 'heart_full' : 'heart_empty';
+            var w = 21;
+            var h = 21;
+            var spacing = 24;
+            for (var i = 0; i < 4; i++) {
+                var key = (i < count) ? 'heart_full' : 'heart_empty';
                 drawSprite(key, x + (i * spacing), y, w, h);
             }
         }
@@ -1284,55 +1231,60 @@
 
 
         function createIconOverlay() {
-            const screen = document.querySelector('.lcd-screen');
-            let overlay = screen.querySelector('.icon-overlay');
+            var screen = document.querySelector('.lcd-screen');
+            var overlay = screen.querySelector('.icon-overlay');
             if (overlay) return overlay;
 
             overlay = document.createElement('div');
             overlay.className = 'icon-overlay';
 
             // Top 3
-            const top = document.createElement('div');
-            top.className = 'icon-row top';
-            for (let i = 0; i < 3; i++) {
-                const d = document.createElement('div');
-                d.className = 'menu-icon';
-                d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
-                d.title = ICON_NAMES[i];
-                d.onclick = () => handleIconClick(i);
-                top.appendChild(d);
+            var topStr = '<div class="icon-row top">';
+            for (var i = 0; i < 3; i++) {
+                topStr += '<div class="menu-icon" title="' + ICON_NAMES[i] + '" style="background-image: url(' + getIconDataURI(ICONS[i]) + ')"></div>';
             }
-            overlay.appendChild(top);
+            topStr += '</div>';
+            overlay.innerHTML = topStr;
 
             // Spacer
-            const mid = document.createElement('div');
+            var mid = document.createElement('div');
             overlay.appendChild(mid);
 
             // Bottom 3
-            const bot = document.createElement('div');
+            var bot = document.createElement('div');
             bot.className = 'icon-row bottom';
-            for (let i = 3; i < 6; i++) {
-                const d = document.createElement('div');
+            for (var j = 3; j < 6; j++) {
+                var d = document.createElement('div');
                 d.className = 'menu-icon';
-                d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
-                d.title = ICON_NAMES[i];
-                if (i < 5) {
-                    d.onclick = () => handleIconClick(i);
+                d.style.backgroundImage = 'url(' + getIconDataURI(ICONS[j]) + ')';
+                d.title = ICON_NAMES[j];
+                if (j < 5) {
+                    (function (idx) {
+                        d.onclick = function () { handleIconClick(idx); };
+                    })(j);
                 } else {
                     d.style.cursor = 'default';
-                    d.style.pointerEvents = 'none'; // Ensure no hover effects either
+                    d.style.pointerEvents = 'none';
                 }
                 bot.appendChild(d);
             }
             overlay.appendChild(bot);
+
+            // Add click listeners to top icons (after innerHTML)
+            var topIcons = overlay.querySelectorAll('.top .menu-icon');
+            for (var k = 0; k < topIcons.length; k++) {
+                (function (idx) {
+                    topIcons[k].onclick = function () { handleIconClick(idx); };
+                })(k);
+            }
 
             screen.appendChild(overlay);
             return overlay;
         }
 
         function updateIconUI() {
-            const overlay = document.querySelector('.icon-overlay') || createIconOverlay();
-            const controls = document.querySelector('.controls');
+            var overlay = document.querySelector('.icon-overlay') || createIconOverlay();
+            var controls = document.querySelector('.controls');
 
             if (state.stage === 'DEAD') {
                 overlay.style.display = 'none';
@@ -1341,40 +1293,39 @@
             }
 
             if (controls) controls.style.display = 'flex';
-
-            // Icons stay showing during STATS (as per user request)
             overlay.style.display = 'grid';
 
-            const allIcons = overlay.querySelectorAll('.menu-icon');
-            allIcons.forEach((el, idx) => {
+            var allIcons = overlay.querySelectorAll('.menu-icon');
+            for (var i = 0; i < allIcons.length; i++) {
+                var el = allIcons[i];
                 el.classList.remove('selected');
                 el.classList.remove('active');
 
-                if (ui.menuIndex === idx) {
+                if (ui.menuIndex === i) {
                     el.classList.add('selected');
                 }
 
-                if (idx === 5 && state.attention) {
+                if (i === 5 && state.attention) {
                     el.classList.add('active');
-                    // Flash between black and white (invert)
                     el.style.filter = (Date.now() % 600 < 300) ? 'invert(1)' : 'none';
                     el.style.opacity = '1';
                 } else {
                     el.style.filter = 'none';
                     el.style.opacity = '1';
                 }
-            });
+            }
         }
 
 
         // --- MAIN LOOP ---
 
-        function tick() {
+        function tick(timestamp) {
             if (isReloading) return;
-            const now = Date.now();
-            const dt = now - state.lastTick;
 
-            // Logic Update (approx every second or slower)
+            var now = Date.now();
+            var dt = now - state.lastTick;
+
+            // Logic Update (approx every second)
             if (dt > 1000) {
                 if (state.stage !== 'DEAD' && state.stage !== 'EGG') {
                     updateStats();
@@ -1388,21 +1339,19 @@
 
             // Stage Progression Logic
             if (state.stage === 'EGG') {
-                if (now - state.born > 60000) { // 1 minute to hatch
+                if (now - state.born > 60000) {
                     state.stage = Math.random() < 0.5 ? 'CHILD1' : 'CHILD2';
                     state.stageStart = now;
                 }
             } else if (state.stage === 'CHILD1' || state.stage === 'CHILD2' || state.stage === 'BABY') {
-                // Evolve to TEEN after 5 minutes
                 if (state.stageStart && now - state.stageStart > 300000) {
                     state.stage = 'TEEN';
                     state.evolutionType = Math.random() < 0.5 ? 1 : 2;
                     state.stageStart = now;
                 }
             } else if (state.stage === 'TEEN') {
-                // Evolve to ADULT after 10 minutes
                 if (now - state.stageStart > 600000) {
-                    const adults = ['ADULT1', 'ADULT2', 'ADULT3', 'ADULT4', 'ADULT5'];
+                    var adults = ['ADULT1', 'ADULT2', 'ADULT3', 'ADULT4', 'ADULT5'];
                     state.stage = adults[Math.floor(Math.random() * adults.length)];
                     state.stageStart = now;
                 }
@@ -1413,12 +1362,13 @@
             updateIconUI();
 
             // Update title bar age
-            const titleEl = document.querySelector('.title-text');
+            var titleEl = document.querySelector('.title-text');
             if (titleEl) {
-                titleEl.innerText = `Pet - ${state.age ?? 0} Years`;
+                titleEl.innerText = 'Pet - ' + (state.age != null ? state.age : 0) + ' Years';
             }
 
-            requestAnimationFrame(tick);
+            if (window.requestAnimationFrame) window.requestAnimationFrame(tick);
+            else setTimeout(function () { tick(Date.now()); }, 16);
         }
 
         function updateStats() {
@@ -1431,7 +1381,7 @@
             // Age Progression (1 year every minute)
             if (!state.ageUpdate) state.ageUpdate = Date.now();
             if (Date.now() - state.ageUpdate > 60000) {
-                state.age = (state.age ?? 0) + 1;
+                state.age = (state.age != null ? state.age : 0) + 1;
                 state.ageUpdate = Date.now();
                 saveHighScore(state.age);
             }
@@ -1439,7 +1389,7 @@
             // Natural Weight Decay (1G every 15 seconds)
             if (!state.weightUpdate) state.weightUpdate = Date.now();
             if (Date.now() - state.weightUpdate > 15000) {
-                state.weight = Math.max(1, (state.weight ?? 5) - 1);
+                state.weight = Math.max(1, (state.weight != null ? state.weight : 5) - 1);
                 state.weightUpdate = Date.now();
             }
 
@@ -1472,13 +1422,13 @@
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            const centerX = CANVAS_W / 2;
-            const centerY = CANVAS_H / 2;
+            var centerX = CANVAS_W / 2;
+            var centerY = CANVAS_H / 2;
 
             if (ui.statsPage === 0) {
                 // AGE & WEIGHT
-                ctx.fillText('AGE: ' + (state.age ?? 0), centerX, centerY - 15);
-                ctx.fillText('WEIGHT: ' + (state.weight ?? 5) + 'G', centerX, centerY + 15);
+                ctx.fillText('AGE: ' + (state.age != null ? state.age : 0), centerX, centerY - 15);
+                ctx.fillText('WEIGHT: ' + (state.weight != null ? state.weight : 5) + 'G', centerX, centerY + 15);
             } else if (ui.statsPage === 1) {
                 // HUNGER
                 ctx.fillText('HUNGRY', centerX, centerY - 20);
@@ -1491,7 +1441,7 @@
         }
 
         function handleAction(idx) {
-            const action = ICON_NAMES[idx]; // FEED, PLAY, MEDS, BATH, STATS, ATTN
+            var action = ICON_NAMES[idx]; // FEED, PLAY, MEDS, BATH, STATS, ATTN
 
             switch (action) {
                 case 'FEED':
@@ -1547,8 +1497,8 @@
         }
 
         function renderFeedMenu() {
-            const centerX = CANVAS_W / 2;
-            const centerY = CANVAS_H / 2;
+            var centerX = CANVAS_W / 2;
+            var centerY = CANVAS_H / 2;
 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
@@ -1576,7 +1526,7 @@
 
             // Selector Arrow
             ctx.fillStyle = '#000';
-            const arrowY = ui.feedMenuIndex === 0 ? centerY - 15 : centerY + 15;
+            var arrowY = ui.feedMenuIndex === 0 ? centerY - 15 : centerY + 15;
             ctx.fillText(">", centerX - 50, arrowY);
         }
 
@@ -1617,34 +1567,34 @@
                 return;
             }
 
-            const centerX = CANVAS_W / 2;
-            const centerY = CANVAS_H / 2 + 16;
-            const SCALE = 3;
+            var centerX = CANVAS_W / 2;
+            var centerY = CANVAS_H / 2 + 16;
+            var SCALE = 3;
 
             if (ui.animType === 'FEED_FOOD' || ui.animType === 'FEED_SNACK') {
                 // Determine Eat Sprite
-                const step = (Math.floor(ui.animFrame / 30) % 2);
-                let drawKey = step === 1 ? (baseKey + '_eat') : baseKey;
+                var step = (Math.floor(ui.animFrame / 30) % 2);
+                var drawKey = step === 1 ? (baseKey + '_eat') : baseKey;
                 if (!ASSETS[drawKey]) drawKey = baseKey;
 
-                const px = PIXEL_SIZES[drawKey] || [12, 12];
-                const w = px[0] * SCALE;
-                const h = px[1] * SCALE;
+                var px = PIXEL_SIZES[drawKey] || [12, 12];
+                var w = px[0] * SCALE;
+                var h = px[1] * SCALE;
 
                 // Sync movement with chewing (Step left towards food)
-                const moveX = step === 1 ? -8 : 0;
+                var moveX = step === 1 ? -8 : 0;
 
                 // Draw Food (Left Side)
                 if (ui.animTimer > 40) {
-                    const shake = step === 1 ? 2 : 0;
+                    var shake = step === 1 ? 2 : 0;
 
                     if (!ui.currentFood) {
-                        const options = ui.animType === 'FEED_FOOD' ? ['food_burger', 'food_toast'] : ['snack_candy', 'snack_donut'];
+                        var options = ui.animType === 'FEED_FOOD' ? ['food_burger', 'food_toast'] : ['snack_candy', 'snack_donut'];
                         ui.currentFood = options[Math.floor(Math.random() * options.length)];
                     }
 
-                    const foodKey = step === 1 ? (ui.currentFood + '2') : ui.currentFood;
-                    const fpx = PIXEL_SIZES[foodKey] || [9, 8];
+                    var foodKey = step === 1 ? (ui.currentFood + '2') : ui.currentFood;
+                    var fpx = PIXEL_SIZES[foodKey] || [9, 8];
                     drawSprite(foodKey, centerX - 45 + shake, centerY, fpx[0] * 3, fpx[1] * 3);
                 }
 
@@ -1653,33 +1603,33 @@
             }
             else if (ui.animType === 'PLAY') {
                 // Sync sprite toggle with the 15-frame hop
-                const step = (Math.floor(ui.animFrame / 15) % 2);
+                var step = (Math.floor(ui.animFrame / 15) % 2);
 
-                let drawKey = baseKey;
+                var drawKey = baseKey;
                 if (step === 1) {
                     // Try common variants used for animation
                     if (ASSETS[baseKey + '_side']) drawKey = baseKey + '_side';
                     else if (ASSETS[baseKey + '_lips']) drawKey = baseKey + '_lips';
                 }
 
-                const px = PIXEL_SIZES[drawKey] || [12, 12];
-                const w = px[0] * SCALE;
-                const h = px[1] * SCALE;
+                var px = PIXEL_SIZES[drawKey] || [12, 12];
+                var w = px[0] * SCALE;
+                var h = px[1] * SCALE;
 
-                const jumpY = step === 1 ? -15 : 0;
+                var jumpY = step === 1 ? -15 : 0;
 
                 // Stepped horizontal move (snapping to positions for retro feel)
-                const bounceX = Math.floor(Math.sin(ui.animFrame * 0.1) * 3) * 8;
+                var bounceX = Math.floor(Math.sin(ui.animFrame * 0.1) * 3) * 8;
 
                 drawSprite(drawKey, centerX + bounceX - (w / 2), centerY + jumpY - (h / 2), w, h);
             }
             else if (ui.animType === 'HEAL') {
-                const px = PIXEL_SIZES[baseKey] || [12, 12];
-                const w = px[0] * SCALE;
-                const h = px[1] * SCALE;
+                var px = PIXEL_SIZES[baseKey] || [12, 12];
+                var w = px[0] * SCALE;
+                var h = px[1] * SCALE;
 
                 // Fade in/out effect or just show pet
-                const alpha = Math.abs(Math.sin(ui.animFrame * 0.1));
+                var alpha = Math.abs(Math.sin(ui.animFrame * 0.1));
                 ctx.globalAlpha = 0.5 + (alpha * 0.5);
                 drawSprite(baseKey, centerX - (w / 2), centerY - (h / 2), w, h);
                 ctx.globalAlpha = 1.0;
@@ -1689,22 +1639,22 @@
 
 
         // Event Listeners
-        document.getElementById('btnA').addEventListener('click', () => handleInput('A'));
-        document.getElementById('btnB').addEventListener('click', () => handleInput('B'));
-        document.getElementById('btnC').addEventListener('click', () => handleInput('C'));
+        document.getElementById('btnA').addEventListener('click', function () { handleInput('A'); });
+        document.getElementById('btnB').addEventListener('click', function () { handleInput('B'); });
+        document.getElementById('btnC').addEventListener('click', function () { handleInput('C'); });
 
-        document.getElementById('gameCanvas').addEventListener('click', (e) => {
+        document.getElementById('gameCanvas').addEventListener('click', function (e) {
             if (state.stage === 'DEAD') {
-                showConfirm("New Pet", "Do you want to start over with a new egg?", () => {
+                showConfirm("New Pet", "Do you want to start over with a new egg?", function () {
                     hardReset();
                 });
                 return;
             }
 
             if (ui.screen === 'FEED_MENU') {
-                const rect = e.target.getBoundingClientRect();
-                const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
-                const centerY = CANVAS_H / 2;
+                var rect = e.target.getBoundingClientRect();
+                var y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+                var centerY = CANVAS_H / 2;
 
                 // Detect choice click areas (roughly +/- 20px around 15px labels)
                 if (y > centerY - 30 && y < centerY) {
@@ -1715,13 +1665,13 @@
             }
         });
 
-        document.getElementById('gameCanvas').addEventListener('mousemove', (e) => {
+        document.getElementById('gameCanvas').addEventListener('mousemove', function (e) {
             if (ui.screen === 'FEED_MENU') {
-                const rect = e.target.getBoundingClientRect();
-                const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
-                const centerY = CANVAS_H / 2;
+                var rect = e.target.getBoundingClientRect();
+                var y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+                var centerY = CANVAS_H / 2;
 
-                let newIdx = -1;
+                var newIdx = -1;
                 if (y > centerY - 30 && y < centerY) {
                     newIdx = 0;
                 } else if (y >= centerY && y < centerY + 30) {
@@ -1735,17 +1685,27 @@
         });
 
         // Initialize when fonts and assets are ready
-        document.fonts.ready.then(() => {
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function () {
+                initGame();
+            });
+        } else {
+            // Fallback for browsers without FontFaceSet
+            setTimeout(initGame, 1000);
+        }
+
+        function initGame() {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
-            if (window.location.href.startsWith('http://127.0.0.1:5500')) {
-                const dp = document.getElementById('debug-panel');
+            if (window.location.href.indexOf('http://127.0.0.1:5500') === 0) {
+                var dp = document.getElementById('debug-panel');
                 if (dp) dp.style.display = 'flex';
             }
 
             createIconOverlay();
             loadGame();
-            requestAnimationFrame(tick);
-        });
+            if (window.requestAnimationFrame) window.requestAnimationFrame(tick);
+            else setTimeout(function () { tick(Date.now()); }, 50);
+        }
 
 
 
