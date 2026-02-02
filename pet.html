@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="en" data-no-scale>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pet</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="theme.js"></script>
+    <style>
+        @font-face {
+            font-family: 'PixelFont';
+            src: url('pet_assets/fonts/LLPIXEL3.ttf') format('truetype');
+        }
+
+        /* SYSTEM 7 AESTHETICS - Shared with other apps */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --lcd-color: #ffffff;
+            --lcd-off: #ffffff;
+            --lcd-on: #000000;
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: 'PixelFont', "Geneva", "Chicago", sans-serif;
+            margin: 0;
+            padding: 20px;
+            padding-top: 60px;
+            /* Move window down */
+            min-height: 100vh;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 320px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .stats-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        /* LEADERBOARD BUTTON */
+        .leaderboard-btn {
+            position: absolute;
+            top: 45px;
+            /* Just below title bar */
+            right: 10px;
+            z-index: 10000;
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 10000;
+        }
+
+        #leaderboard-modal,
+        #confirm-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 10001;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 5;
+            font-size: 1.1rem;
+            font-family: "Geneva", "Verdana", sans-serif;
+            cursor: pointer;
+            pointer-events: auto;
+            display: inline-block;
+            padding: 5px 10px;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 40px 20px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+        }
+
+        /* GAME SPECIFIC STYLES */
+        .game-container {
+            position: relative;
+            width: 256px;
+            /* 32 * 8 */
+            z-index: 10;
+        }
+
+        .egg-shell {
+            background-color: #ffffff;
+            border: 2px solid #000;
+            border-radius: 50% 50% 45% 45%;
+            padding: 25px 45px;
+            /* Wider sides */
+            padding-bottom: 30px;
+            box-shadow: 4px 4px 0px rgba(0, 0, 0, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .lcd-screen {
+            background-color: var(--lcd-color);
+            border: 2px solid #000;
+            width: 192px;
+            /* 32px sprites * 6 */
+            height: 192px;
+            /* Square 64x64 scaled x3 */
+            position: relative;
+            image-rendering: pixelated;
+            margin-top: 25px;
+            /* Move down into the circle */
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            width: 100%;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            border: 2px solid #000;
+            box-shadow: 2px 2px 0px #000;
+            cursor: pointer;
+            position: relative;
+            margin-bottom: 5px;
+        }
+
+        .btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+            background-color: #000;
+        }
+
+        .btn-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #000;
+            font-family: "Geneva", "Verdana", sans-serif;
+        }
+
+        /* OVERLAY ICONS */
+        .icon-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: auto 1fr auto;
+            pointer-events: none;
+        }
+
+        .icon-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 4px;
+            pointer-events: auto;
+            /* Enable clicks */
+        }
+
+        /* Top Row Icons */
+        .icon-overlay .top {
+            grid-column: 1 / -1;
+            grid-row: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+        }
+
+        /* Bottom Row Icons */
+        .icon-overlay .bottom {
+            grid-column: 1 / -1;
+            grid-row: 3;
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+        }
+
+        .menu-icon {
+            width: 36px;
+            height: 36px;
+            background-repeat: no-repeat;
+            background-size: contain;
+            opacity: 1.0;
+            /* Fully visible */
+            image-rendering: pixelated;
+            cursor: pointer;
+            border: 1px solid transparent;
+            z-index: 100;
+        }
+
+        .menu-icon:hover {
+            border: 1px dotted black;
+            opacity: 0.8 !important;
+        }
+
+        .menu-icon.active {
+            opacity: 1.0;
+        }
+
+        .menu-icon.selected {
+            outline: 2px solid black;
+            opacity: 1.0;
+        }
+
+        .reset-btn {
+            margin-top: 10px;
+            font-size: 12px;
+            background: transparent;
+            border: none;
+            text-decoration: underline;
+            cursor: pointer;
+            color: #555;
+        }
+
+        #debug-panel {
+            display: none;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border: 2px dashed #000;
+            width: 320px;
+            box-sizing: border-box;
+            z-index: 5;
+        }
+
+        .debug-btn {
+            background: #fff;
+            border: 1px solid #000;
+            padding: 2px 5px;
+            font-size: 10px;
+            cursor: pointer;
+            font-family: sans-serif;
+            text-transform: uppercase;
+        }
+
+        .debug-btn:active {
+            background: #000;
+            color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text" onclick="handleSecretReset()">Pet - 0 Years</span>
+        </div>
+        <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+
+        <div class="window-content">
+            <div class="egg-shell">
+                <div class="lcd-screen">
+                    <canvas id="gameCanvas" width="128" height="128"></canvas>
+                </div>
+
+                <div class="controls">
+                    <div class="btn-group">
+                        <button class="btn" id="btnA"></button>
+                        <span class="btn-label">Select</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn" id="btnB"></button>
+                        <span class="btn-label">Confirm</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn" id="btnC"></button>
+                        <span class="btn-label">Cancel</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="modal-overlay"></div>
+    </div>
+
+    <div id="debug-panel">
+        <button class="debug-btn" onclick="debugAge(1)">+1 Yr</button>
+        <button class="debug-btn" onclick="debugAge(-1)">-1 Yr</button>
+        <button class="debug-btn" onclick="debugStat('hunger', 4)">Max Hunger</button>
+        <button class="debug-btn" onclick="debugStat('happiness', 4)">Max Happy</button>
+        <button class="debug-btn" onclick="debugPoop()">Poop</button>
+        <button class="debug-btn" onclick="debugEvolve()">Evolve Now</button>
+        <button class="debug-btn" onclick="debugStage('EGG')">Egg</button>
+        <button class="debug-btn" onclick="debugStage('BABY')">Baby</button>
+        <button class="debug-btn" onclick="debugStage('CHILD1')">Child1</button>
+        <button class="debug-btn" onclick="debugStage('CHILD2')">Child2</button>
+        <button class="debug-btn" onclick="debugStage('TEEN')">Teen</button>
+        <button class="debug-btn" onclick="debugStage('ADULT1')">Adult1</button>
+        <button class="debug-btn" onclick="debugStage('ADULT2')">Adult2</button>
+        <button class="debug-btn" onclick="debugStage('ADULT3')">Adult3</button>
+        <button class="debug-btn" onclick="debugStage('ADULT4')">Adult4</button>
+        <button class="debug-btn" onclick="debugStage('ADULT5')">Adult5</button>
+        <button class="debug-btn" onclick="debugStage('DEAD')">Dead</button>
+        <button class="debug-btn" onclick="hardReset()" style="color:red">Hard Reset</button>
+    </div>
+
+    <div id="leaderboard-modal">
+        <h3 style="margin-top:0">Top Ages</h3>
+        <div class="lb-list" id="lb-content">
+            Loading...
+        </div>
+        <button class="sys-btn" onclick="closeModal('leaderboard-modal')">Close</button>
+    </div>
+
+    <div id="confirm-modal">
+        <h3 id="confirm-title" style="margin-top:0">Confirm</h3>
+        <p id="confirm-msg" style="font-size: 0.9rem; margin-bottom: 15px;"></p>
+        <div style="display:flex; gap:10px; justify-content:center;">
+            <button class="sys-btn" id="confirm-yes">Yes</button>
+            <button class="sys-btn" id="confirm-no">No</button>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        if (db.settings) {
+            try {
+                db.settings({ experimentalForceLongPolling: true, merge: true });
+            } catch (e) { console.warn("Settings error:", e); }
+        }
+        const auth = firebase.auth();
+
+        let uid = null;
+        let username = "Guest";
+        let globalHighScore = 0;
+
+        auth.onAuthStateChanged(user => {
+            if (user && !user.isAnonymous) {
+                uid = user.uid;
+                username = user.email ? user.email.split('@')[0] : ("User_" + uid.substring(0, 5));
+
+                // Show debug panel for ukiyo or local dev
+                if (user.email === 'ukiyo@rekindle.ink' || window.location.href.startsWith('http://127.0.0.1:5500')) {
+                    const dp = document.getElementById('debug-panel');
+                    if (dp) dp.style.display = 'flex';
+                }
+
+                // Initial sync
+                if (state && state.age > 0) saveHighScore(state.age);
+            } else {
+                uid = null;
+            }
+        });
+
+        // Debug functions
+        window.debugAge = (val) => {
+            state.age = Math.max(0, (state.age ?? 0) + val);
+            saveHighScore(state.age);
+        };
+        window.debugStat = (key, val) => {
+            state[key] = val;
+        };
+        window.debugPoop = () => {
+            state.poops = Math.min(4, state.poops + 1);
+        };
+        window.debugEvolve = () => {
+            state.stageStart = Date.now() - 2000000; // Trigger evolution
+            state.born = Date.now() - 2000000;
+        };
+        window.debugStage = (stage) => {
+            state.stage = stage;
+            state.stageStart = Date.now();
+            if (stage === 'EGG') state.born = Date.now();
+            if (stage === 'DEAD') state.died = Date.now();
+        };
+
+        async function saveHighScore(newAge) {
+            if (!uid) return;
+            try {
+                // Only update if it's actually higher to save writes
+                const doc = await db.collection('leaderboard_pet_v1').doc(uid).get();
+                if (doc.exists && doc.data().score >= newAge) return;
+
+                await db.collection('leaderboard_pet_v1').doc(uid).set({
+                    username: username,
+                    score: newAge,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log("Age synced to Firebase:", newAge);
+            } catch (e) { console.error("Firebase sync error:", e); }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        function showConfirm(title, msg, onYes) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-msg').innerText = msg;
+            document.getElementById('confirm-modal').style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'block';
+
+            const yesBtn = document.getElementById('confirm-yes');
+            const noBtn = document.getElementById('confirm-no');
+
+            const cleanUp = () => {
+                yesBtn.onclick = null;
+                noBtn.onclick = null;
+                closeModal('confirm-modal');
+            };
+
+            yesBtn.onclick = () => { cleanUp(); onYes(); };
+            noBtn.onclick = () => { cleanUp(); };
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'block';
+            const list = document.getElementById('lb-content');
+            list.innerHTML = 'Loading...';
+
+            try {
+                const snapshot = await db.collection('leaderboard_pet_v1')
+                    .orderBy('score', 'desc')
+                    .limit(10)
+                    .get();
+
+                list.innerHTML = '';
+                let rank = 1;
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const isMe = (uid && doc.id === uid);
+                    const row = document.createElement('div');
+                    row.className = `lb-row ${isMe ? 'me' : ''}`;
+                    row.innerHTML = `<span>${rank}. ${escapeHtml(data.username)}</span><span>${data.score} yrs</span>`;
+                    list.appendChild(row);
+                    rank++;
+                });
+            } catch (e) {
+                list.innerHTML = "Error loading scores.";
+                console.error(e);
+            }
+        }
+
+        /**
+         * PET GAME ENGINE
+         */
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false; // Fix blurriness for pixel art
+
+        // Game Constants
+        const TICK_RATE = 500; // ms
+        const SAVE_KEY = 'pet_save_v1';
+        const CANVAS_W = 128;
+        const CANVAS_H = 128;
+
+        // Colors
+        const P = '#000000'; // Pixel (On)
+        const T = null;      // Transparent (Off)
+
+        // --- SPRITES ---
+
+
+        // --- CONTROLS and UTILS ---
+
+        // Wrappers to handle Input
+        function handleInput(btn) {
+            // Secret Reset always allowed
+            if (state.stage === 'DEAD' && btn === 'C') {
+                showConfirm("New Pet", "Do you want to start over with a new egg?", () => {
+                    hardReset();
+                });
+                return;
+            }
+
+            if (ui.screen === 'FEED_MENU') {
+                if (btn === 'A') {
+                    ui.feedMenuIndex = (ui.feedMenuIndex + 1) % 2;
+                } else if (btn === 'B') {
+                    const type = ui.feedMenuIndex === 0 ? 'FOOD' : 'SNACK';
+                    handleFeedSelection(type);
+                } else if (btn === 'C') {
+                    ui.screen = 'MAIN';
+                    ui.menuIndex = -1;
+                }
+                return;
+            }
+
+            if (btn === 'A') {
+                // Cycle Menu (Allowed in EGG for fun/testing)
+                ui.menuIndex = (ui.menuIndex + 1) % 5;
+                ui.screen = 'MAIN';
+            } else if (btn === 'B') {
+                // Execute
+                if (state.stage === 'EGG') return; // Cannot act on Egg
+                if (ui.menuIndex !== -1) {
+                    handleAction(ui.menuIndex);
+                }
+            } else if (btn === 'C') {
+                // Cancel
+                ui.menuIndex = -1;
+                ui.screen = 'MAIN';
+            }
+        }
+
+        // Direct Icon Click
+        function handleIconClick(idx) {
+            if (idx === 5) return; // ATTN icon is not interactive
+            console.log("Icon Clicked:", idx);
+            // Allow selection even if Egg, just don't execute
+            ui.menuIndex = idx;
+
+            // Execute Immediately
+            if (state.stage !== 'EGG') {
+                handleAction(idx);
+            }
+        }
+
+
+
+        function createIconOverlay() {
+            const screen = document.querySelector('.lcd-screen');
+            let overlay = screen.querySelector('.icon-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'icon-overlay';
+
+                // Top 4
+                const top = document.createElement('div');
+                top.className = 'icon-row top';
+                for (let i = 0; i < 4; i++) {
+                    const d = document.createElement('div');
+                    d.className = 'menu-icon';
+                    d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
+                    d.title = ICON_NAMES[i]; // Tooltip
+                    d.onclick = () => handleIconClick(i); // Click handler
+                    top.appendChild(d);
+                }
+                overlay.appendChild(top);
+
+                // Spacer
+                const mid = document.createElement('div');
+                overlay.appendChild(mid);
+
+                // Bottom 3
+                const bot = document.createElement('div');
+                bot.className = 'icon-row bottom';
+                for (let i = 4; i < 7; i++) {
+                    const d = document.createElement('div');
+                    d.className = 'menu-icon';
+                    d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
+                    d.title = ICON_NAMES[i]; // Tooltip
+                    d.onclick = () => handleIconClick(i);
+                    bot.appendChild(d);
+                }
+                overlay.appendChild(bot);
+
+                screen.appendChild(overlay);
+            }
+            return overlay;
+        }
+
+        function render() {
+            // Clear
+            ctx.fillStyle = state.lightOn ? '#ffffff' : '#000000'; // LCD Color or Dark
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+            if (!state.lightOn) {
+                // Sleeping Zzz (3x3 native * 3 = 9x9)
+                if (images.zzz) drawSprite('zzz', 60, 40, 9, 9);
+                return;
+            }
+
+            // NORMAL RENDER
+
+            // Determine Sprite Key based on lifecycle stage
+            let key = 'child1'; // Default
+
+            if (state.stage === 'EGG') {
+                key = (ui.animFrame % 60 < 30) ? 'egg1' : 'egg2';
+                // Show crack only in the last 2 seconds (hatching is now 60s)
+                if (Date.now() - state.born > 58000) key = 'egg3';
+            } else if (state.stage === 'DEAD') {
+                key = (ui.animFrame % 60 < 30) ? 'grave' : 'grave2';
+            } else if (state.stage === 'CHILD1' || state.stage === 'BABY') {
+                // Child 1 (Baby hatches into Child1)
+                if (state.sick) {
+                    key = 'child1_sick';
+                } else {
+                    key = (ui.animFrame % 60 < 30) ? 'child1' : 'child1_side';
+                }
+            } else if (state.stage === 'CHILD2') {
+                // Child 2
+                if (state.sick) {
+                    key = 'child1_sick'; // Use child1_sick as fallback
+                } else {
+                    key = (ui.animFrame % 60 < 30) ? 'child2' : 'child2_side';
+                }
+            } else if (state.stage === 'TEEN') {
+                // Teen (randomly teen1 or teen2 at evolution)
+                const teenType = state.evolutionType || 1;
+                if (state.sick) {
+                    key = `teen${teenType}_sick`;
+                } else {
+                    key = (ui.animFrame % 60 < 30) ? `teen${teenType}` : `teen${teenType}`;
+                }
+            } else if (state.stage === 'ADULT1') {
+                key = state.sick ? 'adult1_sick' : 'adult1';
+            } else if (state.stage === 'ADULT2') {
+                key = state.sick ? 'adult2_sick' : (ui.animFrame % 90 < 60 ? 'adult2' : 'adult2_lips');
+            } else if (state.stage === 'ADULT3') {
+                key = state.sick ? 'adult3_sick' : 'adult3';
+            } else if (state.stage === 'ADULT4') {
+                key = state.sick ? 'adult4_sick' : (ui.animFrame % 90 < 60 ? 'adult4' : 'adult4_lips');
+            } else if (state.stage === 'ADULT5') {
+                key = state.sick ? 'adult5_sick' : 'adult5';
+            }
+
+            // Base key for animations (stripped of variants like _side, _lips)
+            let baseStageKey = key;
+            if (key.includes('_side')) baseStageKey = key.replace('_side', '');
+            if (key.includes('_lips')) baseStageKey = key.replace('_lips', '');
+
+            const SCALE = 3;
+            const px = PIXEL_SIZES[key] || [8, 8];
+            const w = px[0] * SCALE;
+            const h = px[1] * SCALE;
+
+            if (ui.screen === 'MAIN') {
+                // Apply movement if not Egg/Dead
+                let tx = Math.floor((CANVAS_W - w) / 2);
+                let ty = Math.floor((CANVAS_H - h) / 2) + 16;
+
+                if (state.stage !== 'EGG' && state.stage !== 'DEAD') {
+                    // Slower, smaller, more consistent steps
+                    const step = Math.floor(ui.animFrame / 60);
+                    // Smaller range: 10px horizontal, 2px vertical
+                    const wanderX = Math.sin(step * 0.5) * 10;
+                    const wanderY = (step % 2 === 0) ? 0 : 2; // Simple alternating hop
+                    tx += Math.floor(wanderX);
+                    ty += Math.floor(wanderY);
+                }
+
+                drawSprite(key, tx, ty, w, h);
+
+                // Draw Sick Alert above pet
+                if (state.sick && state.stage !== 'DEAD') {
+                    drawSprite('alert_sick', tx + (w / 2) - 10, ty - 25, 21, 21);
+                }
+
+                // Draw Poops (8 * 3 = 24)
+                if (state.stage !== 'DEAD') {
+                    if (state.poops > 0) drawSprite('poop', 96, 80, 24, 24);
+                    if (state.poops > 1) drawSprite('poop', 8, 80, 24, 24);
+                    if (state.poops > 2) drawSprite('poop', 88, 65, 24, 24);
+                    if (state.poops > 3) drawSprite('poop', 16, 65, 24, 24);
+                }
+            }
+
+
+            // Overlays for specific UI screens
+            if (ui.screen === 'STATS') {
+                renderStats();
+            }
+
+            if (ui.screen === 'FEED_MENU') {
+                renderFeedMenu();
+            }
+
+            if (ui.screen === 'ANIMATION') {
+                renderAnimation(baseStageKey);
+            }
+
+            // Cleaning Animation Override
+            if (ui.cleaning) {
+                if (ui.animFrame % 30 === 0) {
+                    ui.cleanX += 32;
+                }
+                const brushPX = PIXEL_SIZES['cleaning'] || [6, 43];
+                const brushW = brushPX[0] * 3;
+                drawSprite('cleaning', ui.cleanX - brushW, 0, brushW, 128);
+                if (ui.cleanX > CANVAS_W + brushW + 40) {
+                    ui.cleaning = false;
+                }
+            }
+
+            // Global Threshold Filter for sharp LCD font/sprites
+            if (state.lightOn) {
+                const imageData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+                const data = imageData.data;
+                const threshold = 180; // Catch font edges
+                for (let i = 0; i < data.length; i += 4) {
+                    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    const val = brightness < threshold ? 0 : 255;
+                    data[i] = data[i + 1] = data[i + 2] = val;
+                }
+                ctx.putImageData(imageData, 0, 0);
+            }
+
+            // Dead Pet prompt - positioned above pet
+            if (state.stage === 'DEAD') {
+                ctx.fillStyle = '#000000';
+                ctx.font = "bold 15px PixelFont"; // Match standard game font
+                ctx.textAlign = "center";
+                // Positioned above the grave (which is centered + 16)
+                ctx.fillText("RESTART", CANVAS_W / 2, 35);
+            }
+        }
+
+        // Consolidating into one renderStats below
+
+
+        const ASSETS = {
+            // EYES / TEEN
+            teen1: 'pet_assets/tamaPictures/tamaCharacter/teen1/tama_teen1.svg',
+            teen1_sick: 'pet_assets/tamaPictures/tamaCharacter/teen1/tama_teen1sick.svg',
+            teen1_eat: 'pet_assets/tamaPictures/tamaCharacter/teen1/tama_teen1Eat.svg',
+
+            teen2: 'pet_assets/tamaPictures/tamaCharacter/teen2/tama_teen2.svg',
+            teen2_sick: 'pet_assets/tamaPictures/tamaCharacter/teen2/tama_teen2Sick.svg',
+            teen2_eat: 'pet_assets/tamaPictures/tamaCharacter/teen2/tama_teen2Eat.svg',
+            teen2_lips: 'pet_assets/tamaPictures/tamaCharacter/teen2/tama_teen2Lips.svg',
+
+            // CHILD
+            child1: 'pet_assets/tamaPictures/tamaCharacter/childState1/tama_childState1.svg',
+            child1_eat: 'pet_assets/tamaPictures/tamaCharacter/childState1/tama_childState1Eat.svg',
+            child1_sick: 'pet_assets/tamaPictures/tamaCharacter/childState1/tama_child1-sick.svg',
+            child1_side: 'pet_assets/tamaPictures/tamaCharacter/childState1/tama_childState1Side.svg',
+            child1_lower: 'pet_assets/tamaPictures/tamaCharacter/childState1/tama_child1-lower.svg',
+
+            child2: 'pet_assets/tamaPictures/tamaCharacter/childState2/tama_childState2.svg',
+            child2_eat: 'pet_assets/tamaPictures/tamaCharacter/childState2/tama_childState2Eat.svg',
+            child2_side: 'pet_assets/tamaPictures/tamaCharacter/childState2/tama_childState2Side.svg',
+            child2_small: 'pet_assets/tamaPictures/tamaCharacter/childState2/tama_childState2Small.svg',
+
+            // EGG
+            egg1: 'pet_assets/tamaPictures/tamaEgg/tama_eggState1.svg',
+            egg2: 'pet_assets/tamaPictures/tamaEgg/tama_eggState2.svg',
+            egg3: 'pet_assets/tamaPictures/tamaEgg/tama_eggState3.svg',
+
+            // ADULT
+            adult1: 'pet_assets/tamaPictures/tamaCharacter/adult1/tama_adult1.svg',
+            adult1_eat: 'pet_assets/tamaPictures/tamaCharacter/adult1/tama_adult1Eat.svg',
+            adult1_sick: 'pet_assets/tamaPictures/tamaCharacter/adult1/tama_adult1Sick.svg',
+
+            adult2: 'pet_assets/tamaPictures/tamaCharacter/adult2/tama_adult2.svg',
+            adult2_eat: 'pet_assets/tamaPictures/tamaCharacter/adult2/tama_adult2Eat.svg',
+            adult2_sick: 'pet_assets/tamaPictures/tamaCharacter/adult2/tama_adult2Sick.svg',
+            adult2_lips: 'pet_assets/tamaPictures/tamaCharacter/adult2/tama_adult2Lips.svg',
+
+            adult3: 'pet_assets/tamaPictures/tamaCharacter/adult3/tama_adult3.svg',
+            adult3_eat: 'pet_assets/tamaPictures/tamaCharacter/adult3/tama_adult3Eat.svg',
+            adult3_sick: 'pet_assets/tamaPictures/tamaCharacter/adult3/tama_adult3Sick.svg',
+
+            secret1: 'pet_assets/tamaPictures/tamaCharacter/adult3/evolve/tama_secretAdult1.svg',
+            secret1_eat: 'pet_assets/tamaPictures/tamaCharacter/adult3/evolve/tama_secretAdult1Eat.svg',
+            secret1_sick: 'pet_assets/tamaPictures/tamaCharacter/adult3/evolve/tama_secretAdult1Sick.svg',
+
+            adult4: 'pet_assets/tamaPictures/tamaCharacter/adult4/tama_adult4.svg',
+            adult4_eat: 'pet_assets/tamaPictures/tamaCharacter/adult4/tama_adult4Eat.svg',
+            adult4_sick: 'pet_assets/tamaPictures/tamaCharacter/adult4/tama_adult4Sick.svg',
+            adult4_lips: 'pet_assets/tamaPictures/tamaCharacter/adult4/tama_adult4Lips.svg',
+
+            adult5: 'pet_assets/tamaPictures/tamaCharacter/adult5/tama_adult5.svg',
+            adult5_eat: 'pet_assets/tamaPictures/tamaCharacter/adult5/tama_adult5Eat.svg',
+            adult5_sick: 'pet_assets/tamaPictures/tamaCharacter/adult5/tama_adult5Sick.svg',
+
+            secret2: 'pet_assets/tamaPictures/tamaCharacter/adult5/tama_secretAdult2.svg',
+
+            // ALERTS / MISC
+            skull: 'pet_assets/tamaPictures/tamaAlert/tama_sickAlert.svg',
+            poop: 'pet_assets/tamaPictures/tamaAlert/tama_poopAlert.svg',
+            zzz: 'pet_assets/tamaPictures/tamaAlert/tama_madAlert1.svg',
+
+            food_burger: 'pet_assets/tamaPictures/tamaFood/tama_mealHamburger.svg',
+            food_burger2: 'pet_assets/tamaPictures/tamaFood/tama_mealHamburger2.svg',
+            food_toast: 'pet_assets/tamaPictures/tamaFood/tama_mealToast.svg',
+            food_toast2: 'pet_assets/tamaPictures/tamaFood/tama_mealToast2.svg',
+
+            snack_candy: 'pet_assets/tamaPictures/tamaFood/tama_snackCandy.svg',
+            snack_candy2: 'pet_assets/tamaPictures/tamaFood/tama_snackCandy2.svg',
+            snack_donut: 'pet_assets/tamaPictures/tamaFood/tama_snackDonut.svg',
+            snack_donut2: 'pet_assets/tamaPictures/tamaFood/tama_snackDonut2.svg',
+
+            heart_full: 'pet_assets/tamaPictures/tamaAlert/tamaHeart/tama_heartFull.svg',
+            heart_half: 'pet_assets/tamaPictures/tamaAlert/tamaHeart/tama_heartHalf.svg',
+            heart_empty: 'pet_assets/tamaPictures/tamaAlert/tamaHeart/tama_heartEmpty.svg',
+
+            meter1: 'pet_assets/tamaPictures/tamaAlert/tamaHeart/tama_disciplineMeter1.svg',
+            meter2: 'pet_assets/tamaPictures/tamaAlert/tamaHeart/tama_disciplineMeter2.svg',
+
+            alert_sick: 'pet_assets/tamaPictures/tamaAlert/tama_sickAlert.svg',
+            alert_happy: 'pet_assets/tamaPictures/tamaAlert/tama_happyAlert.svg',
+            alert_mad1: 'pet_assets/tamaPictures/tamaAlert/tama_madAlert1.svg',
+            alert_mad2: 'pet_assets/tamaPictures/tamaAlert/tama_madAlert2.svg',
+
+            grave: 'pet_assets/tamaPictures/tamaAlert/tama_graveStoneAndGhost.svg',
+            grave2: 'pet_assets/tamaPictures/tamaAlert/tama_graveStoneandGhost2.svg',
+
+            cleaning: 'pet_assets/tamaPictures/tamaAlert/tama_cleaningAnimation.svg'
+        };
+
+        // Shared Pixel Dimensions for SVGs
+        const PIXEL_SIZES = {
+            'egg1': [10, 11], 'egg2': [12, 10], 'egg3': [16, 13],
+            'child1': [6, 6], 'child1_side': [6, 6], 'child1_eat': [6, 7],
+            'child1_sick': [8, 3], 'child1_lower': [8, 3],
+            'child2': [10, 10], 'child2_eat': [10, 10], 'child2_side': [11, 10], 'child2_small': [10, 9],
+            'teen1': [12, 11], 'teen1_sick': [12, 11], 'teen1_eat': [12, 11],
+            'teen2': [13, 11], 'teen2_sick': [13, 11], 'teen2_eat': [13, 11], 'teen2_lips': [13, 10],
+            'adult1': [13, 15], 'adult1_eat': [13, 15], 'adult1_sick': [13, 15],
+            'adult2': [14, 14], 'adult2_eat': [13, 13], 'adult2_sick': [13, 13], 'adult2_lips': [14, 14],
+            'adult3': [15, 15], 'adult3_eat': [15, 15], 'adult3_sick': [15, 15],
+            'secret1': [14, 15], 'secret1_eat': [14, 15], 'secret1_sick': [14, 15],
+            'adult4': [14, 14], 'adult4_eat': [14, 14], 'adult4_sick': [14, 14], 'adult4_lips': [14, 14],
+            'adult5': [12, 14], 'adult5_eat': [12, 14], 'adult5_sick': [12, 14],
+            'secret2': [15, 15],
+            'skull': [7, 7], 'poop': [8, 8], 'zzz': [3, 3],
+            'food_burger': [9, 8], 'food_burger2': [8, 8],
+            'food_toast': [8, 7], 'food_toast2': [8, 6],
+            'snack_candy': [8, 8], 'snack_candy2': [6, 5],
+            'snack_donut': [11, 7], 'snack_donut2': [8, 7],
+            'heart_full': [7, 7], 'heart_half': [7, 7], 'heart_empty': [7, 7],
+            'meter1': [1, 6], 'meter2': [3, 8],
+            'alert_sick': [7, 7], 'alert_happy': [8, 8],
+            'alert_mad1': [3, 3], 'alert_mad2': [7, 7],
+            'grave': [18, 14], 'grave2': [18, 14],
+            'cleaning': [6, 43]
+        };
+
+        const images = {};
+
+        function loadAssets() {
+            let loaded = 0;
+            const total = Object.keys(ASSETS).length;
+
+            for (const [key, src] of Object.entries(ASSETS)) {
+                const img = new Image();
+                img.src = src;
+                img.onload = () => {
+                    loaded++;
+                    if (loaded === total) {
+                        console.log("All Assets Loaded");
+                        if (typeof buildSpriteGallery === 'function') {
+                            buildSpriteGallery();
+                        }
+                    }
+                };
+                img.onerror = () => {
+                    console.error("Failed to load asset:", key, src);
+                };
+                images[key] = img;
+            }
+        }
+
+        // Load immediately
+        loadAssets();
+
+
+        // State
+        let state = {
+            born: Date.now(),
+            lastTick: Date.now(),
+            stage: 'EGG', // EGG, BABY, ADULT, DEAD
+            hunger: 4,    // 0 = Starving, 4 = Full
+            happiness: 4, // 0 = Depressed, 4 = Happy
+            health: 4,
+            weight: 5,
+            poops: 0,
+            sleeping: false,
+            sick: false,
+            lightOn: true,
+            age: 0, // Days (faked by ticks)
+            attention: false // Needs care
+        };
+
+        // UI State
+        let ui = {
+            menuIndex: -1, // -1 = None, 0..7 = Icons
+            screen: 'MAIN', // MAIN, STATS, GAME, ANIMATION
+            animTimer: 0,
+            animFrame: 0,
+            animType: null,
+            overlayMessage: '',
+            cleaning: false,
+            cleanX: 0,
+            statsPage: 0, // 0: Age/Weight, 1: Hunger, 2: Happiness
+            feedMenuIndex: 0, // 0: MEAL, 1: SNACK
+            currentFood: null
+        };
+
+        // Load Logic
+        function loadGame() {
+            const saved = localStorage.getItem(SAVE_KEY);
+            if (saved) {
+                try {
+                    state = JSON.parse(saved);
+                    // Calculate offline progression? Maybe too complex for V1.
+                    // Just update lastTick so we don't mass-decay
+                    state.lastTick = Date.now();
+                    if (state.age > 0) saveHighScore(state.age);
+                } catch (e) {
+                    console.error("Save corrupted");
+                }
+            }
+        }
+
+        function saveGame() {
+            localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+        }
+
+        let secretClicks = 0;
+        let secretTimeout = null;
+        function handleSecretReset() {
+            console.log("Secret reset click:", secretClicks + 1);
+            secretClicks++;
+            clearTimeout(secretTimeout);
+            if (secretClicks >= 5) {
+                showConfirm("Reset Game", "Are you sure you want to delete all progress and start over?", () => {
+                    hardReset();
+                });
+                secretClicks = 0;
+            }
+            secretTimeout = setTimeout(() => { secretClicks = 0; }, 2000);
+        }
+
+        let isReloading = false;
+        function hardReset() {
+            isReloading = true;
+            localStorage.removeItem(SAVE_KEY);
+            location.href = location.href; // More reliable than reload() on some browsers
+        }
+
+        // Icons List
+        const ICONS = ['icon_food', 'icon_game', 'icon_meds', 'icon_bath', 'icon_scale', 'icon_warn'];
+        const ICON_NAMES = ['FEED', 'PLAY', 'MEDS', 'BATH', 'STATS', 'ATTN'];
+
+        // Menu Icons (Binary) - 12x12 Resolution
+        const MENU_ICONS = {
+            icon_food: [
+                "101010000110",
+                "101010001110",
+                "101010001110",
+                "111110001110",
+                "001000001110",
+                "001000001100",
+                "001000001100",
+                "001000001100",
+                "001000001100",
+                "001000001100",
+                "001000001100",
+                "000000000000"
+            ],
+            icon_game: [
+                "000000000111",
+                "000000001110",
+                "000000011110",
+                "000000111100",
+                "000001111000",
+                "000011110000",
+                "000111100000",
+                "001111001110",
+                "011110011111",
+                "111100111011",
+                "111000011111",
+                "000000001110"
+            ],
+            icon_meds: [
+                "000111100000",
+                "000011000000",
+                "000011000000",
+                "001111110000",
+                "010000001000",
+                "010111001000",
+                "010000001000",
+                "011111110000",
+                "000011000000",
+                "000011000000",
+                "000011000000",
+                "000011000000"
+            ],
+            icon_bath: [
+                "000011110000",
+                "000100001000",
+                "000100001011",
+                "000100001001",
+                "000011111110",
+                "111100000011",
+                "100000000001",
+                "100000000001",
+                "100000000001",
+                "010000000010",
+                "001111111100",
+                "000000000000"
+            ],
+            icon_scale: [
+                "000011110000",
+                "001100001100",
+                "010001100010",
+                "100001100001",
+                "100001100001",
+                "100001100001",
+                "100001100001",
+                "010000000010",
+                "001100001100",
+                "000011110000",
+                "000000000000",
+                "000000000000"
+            ],
+            icon_warn: [
+                "000001100000",
+                "000001100000",
+                "000001100000",
+                "000001100000",
+                "000001100000",
+                "000001100000",
+                "000000000000",
+                "000001100000",
+                "000001100000",
+                "000000000000",
+                "000000000000",
+                "000000000000"
+            ]
+        };
+
+        function getIconDataURI(key) {
+            const c = document.createElement('canvas');
+            c.width = 16; c.height = 16;
+            const x = c.getContext('2d');
+            const sprite = MENU_ICONS[key];
+            if (sprite) {
+                x.fillStyle = 'black';
+                sprite.forEach((row, r) => {
+                    for (let i = 0; i < row.length; i++) {
+                        if (row[i] === '1') x.fillRect(2 + i, 2 + r, 1, 1);
+                    }
+                });
+            }
+            return c.toDataURL();
+        }
+
+        // Shared temp canvas for processing
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        function drawSprite(key, x, y, w = 16, h = 16) {
+            const img = images[key];
+            if (!img || !img.complete) return;
+
+            // Reuse offscreen canvas
+            offscreenCanvas.width = w;
+            offscreenCanvas.height = h;
+            offscreenCtx.imageSmoothingEnabled = false;
+            offscreenCtx.clearRect(0, 0, w, h);
+            offscreenCtx.drawImage(img, 0, 0, w, h);
+
+            // Get pixel data and apply aggressive threshold
+            const imageData = offscreenCtx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            const threshold = 220; // Very aggressive to catch any non-white pixels
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                const brightness = (r + g + b) / 3;
+
+                // Thresholding: anything not "mostly white" and visible becomes black
+                if (a > 30 && brightness < threshold) {
+                    data[i] = 0;
+                    data[i + 1] = 0;
+                    data[i + 2] = 0;
+                    data[i + 3] = 255;
+                } else {
+                    data[i + 3] = 0;
+                }
+            }
+
+            // Write back and draw to main canvas
+            offscreenCtx.putImageData(imageData, 0, 0);
+            ctx.drawImage(offscreenCanvas, Math.floor(x), Math.floor(y));
+        }
+
+        function drawHearts(count, x, y) {
+            const SCALE = 3;
+            // Native heart is 7x7. Using 7*3=21
+            const w = 21;
+            const h = 21;
+            const spacing = 24;
+            for (let i = 0; i < 4; i++) {
+                let key = (i < count) ? 'heart_full' : 'heart_empty';
+                drawSprite(key, x + (i * spacing), y, w, h);
+            }
+        }
+
+        // Font and Text now handled via TTF and fillText
+
+
+        function createIconOverlay() {
+            const screen = document.querySelector('.lcd-screen');
+            let overlay = screen.querySelector('.icon-overlay');
+            if (overlay) return overlay;
+
+            overlay = document.createElement('div');
+            overlay.className = 'icon-overlay';
+
+            // Top 3
+            const top = document.createElement('div');
+            top.className = 'icon-row top';
+            for (let i = 0; i < 3; i++) {
+                const d = document.createElement('div');
+                d.className = 'menu-icon';
+                d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
+                d.title = ICON_NAMES[i];
+                d.onclick = () => handleIconClick(i);
+                top.appendChild(d);
+            }
+            overlay.appendChild(top);
+
+            // Spacer
+            const mid = document.createElement('div');
+            overlay.appendChild(mid);
+
+            // Bottom 3
+            const bot = document.createElement('div');
+            bot.className = 'icon-row bottom';
+            for (let i = 3; i < 6; i++) {
+                const d = document.createElement('div');
+                d.className = 'menu-icon';
+                d.style.backgroundImage = `url(${getIconDataURI(ICONS[i])})`;
+                d.title = ICON_NAMES[i];
+                if (i < 5) {
+                    d.onclick = () => handleIconClick(i);
+                } else {
+                    d.style.cursor = 'default';
+                    d.style.pointerEvents = 'none'; // Ensure no hover effects either
+                }
+                bot.appendChild(d);
+            }
+            overlay.appendChild(bot);
+
+            screen.appendChild(overlay);
+            return overlay;
+        }
+
+        function updateIconUI() {
+            const overlay = document.querySelector('.icon-overlay') || createIconOverlay();
+            const controls = document.querySelector('.controls');
+
+            if (state.stage === 'DEAD') {
+                overlay.style.display = 'none';
+                if (controls) controls.style.display = 'flex';
+                return;
+            }
+
+            if (controls) controls.style.display = 'flex';
+
+            // Icons stay showing during STATS (as per user request)
+            overlay.style.display = 'grid';
+
+            const allIcons = overlay.querySelectorAll('.menu-icon');
+            allIcons.forEach((el, idx) => {
+                el.classList.remove('selected');
+                el.classList.remove('active');
+
+                if (ui.menuIndex === idx) {
+                    el.classList.add('selected');
+                }
+
+                if (idx === 5 && state.attention) {
+                    el.classList.add('active');
+                    // Flash between black and white (invert)
+                    el.style.filter = (Date.now() % 600 < 300) ? 'invert(1)' : 'none';
+                    el.style.opacity = '1';
+                } else {
+                    el.style.filter = 'none';
+                    el.style.opacity = '1';
+                }
+            });
+        }
+
+
+        // --- MAIN LOOP ---
+
+        function tick() {
+            if (isReloading) return;
+            const now = Date.now();
+            const dt = now - state.lastTick;
+
+            // Logic Update (approx every second or slower)
+            if (dt > 1000) {
+                if (state.stage !== 'DEAD' && state.stage !== 'EGG') {
+                    updateStats();
+                }
+                state.lastTick = now;
+                saveGame();
+            }
+
+            // Animation Update
+            ui.animFrame++;
+
+            // Stage Progression Logic
+            if (state.stage === 'EGG') {
+                if (now - state.born > 60000) { // 1 minute to hatch
+                    state.stage = Math.random() < 0.5 ? 'CHILD1' : 'CHILD2';
+                    state.stageStart = now;
+                }
+            } else if (state.stage === 'CHILD1' || state.stage === 'CHILD2' || state.stage === 'BABY') {
+                // Evolve to TEEN after 5 minutes
+                if (state.stageStart && now - state.stageStart > 300000) {
+                    state.stage = 'TEEN';
+                    state.evolutionType = Math.random() < 0.5 ? 1 : 2;
+                    state.stageStart = now;
+                }
+            } else if (state.stage === 'TEEN') {
+                // Evolve to ADULT after 10 minutes
+                if (now - state.stageStart > 600000) {
+                    const adults = ['ADULT1', 'ADULT2', 'ADULT3', 'ADULT4', 'ADULT5'];
+                    state.stage = adults[Math.floor(Math.random() * adults.length)];
+                    state.stageStart = now;
+                }
+            }
+
+            // Render
+            render();
+            updateIconUI();
+
+            // Update title bar age
+            const titleEl = document.querySelector('.title-text');
+            if (titleEl) {
+                titleEl.innerText = `Pet - ${state.age ?? 0} Years`;
+            }
+
+            requestAnimationFrame(tick);
+        }
+
+        function updateStats() {
+            // Hunger Decay (Slower: 0.5% chance per second)
+            if (Math.random() < 0.005) state.hunger = Math.max(0, state.hunger - 1);
+
+            // Happiness Decay (Slower: 0.5% chance per second)
+            if (Math.random() < 0.005) state.happiness = Math.max(0, state.happiness - 1);
+
+            // Age Progression (1 year every minute)
+            if (!state.ageUpdate) state.ageUpdate = Date.now();
+            if (Date.now() - state.ageUpdate > 60000) {
+                state.age = (state.age ?? 0) + 1;
+                state.ageUpdate = Date.now();
+                saveHighScore(state.age);
+            }
+
+            // Natural Weight Decay (1G every 15 seconds)
+            if (!state.weightUpdate) state.weightUpdate = Date.now();
+            if (Date.now() - state.weightUpdate > 15000) {
+                state.weight = Math.max(1, (state.weight ?? 5) - 1);
+                state.weightUpdate = Date.now();
+            }
+
+            // Poop (Slower: 0.5% chance per second)
+            if (state.hunger > 0 && Math.random() < 0.005) {
+                state.poops = Math.min(4, state.poops + 1);
+            }
+
+            // Sickness
+            if (state.poops > 2 && Math.random() < 0.1) state.sick = true;
+            if (state.hunger === 0 || state.happiness === 0) {
+                if (Math.random() < 0.05) state.sick = true;
+            }
+
+            // Death
+            if (state.sick && state.hunger === 0 && Math.random() < 0.01) {
+                state.stage = 'DEAD';
+            }
+
+            // Attention
+            state.attention = (state.hunger === 0 || state.happiness === 0 || state.sick || state.poops > 0);
+        }
+
+        function renderStats() {
+            // Background is already cleared by render()
+
+            // Use TTF Font
+            ctx.fillStyle = '#000000';
+            ctx.font = "bold 15px PixelFont"; // Scaled multiple (5 * 3)
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            const centerX = CANVAS_W / 2;
+            const centerY = CANVAS_H / 2;
+
+            if (ui.statsPage === 0) {
+                // AGE & WEIGHT
+                ctx.fillText('AGE: ' + (state.age ?? 0), centerX, centerY - 15);
+                ctx.fillText('WEIGHT: ' + (state.weight ?? 5) + 'G', centerX, centerY + 15);
+            } else if (ui.statsPage === 1) {
+                // HUNGER
+                ctx.fillText('HUNGRY', centerX, centerY - 20);
+                drawHearts(state.hunger, centerX - 45, centerY + 5);
+            } else if (ui.statsPage === 2) {
+                // HAPPY
+                ctx.fillText('HAPPY', centerX, centerY - 20);
+                drawHearts(state.happiness, centerX - 45, centerY + 5);
+            }
+        }
+
+        function handleAction(idx) {
+            const action = ICON_NAMES[idx]; // FEED, PLAY, MEDS, BATH, STATS, ATTN
+
+            switch (action) {
+                case 'FEED':
+                    if (ui.screen === 'FEED_MENU') {
+                        ui.screen = 'MAIN';
+                    } else {
+                        ui.screen = 'FEED_MENU';
+                        ui.feedMenuIndex = 0;
+                    }
+                    break;
+                case 'PLAY':
+                    if (state.happiness < 4) {
+                        state.happiness++;
+                        state.weight = Math.max(1, state.weight - 1);
+                        ui.screen = 'ANIMATION';
+                        ui.animType = 'PLAY';
+                        ui.animTimer = 60 * 3;
+                    }
+                    break;
+                case 'MEDS':
+                    if (state.sick) {
+                        state.sick = false;
+                        ui.screen = 'ANIMATION';
+                        ui.animType = 'HEAL';
+                        ui.animTimer = 60 * 2;
+                    }
+                    break;
+                case 'BATH':
+                    if (state.poops > 0) {
+                        state.poops = 0;
+                        ui.cleaning = true;
+                        ui.cleanX = 0;
+                    }
+                    break;
+                case 'STATS':
+                    if (ui.screen === 'STATS') {
+                        // Cycle through 3 pages, then exit
+                        ui.statsPage++;
+                        if (ui.statsPage > 2) {
+                            ui.statsPage = 0;
+                            ui.screen = 'MAIN';
+                        }
+                    } else {
+                        ui.screen = 'STATS';
+                        ui.statsPage = 0;
+                    }
+                    break;
+            }
+
+            if (action !== 'STATS') {
+                ui.menuIndex = -1;
+            }
+        }
+
+        function renderFeedMenu() {
+            const centerX = CANVAS_W / 2;
+            const centerY = CANVAS_H / 2;
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = "bold 21px PixelFont";
+
+            // FOOD
+            if (ui.feedMenuIndex === 0) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(centerX - 35, centerY - 28, 90, 26);
+                ctx.fillStyle = '#fff';
+            } else {
+                ctx.fillStyle = '#000';
+            }
+            ctx.fillText("FOOD", centerX + 10, centerY - 15);
+
+            // SNACK
+            if (ui.feedMenuIndex === 1) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(centerX - 35, centerY + 2, 90, 26);
+                ctx.fillStyle = '#fff';
+            } else {
+                ctx.fillStyle = '#000';
+            }
+            ctx.fillText("SNACK", centerX + 10, centerY + 15);
+
+            // Selector Arrow
+            ctx.fillStyle = '#000';
+            const arrowY = ui.feedMenuIndex === 0 ? centerY - 15 : centerY + 15;
+            ctx.fillText(">", centerX - 50, arrowY);
+        }
+
+        function handleFeedSelection(type) {
+            if (type === 'FOOD') {
+                if (state.hunger < 4) {
+                    state.hunger++;
+                    state.weight++;
+                    ui.screen = 'ANIMATION';
+                    ui.animType = 'FEED_FOOD';
+                    ui.animTimer = 60 * 3;
+                    ui.currentFood = null; // Pick new one
+                } else {
+                    ui.screen = 'MAIN';
+                    ui.menuIndex = -1;
+                }
+            } else {
+                if (state.happiness < 4) {
+                    state.happiness++;
+                    state.weight += 2;
+                    ui.screen = 'ANIMATION';
+                    ui.animType = 'FEED_SNACK';
+                    ui.animTimer = 60 * 3;
+                    ui.currentFood = null; // Pick new one
+                } else {
+                    ui.screen = 'MAIN';
+                    ui.menuIndex = -1;
+                }
+            }
+        }
+
+        function renderAnimation(baseKey) {
+            ui.animTimer--;
+            if (ui.animTimer <= 0) {
+                ui.screen = 'MAIN';
+                ui.animType = null;
+                ui.currentFood = null;
+                return;
+            }
+
+            const centerX = CANVAS_W / 2;
+            const centerY = CANVAS_H / 2 + 16;
+            const SCALE = 3;
+
+            if (ui.animType === 'FEED_FOOD' || ui.animType === 'FEED_SNACK') {
+                // Determine Eat Sprite
+                const step = (Math.floor(ui.animFrame / 30) % 2);
+                let drawKey = step === 1 ? (baseKey + '_eat') : baseKey;
+                if (!ASSETS[drawKey]) drawKey = baseKey;
+
+                const px = PIXEL_SIZES[drawKey] || [12, 12];
+                const w = px[0] * SCALE;
+                const h = px[1] * SCALE;
+
+                // Sync movement with chewing (Step left towards food)
+                const moveX = step === 1 ? -8 : 0;
+
+                // Draw Food (Left Side)
+                if (ui.animTimer > 40) {
+                    const shake = step === 1 ? 2 : 0;
+
+                    if (!ui.currentFood) {
+                        const options = ui.animType === 'FEED_FOOD' ? ['food_burger', 'food_toast'] : ['snack_candy', 'snack_donut'];
+                        ui.currentFood = options[Math.floor(Math.random() * options.length)];
+                    }
+
+                    const foodKey = step === 1 ? (ui.currentFood + '2') : ui.currentFood;
+                    const fpx = PIXEL_SIZES[foodKey] || [9, 8];
+                    drawSprite(foodKey, centerX - 45 + shake, centerY, fpx[0] * 3, fpx[1] * 3);
+                }
+
+                // Draw Pet (Right Side)
+                drawSprite(drawKey, centerX + 10 + moveX, centerY, w, h);
+            }
+            else if (ui.animType === 'PLAY') {
+                // Sync sprite toggle with the 15-frame hop
+                const step = (Math.floor(ui.animFrame / 15) % 2);
+
+                let drawKey = baseKey;
+                if (step === 1) {
+                    // Try common variants used for animation
+                    if (ASSETS[baseKey + '_side']) drawKey = baseKey + '_side';
+                    else if (ASSETS[baseKey + '_lips']) drawKey = baseKey + '_lips';
+                }
+
+                const px = PIXEL_SIZES[drawKey] || [12, 12];
+                const w = px[0] * SCALE;
+                const h = px[1] * SCALE;
+
+                const jumpY = step === 1 ? -15 : 0;
+
+                // Stepped horizontal move (snapping to positions for retro feel)
+                const bounceX = Math.floor(Math.sin(ui.animFrame * 0.1) * 3) * 8;
+
+                drawSprite(drawKey, centerX + bounceX - (w / 2), centerY + jumpY - (h / 2), w, h);
+            }
+            else if (ui.animType === 'HEAL') {
+                const px = PIXEL_SIZES[baseKey] || [12, 12];
+                const w = px[0] * SCALE;
+                const h = px[1] * SCALE;
+
+                // Fade in/out effect or just show pet
+                const alpha = Math.abs(Math.sin(ui.animFrame * 0.1));
+                ctx.globalAlpha = 0.5 + (alpha * 0.5);
+                drawSprite(baseKey, centerX - (w / 2), centerY - (h / 2), w, h);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+
+
+        // Event Listeners
+        document.getElementById('btnA').addEventListener('click', () => handleInput('A'));
+        document.getElementById('btnB').addEventListener('click', () => handleInput('B'));
+        document.getElementById('btnC').addEventListener('click', () => handleInput('C'));
+
+        document.getElementById('gameCanvas').addEventListener('click', (e) => {
+            if (state.stage === 'DEAD') {
+                showConfirm("New Pet", "Do you want to start over with a new egg?", () => {
+                    hardReset();
+                });
+                return;
+            }
+
+            if (ui.screen === 'FEED_MENU') {
+                const rect = e.target.getBoundingClientRect();
+                const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+                const centerY = CANVAS_H / 2;
+
+                // Detect choice click areas (roughly +/- 20px around 15px labels)
+                if (y > centerY - 30 && y < centerY) {
+                    handleFeedSelection('FOOD');
+                } else if (y >= centerY && y < centerY + 30) {
+                    handleFeedSelection('SNACK');
+                }
+            }
+        });
+
+        document.getElementById('gameCanvas').addEventListener('mousemove', (e) => {
+            if (ui.screen === 'FEED_MENU') {
+                const rect = e.target.getBoundingClientRect();
+                const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+                const centerY = CANVAS_H / 2;
+
+                let newIdx = -1;
+                if (y > centerY - 30 && y < centerY) {
+                    newIdx = 0;
+                } else if (y >= centerY && y < centerY + 30) {
+                    newIdx = 1;
+                }
+
+                if (newIdx !== -1 && newIdx !== ui.feedMenuIndex) {
+                    ui.feedMenuIndex = newIdx;
+                }
+            }
+        });
+
+        // Initialize when fonts and assets are ready
+        document.fonts.ready.then(() => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.location.href.startsWith('http://127.0.0.1:5500')) {
+                const dp = document.getElementById('debug-panel');
+                if (dp) dp.style.display = 'flex';
+            }
+
+            createIconOverlay();
+            loadGame();
+            requestAnimationFrame(tick);
+        });
+
+
+
+    </script>
+</body>
+
+</html>
