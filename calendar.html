@@ -1129,36 +1129,41 @@
         function initGoogleMode() {
             document.getElementById('app-title').innerText = "Calendar (Google)";
             gapi.load('client', async () => {
-                await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                try {
+                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
 
-                const fragmentString = location.hash.substring(1);
-                const params = new URLSearchParams(fragmentString);
-                const newAccessToken = params.get('access_token');
+                    const fragmentString = location.hash.substring(1);
+                    const params = new URLSearchParams(fragmentString);
+                    const newAccessToken = params.get('access_token');
 
-                if (newAccessToken) {
-                    localStorage.setItem('google_calendar_token', newAccessToken);
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    gapi.client.setToken({ access_token: newAccessToken });
-                    document.getElementById('auth-overlay').style.display = 'none';
-                    loadGoogleEvents();
-                } else {
-                    const token = localStorage.getItem('google_calendar_token');
-                    if (token) {
-                        gapi.client.setToken({ access_token: token });
+                    if (newAccessToken) {
+                        localStorage.setItem('google_calendar_token', newAccessToken);
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        gapi.client.setToken({ access_token: newAccessToken });
                         document.getElementById('auth-overlay').style.display = 'none';
-                        loadGoogleEvents();
+                        await loadGoogleEvents();
                     } else {
-                        // Auto-login logic
-                        if (!location.hash.includes('error=')) {
-                            // Show connecting state
-                            document.getElementById('auth-overlay').style.display = 'flex';
-                            document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
-                            document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
-                            oauthSignIn();
+                        const token = localStorage.getItem('google_calendar_token');
+                        if (token) {
+                            gapi.client.setToken({ access_token: token });
+                            document.getElementById('auth-overlay').style.display = 'none';
+                            await loadGoogleEvents();
                         } else {
-                            document.getElementById('auth-overlay').style.display = 'flex';
+                            // Auto-login logic
+                            if (!location.hash.includes('error=')) {
+                                // Show connecting state
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                                document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
+                                document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
+                                oauthSignIn();
+                            } else {
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                            }
                         }
                     }
+                } catch (e) {
+                    console.error('Failed to initialize Google API:', JSON.stringify(e));
+                    document.getElementById('status-msg').innerText = 'Error.';
                 }
             });
         }
@@ -1178,6 +1183,23 @@
             }
             document.body.appendChild(form);
             form.submit();
+        }
+
+        function handleUnauthorized() {
+            console.warn("Unauthorized (401). Clearing token and redirecting...");
+            localStorage.removeItem('google_calendar_token');
+            // Prevent rapid redirect loops
+            const lastAuth = sessionStorage.getItem('last_auth_attempt') || 0;
+            const now = Date.now();
+            if (now - lastAuth < 5000) {
+                console.error("Auth loop detected.");
+                document.getElementById('auth-overlay').style.display = 'flex';
+                document.querySelector('#auth-overlay h2').innerText = "Login Failed";
+                document.querySelector('#auth-overlay p').innerText = "Please try again manually.";
+                return;
+            }
+            sessionStorage.setItem('last_auth_attempt', now.toString());
+            oauthSignIn();
         }
 
         async function loadGoogleEvents() {
@@ -1219,7 +1241,7 @@
                 document.getElementById('status-msg').innerText = "Error.";
                 if (e.status === 401) {
                     // Token expired during use -> Re-auth
-                    oauthSignIn();
+                    handleUnauthorized();
                 }
             }
         }
