@@ -24,8 +24,9 @@ const ignoreList = [
     'node_modules', '.git', '.github', '_deploy',
     'build-automation.js', 'package.json', 'package-lock.json',
     'wrangler.toml', '.gitignore', '.DS_Store',
+    'workers', 'scripts', 'screenshots',
     // Firebase Backend Files (Keep in repo, ignore for hosting)
-    'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json'
+    'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json', 'rtdb-rules.json'
 ];
 
 
