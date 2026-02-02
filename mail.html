@@ -636,7 +636,7 @@
         // Google Config - Full access for send/modify
         const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send';
-        const DISCOVERY_DOC = 'https://gmail.googleapis.com/$discovery/rest?version=v1';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest';
 
         let emails = [];
         let allEmails = [];
@@ -665,8 +665,9 @@
         };
 
         // FIREBASE SETUP
+        const API_KEY = "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ";
         const firebaseConfig = {
-            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            apiKey: API_KEY,
             authDomain: "rekindle-dd1fa.firebaseapp.com",
             projectId: "rekindle-dd1fa",
             storageBucket: "rekindle-dd1fa.firebasestorage.app",
@@ -781,7 +782,9 @@
         function initGmailMode() {
             gapi.load('client', async () => {
                 try {
-                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                    await gapi.client.init({
+                        discoveryDocs: [DISCOVERY_DOC]
+                    });
 
                     const fragmentString = location.hash.substring(1);
                     const params = new URLSearchParams(fragmentString);
@@ -792,15 +795,15 @@
                         window.history.replaceState({}, document.title, window.location.pathname);
                         gapi.client.setToken({ access_token: newAccessToken });
                         document.getElementById('auth-overlay').style.display = 'none';
-                        getUserEmail();
-                        loadEmails();
+                        await getUserEmail();
+                        await loadEmails();
                     } else {
                         const token = localStorage.getItem('google_gmail_token');
                         if (token) {
                             gapi.client.setToken({ access_token: token });
                             document.getElementById('auth-overlay').style.display = 'none';
-                            getUserEmail();
-                            loadEmails();
+                            await getUserEmail();
+                            await loadEmails();
                         } else {
                             // Auto-login logic: check for error to avoid loops, else redirect
                             if (!location.hash.includes('error=')) {
@@ -814,7 +817,7 @@
                         }
                     }
                 } catch (e) {
-                    console.error('Failed to initialize Gmail API:', e);
+                    console.error('Failed to initialize Gmail API:', JSON.stringify(e));
                     document.getElementById('status-bar').innerText = 'Error loading Gmail API';
                 }
             });
@@ -826,7 +829,27 @@
                 userEmail = res.result.emailAddress;
             } catch (e) {
                 console.error('Error getting user email:', e);
+                if (e.status === 401) {
+                    handleUnauthorized();
+                }
             }
+        }
+
+        function handleUnauthorized() {
+            console.warn("Unauthorized (401). Clearing token and redirecting...");
+            localStorage.removeItem('google_gmail_token');
+            // Prevent rapid redirect loops
+            const lastAuth = sessionStorage.getItem('last_auth_attempt') || 0;
+            const now = Date.now();
+            if (now - lastAuth < 5000) {
+                console.error("Auth loop detected.");
+                document.getElementById('auth-overlay').style.display = 'flex';
+                document.querySelector('#auth-overlay h2').innerText = "Login Failed";
+                document.querySelector('#auth-overlay p').innerText = "Please try again manually.";
+                return;
+            }
+            sessionStorage.setItem('last_auth_attempt', now.toString());
+            oauthSignIn();
         }
 
         function oauthSignIn() {
@@ -933,8 +956,7 @@
             } catch (e) {
                 console.error('Error loading emails:', e);
                 if (e.status === 401) {
-                    localStorage.removeItem('google_gmail_token');
-                    oauthSignIn();
+                    handleUnauthorized();
                 } else {
                     document.getElementById('status-bar').innerText = 'Error loading emails';
                 }

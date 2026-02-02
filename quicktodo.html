@@ -679,40 +679,44 @@
 
         function initGoogle() {
             gapi.load('client', async () => {
-                await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
-                const fragmentString = location.hash.substring(1);
-                const params = new URLSearchParams(fragmentString);
-                const newAccessToken = params.get('access_token');
+                try {
+                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                    const fragmentString = location.hash.substring(1);
+                    const params = new URLSearchParams(fragmentString);
+                    const newAccessToken = params.get('access_token');
 
-                if (newAccessToken) {
-                    localStorage.setItem('google_access_token', newAccessToken);
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    gapi.client.setToken({ access_token: newAccessToken });
-                    startGoogleSync();
-                } else {
-                    const token = localStorage.getItem('google_access_token');
-                    if (token) {
-                        gapi.client.setToken({ access_token: token });
-                        startGoogleSync();
+                    if (newAccessToken) {
+                        localStorage.setItem('google_access_token', newAccessToken);
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        gapi.client.setToken({ access_token: newAccessToken });
+                        await startGoogleSync();
                     } else {
-                        // Auto-login logic
-                        if (!location.hash.includes('error=')) {
-                            // Show connecting state briefly
-                            document.getElementById('auth-overlay').style.display = 'flex';
-                            document.querySelector('#auth-overlay h3').innerText = "Redirecting...";
-                            document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
-                            oauthSignIn();
+                        const token = localStorage.getItem('google_access_token');
+                        if (token) {
+                            gapi.client.setToken({ access_token: token });
+                            await startGoogleSync();
                         } else {
-                            document.getElementById('auth-overlay').style.display = 'flex';
+                            // Auto-login logic
+                            if (!location.hash.includes('error=')) {
+                                // Show connecting state briefly
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                                document.querySelector('#auth-overlay h3').innerText = "Redirecting...";
+                                document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
+                                oauthSignIn();
+                            } else {
+                                document.getElementById('auth-overlay').style.display = 'flex';
+                            }
                         }
                     }
+                } catch (e) {
+                    console.error('Failed to initialize Google API:', JSON.stringify(e));
                 }
             });
         }
 
-        function startGoogleSync() {
+        async function startGoogleSync() {
             document.getElementById('auth-overlay').style.display = 'none';
-            fetchGoogleTasks();
+            await fetchGoogleTasks();
             setInterval(fetchGoogleTasks, 60000);
         }
 
@@ -731,6 +735,23 @@
             }
             document.body.appendChild(form);
             form.submit();
+        }
+
+        function handleUnauthorized() {
+            console.warn("Unauthorized (401). Clearing token and redirecting...");
+            localStorage.removeItem('google_access_token');
+            // Prevent rapid redirect loops
+            const lastAuth = sessionStorage.getItem('last_auth_attempt') || 0;
+            const now = Date.now();
+            if (now - lastAuth < 5000) {
+                console.error("Auth loop detected.");
+                document.getElementById('auth-overlay').style.display = 'flex';
+                document.querySelector('#auth-overlay h3').innerText = "Login Failed";
+                document.querySelector('#auth-overlay p').innerText = "Please try again manually.";
+                return;
+            }
+            sessionStorage.setItem('last_auth_attempt', now.toString());
+            oauthSignIn();
         }
 
         async function fetchGoogleTasks() {
@@ -758,7 +779,7 @@
                 console.error("Google Sync Error", e);
                 if (e.status === 401) {
                     // Re-authenticate silently if possible
-                    oauthSignIn();
+                    handleUnauthorized();
                 }
             }
         }
