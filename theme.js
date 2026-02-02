@@ -8,31 +8,28 @@
     }
 
     // --- CONFIGURATION ---
-    const THEME_KEY = 'rekindle_theme_mode'; // 'light', 'dark', 'auto'
-    const AUTO_START_HOUR = 18; // 6 PM
-    const AUTO_END_HOUR = 6;    // 6 AM
+    var THEME_KEY = 'rekindle_theme_mode'; // 'light', 'dark', 'auto'
+    var AUTO_START_HOUR = 18; // 6 PM
+    var AUTO_END_HOUR = 6;    // 6 AM
 
     function applyTheme() {
-        const mode = localStorage.getItem(THEME_KEY) || 'light';
-        let isDark = false;
+        var mode = localStorage.getItem(THEME_KEY) || 'light';
+        var isDark = false;
 
         if (mode === 'dark') {
             isDark = true;
         } else if (mode === 'auto') {
-            const now = new Date();
-            const hour = now.getHours();
+            var now = new Date();
+            var hour = now.getHours();
             // Check if it's night time (after start hour OR before end hour)
             if (hour >= AUTO_START_HOUR || hour < AUTO_END_HOUR) {
                 isDark = true;
             } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                // Also respect system preference if supported and not explicitly "day" time? 
-                // Actually user said "night time", implying time-based, but auto often implies system.
-                // Let's do: Time OR System.
                 isDark = true;
             }
         }
 
-        const doc = document.documentElement;
+        var doc = document.documentElement;
         if (isDark) {
             doc.setAttribute('data-theme', 'dark');
             injectDarkStyles();
@@ -50,38 +47,28 @@
         // Invert patterns or set to black
 
         // 2. Inject global override styles for legacy/non-var apps
-        let style = document.getElementById('rekindle-dark-theme');
+        var style = document.getElementById('rekindle-dark-theme');
         if (!style) {
             style = document.createElement('style');
             style.id = 'rekindle-dark-theme';
-            style.textContent = `
-                /* UNIVERSAL DARK MODE OVERRIDES */
-                :root[data-theme="dark"] {
-                    --bg-color: #000000;
-                    --text-color: #ffffff;
-                    background-color: #ffffff;
-                    height: 100%;
-                    filter: invert(1) hue-rotate(180deg);
-                }
-                
-                /* Invert back images/likely-images to look normal-ish */
-                :root[data-theme="dark"] img, 
-                :root[data-theme="dark"] video, 
-                :root[data-theme="dark"] canvas,
-                :root[data-theme="dark"] .no-invert {
-                    filter: invert(1) hue-rotate(180deg);
-                }
-                
-                :root[data-theme="dark"] img.keep-white {
-                    filter: none;
-                }
-
-                /* Special handling for "window" UI to keep borders visible but inverted content */
-                /* Actually, a full page filter invert is often the most robust way to handle 'legacy' white-bg apps 
-                   without rewriting every CSS file. ReKindle apps are 1-bit aesthetics mostly.
-                   Let's try the CSS filter approach first as it handles the "System 7" look well (Black on White -> White on Black).
-                */
-            `;
+            style.textContent =
+                '/* UNIVERSAL DARK MODE OVERRIDES */\n' +
+                ':root[data-theme="dark"] {\n' +
+                '    --bg-color: #000000;\n' +
+                '    --text-color: #ffffff;\n' +
+                '    background-color: #ffffff;\n' +
+                '    height: 100%;\n' +
+                '    filter: invert(1) hue-rotate(180deg);\n' +
+                '}\n' +
+                ':root[data-theme="dark"] img, \n' +
+                ':root[data-theme="dark"] video, \n' +
+                ':root[data-theme="dark"] canvas,\n' +
+                ':root[data-theme="dark"] .no-invert {\n' +
+                '    filter: invert(1) hue-rotate(180deg);\n' +
+                '}\n' +
+                ':root[data-theme="dark"] img.keep-white {\n' +
+                '    filter: none;\n' +
+                '}\n';
             document.head.appendChild(style);
         }
     }
@@ -91,7 +78,7 @@
         document.documentElement.style.removeProperty('--text-color');
         document.documentElement.style.removeProperty('--border-color');
 
-        const style = document.getElementById('rekindle-dark-theme');
+        var style = document.getElementById('rekindle-dark-theme');
         if (style) style.remove();
     }
 
@@ -100,18 +87,18 @@
 
     // Export for Settings App to call
     // --- DISPLAY MODE ---
-    const DISPLAY_MODE_KEY = 'rekindle_display_mode'; // 'eink' (default), 'led'
+    var DISPLAY_MODE_KEY = 'rekindle_display_mode'; // 'eink' (default), 'led'
 
     function getDisplayMode() {
         return localStorage.getItem(DISPLAY_MODE_KEY) || 'eink';
     }
 
     // --- SCALING ---
-    const SCALE_KEY = 'rekindle_scale'; // '1.0', '0.9', etc.
-    const SCALE_AUTO_KEY = 'rekindle_scale_auto'; // 'true', 'false'
+    var SCALE_KEY = 'rekindle_scale'; // '1.0', '0.9', etc.
+    var SCALE_AUTO_KEY = 'rekindle_scale_auto'; // 'true', 'false'
 
     function injectScalingStyle() {
-        let style = document.getElementById('rekindle-scaling-style');
+        var style = document.getElementById('rekindle-scaling-style');
         if (!style) {
             style = document.createElement('style');
             style.id = 'rekindle-scaling-style';
@@ -124,23 +111,22 @@
         // Set CSS custom property for apps that want selective scaling
         document.documentElement.style.setProperty('--rekindle-scale', finalScale);
 
-        style.textContent = `
-            .dashboard, .window { 
-                zoom: ${finalScale}; 
-            }
-            @supports not (zoom: 1) {
-                .dashboard, .window {
-                    transform: scale(${finalScale});
-                    transform-origin: top center;
-                }
-            }
-        `;
+        style.textContent =
+            '.dashboard, .window { ' +
+            'zoom: ' + finalScale + '; ' +
+            '} ' +
+            '@supports not (zoom: 1) { ' +
+            '.dashboard, .window { ' +
+            'transform: scale(' + finalScale + '); ' +
+            'transform-origin: top center; ' +
+            '} ' +
+            '}';
     }
 
     function applyScale() {
         if (document.documentElement.hasAttribute('data-no-scale')) {
             // Remove the style if it exists
-            const style = document.getElementById('rekindle-scaling-style');
+            var style = document.getElementById('rekindle-scaling-style');
             if (style) style.remove();
             return;
         }
@@ -199,17 +185,17 @@
     }
 
     // --- UNIT SYSTEM ---
-    const UNIT_KEY = 'rekindle_unit_system'; // 'metric', 'imperial', 'auto'
-    const IMPERIAL_COUNTRIES = ['US', 'LR', 'MM'];
+    var UNIT_KEY = 'rekindle_unit_system'; // 'metric', 'imperial', 'auto'
+    var IMPERIAL_COUNTRIES = ['US', 'LR', 'MM'];
 
     function getUnitSystem() {
-        const pref = localStorage.getItem(UNIT_KEY) || 'auto';
+        var pref = localStorage.getItem(UNIT_KEY) || 'auto';
         if (pref !== 'auto') return pref;
 
         // Auto Logic
         // 1. Check Manual Location
         try {
-            const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            var manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
             if (manualLoc && manualLoc.name) {
                 // We stored country code in weather.html setLocation but not explicitly here in theme.js context usually.
                 // However, let's try to infer or fallback.
@@ -225,7 +211,7 @@
                 // Let's look at available data. 
                 // Option A: Use 'rekindle_weather_settings' which stores 'autoUnit' ('celsius'/'fahrenheit') calculated from country code.
                 // We can proxy that: Celsius -> Metric, Fahrenheit -> Imperial.
-                const weatherSettings = JSON.parse(localStorage.getItem('rekindle_weather_settings'));
+                var weatherSettings = JSON.parse(localStorage.getItem('rekindle_weather_settings'));
                 if (weatherSettings && weatherSettings.autoUnit) {
                     return weatherSettings.autoUnit === 'fahrenheit' ? 'imperial' : 'metric';
                 }
@@ -237,9 +223,9 @@
     }
 
     function convertDistance(meters) {
-        const system = getUnitSystem();
+        var system = getUnitSystem();
         if (system === 'imperial') {
-            const miles = meters * 0.000621371;
+            var miles = meters * 0.000621371;
             if (miles < 0.1) {
                 return Math.round(meters * 3.28084) + ' ft';
             }
@@ -252,30 +238,30 @@
 
     function convertTemperatureContext(text) {
         if (!text) return text;
-        const system = getUnitSystem();
+        var system = getUnitSystem();
 
         // Regex to find temps like 180C, 180°C, 350F, 350° deg, etc.
         // We assume input text might vary. 
         // Simple case: Look for C and F explicitly.
 
-        return text.replace(/(\d+)(?:\s?°?\s?)(C|F)\b/gi, (match, val, unit) => {
-            const num = parseInt(val);
-            const u = unit.toUpperCase();
+        return text.replace(/(\d+)(?:\s?°?\s?)(C|F)\b/gi, function (match, val, unit) {
+            var num = parseInt(val);
+            var u = unit.toUpperCase();
 
             if (system === 'metric') {
                 if (u === 'F') {
                     // F -> C
-                    const c = Math.round((num - 32) * (5 / 9));
-                    return `${c}°C`;
+                    var c = Math.round((num - 32) * (5 / 9));
+                    return c + '°C';
                 }
-                return `${num}°C`; // Standardize
+                return num + '°C'; // Standardize
             } else {
                 if (u === 'C') {
                     // C -> F
-                    const f = Math.round((num * 9 / 5) + 32);
-                    return `${f}°F`;
+                    var f = Math.round((num * 9 / 5) + 32);
+                    return f + '°F';
                 }
-                return `${num}°F`; // Standardize
+                return num + '°F'; // Standardize
             }
         });
     }
@@ -295,10 +281,10 @@
     // --- WALLPAPER LOGIC ---
     function applyWallpaper() {
         try {
-            let wallpaperImg = localStorage.getItem('rekindle_bg_image');
-            let wallpaperSize = localStorage.getItem('rekindle_bg_size');
-            const wallpaperId = localStorage.getItem('rekindle_wallpaper_id');
-            const hasPixelData = localStorage.getItem('rekindle_pixel_data');
+            var wallpaperImg = localStorage.getItem('rekindle_bg_image');
+            var wallpaperSize = localStorage.getItem('rekindle_bg_size');
+            var wallpaperId = localStorage.getItem('rekindle_wallpaper_id');
+            var hasPixelData = localStorage.getItem('rekindle_pixel_data');
 
             // MIGRATION LOGIC (From index.html):
             // 1. If no image exists (New User)
@@ -309,10 +295,10 @@
                 // We'll trust the browser can handle basic canvas here.
                 console.log("Migrating wallpaper to Classic Dither...");
 
-                const canvas = document.createElement('canvas');
+                var canvas = document.createElement('canvas');
                 canvas.width = 32;
                 canvas.height = 32;
-                const ctx = canvas.getContext('2d');
+                var ctx = canvas.getContext('2d');
 
                 // Fill Background White
                 ctx.fillStyle = '#ffffff';
@@ -320,7 +306,7 @@
 
                 // Draw Black Pixels (Classic Dither Pattern)
                 ctx.fillStyle = '#000000';
-                const ditherPattern = [
+                var ditherPattern = [
                     1, 0, 1, 0, 1, 0, 1, 0,
                     0, 1, 0, 1, 0, 1, 0, 1,
                     1, 0, 1, 0, 1, 0, 1, 0,
@@ -331,15 +317,15 @@
                     0, 1, 0, 1, 0, 1, 0, 1
                 ];
 
-                for (let i = 0; i < 64; i++) {
+                for (var i = 0; i < 64; i++) {
                     if (ditherPattern[i] === 1) {
-                        const col = i % 8;
-                        const row = Math.floor(i / 8);
+                        var col = i % 8;
+                        var row = Math.floor(i / 8);
                         ctx.fillRect(col * 4, row * 4, 4, 4);
                     }
                 }
 
-                wallpaperImg = `url(${canvas.toDataURL('image/png')})`;
+                wallpaperImg = 'url(' + canvas.toDataURL('image/png') + ')';
                 wallpaperSize = '16px 16px';
 
                 localStorage.setItem('rekindle_bg_image', wallpaperImg);
@@ -358,7 +344,7 @@
                     return imageString;
                 }
                 // Extract URL wrappers
-                let url = '';
+                var url = '';
                 if (imageString.startsWith('url("') && imageString.endsWith('")')) {
                     url = imageString.substring(5, imageString.length - 2);
                 } else if (imageString.startsWith("url('") && imageString.endsWith("')")) {
@@ -376,7 +362,7 @@
             }
 
             if (wallpaperImg) {
-                const safeImg = sanitize(wallpaperImg);
+                var safeImg = sanitize(wallpaperImg);
                 if (safeImg) {
                     document.body.style.backgroundImage = safeImg;
                 }
@@ -384,14 +370,14 @@
 
             // SCALING LOGIC (From reader.html fix)
             if (wallpaperSize) {
-                const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
-                const scale = parseFloat(scaleStr);
+                var scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
+                var scale = parseFloat(scaleStr);
 
-                if (scale !== 1.0 && wallpaperSize.includes('px')) {
-                    wallpaperSize = wallpaperSize.replace(/(\d+(\.\d+)?)px/g, (match, initialNum) => {
-                        const val = parseFloat(initialNum);
-                        const scaledVal = val * scale;
-                        return `${scaledVal}px`;
+                if (scale !== 1.0 && wallpaperSize.indexOf('px') !== -1) {
+                    wallpaperSize = wallpaperSize.replace(/(\d+(\.\d+)?)px/g, function (match, initialNum) {
+                        var val = parseFloat(initialNum);
+                        var scaledVal = val * scale;
+                        return scaledVal + 'px';
                     });
                 }
                 document.body.style.backgroundSize = wallpaperSize;
@@ -406,7 +392,7 @@
     // --- DEFAULT FULLSCREEN ---
     function applyDefaultFullscreen() {
         if (localStorage.getItem('rekindle_default_fullscreen') === 'true') {
-            const win = document.querySelector('.window');
+            var win = document.querySelector('.window');
             if (win && !win.classList.contains('fullscreen')) {
                 win.classList.add('fullscreen');
             }
