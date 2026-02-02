@@ -822,9 +822,11 @@
 
             // Cleaning Animation Override
             if (ui.cleaning) {
-                if (ui.animFrame % 30 === 0) {
-                    ui.cleanX += 32;
-                }
+                // Calculate position based on time elapsed since clean start
+                // Move 32 pixels every 30 frames (0.5s)
+                var progress = ui.animFrame - ui.cleanStartFrame;
+                ui.cleanX = Math.floor(progress / 30) * 32;
+
                 var brushPX = PIXEL_SIZES['cleaning'] || [6, 43];
                 var brushW = brushPX[0] * 3;
                 drawSprite('cleaning', ui.cleanX - brushW, 0, brushW, 128);
@@ -1047,11 +1049,12 @@
         var ui = {
             menuIndex: -1, // -1 = None, 0..7 = Icons
             screen: 'MAIN', // MAIN, STATS, GAME, ANIMATION
-            animTimer: 0,
+            animEndTime: 0,
             animFrame: 0,
             animType: null,
             overlayMessage: '',
             cleaning: false,
+            cleanStartFrame: 0, // For time-based cleaning
             cleanX: 0,
             statsPage: 0, // 0: Age/Weight, 1: Hunger, 2: Happiness
             feedMenuIndex: 0, // 0: MEAL, 1: SNACK
@@ -1334,8 +1337,9 @@
                 saveGame();
             }
 
-            // Animation Update
-            ui.animFrame++;
+            // Animation Update (Time-based Frame Skipping)
+            // 60 Frames per 1000ms = ~16.666667ms per frame
+            ui.animFrame = Math.floor((now - state.born) / 16.666667);
 
             // Stage Progression Logic
             if (state.stage === 'EGG') {
@@ -1458,7 +1462,7 @@
                         state.weight = Math.max(1, state.weight - 1);
                         ui.screen = 'ANIMATION';
                         ui.animType = 'PLAY';
-                        ui.animTimer = 60 * 3;
+                        ui.animEndTime = Date.now() + 3000; // 3 seconds
                     }
                     break;
                 case 'MEDS':
@@ -1466,13 +1470,14 @@
                         state.sick = false;
                         ui.screen = 'ANIMATION';
                         ui.animType = 'HEAL';
-                        ui.animTimer = 60 * 2;
+                        ui.animEndTime = Date.now() + 2000; // 2 seconds
                     }
                     break;
                 case 'BATH':
                     if (state.poops > 0) {
                         state.poops = 0;
                         ui.cleaning = true;
+                        ui.cleanStartFrame = ui.animFrame;
                         ui.cleanX = 0;
                     }
                     break;
@@ -1537,7 +1542,7 @@
                     state.weight++;
                     ui.screen = 'ANIMATION';
                     ui.animType = 'FEED_FOOD';
-                    ui.animTimer = 60 * 3;
+                    ui.animEndTime = Date.now() + 3000; // 3 seconds
                     ui.currentFood = null; // Pick new one
                 } else {
                     ui.screen = 'MAIN';
@@ -1549,7 +1554,7 @@
                     state.weight += 2;
                     ui.screen = 'ANIMATION';
                     ui.animType = 'FEED_SNACK';
-                    ui.animTimer = 60 * 3;
+                    ui.animEndTime = Date.now() + 3000; // 3 seconds
                     ui.currentFood = null; // Pick new one
                 } else {
                     ui.screen = 'MAIN';
@@ -1559,8 +1564,7 @@
         }
 
         function renderAnimation(baseKey) {
-            ui.animTimer--;
-            if (ui.animTimer <= 0) {
+            if (Date.now() >= ui.animEndTime) {
                 ui.screen = 'MAIN';
                 ui.animType = null;
                 ui.currentFood = null;
@@ -1585,7 +1589,8 @@
                 var moveX = step === 1 ? -8 : 0;
 
                 // Draw Food (Left Side)
-                if (ui.animTimer > 40) {
+                // Show if remaining time > 666ms (approx 40 frames)
+                if (ui.animEndTime - Date.now() > 666) {
                     var shake = step === 1 ? 2 : 0;
 
                     if (!ui.currentFood) {
