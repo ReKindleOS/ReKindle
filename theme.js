@@ -11,6 +11,7 @@
     var THEME_KEY = 'rekindle_theme_mode'; // 'light', 'dark', 'auto'
     var AUTO_START_HOUR = 18; // 6 PM
     var AUTO_END_HOUR = 6;    // 6 AM
+    var ROTATION_KEY = 'rekindle_rotation'; // '0', '90', '180', '270'
 
     function applyTheme() {
         var mode = localStorage.getItem(THEME_KEY) || 'light';
@@ -133,9 +134,39 @@
         injectScalingStyle();
     }
 
+    // --- ROTATION ---
+    function injectRotationStyle() {
+        var style = document.getElementById('rekindle-rotation-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'rekindle-rotation-style';
+            document.head.appendChild(style);
+        }
+
+        var rotation = localStorage.getItem(ROTATION_KEY) || '0';
+        var css = '';
+
+        if (rotation === '90') {
+            css = 'html, body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; } ' +
+                'body { transform: rotate(90deg); transform-origin: top left; left: 100vw; }';
+        } else if (rotation === '180') {
+            css = 'body { transform: rotate(180deg); transform-origin: center center; }';
+        } else if (rotation === '270') {
+            css = 'html, body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; } ' +
+                'body { transform: rotate(270deg); transform-origin: top left; top: 100vh; }';
+        }
+
+        style.textContent = css;
+    }
+
+    function applyRotation() {
+        injectRotationStyle();
+    }
+
     function init() {
         applyTheme();
         applyScale();
+        applyRotation();
     }
 
     // Run as soon as possible
@@ -148,6 +179,7 @@
     // Still run theme/scale immediately in case it's in the head (prevents flash)
     applyTheme();
     applyScale();
+    applyRotation();
 
     function autoDetectScale() {
         var autoEnabled = localStorage.getItem(SCALE_AUTO_KEY) !== 'false'; // Default to true
@@ -277,6 +309,7 @@
     window.rekindleGetUnitSystem = getUnitSystem;
     window.rekindleConvertDistance = convertDistance;
     window.rekindleConvertTemperatureContext = convertTemperatureContext;
+    window.rekindleApplyRotation = applyRotation;
 
     // --- WALLPAPER LOGIC ---
     function applyWallpaper() {
