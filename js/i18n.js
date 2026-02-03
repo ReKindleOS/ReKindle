@@ -6,7 +6,41 @@
 
     // Then check LocalStorage
     if (!lang) {
-        lang = localStorage.getItem('rekindle_language');
+        lang = localStorage.getItem('rekindle_language') || 'auto';
+    }
+
+    // Handle "auto" language (Detect by Location)
+    if (lang === 'auto') {
+        try {
+            var manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+            if (manualLoc && manualLoc.country_code) {
+                var cc = manualLoc.country_code.toUpperCase();
+                var esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
+                var ptCountries = ['PT', 'BR'];
+                var plCountries = ['PL'];
+                var deCountries = ['DE', 'AT', 'CH', 'LI'];
+                var itCountries = ['IT', 'SM', 'VA'];
+                var frCountries = ['FR', 'BE', 'CA', 'CH', 'LU', 'MC', 'SN'];
+                var ruCountries = ['RU', 'BY', 'KZ', 'KG'];
+                var zhCountries = ['CN', 'TW', 'HK', 'SG'];
+                var viCountries = ['VN'];
+
+                if (esCountries.indexOf(cc) !== -1) lang = 'es';
+                else if (ptCountries.indexOf(cc) !== -1) lang = 'pt';
+                else if (plCountries.indexOf(cc) !== -1) lang = 'pl';
+                else if (deCountries.indexOf(cc) !== -1) lang = 'de';
+                else if (itCountries.indexOf(cc) !== -1) lang = 'it';
+                else if (zhCountries.indexOf(cc) !== -1) lang = 'zh';
+                else if (viCountries.indexOf(cc) !== -1) lang = 'vi';
+                else if (frCountries.indexOf(cc) !== -1) lang = 'fr';
+                else if (ruCountries.indexOf(cc) !== -1) lang = 'ru';
+                else lang = null; // Fallback to browser detection
+            } else {
+                lang = null; // Fallback
+            }
+        } catch (e) {
+            lang = null;
+        }
     }
 
     // Then check Browser
@@ -81,8 +115,12 @@
         document.documentElement.lang = lang;
         document.body.classList.add('lang-' + lang);
 
-        // Save choice
-        localStorage.setItem('rekindle_language', lang);
+        // Save choice (only if not in auto mode)
+        // If current setting is null, treating it as 'auto', so DO NOT save 'en' over it.
+        var currentSetting = localStorage.getItem('rekindle_language');
+        if (currentSetting && currentSetting !== 'auto') {
+            localStorage.setItem('rekindle_language', lang);
+        }
 
         notifyReady();
     }).catch(function (e) {
