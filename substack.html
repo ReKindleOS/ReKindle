@@ -129,7 +129,10 @@
             right: 10px;
             z-index: 1;
             display: flex;
-            gap: 10px;
+        }
+
+        .controls>*+* {
+            margin-left: 10px;
         }
 
         .icon-btn {
@@ -201,9 +204,12 @@
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 10px;
             font-weight: bold;
             font-size: 0.95rem;
+        }
+
+        .nav-item .nav-icon {
+            margin-right: 10px;
         }
 
         .nav-item:hover {
@@ -268,9 +274,12 @@
             padding: 8px 15px;
             display: flex;
             align-items: center;
-            gap: 10px;
             cursor: pointer;
             border-bottom: 1px solid #ddd;
+        }
+
+        .sub-item .sub-icon {
+            margin-right: 10px;
         }
 
         .sub-item:hover {
@@ -727,7 +736,9 @@
             hasMore: true,
             activeFeed: 'following', // 'following', 'subscriptions' OR 'pub_ID'
             fullInbox: null, // For aggregated feed
-            subOffset: 0 // Per-subscription offset for progressive loading
+            subOffset: 0, // Per-subscription offset for progressive loading
+            maxCache: 300, // Maximum posts to keep in memory for aggregated feed
+            maxDomItems: 100 // Maximum items to render at once
         };
 
         let auth, db;
@@ -1024,27 +1035,40 @@
 
                 async function fetchAggregatedFeed(offset = 0) {
                     const allPosts = [];
-                    const batchSize = 10;
-                    const subLimit = 50;
+                    // REDUCED FOR KINDLE STABILITY
+                    const batchSize = 2;
+                    const subLimit = 15;
 
                     console.log(`Fetching ${subLimit} posts from ${state.subs.length} subs (offset: ${offset})...`);
 
                     for (let i = 0; i < state.subs.length; i += batchSize) {
                         const batch = state.subs.slice(i, i + batchSize);
-                        const results = await Promise.allSettled(batch.map(async sub => {
-                            const domain = new URL(sub.publication.base_url).hostname;
-                            const posts = await apiCall(`/posts?limit=${subLimit}&offset=${offset}&sort=new`, {
-                                headers: { 'X-Substack-Target': domain }
-                            });
-                            return (posts.posts || posts || []).map(p => {
-                                if (!p.publication) p.publication = sub.publication;
-                                return p;
-                            });
-                        }));
+                        // Kindle-compatible alternative to Promise.allSettled
+                        const wrappedPromises = batch.map(async sub => {
+                            try {
+                                const domain = new URL(sub.publication.base_url).hostname;
+                                const posts = await apiCall(`/posts?limit=${subLimit}&offset=${offset}&sort=new`, {
+                                    headers: { 'X-Substack-Target': domain }
+                                });
+                                return {
+                                    status: 'fulfilled', value: (posts.posts || posts || []).map(p => {
+                                        if (!p.publication) p.publication = sub.publication;
+                                        return p;
+                                    })
+                                };
+                            } catch (e) {
+                                console.warn(`Failed to fetch from ${sub.publication.name}`, e);
+                                return { status: 'rejected', reason: e };
+                            }
+                        });
+                        const results = await Promise.all(wrappedPromises);
 
                         results.forEach(res => {
-                            if (res.status === 'fulfilled') allPosts.push(...res.value);
+                            if (res.status === 'fulfilled') allPosts.push.apply(allPosts, res.value);
                         });
+
+                        // Small cooling period between batches
+                        await new Promise(r => setTimeout(r, 100));
                     }
 
                     // Deduplicate by ID and Sort
@@ -1055,7 +1079,7 @@
                 }
 
                 // Pagination analysis
-                const rawLength = data ? (data?.posts || data || []).length : newPosts.length;
+                const rawLength = data ? ((data.posts || data || []).length) : newPosts.length;
                 console.log(`Feed analysis: fetched=${rawLength}, currentOffset=${state.offset}, limit=${state.limit}`);
 
                 // Filter out duplicates
@@ -1070,6 +1094,12 @@
                     renderInbox(newPosts, false);
                 } else if (newPosts.length > 0) {
                     state.inbox = state.inbox.concat(newPosts);
+
+                    // Cap the cached inbox to save memory
+                    if (state.inbox.length > state.maxCache) {
+                        state.inbox = state.inbox.slice(-state.maxCache);
+                    }
+
                     renderInbox(newPosts, true);
                 }
 
@@ -1173,35 +1203,26 @@
 
             posts.forEach(post => {
                 // DEBUG: Log structure to find author
-                console.log("Post:", post.title, post);
+                // console.log("Post:", post.title, post);
 
                 const el = document.createElement('div');
                 el.className = 'post-card';
 
                 // Try to resolve publication name:
-                // 1. post.publication.name
-                // 2. Lookup in subscriptions via post.publication_id
-                // 3. Fallback to "Unknown"
                 let pubName = "Unknown";
 
-                // Strategy 1: Direct on post
                 if (post.publication && post.publication.name) {
                     pubName = post.publication.name;
                 }
-                // Strategy 2: Lookup via ID
                 else if (post.publication_id) {
-                    // Ensure loose comparison for ID (string vs number)
                     const match = state.subs.find(s => s.publication && s.publication.id == post.publication_id);
                     if (match) pubName = match.publication.name;
                 }
 
-                // Strategy 3: Author name?
                 if (pubName === "Unknown") {
-                    // Check publishedBylines (from logs)
                     if (post.publishedBylines && post.publishedBylines.length > 0) {
                         pubName = post.publishedBylines.map(b => b.name).join(', ');
                     }
-                    // Check displayed_authors (fallback)
                     else if (post.displayed_authors && post.displayed_authors.length > 0) {
                         pubName = post.displayed_authors[0].name;
                     }
@@ -1223,6 +1244,17 @@
                 el.onclick = () => openReader(post);
                 list.appendChild(el);
             });
+
+            // TRIM DOM to prevent bloat
+            const cards = list.querySelectorAll('.post-card');
+            if (cards.length > state.maxDomItems) {
+                const toRemove = cards.length - state.maxDomItems;
+                for (let i = 0; i < toRemove; i++) {
+                    cards[i].remove();
+                }
+                // If we removed items from top, reset scroll to avoid jump
+                // list.scrollTop = 0; 
+            }
         }
 
         // --- READER ---
