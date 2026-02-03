@@ -1,0 +1,891 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mario</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            background-repeat: repeat;
+            background-position: top left;
+
+            font-family: "Geneva", "Verdana", sans-serif;
+            background-color: transparent;
+            /* Default Background (Overridden by JS) */
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: auto;
+            min-width: 320px;
+            height: auto;
+            position: relative;
+            margin: 0 auto;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+            width: 100%;
+            box-sizing: border-box;
+            box-sizing: border-box;
+        }
+
+        /* Leaderboard Button */
+        .leaderboard-btn {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* Modals */
+        #leaderboard-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+            width: 85%;
+            max-width: 350px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .tab-container {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 10px;
+            border-bottom: 2px solid black;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 5px;
+            opacity: 0.5;
+        }
+
+        .tab-btn.active {
+            opacity: 1;
+            border-bottom: 2px solid black;
+        }
+
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            font-size: 0.8rem;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px;
+            border-bottom: 1px dashed #eee;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+            font-family: inherit;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: #fff;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .title-metrics {
+            position: absolute;
+            left: 45px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .metric-group {
+            display: flex;
+            gap: 5px;
+            pointer-events: auto;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background: #fff;
+            border-bottom: 2px solid black;
+            width: 100%;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        .metric-badge {
+            background: #fff;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 0.9rem;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+            pointer-events: auto;
+            white-space: nowrap;
+        }
+
+        .leaderboard-badge {
+            position: absolute;
+            right: 10px;
+            background: #fff;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 0.8rem;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+            cursor: pointer;
+            z-index: 2;
+        }
+
+        .leaderboard-badge:active {
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0 black;
+        }
+
+        /* Modal Styles */
+        #completion-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            border: 4px solid #000;
+            box-shadow: 8px 8px 0 #000;
+            z-index: 1000;
+            padding: 20px;
+            width: 200px;
+            text-align: center;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 999;
+        }
+
+        .modal-title {
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            display: block;
+            border-bottom: 2px solid #000;
+            padding-bottom: 5px;
+        }
+
+        .modal-stat {
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .modal-btn {
+            background: #fff;
+            border: 2px solid #000;
+            box-shadow: 4px 4px 0 #000;
+            padding: 8px 16px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .modal-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+
+
+        .window-content {
+            padding: 0;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+        }
+
+        #game-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: auto;
+            min-height: 240px;
+            overflow: hidden;
+            background-color: transparent;
+        }
+
+        canvas {
+            display: block;
+            width: auto;
+            height: auto;
+            position: relative;
+            z-index: 1;
+            background-color: transparent;
+            /* Optional 1-bit filter style */
+            /* filter: grayscale(1) contrast(5); */
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: transparent;
+            border-top: 2px solid #000;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        #controls>.control-group:first-child {
+            margin-right: 10px;
+        }
+
+        #controls>.setting-group {
+            margin-right: 10px;
+        }
+
+        #controls>.control-group:last-child {
+            margin-right: 0;
+        }
+
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 50px;
+            flex-shrink: 0;
+            margin: 0 10px;
+        }
+
+        .setting-group>.retro-switch {
+            margin-bottom: 8px;
+        }
+
+        /* RETRO SWITCH */
+        .retro-switch {
+            position: relative;
+            display: inline-block;
+            width: 22px;
+            height: 38px;
+            border: 3px solid #000;
+            background: #fff;
+            box-shadow: 3px 3px 0 #000;
+            cursor: pointer;
+        }
+
+        .retro-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #fff;
+            transition: 0.1s;
+        }
+
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 1px;
+            top: 2px;
+            background-color: #fff;
+            border: 2px solid #000;
+            transition: 0.1s;
+            background-image: repeating-linear-gradient(0deg, #000, #000 1px, transparent 1px, transparent 3px);
+            background-size: 10px 10px;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        input:checked+.switch-slider {
+            background-color: #000;
+        }
+
+        input:checked+.switch-slider:before {
+            transform: translateY(15px);
+            background-image: repeating-linear-gradient(0deg, #fff, #fff 1px, transparent 1px, transparent 3px);
+            border-color: #fff;
+            background-color: #000;
+        }
+
+        .setting-label {
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            width: 35px;
+            text-align: center;
+            line-height: 1.1;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-group>div {
+            margin: 0 5px;
+        }
+
+        .dpad-btn,
+        .action-btn {
+            width: 66px;
+            height: 66px;
+            border: 3px solid #000;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 #000;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: monospace;
+            font-size: 2.0rem;
+        }
+
+        .dpad-btn:active,
+        .action-btn:active,
+        .dpad-btn.active,
+        .action-btn.active {
+            background: #000;
+            color: #fff;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .action-btn {
+            border-radius: 50%;
+            font-size: 1.6rem;
+        }
+
+        /* Hide source selector if not needed */
+        .info {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Mario</span>
+            <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="metric-badge" id="dist-count">Distance: 0%</div>
+            <div class="metric-badge" id="coin-count">0 coins</div>
+            <div class="metric-badge" id="timer-count">Time: 00:00</div>
+        </div>
+
+        <!-- Content -->
+        <div class="window-content">
+            <div id="game-wrapper">
+                <div class="modal-overlay" id="modal-overlay"></div>
+                <div id="completion-modal">
+                    <span class="modal-title">LEVEL COMPLETE!</span>
+                    <span class="modal-stat" id="final-time">TIME: 00:00</span>
+                    <button class="modal-btn" onclick="restartGame()">RESTART</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="leaderboard-modal">
+            <div class="tab-container">
+                <button class="tab-btn active" onclick="switchTab('score')">Score</button>
+                <button class="tab-btn" onclick="switchTab('distance')">Distance</button>
+                <button class="tab-btn" onclick="switchTab('coins')">Coins</button>
+                <button class="tab-btn" onclick="switchTab('time')">Time</button>
+            </div>
+            <div id="lb-content" class="lb-list">Loading...</div>
+            <button class="sys-btn"
+                onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+        </div>
+
+        <!-- Controls -->
+        <div id="controls">
+            <div class="control-group">
+                <div class="dpad-btn" id="btn-left" data-key="LEFT">←</div>
+                <div class="dpad-btn" id="btn-right" data-key="RIGHT">→</div>
+                <div class="dpad-btn" id="btn-down" data-key="DOWN">↓</div>
+            </div>
+            <div class="setting-group">
+                <label class="retro-switch">
+                    <input type="checkbox" id="setting-autorun" checked>
+                    <span class="switch-slider"></span>
+                </label>
+                <span class="setting-label">Auto<br>Run</span>
+            </div>
+            <div class="control-group">
+                <div class="action-btn" id="btn-run" data-key="RUN">B</div>
+                <div class="action-btn" id="btn-jump" data-key="JUMP">A</div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Engine Scripts -->
+    <script type="text/javascript" src="mario_assets/js/util.js"></script>
+    <script type="text/javascript" src="mario_assets/js/input.js"></script>
+    <script type="text/javascript" src="mario_assets/js/resources.js"></script>
+    <script type="text/javascript" src="mario_assets/js/sprite.js"></script>
+    <script type="text/javascript" src="mario_assets/js/entity.js"></script>
+    <script type="text/javascript" src="mario_assets/js/pipe.js"></script>
+    <script type="text/javascript" src="mario_assets/js/mushroom.js"></script>
+    <script type="text/javascript" src="mario_assets/js/fireflower.js"></script>
+    <script type="text/javascript" src="mario_assets/js/star.js"></script>
+    <script type="text/javascript" src="mario_assets/js/fireball.js"></script>
+    <script type="text/javascript" src="mario_assets/js/coin.js"></script>
+    <script type="text/javascript" src="mario_assets/js/bcoin.js"></script>
+    <script type="text/javascript" src="mario_assets/js/goomba.js"></script>
+    <script type="text/javascript" src="mario_assets/js/koopa.js"></script>
+    <script type="text/javascript" src="mario_assets/js/floor.js"></script>
+    <script type="text/javascript" src="mario_assets/js/block.js"></script>
+    <script type="text/javascript" src="mario_assets/js/rubble.js"></script>
+    <script type="text/javascript" src="mario_assets/js/prop.js"></script>
+    <script type="text/javascript" src="mario_assets/js/player.js"></script>
+    <script type="text/javascript" src="mario_assets/js/flag.js"></script>
+    <script type="text/javascript" src="mario_assets/js/levels/level.js"></script>
+    <script type="text/javascript" src="mario_assets/js/levels/11.js"></script>
+    <script type="text/javascript" src="mario_assets/js/levels/11tunnel.js"></script>
+    <script type="text/javascript" src="mario_assets/js/game.js"></script>
+    <script type="text/javascript" src="theme.js"></script>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app();
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        let uid = null;
+        let username = "Guest";
+
+        // Auth Listener
+        auth.onAuthStateChanged(user => {
+            if (user && !user.isAnonymous) {
+                uid = user.uid;
+                username = user.email ? user.email.split('@')[0] : ("User_" + uid.substring(0, 5));
+                console.log("Logged in as", username);
+            } else {
+                uid = null;
+                console.log("Not logged in");
+            }
+        });
+
+        let currentlySubmitting = false;
+        window.submitMarioScores = async function (distancePercent, coinCount, timeSeconds, totalScore) {
+            if (!uid || currentlySubmitting) return;
+            currentlySubmitting = true;
+            const collection = 'leaderboard_mario';
+            const docRef = db.collection(collection).doc(uid);
+
+            try {
+                const doc = await docRef.get();
+                let data = doc.exists ? doc.data() : {};
+                let hasUpdate = false;
+
+                // 1. Score
+                if (totalScore && totalScore > 0 && (!data.score || totalScore > data.score)) {
+                    data.score = totalScore;
+                    hasUpdate = true;
+                }
+
+                // 2. Distance
+                if (distancePercent > 0 && (!data.dist || distancePercent > data.dist)) {
+                    data.dist = distancePercent;
+                    hasUpdate = true;
+                }
+
+                // 3. Coins
+                if (coinCount > 0 && (!data.coins || coinCount > data.coins)) {
+                    data.coins = coinCount;
+                    hasUpdate = true;
+                }
+
+                // 4. Time (Lower is better, non-zero)
+                if (timeSeconds > 0 && (!data.time || timeSeconds < data.time)) {
+                    data.time = timeSeconds;
+                    hasUpdate = true;
+                }
+
+                if (hasUpdate) {
+                    data.username = username;
+                    data.timestamp = firebase.firestore.FieldValue.serverTimestamp();
+                    await docRef.set(data, { merge: true });
+                    console.log('Updated leaderboard_mario', data);
+                }
+            } catch (e) {
+                console.error("Score submission error:", e);
+            } finally {
+                currentlySubmitting = false;
+            }
+        };
+
+        // --- LEADERBOARD UI ---
+        let currentTab = 'score';
+
+        window.switchTab = function (tab) {
+            currentTab = tab;
+            // Update buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.innerText.toLowerCase() === tab) btn.classList.add('active');
+            });
+            loadLeaderboard();
+        };
+
+        window.openLeaderboard = function () {
+            document.getElementById('leaderboard-modal').style.display = 'block';
+            loadLeaderboard();
+        };
+
+        async function loadLeaderboard() {
+            const list = document.getElementById('lb-content');
+            if (list) list.innerHTML = 'Loading...';
+
+            const collection = 'leaderboard_mario';
+            let orderByField = 'score';
+            let valueField = 'score';
+            let order = 'desc';
+            let unit = '';
+
+            if (currentTab === 'score') {
+                orderByField = 'score';
+                valueField = 'score';
+                unit = ' pts';
+            } else if (currentTab === 'distance') {
+                orderByField = 'dist';
+                valueField = 'dist';
+                unit = '%';
+            } else if (currentTab === 'coins') {
+                orderByField = 'coins';
+                valueField = 'coins';
+                unit = ' coins';
+            } else if (currentTab === 'time') {
+                orderByField = 'time';
+                valueField = 'time';
+                order = 'asc';
+                unit = 's';
+            }
+
+            try {
+                // Query the single unified collection
+                const querySnapshot = await db.collection(collection)
+                    .orderBy(orderByField, order)
+                    .limit(50)
+                    .get();
+
+                if (!list) return;
+
+                if (querySnapshot.empty) {
+                    list.innerHTML = '<div style="padding:10px;text-align:center">No scores yet!</div>';
+                    return;
+                }
+
+                let html = '<table>';
+                let rank = 1;
+
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    let val = data[valueField];
+
+                    // Skip if value is undefined for this metric
+                    if (val === undefined || val === null) return;
+
+                    if (currentTab === 'time') val = Number(val).toFixed(2);
+
+                    const isMe = (uid && doc.id === uid) ? 'class="me"' : '';
+                    html += `<tr ${isMe}>
+                        <td class="rank">#${rank}</td>
+                        <td class="name">${escapeHtml(data.username || "Anonymous")}</td>
+                        <td class="score">${val}${unit}</td>
+                    </tr>`;
+                    rank++;
+                });
+                html += '</table>';
+
+                list.innerHTML = html;
+            } catch (error) {
+                console.error("Error getting leaderboard:", error);
+                if (list) list.innerHTML = '<div style="padding:20px;text-align:center">Error loading scores. See console.</div>';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // --- TOUCH CONTROLS LOGIC ---
+        (function () {
+            var buttons = document.querySelectorAll('.dpad-btn, .action-btn');
+
+            buttons.forEach(function (btn) {
+                var key = btn.getAttribute('data-key');
+
+                function triggerDown(e) {
+                    if (e.cancelable) e.preventDefault();
+
+                    var autoRunEnabled = false;
+                    var checkbox = document.getElementById('setting-autorun');
+                    if (checkbox) autoRunEnabled = checkbox.checked;
+
+                    if (key === 'RIGHT' && autoRunEnabled) {
+                        if (window.toggleAutoRun) window.toggleAutoRun();
+                        return;
+                    }
+
+                    // Any other direction cancels autoRun
+                    if (key === 'LEFT' || key === 'DOWN' || !autoRunEnabled) {
+                        if (window.resetAutoRun) window.resetAutoRun();
+                    }
+
+                    if (window.input && window.input.setKeyState) {
+                        window.input.setKeyState(key, true);
+                    }
+                }
+
+                function triggerUp(e) {
+                    if (e.cancelable) e.preventDefault();
+
+                    var autoRunEnabled = false;
+                    var checkbox = document.getElementById('setting-autorun');
+                    if (checkbox) autoRunEnabled = checkbox.checked;
+
+                    // If Right is in Auto-Run mode, game.js handles the visual state
+                    if (key === 'RIGHT' && autoRunEnabled) {
+                        // Still release the logical state so it doesn't fight with Auto-Run
+                        if (window.input && window.input.setKeyState) {
+                            window.input.setKeyState(key, false);
+                        }
+                        return;
+                    }
+
+                    if (window.input && window.input.setKeyState) {
+                        window.input.setKeyState(key, false);
+                    }
+                }
+
+                btn.addEventListener('mousedown', triggerDown);
+                btn.addEventListener('mouseup', triggerUp);
+                btn.addEventListener('mouseleave', triggerUp);
+
+                btn.addEventListener('touchstart', triggerDown);
+                btn.addEventListener('touchend', triggerUp);
+            });
+
+            function getKeyCode(name) {
+                switch (name) {
+                    case 'LEFT': return 37;
+                    case 'UP': return 38;
+                    case 'RIGHT': return 39;
+                    case 'DOWN': return 40;
+                    case 'JUMP': return 88; // X
+                    case 'RUN': return 90; // Z
+                }
+                return 0;
+            }
+        })();
+
+
+
+        // Ensure game wrapper finds the canvas
+        window.addEventListener('load', function () {
+            var canvas = document.querySelector('canvas');
+            if (canvas) {
+                document.getElementById('game-wrapper').appendChild(canvas);
+            }
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+        });
+    </script>
+
+</body>
+
+</html>
