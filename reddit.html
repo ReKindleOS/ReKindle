@@ -418,6 +418,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
 </head>
 
 <body>
@@ -426,13 +427,13 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Reddit</span>
+            <span class="title-text" data-i18n="reddit.title">Reddit</span>
         </div>
 
         <div class="app-body">
             <!-- SIDEBAR -->
             <div class="sidebar">
-                <div class="sidebar-header">Saved Subs</div>
+                <div class="sidebar-header" data-i18n="reddit.sidebar.saved">Saved Subs</div>
                 <div id="saved-list">
                     <!-- Injected via JS -->
                 </div>
@@ -441,10 +442,11 @@
             <!-- MAIN -->
             <div class="main-view">
                 <div class="toolbar">
-                    <button class="nav-btn" id="back-btn" onclick="goBack()" style="display:none;">&lt;</button>
+                    <button class="nav-btn" id="back-btn" onclick="goBack()" style="display:none;"
+                        data-i18n="rss.btn.back">&lt;</button>
                     <span style="font-weight:bold; font-size:1rem;">r/</span>
                     <input type="text" id="sub-input" value="all" onkeypress="handleEnter(event)">
-                    <button class="nav-btn" onclick="loadSubreddit()">Go</button>
+                    <button class="nav-btn" onclick="loadSubreddit()" data-i18n="reddit.btn.go">Go</button>
                     <button class="nav-btn" id="save-btn" onclick="toggleSave()" title="Save Subreddit">★</button>
                 </div>
 
@@ -454,17 +456,18 @@
             </div>
         </div>
 
-        <div id="status-bar">Local Mode</div>
+        <div id="status-bar">...</div>
     </div>
 
     <!-- DELETE MODAL -->
     <div id="delete-modal" class="modal-overlay">
         <div class="modal-box">
-            <h3>Remove Subreddit?</h3>
+            <h3 data-i18n="reddit.modal.remove">Remove Subreddit?</h3>
             <p>Remove r/<span id="delete-sub-name" style="font-weight:bold;"></span> from favorites?</p>
             <div class="modal-buttons">
-                <button class="sys-btn" onclick="confirmRemove()">Remove</button>
-                <button class="sys-btn" onclick="closeModal('delete-modal')">Cancel</button>
+                <button class="sys-btn" onclick="confirmRemove()" data-i18n="reddit.btn.remove">Remove</button>
+                <button class="sys-btn" onclick="closeModal('delete-modal')"
+                    data-i18n="reddit.btn.cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -484,43 +487,44 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         // --- PROXY CONFIG ---
         const PROXIES = [
             "https://corsproxy.io/?",
-            "https://api.codetabs.com/v1/proxy?quest="
+            "https://api.codetabs.com/v1/proxy?quest=",
+            "https://api.allorigins.win/raw?url="
         ];
 
         // --- STATE ---
@@ -538,10 +542,10 @@ if (db.settings) {
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    document.getElementById('status-bar').innerText = window.t('status.synced', 'Synced: ') + user.email;
                     loadCloudData();
                 } else {
-                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    document.getElementById('status-bar').innerText = window.t('status.guest', 'Guest Mode (Local)');
                     loadLocalData();
                 }
             });
@@ -612,13 +616,18 @@ if (db.settings) {
                 try {
                     const res = await fetch(proxy + encodeURIComponent(targetUrl));
                     if (res.ok) {
-                        return await res.json();
+                        try {
+                            const data = await res.json();
+                            return data;
+                        } catch (jsonErr) {
+                            console.warn("Proxy returned invalid JSON: " + proxy, jsonErr);
+                        }
                     }
                 } catch (e) {
                     console.warn("Proxy failed: " + proxy, e);
                 }
             }
-            throw new Error("All proxies failed to load data.");
+            throw new Error(window.t('reddit.msg.error', 'All proxies failed to load data.'));
         }
 
         // --- SIDEBAR LOGIC ---
@@ -708,7 +717,7 @@ if (db.settings) {
             document.getElementById('back-btn').style.display = 'none';
 
             const content = document.getElementById('content-area');
-            content.innerHTML = '<div class="loading">Fetching r/' + sub + '...</div>';
+            content.innerHTML = '<div class="loading">' + window.t('reddit.msg.fetching', 'Fetching r/') + sub + '...</div>';
 
             try {
                 // Fetch via Proxy Fallback
@@ -743,7 +752,7 @@ if (db.settings) {
 
             } catch (e) {
                 console.error(e);
-                content.innerHTML = '<div class="loading">Error loading subreddit.<br>Check spelling or internet connection.</div>';
+                content.innerHTML = '<div class="loading">' + window.t('reddit.msg.error', 'Error loading subreddit.') + '<br>' + window.t('reddit.msg.error_desc', 'Check spelling or internet connection.') + '</div>';
             }
         }
 
@@ -752,7 +761,7 @@ if (db.settings) {
             scrollPos = document.getElementById('content-area').scrollTop;
 
             const content = document.getElementById('content-area');
-            content.innerHTML = '<div class="loading">Loading thread...</div>';
+            content.innerHTML = '<div class="loading">' + window.t('reddit.msg.loading', 'Loading thread...') + '</div>';
             viewState = 'thread';
             document.getElementById('back-btn').style.display = 'block';
 

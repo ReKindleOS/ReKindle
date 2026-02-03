@@ -272,6 +272,7 @@
         }
     </style>
     <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
 </head>
 
 <body>
@@ -280,7 +281,7 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Reading Log</span>
+            <span class="title-text" data-i18n="reading.title">Reading Log</span>
         </div>
 
         <div class="period-controls">
@@ -310,38 +311,38 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         // --- STATE ---
         // Data structure: { "YYYY-MM-DD": 45 } (minutes)
@@ -360,12 +361,15 @@ if (db.settings) {
             initCurrentWeek();
 
             auth.onAuthStateChanged(user => {
+                const lang = document.documentElement.lang || 'en';
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    const syncedText = window.t('status.synced', 'Synced: ');
+                    document.getElementById('status-bar').innerText = syncedText + user.email;
                     loadCloudData();
                 } else {
-                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    const guestText = window.t('status.guest', 'Guest Mode (Local)');
+                    document.getElementById('status-bar').innerText = guestText;
                     loadLocalData();
                 }
             });
@@ -449,8 +453,9 @@ if (db.settings) {
             const weekEnd = new Date(currentStart);
             weekEnd.setDate(currentStart.getDate() + 6);
 
-            const startStr = currentStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const lang = document.documentElement.lang || 'en';
+            const startStr = currentStart.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+            const endStr = weekEnd.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
 
             document.getElementById('current-period-label').innerText = `${startStr} - ${endStr}`;
 
@@ -464,8 +469,9 @@ if (db.settings) {
                 const d = String(dateObj.getDate()).padStart(2, '0');
                 const dateKey = `${y}-${m}-${d}`;
 
+                const lang = document.documentElement.lang || 'en';
                 const dayNum = dateObj.getDate();
-                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                const dayName = dateObj.toLocaleDateString(lang, { weekday: 'short' });
 
                 const currentMinutes = readingData[dateKey] || 0;
                 const isToday = (dateObj.toDateString() === today.toDateString());
@@ -490,8 +496,11 @@ if (db.settings) {
 
                     // Label formatting
                     let labelText = val;
-                    if (val === 60) labelText = "1h";
-                    if (val === 120) labelText = "2h";
+                    if (val === 60) labelText = window.t('reading.hour', '1h');
+                    else if (val === 120) labelText = window.t('reading.hours', '2h+');
+                    else {
+                        labelText = window.t('reading.minutes', '{{n}}m').replace('{{n}}', val);
+                    }
                     slot.innerText = labelText;
 
                     slot.onclick = () => {
@@ -507,7 +516,8 @@ if (db.settings) {
                 // 3. Total
                 const total = document.createElement('div');
                 total.className = 'total-display';
-                total.innerText = currentMinutes > 0 ? currentMinutes + "m" : "-";
+                const minsText = window.t('reading.minutes', '{{n}}m').replace('{{n}}', currentMinutes);
+                total.innerText = currentMinutes > 0 ? minsText : "-";
                 row.appendChild(total);
 
                 container.appendChild(row);

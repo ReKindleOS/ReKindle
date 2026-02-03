@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -292,14 +293,16 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Blocks</span>
-            <button class="leaderboard-btn" onclick="openLeaderboard()">Leaderboard</button>
+            <span class="title-text" data-i18n="tetris.title">Blocks</span>
+            <button class="leaderboard-btn" onclick="openLeaderboard()"
+                data-i18n="tetris.btn.leaderboard">Leaderboard</button>
         </div>
 
         <div class="window-content">
             <div class="score-board">
-                <span>Score: <span id="score">0</span></span>
-                <span class="high-score-label">High: <span id="high-score">0</span></span>
+                <span><span data-i18n="tetris.label.score">Score</span>: <span id="score">0</span></span>
+                <span class="high-score-label"><span data-i18n="tetris.label.high_score">High</span>: <span
+                        id="high-score">0</span></span>
             </div>
 
             <canvas id="tetris" width="240" height="400"></canvas>
@@ -310,30 +313,30 @@
                 <div></div>
 
                 <div class="ctrl-btn" onclick="playerMove(-1)">←</div>
-                <div class="ctrl-btn btn-drop" onclick="playerDrop()">Drop</div>
+                <div class="ctrl-btn btn-drop" onclick="playerDrop()" data-i18n="tetris.btn.drop">Drop</div>
                 <div class="ctrl-btn" onclick="playerMove(1)">→</div>
             </div>
         </div>
 
         <div id="game-over">
-            <h2>GAME OVER</h2>
-            <p>Score: <span id="final-score">0</span></p>
-            <button class="sys-btn" onclick="playerReset()">Retry</button>
+            <h2 data-i18n="tetris.label.game_over">GAME OVER</h2>
+            <p><span data-i18n="tetris.label.score">Score</span>: <span id="final-score">0</span></p>
+            <button class="sys-btn" onclick="playerReset()" data-i18n="tetris.btn.retry">Retry</button>
         </div>
 
         <div id="start-game-modal" style="display: block;">
-            <h2>Ready to Play?</h2>
+            <h2 data-i18n="tetris.label.ready">Ready to Play?</h2>
             <!-- Button is disabled until initGame is fully complete -->
-            <button class="sys-btn" onclick="startGame()" disabled>Loading...</button>
+            <button class="sys-btn" onclick="startGame()" disabled data-i18n="tetris.status.loading">Loading...</button>
         </div>
 
         <div id="leaderboard-modal">
-            <h3>Top Scores</h3>
-            <div class="lb-list" id="lb-content">
+            <h3 data-i18n="tetris.label.top_scores">Top Scores</h3>
+            <div class="lb-list" id="lb-content" data-i18n="tetris.status.loading">
                 Loading...
             </div>
-            <button class="sys-btn"
-                onclick="document.getElementById('leaderboard-modal').style.display='none'">Close</button>
+            <button class="sys-btn" onclick="document.getElementById('leaderboard-modal').style.display='none'"
+                data-i18n="tetris.btn.close">Close</button>
         </div>
     </div>
 
@@ -354,28 +357,28 @@
             firebase.app(); // if already initialized, use that one
         }
         const db = firebase.firestore();
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-if (db.settings) {
+        if (db.settings) {
 
-    try {
+            try {
 
-        db.settings({
+                db.settings({
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
-            merge: true
+                    merge: true
 
-        });
+                });
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
-}
+        }
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         const auth = firebase.auth();
 
@@ -455,7 +458,8 @@ if (db.settings) {
             loadPersonalHighScore().then(() => {
                 const startButton = document.querySelector('#start-game-modal .sys-btn');
                 startButton.disabled = false;
-                startButton.innerText = "Start Game";
+                startButton.innerText = window.t ? window.t('tetris.btn.start') : "Start Game";
+                startButton.removeAttribute('data-i18n');
             });
         }
 
@@ -516,7 +520,8 @@ if (db.settings) {
             const modal = document.getElementById('leaderboard-modal');
             modal.style.display = 'block';
             const list = document.getElementById('lb-content');
-            list.innerHTML = 'Loading...'; // Set loading state on open
+            list.innerText = window.t ? window.t('tetris.status.loading') : 'Loading...';
+            list.removeAttribute('data-i18n');
 
             const user = auth.currentUser;
             if (user) {
@@ -527,6 +532,10 @@ if (db.settings) {
                         .get();
 
                     list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerText = window.t ? window.t('tetris.status.no_scores') : "No scores yet!";
+                        return;
+                    }
                     let rank = 1;
 
                     snapshot.forEach(doc => {
@@ -547,10 +556,10 @@ if (db.settings) {
                     });
                 } catch (e) {
                     console.error("Error loading leaderboard:", e);
-                    list.innerHTML = "Error loading scores.";
+                    list.innerText = window.t ? window.t('tetris.status.error_loading') : "Error loading scores.";
                 }
             } else {
-                list.innerHTML = "Log in to see global scores.";
+                list.innerText = window.t ? window.t('tetris.status.login_required') : "Log in to see global scores.";
             }
         }
 

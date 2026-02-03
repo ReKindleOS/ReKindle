@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -456,16 +457,16 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="location.href='index'">X</div>
-            <span class="title-text">Scrabble</span>
-            <button class="new-game-btn" onclick="openNewGameModal()">New</button>
+            <span class="title-text" data-i18n="words.title">Scrabble</span>
+            <button class="new-game-btn" onclick="openNewGameModal()" data-i18n="words.btn.new">New</button>
         </div>
 
         <div class="window-content" id="main-content">
 
             <div class="hud" id="hud">
-                <div class="score-box">You: <span id="p1-score">0</span></div>
-                <div class="turn-indicator" id="status-text">Connecting...</div>
-                <div class="score-box">Them: <span id="p2-score">0</span></div>
+                <div class="score-box"><span data-i18n="words.hud.you">You:</span> <span id="p1-score">0</span></div>
+                <div class="turn-indicator" id="status-text" data-i18n="words.status.connecting">Connecting...</div>
+                <div class="score-box"><span data-i18n="words.hud.them">Them:</span> <span id="p2-score">0</span></div>
             </div>
 
             <div id="board"></div>
@@ -475,32 +476,34 @@
             <div id="rack"></div>
 
             <div class="controls" id="controls">
-                <button onclick="recallTiles()">Recall</button>
-                <button onclick="shuffleRack()">Mix</button>
-                <button onclick="playMove()" id="play-btn" disabled>PLAY</button>
+                <button onclick="recallTiles()" data-i18n="words.btn.recall">Recall</button>
+                <button onclick="shuffleRack()" data-i18n="words.btn.mix">Mix</button>
+                <button onclick="playMove()" id="play-btn" disabled data-i18n="words.btn.play">PLAY</button>
             </div>
         </div>
 
         <div id="status-overlay" class="overlay" style="display:none;">
-            <h2 id="overlay-title">Searching...</h2>
+            <h2 id="overlay-title" data-i18n="words.overlay.searching.title">Searching...</h2>
             <div class="spinner" id="overlay-spinner"></div>
-            <p id="overlay-msg">Looking for an opponent...</p>
-            <button onclick="cancelSearch()" id="cancel-btn">Cancel</button>
+            <p id="overlay-msg" data-i18n="words.overlay.searching.text">Looking for an opponent...</p>
+            <button onclick="cancelSearch()" id="cancel-btn"
+                data-i18n="words.overlay.searching.btn_cancel">Cancel</button>
         </div>
 
         <div id="login-overlay" class="overlay" style="display:none;">
-            <h2>Words Online</h2>
-            <p>You must log in to play.</p>
-            <button onclick="location.href='index?login=true'">Log In</button>
+            <h2 data-i18n="words.overlay.login.title">Words Online</h2>
+            <p data-i18n="words.overlay.login.text">You must log in to play.</p>
+            <button onclick="location.href='index?login=true'" data-i18n="words.overlay.login.btn_login">Log In</button>
         </div>
 
         <div id="new-game-modal" class="overlay" style="display:none; background:rgba(255,255,255,0.8);">
             <div class="modal-inner">
-                <h3>New Game?</h3>
-                <p style="margin:15px 0;">This will forfeit your current game.</p>
+                <h3 data-i18n="words.modal.new_game.title">New Game?</h3>
+                <p style="margin:15px 0;" data-i18n="words.modal.new_game.text">This will forfeit your current game.</p>
                 <div style="display:flex; gap:10px; justify-content:center;">
-                    <button onclick="forfeitAndRestart(); closeNewGameModal();">Yes</button>
-                    <button onclick="closeNewGameModal()">No</button>
+                    <button onclick="forfeitAndRestart(); closeNewGameModal();"
+                        data-i18n="words.modal.new_game.btn_yes">Yes</button>
+                    <button onclick="closeNewGameModal()" data-i18n="words.modal.new_game.btn_no">No</button>
                 </div>
             </div>
         </div>
@@ -523,11 +526,14 @@
             const btnsEl = document.getElementById('modal-btns');
             messageEl.textContent = msg;
             if (isConfirm) {
-                btnsEl.innerHTML = '<button class="modal-btn" id="modal-cancel">Cancel</button><button class="modal-btn" id="modal-ok">OK</button>';
+                const cancelTxt = window.t ? window.t('words.btn.cancel') : "Cancel";
+                const okTxt = window.t ? window.t('words.btn.ok') : "OK";
+                btnsEl.innerHTML = `<button class="modal-btn" id="modal-cancel">${cancelTxt}</button><button class="modal-btn" id="modal-ok">${okTxt}</button>`;
                 document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
                 document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
             } else {
-                btnsEl.innerHTML = '<button class="modal-btn" onclick="hideModal()">OK</button>';
+                const okTxt = window.t ? window.t('words.btn.ok') : "OK";
+                btnsEl.innerHTML = `<button class="modal-btn" onclick="hideModal()">${okTxt}</button>`;
             }
             overlay.style.display = 'flex';
         }
@@ -671,7 +677,9 @@
         // --- MATCHMAKING LOGIC ---
 
         async function resumeOrFindGame() {
-            showOverlay("Loading", "Checking active games...", true);
+            const loadingTitle = window.t ? window.t('words.modal.loading.title') : "Loading";
+            const checkingTxt = window.t ? window.t('words.modal.loading.text') : "Checking active games...";
+            showOverlay(loadingTitle, checkingTxt, true);
             try {
                 const p1Snap = await db.collection('word_games').where('p1_uid', '==', currentUser.uid).get();
                 const activeP1 = p1Snap.docs.find(d => d.data().status !== 'finished');
@@ -697,7 +705,9 @@
         }
 
         async function findGame() {
-            showOverlay("Matchmaking", "Looking for a player...", true);
+            const matchmakingTitle = window.t ? window.t('words.modal.matchmaking.title') : "Matchmaking";
+            const lookingTxt = window.t ? window.t('words.modal.matchmaking.text') : "Looking for a player...";
+            showOverlay(matchmakingTitle, lookingTxt, true);
             const gamesRef = db.collection('word_games');
             try {
                 const snapshot = await gamesRef.where('status', '==', 'waiting').limit(10).get();
@@ -738,7 +748,9 @@
                     startGameListener();
                 }
             } catch (e) {
-                showOverlay("Error", "Connection error.", false);
+                const errorTitle = window.t ? window.t('words.modal.error.title') : "Error";
+                const errorTxt = window.t ? window.t('words.modal.error.text') : "Connection error.";
+                showOverlay(errorTitle, errorTxt, false);
             }
         }
 
@@ -751,7 +763,7 @@
 
                     if (gameData.status === 'finished') {
                         hideOverlay();
-                        document.getElementById('status-text').innerText = "Game Ended.";
+                        document.getElementById('status-text').innerText = window.t ? window.t('words.status.game_ended') : "Game Ended.";
                         document.getElementById('play-btn').disabled = true;
                         return;
                     }
@@ -767,7 +779,11 @@
 
                     if (gameData.status === 'waiting' && isP1) { hideOverlay(); updateUI(); }
                     else if (gameData.status === 'active') { hideOverlay(); updateUI(); }
-                    else if (gameData.status === 'waiting' && !isP1) { showOverlay("Waiting", "Waiting for opponent...", true); }
+                    else if (gameData.status === 'waiting' && !isP1) {
+                        const waitingTitle = window.t ? window.t('words.status.waiting') : "Waiting";
+                        const waitingTxt = window.t ? window.t('words.status.waiting_opponent') : "Waiting for opponent...";
+                        showOverlay(waitingTitle, waitingTxt, true);
+                    }
                 });
         }
 
@@ -783,7 +799,9 @@
         async function forfeitAndRestart() {
             if (unsubscribe) unsubscribe();
 
-            showOverlay("Forfeiting", "Ending current game...", true);
+            const forfeitingTitle = window.t ? window.t('words.modal.forfeiting.title') : "Forfeiting";
+            const endingTxt = window.t ? window.t('words.modal.forfeiting.text') : "Ending current game...";
+            showOverlay(forfeitingTitle, endingTxt, true);
 
             if (gameId) {
                 try {
@@ -848,13 +866,14 @@
         function updateUI() {
             const isMyTurn = gameData.turn === currentUser.uid;
             const isP1 = (currentUser.uid === gameData.p1_uid);
-            const opponentName = isP1 ? (gameData.p2_name || "Opponent") : gameData.p1_name;
+            const opponentName = isP1 ? (gameData.p2_name || (window.t ? window.t('words.hud.opponent') : "Opponent")) : gameData.p1_name;
 
             let statusText = "";
             if (gameData.status === 'waiting') {
-                statusText = isP1 ? "Make the first move!" : "Waiting for opponent...";
+                statusText = isP1 ? (window.t ? window.t('words.status.first_move') : "Make the first move!") : (window.t ? window.t('words.status.waiting_opponent') : "Waiting for opponent...");
             } else {
-                statusText = isMyTurn ? "Your Turn" : `Waiting for ${opponentName}`;
+                const waitingForTxt = window.t ? window.t('words.status.waiting_for') : "Waiting for ${name}";
+                statusText = isMyTurn ? (window.t ? window.t('words.status.your_turn') : "Your Turn") : waitingForTxt.replace('${name}', opponentName);
             }
             document.getElementById('status-text').innerText = statusText;
             document.getElementById('p1-score').innerText = isP1 ? gameData.p1_score : gameData.p2_score;
@@ -959,10 +978,10 @@
                     const typeCode = BOARD_BONUSES[bIndex];
                     let type = '', label = '';
 
-                    if (typeCode === 4) { type = 'tw'; label = 'TW'; }
-                    else if (typeCode === 3) { type = 'dw'; label = 'DW'; }
-                    else if (typeCode === 2) { type = 'tl'; label = 'TL'; }
-                    else if (typeCode === 1) { type = 'dl'; label = 'DL'; }
+                    if (typeCode === 4) { type = 'tw'; label = window.t ? window.t('words.bonus.tw') : 'TW'; }
+                    else if (typeCode === 3) { type = 'dw'; label = window.t ? window.t('words.bonus.dw') : 'DW'; }
+                    else if (typeCode === 2) { type = 'tl'; label = window.t ? window.t('words.bonus.tl') : 'TL'; }
+                    else if (typeCode === 1) { type = 'dl'; label = window.t ? window.t('words.bonus.dl') : 'DL'; }
                     else if (x === 7 && y === 7) { type = 'dw'; label = '★'; }
 
                     if (type) {
@@ -997,7 +1016,8 @@
             const isVertical = uniqueXs === 1;
 
             if (uniqueXs > 1 && uniqueYs > 1) {
-                document.getElementById('move-score').innerText = "Not in a line (0)";
+                const notInLineTxt = window.t ? window.t('words.error.not_in_line') : "Not in a line (0)";
+                document.getElementById('move-score').innerText = notInLineTxt;
                 document.getElementById('play-btn').disabled = true;
                 return;
             }
@@ -1042,7 +1062,8 @@
             });
 
             if (placedTiles.length === 7) totalScore += 50;
-            document.getElementById('move-score').innerText = `Points: ${totalScore}`;
+            const scoreTxt = window.t ? window.t('words.score.points') : "Points: ${score}";
+            document.getElementById('move-score').innerText = scoreTxt.replace('${score}', totalScore);
         }
 
         function scoreWord(x1, x2, y1, y2, boardState) {
@@ -1096,7 +1117,7 @@
             const uniqueYs = new Set(ys).size;
 
             if (uniqueXs > 1 && uniqueYs > 1) {
-                showModal("Tiles must be in a straight line.");
+                showModal(window.t ? window.t('words.error.straight_line') : "Tiles must be in a straight line.");
                 return;
             }
 
@@ -1138,7 +1159,7 @@
             try {
                 await db.collection('word_games').doc(gameId).update(updates);
             } catch (e) {
-                showModal("Connection error.");
+                showModal(window.t ? window.t('words.error.connection') : "Connection error.");
             }
         }
 

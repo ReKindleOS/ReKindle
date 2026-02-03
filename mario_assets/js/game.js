@@ -175,16 +175,21 @@ function updateTitleBar() {
     // Tweak endX for display to match the timer stop logic (approx 32px shorter)
     const effectiveEnd = endX - 32;
 
-    const progress = Math.max(0, Math.min(100, Math.floor(((player.pos[0] - startX) / (effectiveEnd - startX)) * 100)));
-    distEl.innerText = 'Distance: ' + progress + '%';
+    const currentProgress = Math.min(100, Math.max(0, Math.floor(((player.pos[0] - startX) / (effectiveEnd - startX)) * 100)));
+    const progress = currentProgress;
+
+    const distTxt = window.t ? window.t('mario.lbl.distance').replace('${count}', progress) : 'Distance: ' + progress + '%';
+    distEl.innerText = distTxt;
   }
 
   if (coinEl) {
-    coinEl.innerText = player.coins + ' coins';
+    const coinTxt = window.t ? window.t('mario.lbl.coins').replace('${count}', player.coins) : player.coins + ' coins';
+    coinEl.innerText = coinTxt;
   }
 
   if (timerEl && !gamePaused) {
-    timerEl.innerText = 'Time: ' + gameTime.toFixed(2);
+    const timeTxt = window.t ? window.t('mario.lbl.time').replace('${count}', gameTime.toFixed(2)) : 'Time: ' + gameTime.toFixed(2);
+    timerEl.innerText = timeTxt;
   }
 }
 
@@ -201,7 +206,8 @@ function showCompletionModal() {
     const mins = Math.floor(gameTime / 60);
     const secs = Math.floor(gameTime % 60);
     const timeStr = gameTime.toFixed(2);
-    finalTimeEl.innerText = 'TIME: ' + timeStr;
+    const finalTimeTxt = window.t ? window.t('mario.modal.final_time').replace('${count}', timeStr) : 'TIME: ' + timeStr;
+    finalTimeEl.innerText = finalTimeTxt;
     modal.style.display = 'block';
     overlay.style.display = 'block';
 

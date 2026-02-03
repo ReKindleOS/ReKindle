@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -325,15 +326,15 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Tower of Hanoi</span>
-            <div class="scores-box" onclick="openLeaderboard()">Scores</div>
-            <div class="reset-box" onclick="showResetModal()">Reset</div>
+            <span class="title-text" data-i18n="hanoi.title">Tower of Hanoi</span>
+            <div class="scores-box" onclick="openLeaderboard()" data-i18n="hanoi.btn.scores">Scores</div>
+            <div class="reset-box" onclick="showResetModal()" data-i18n="hanoi.btn.reset">Reset</div>
         </div>
 
         <div class="window-content">
             <div id="status-bar">
-                <span id="moves-label">Moves: 0</span>
-                <span id="min-label">Min: 7</span>
+                <span id="moves-label" data-i18n="hanoi.label.moves" data-i18n-n="0">Moves: 0</span>
+                <span id="min-label" data-i18n="hanoi.label.min" data-i18n-n="7">Min: 7</span>
             </div>
             <canvas id="game-canvas"></canvas>
         </div>
@@ -341,8 +342,8 @@
 
     <div id="start-modal" class="modal-overlay">
         <div class="modal-box">
-            <h2>New Game</h2>
-            <p>Select Number of Disks</p>
+            <h2 data-i18n="hanoi.label.new_game">New Game</h2>
+            <p data-i18n="hanoi.label.select_disks">Select Number of Disks</p>
             <div class="diff-select">
                 <button onclick="startGame(3)">3</button>
                 <button onclick="startGame(4)">4</button>
@@ -355,28 +356,28 @@
 
     <div id="game-over-modal" class="modal-overlay" style="display:none;">
         <div class="modal-box">
-            <h2>You Won!</h2>
+            <h2 data-i18n="hanoi.label.win">You Won!</h2>
             <p id="game-over-msg"></p>
-            <button onclick="showStartModal()">Play Again</button>
+            <button onclick="showStartModal()" data-i18n="hanoi.btn.play_again">Play Again</button>
         </div>
     </div>
 
     <div id="reset-modal" class="modal-overlay" style="display:none;">
         <div class="modal-box">
-            <h2>Reset Game?</h2>
-            <p>Are you sure you want to reset the current game?</p>
+            <h2 data-i18n="hanoi.label.reset_confirm">Reset Game?</h2>
+            <p data-i18n="hanoi.label.reset_body">Are you sure you want to reset the current game?</p>
             <div class="btn-row">
-                <button onclick="hideResetModal()">Cancel</button>
-                <button onclick="confirmReset()">Reset</button>
+                <button onclick="hideResetModal()" data-i18n="hanoi.btn.cancel">Cancel</button>
+                <button onclick="confirmReset()" data-i18n="hanoi.btn.reset">Reset</button>
             </div>
         </div>
     </div>
 
     <div id="leaderboard-modal" class="modal-overlay" style="display:none;">
         <div class="modal-box">
-            <h2 id="lb-title">Top Scores</h2>
-            <div class="lb-list" id="lb-content">Loading...</div>
-            <button onclick="closeLeaderboard()">Close</button>
+            <h2 id="lb-title" data-i18n="hanoi.label.top_scores">Top Scores</h2>
+            <div class="lb-list" id="lb-content" data-i18n="hanoi.status.loading">Loading...</div>
+            <button onclick="closeLeaderboard()" data-i18n="hanoi.btn.close">Close</button>
         </div>
     </div>
 
@@ -397,28 +398,28 @@
             firebase.app();
         }
         const db = firebase.firestore();
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-if (db.settings) {
+        if (db.settings) {
 
-    try {
+            try {
 
-        db.settings({
+                db.settings({
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
-            merge: true
+                    merge: true
 
-        });
+                });
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
-}
+        }
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         const auth = firebase.auth();
 
@@ -499,7 +500,9 @@ if (db.settings) {
 
         function openLeaderboard() {
             document.getElementById('leaderboard-modal').style.display = 'flex';
-            document.getElementById('lb-title').textContent = `Top Scores (${numDisks} Disks)`;
+            const title = window.t ? window.t('hanoi.label.top_scores_disks').replace('${n}', numDisks) : `Top Scores (${numDisks} Disks)`;
+            document.getElementById('lb-title').textContent = title;
+            document.getElementById('lb-title').removeAttribute('data-i18n');
             loadLeaderboard(numDisks);
         }
 
@@ -509,7 +512,8 @@ if (db.settings) {
 
         async function loadLeaderboard(difficulty) {
             const list = document.getElementById('lb-content');
-            list.innerHTML = 'Loading...';
+            list.innerText = window.t ? window.t('hanoi.status.loading') : 'Loading...';
+            list.removeAttribute('data-i18n');
 
             const user = auth.currentUser;
             if (user) {
@@ -521,7 +525,7 @@ if (db.settings) {
 
                     list.innerHTML = '';
                     if (snapshot.empty) {
-                        list.innerHTML = 'No scores yet!';
+                        list.innerText = window.t ? window.t('hanoi.status.no_scores') : 'No scores yet!';
                         return;
                     }
 
@@ -544,10 +548,10 @@ if (db.settings) {
                     });
                 } catch (e) {
                     console.error("Error loading leaderboard:", e);
-                    list.innerHTML = "Error loading scores.";
+                    list.innerText = window.t ? window.t('hanoi.status.error_loading') : "Error loading scores.";
                 }
             } else {
-                list.innerHTML = "Log in to see scores.";
+                list.innerText = window.t ? window.t('hanoi.status.login_required') : "Log in to see scores.";
             }
         }
 
@@ -618,8 +622,14 @@ if (db.settings) {
         }
 
         function updateDiffDisplay() {
-            document.getElementById('moves-label').innerText = `Moves: ${moves}`;
-            document.getElementById('min-label').innerText = `Min: ${minMoves}`;
+            const movesLabel = document.getElementById('moves-label');
+            const minLabel = document.getElementById('min-label');
+
+            movesLabel.innerText = window.t ? window.t('hanoi.label.moves').replace('${n}', moves) : `Moves: ${moves}`;
+            minLabel.innerText = window.t ? window.t('hanoi.label.min').replace('${n}', minMoves) : `Min: ${minMoves}`;
+
+            movesLabel.removeAttribute('data-i18n');
+            minLabel.removeAttribute('data-i18n');
         }
 
         // --- LOGIC ---
@@ -691,7 +701,8 @@ if (db.settings) {
                 isWin = true;
                 saveBestMoves(numDisks, moves);
                 setTimeout(() => {
-                    document.getElementById('game-over-msg').innerText = `Completed in ${moves} moves!`;
+                    const winMsg = window.t ? window.t('hanoi.msg.completed').replace('${n}', moves) : `Completed in ${moves} moves!`;
+                    document.getElementById('game-over-msg').innerText = winMsg;
                     document.getElementById('game-over-modal').style.display = 'flex';
                 }, 200);
             }
