@@ -190,7 +190,6 @@ async function handleRequest(request) {
         "https://rekindle.ink",
         "https://lite.rekindle.ink",
         "https://legacy.rekindle.ink",
-        "https://rekindle-pro.pages.dev",
     ];
     const origin = request.headers.get("Origin");
     const isAllowed = allowedOrigins.indexOf(origin) !== -1;
