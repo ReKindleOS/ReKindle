@@ -264,16 +264,23 @@ function handleInput(dt) {
     if (checkbox) checkbox.checked = !checkbox.checked;
   }
 
+  // Detect manual input to disable auto-run
+  if (rightDown || leftDown || downDown || jumpDown || input.isDown('RUN')) {
+    var checkbox = document.getElementById('setting-autorun');
+    // Only disable if it's currently checked (optimization)
+    if (checkbox && checkbox.checked) {
+      checkbox.checked = false;
+    }
+  }
+
   var autoRunEnabled = document.getElementById('setting-autorun') && document.getElementById('setting-autorun').checked;
 
   if (autoRunEnabled) {
     // Keyboard toggle logic: use lastRightDown to catch the edge
+    // (Note: The above manual input check might make this redundant if rightDown disables it immediately, 
+    // but we keep the logic clean)
     if (rightDown && !lastRightDown) {
       window.toggleAutoRun();
-    }
-    // Cancel logic: left or down cancels auto-run
-    if (leftDown || downDown) {
-      autoRunActive = false;
     }
   } else {
     autoRunActive = false;
