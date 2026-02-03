@@ -39,17 +39,36 @@ function resizeCanvas() {
   ctx.scale(scale, scale);
 
   // Initialize background pattern
+  // Use a larger canvas (16x16) to avoid potential sub-pixel tiling artifacts on some displays
   const pCanvas = document.createElement('canvas');
-  pCanvas.width = 2;
-  pCanvas.height = 2;
+  pCanvas.width = 16;
+  pCanvas.height = 16;
   const pCtx = pCanvas.getContext('2d');
-  pCtx.fillStyle = '#000000';
-  pCtx.fillRect(0, 0, 1, 1);
-  pCtx.fillRect(1, 1, 1, 1);
+
+  // Fill background white
   pCtx.fillStyle = '#ffffff';
-  pCtx.fillRect(1, 0, 1, 1);
-  pCtx.fillRect(0, 1, 1, 1);
+  pCtx.fillRect(0, 0, 16, 16);
+
+  // Draw black dots in a dither pattern
+  pCtx.fillStyle = '#000000';
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      if ((x + y) % 2 === 0) {
+        pCtx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
   bgPattern = ctx.createPattern(pCanvas, 'repeat');
+
+  // Also apply to body background to replace theme.js version
+  document.body.style.backgroundImage = 'url(' + pCanvas.toDataURL('image/png') + ')';
+  document.body.style.backgroundSize = '8px 8px';
+  document.body.style.imageRendering = 'pixelated';
+  // Override global wallpaper logic for Mario
+  window.rekindleApplyWallpaper = function () {
+    // Background is already set by resizeCanvas
+  };
 }
 
 resizeCanvas();
@@ -270,8 +289,10 @@ function handleInput(dt) {
     if (checkbox) checkbox.checked = !checkbox.checked;
   }
 
-  // Detect manual input to disable auto-run
-  if (rightDown || leftDown || downDown || jumpDown || input.isDown('RUN')) {
+  // Detect manual keyboard input to disable auto-run
+  if (input.isKeyboardDown('RIGHT') || input.isKeyboardDown('LEFT') ||
+    input.isKeyboardDown('DOWN') || input.isKeyboardDown('JUMP') ||
+    input.isKeyboardDown('RUN')) {
     var checkbox = document.getElementById('setting-autorun');
     // Only disable if it's currently checked (optimization)
     if (checkbox && checkbox.checked) {
