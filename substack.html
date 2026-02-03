@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Substack</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --accent-color: #000000;
+            /* Substack Orange */
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            color: var(--accent-color);
+        }
+
+        /* CONTROLS */
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            display: flex;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        .icon-contract {
+            display: none;
+        }
+
+        /* APP LAYOUT */
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 200px;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: #f0f0f0;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+        }
+
+        .nav-menu {
+            border-bottom: 2px solid black;
+            padding: 5px 0;
+            background: #fff;
+        }
+
+        .nav-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+
+        .nav-item:hover {
+            background: #f0f0f0;
+        }
+
+        .nav-item.active {
+            background: #ddd;
+            border-left: 4px solid black;
+            padding-left: 11px;
+            /* compensate for border */
+        }
+
+        .nav-icon {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .search-box {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #fff;
+        }
+
+        .search-box input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid black;
+            padding: 5px;
+            font-family: "Geneva", "Verdana", sans-serif;
+            font-size: 0.9rem;
+            box-shadow: inset 1px 1px 0 #ccc;
+        }
+
+        .sidebar-menu {
+            border-bottom: 2px solid black;
+        }
+
+        .menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .menu-item:hover {
+            background: white;
+        }
+
+        .menu-item.active {
+            background: black;
+            color: white;
+        }
+
+        .sub-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .sub-item {
+            padding: 8px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .sub-item:hover {
+            background: white;
+        }
+
+        .sub-item.active {
+            background: #ddd;
+            font-weight: bold;
+        }
+
+        .sub-icon {
+            width: 20px;
+            height: 20px;
+            border: 1px solid black;
+            background: #ccc;
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feed-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+
+        .post-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .post-card {
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 #ccc;
+            margin-bottom: 20px;
+            padding: 15px;
+            cursor: pointer;
+            background: white;
+            transition: transform 0.1s;
+        }
+
+        .post-card:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .post-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .post-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .post-snippet {
+            font-size: 0.9rem;
+            color: #333;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* BUTTONS */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 5000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 400px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 2px solid black;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+
+        /* READER OVERLAY */
+        #reader-modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 100;
+            flex-direction: column;
+        }
+
+        .reader-toolbar {
+            height: 40px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            justify-content: space-between;
+            background: #eee;
+        }
+
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            border-bottom: 2px solid black;
+            background: #fcfcfc;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        .feed-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-transform: capitalize;
+        }
+
+        .feed-controls select {
+            padding: 4px 8px;
+            border: 2px solid black;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            background: white;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .feed-controls select:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        .reader-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+            font-family: serif;
+            font-size: 1.1rem;
+        }
+
+        .reader-content img {
+            max-width: 100%;
+            height: auto;
+            /* Fix distortion */
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            display: block;
+            /* Avoid inline spacing issues */
+        }
+
+        /* Mobile Layout */
+        @media (max-width: 600px) {
+            .sidebar {
+                width: 160px;
+            }
+        }
+
+        @media (max-width: 500px) {
+            .sidebar {
+                width: 60px;
+                align-items: center;
+            }
+
+            .sidebar .nav-label,
+            .sidebar .search-box {
+                display: none;
+            }
+
+            .sidebar .nav-item,
+            .sidebar .sub-item {
+                justify-content: center;
+                padding: 12px 0;
+                width: 100%;
+                border-left: none;
+                border-bottom: none;
+            }
+
+            .sidebar .nav-item.active,
+            .sidebar .sub-item.active {
+                background: #ddd;
+                border: none;
+                box-shadow: inset 4px 0 0 black;
+            }
+
+            .sidebar .nav-icon,
+            .sidebar .sub-icon {
+                margin: 0;
+            }
+        }
+    </style>
+    <script src="theme.js"></script>
+    <script src="time.js"></script>
+    <script src="pro-gate.js"></script>
+    <script src="js/i18n.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <!-- PAYWALL OVERLAY -->
+        <div id="paywall-overlay"
+            style="display:none; position:absolute; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:9000; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
+            <h2 style="margin-top:0;" data-i18n="paywall.title">ReKindle+</h2>
+            <p data-i18n="paywall.desc">Support ReKindle development and get<br>access to exclusive apps.</p>
+            <button class="sys-btn" onclick="window.location.href='pay.html'" data-i18n="btn.subscribe">Subscribe /
+                Login</button>
+            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status" data-i18n="status.checking">
+                Checking subscription...</p>
+        </div>
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div class="title-text" style="color: black !important;" data-i18n="substack.title">Substack</div>
+            <div class="controls">
+                <button class="icon-btn" onclick="openSettings()" title="Settings" style="margin-right: 5px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                        </path>
+                    </svg>
+                </button>
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="app-container">
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+
+                <div class="nav-menu">
+                    <div class="nav-item active" onclick="switchView('following')" id="nav-following">
+                        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                            </svg></span> <span class="nav-label" data-i18n="substack.nav.following">Following</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView('subscriptions')" id="nav-subscriptions">
+                        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg></span> <span class="nav-label" data-i18n="substack.nav.subs">Subscriptions</span>
+                    </div>
+                </div>
+                <!-- Sidebar Menu Removed -->
+                <div class="search-box">
+                    <input type="text" id="filter-input" placeholder="Search subscriptions..." onkeyup="filterSubs()"
+                        data-i18n-placeholder="substack.ph.search">
+                </div>
+                <div id="sub-list" class="sub-list">
+                    <!-- Subs injected here -->
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div class="main-content" id="main-content">
+                <div class="feed-header" id="feed-header" style="display:none;">
+                    <div class="feed-title" id="feed-title" data-i18n="substack.header.inbox">Inbox</div>
+                    <button class="sys-btn" onclick="state.offset=0; refreshData();"
+                        data-i18n="substack.btn.refresh">Refresh</button>
+                </div>
+                <div id="post-list" class="post-list">
+                    <!-- Posts injected here -->
+                    <div class="empty-state" style="padding:40px; text-align:center;">
+                        <h3 data-i18n="substack.msg.welcome">Welcome to Substack</h3>
+                        <p data-i18n="substack.msg.connect">To read your personal feed, you need to connect your
+                            account.</p>
+                        <button class="sys-btn" onclick="openSettings()" style="margin-top:20px;"
+                            data-i18n="substack.modal.connect">Connect
+                            Account</button>
+                    </div>
+                </div>
+            </div>
+            <!-- READER moved inside window -->
+            <div id="reader-modal">
+                <div class="reader-toolbar">
+                    <button class="sys-btn" onclick="closeReader()" data-i18n="rss.btn.back">Back</button>
+                    <span id="reader-top-title"
+                        style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%;">Article</span>
+                    <button class="sys-btn" onclick="openOriginal()" data-i18n="rss.btn.web">Web</button>
+                </div>
+                <div class="reader-content" id="reader-content">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 data-i18n="substack.modal.connect">Connect Account</h2>
+            <div style="text-align:left; font-size:0.9rem; margin-bottom:15px;">
+                <p>Substack does not provide a public login API. To access your personal inbox, you must provide
+                    your session cookie.</p>
+                <p style="padding-left:20px;">
+                    Connect your account to read paid posts.
+                </p>
+            </div>
+
+            <div id="browser-instructions"
+                style="background:#f9f9f9; padding:10px; border-radius:5px; border:1px solid #ddd; margin-bottom:15px;">
+                <!-- Populated by JS -->
+            </div>
+
+            <input type="password" id="sid-input" class="modal-input" placeholder="Paste substack.sid here..."
+                data-i18n-placeholder="substack.label.sid">
+
+
+            <p style="font-size:0.85rem; color:#666; margin-top:5px; margin-bottom:15px;">
+                This cookie allows the app to fetch your paid subscriptions securely.
+            </p>
+
+            <div style="margin:15px 0; border-top:1px solid #ccc; padding-top:10px;">
+                <h3>ReKindle Sync</h3>
+                <p id="auth-status" style="font-size:0.8rem; color:#666;">Log in to ReKindle to sync this cookie to
+                    your other devices.</p>
+                <button class="sys-btn" id="rekindle-login-btn" onclick="doRekindleLogin()">Login to
+                    ReKindle</button>
+            </div>
+
+            <div style="display:flex; justify-content:center; gap:10px; margin-top:20px;">
+                <button class="sys-btn" onclick="saveSettings()" data-i18n="substack.btn.save">Save & Connect</button>
+                <button class="sys-btn" onclick="closeModal('settings-modal')"
+                    data-i18n="reddit.btn.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- REKINDLE AUTH MODAL (Reused) -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>ReKindle Login</h2>
+            <input type="text" id="rk-username" class="modal-input" placeholder="Username">
+            <input type="password" id="rk-password" class="modal-input" placeholder="Password">
+            <div style="display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="performRekindleAuth(true)">Login</button>
+                <button class="sys-btn" onclick="performRekindleAuth(false)">Register</button>
+            </div>
+            <button style="margin-top:10px; border:none; background:none; text-decoration:underline;"
+                onclick="closeModal('login-modal')" data-i18n="reddit.btn.cancel">Cancel</button>
+        </div>
+    </div>
+
+    <!-- PRO REQUIRED MODAL -->
+    <div id="pro-required-modal" class="modal-overlay">
+        <div class="modal-box" style="text-align:center;">
+            <h2 style="margin-top:0;" data-i18n="settings.pro_required">Pro Required</h2>
+            <p>A ReKindle+ subscription is required to use this app.</p>
+            <button class="sys-btn" onclick="location.reload()">OK</button>
+        </div>
+    </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const API_PATH = "/api"; // Sub-path handled by worker
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        // --- STATE ---
+        // Hardcoded Worker URL as requested
+        const WORKER_URL = "https://rekindle-substack.timjarnott.workers.dev";
+
+        let state = {
+            sid: '', // Only loaded from Firestore (Pro-protected)
+            workerUrl: WORKER_URL,
+            user: null, // ReKindle User
+            subs: [],
+            inbox: [],
+            currentArticle: null,
+            // Pagination
+            offset: 0,
+            limit: 20, // Load 20 at a time for better stability
+            isLoading: false,
+            hasMore: true,
+            activeFeed: 'following', // 'following', 'subscriptions' OR 'pub_ID'
+            fullInbox: null, // For aggregated feed
+            subOffset: 0 // Per-subscription offset for progressive loading
+        };
+
+        let auth, db;
+
+        // --- INIT ---
+        window.onload = function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
+
+            // Initialize Firebase first, then pro-gate handles the paywall
+            initializeApp();
+        };
+
+        function initializeApp() {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                auth = firebase.auth();
+                db = firebase.firestore();
+
+                auth.onAuthStateChanged(u => {
+                    state.user = u;
+                    updateUI();
+
+                    // Pro gate will handle showing/hiding paywall
+                    // Only sync SID if user is pro (pro-gate.isPro())
+                    if (u && window.rekindleProGate && window.rekindleProGate.isPro()) {
+                        syncSID();
+                    }
+                });
+            } catch (e) { console.warn("Firebase Error", e); }
+
+            // Only load content if we have an SID AND user is pro
+            if (state.sid && window.rekindleProGate && window.rekindleProGate.isPro()) {
+                switchView('following');
+            }
+
+            const list = document.getElementById('post-list');
+            list.addEventListener('scroll', () => {
+                if (list.scrollTop + list.clientHeight >= list.scrollHeight - 200) {
+                    loadMorePosts();
+                }
+            });
+        };
+
+        // --- API CLIENT ---
+        async function apiCall(endpoint, options = {}) {
+            if (!state.sid) throw new Error("No SID provided");
+            // Always use the constant since input is removed
+            const baseUrl = WORKER_URL.replace(/\/$/, "");
+            const target = `${baseUrl}${API_PATH}${endpoint}`;
+
+            try {
+                // Merge headers
+                const headers = {
+                    'X-Substack-SID': state.sid,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                };
+
+
+
+                const res = await fetch(target, {
+                    headers: headers
+                });
+
+                if (res.ok) {
+                    return await res.json();
+                }
+
+                if (res.status === 403 || res.status === 401) {
+                    throw new Error(`Access Denied (${res.status}). Check your SID.`);
+                }
+
+                throw new Error(`Worker/API Error ${res.status}`);
+
+            } catch (e) {
+                console.error("API failed:", e.message);
+                throw e;
+            }
+        }
+
+        // --- ACTIONS ---
+        function openSettings() {
+            document.getElementById('sid-input').value = state.sid;
+            document.getElementById('settings-modal').style.display = 'flex';
+            showBrowserInstructions('chrome'); // Default
+        }
+
+        function showBrowserInstructions(browser) {
+            const container = document.getElementById('browser-instructions');
+            let html = "";
+
+            const steps = {
+                chrome: [
+                    "Open <b>substack.com</b> and log in.",
+                    "Right-click anywhere -> <b>Inspect</b>.",
+                    "Go to the <b>Application</b> tab (you may need to click '>>').",
+                    "Expand <b>Cookies</b> -> substack.com.",
+                    "Find <code>substack.sid</code>, copy the Value."
+                ],
+                safari: [
+                    "Open <b>substack.com</b> and log in.",
+                    "Right-click -> <b>Inspect Element</b> (Enable 'Show Develop menu' in settings if missing).",
+                    "Go to <b>Storage</b> tab.",
+                    "Expand <b>Cookies</b>.",
+                    "Find <code>substack.sid</code>, copy value."
+                ],
+                firefox: [
+                    "Open <b>substack.com</b> and log in.",
+                    "Right-click -> <b>Inspect</b>.",
+                    "Go to <b>Storage</b> tab.",
+                    "Expand <b>Cookies</b>.",
+                    "Find <code>substack.sid</code>, copy value."
+                ],
+                edge: [
+                    "Open <b>substack.com</b> and log in.",
+                    "Right-click -> <b>Inspect</b>.",
+                    "Go to <b>Application</b> tab.",
+                    "Expand <b>Cookies</b>.",
+                    "Find <code>substack.sid</code>, copy Value."
+                ]
+            };
+
+            // Buttons
+            const browsers = ['chrome', 'safari', 'firefox', 'edge'];
+            let btns = `<div style="display:flex; gap:10px; margin-bottom:10px;">`;
+            browsers.forEach(b => {
+                const active = b === browser ? 'background:#000; color:#fff;' : 'background:#eee; color:#000;';
+                btns += `<button onclick="showBrowserInstructions('${b}')" style="padding:5px 10px; border:1px solid #000; border-radius:4px; cursor:pointer; ${active}">${b.charAt(0).toUpperCase() + b.slice(1)}</button>`;
+            });
+            btns += `</div>`;
+
+            // List
+            html += btns;
+            html += `<ol style="padding-left:20px; text-align:left; font-size:0.9rem; line-height:1.4;">`;
+            (steps[browser] || steps.chrome).forEach(s => html += `<li>${s}</li>`);
+            html += `</ol>`;
+
+            container.innerHTML = html;
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        async function saveSettings() {
+            const sid = document.getElementById('sid-input').value.trim();
+
+            if (!sid) return alert("Please enter a valid SID");
+
+            // Must save to Pro-only subcollection first - will fail for non-Pro users
+            if (state.user && db) {
+                try {
+                    await db.collection('users').doc(state.user.uid)
+                        .collection('pro_data').doc('substack')
+                        .set({ sid: sid }, { merge: true });
+
+                    // Only set SID and proceed if save succeeded
+                    state.sid = sid;
+                    closeModal('settings-modal');
+                    refreshData();
+                } catch (e) {
+                    console.error("Failed to save SID (Pro required):", e);
+                    document.getElementById('pro-required-modal').style.display = 'flex';
+                }
+            } else {
+                alert("Please log in first.");
+            }
+        }
+
+        async function syncSID() {
+            if (!state.user || !db) return;
+
+            try {
+                const doc = await db.collection('users').doc(state.user.uid)
+                    .collection('pro_data').doc('substack').get();
+
+                if (doc.exists) {
+                    const cloudSid = doc.data().sid;
+                    if (cloudSid && cloudSid !== state.sid) {
+                        state.sid = cloudSid;
+                        refreshData();
+                    }
+                }
+            } catch (e) {
+                // Expected for non-Pro users - Firestore rules block read
+                console.log("Could not sync SID (Pro required):", e.code);
+            }
+        }
+
+        async function refreshData() {
+            if (!state.sid) return;
+            const list = document.getElementById('post-list');
+            if (state.offset === 0) {
+                list.innerHTML = '<div style="padding:40px; text-align:center;">Loading...</div>';
+            }
+
+
+            // 1. Fetch Subscriptions (ensure loaded)
+            if (state.subs.length === 0) {
+                try {
+                    const subData = await apiCall('/subscriptions');
+                    // MERGE LOGIC
+                    const pubsMap = {};
+                    if (subData.publications) subData.publications.forEach(p => pubsMap[p.id] = p);
+                    const rawSubs = subData.subscriptions || [];
+                    state.subs = rawSubs.map(sub => {
+                        if (!sub.publication && sub.publication_id && pubsMap[sub.publication_id]) {
+                            sub.publication = pubsMap[sub.publication_id];
+                        }
+                        return sub;
+                    }).filter(s => s.publication);
+                    renderSubs(); // Sidebar update
+                } catch (e) { console.warn("Subs failed", e); }
+            }
+
+
+
+            // 3. Refresh Content based on activeFeed
+            if (state.activeFeed === 'subscriptions') {
+                renderLibrary();
+                return;
+            }
+
+            // Post Logic:
+            try {
+                let newPosts = [];
+                let data;
+
+                if (state.activeFeed === 'following') {
+                    // AGGREGATED FEED: Fetch from all subs and merge
+                    if (state.offset === 0) {
+                        state.fullInbox = null;
+                        state.subOffset = 0;
+                    }
+
+                    // Initial fetch or need more?
+                    const needsMore = !state.fullInbox || (state.offset + state.limit > state.fullInbox.length);
+
+                    if (needsMore) {
+                        const loadingMsg = document.createElement('div');
+                        loadingMsg.id = 'agg-loading';
+                        loadingMsg.style.cssText = "padding:20px; text-align:center; font-style:italic;";
+                        loadingMsg.innerText = state.fullInbox ? "Loading more posts..." : "Aggregating feeds... (This may take a moment)";
+                        list.appendChild(loadingMsg);
+
+                        const morePosts = await fetchAggregatedFeed(state.subOffset);
+                        if (document.getElementById('agg-loading')) document.getElementById('agg-loading').remove();
+
+                        if (morePosts.length > 0) {
+                            // Merge with existing cache
+                            if (state.fullInbox) {
+                                const existingIds = new Set(state.fullInbox.map(p => p.id));
+                                const uniqueNew = morePosts.filter(p => !existingIds.has(p.id));
+                                state.fullInbox = state.fullInbox.concat(uniqueNew);
+                                // Re-sort after merge
+                                state.fullInbox.sort((a, b) => new Date(b.post_date) - new Date(a.post_date));
+                                console.log(`Added ${uniqueNew.length} new posts. Total: ${state.fullInbox.length}`);
+                            } else {
+                                state.fullInbox = morePosts;
+                            }
+                            state.subOffset += 50; // Increment for next fetch
+                        } else {
+                            console.log("No more posts available from subscriptions.");
+                        }
+                    }
+
+                    // Paginate from the full local list
+                    if (state.fullInbox) {
+                        console.log(`Slicing fullInbox: total=${state.fullInbox.length}, offset=${state.offset}, limit=${state.limit}`);
+                        newPosts = state.fullInbox.slice(state.offset, state.offset + state.limit);
+                    }
+                } else {
+                    // Specific Publication Feed - Use TARGETED API
+                    // 1. Find the sub to get the domain
+                    const sub = state.subs.find(s => s.publication.id == state.activeFeed);
+                    if (sub && sub.publication) {
+                        const targetDomain = new URL(sub.publication.base_url).hostname;
+                        const sort = 'new';
+                        const endpoint = `/posts?limit=${state.limit}&offset=${state.offset}&sort=${sort}`;
+                        data = await apiCall(endpoint, { headers: { 'X-Substack-Target': targetDomain } });
+                        newPosts = data || [];
+                        if (newPosts.posts) newPosts = newPosts.posts;
+                        newPosts.forEach(p => {
+                            if (!p.publication) p.publication = sub.publication;
+                        });
+                    } else {
+                        throw new Error("Publication not found for ID: " + state.activeFeed);
+                    }
+                }
+
+                async function fetchAggregatedFeed(offset = 0) {
+                    const allPosts = [];
+                    const batchSize = 10;
+                    const subLimit = 50;
+
+                    console.log(`Fetching ${subLimit} posts from ${state.subs.length} subs (offset: ${offset})...`);
+
+                    for (let i = 0; i < state.subs.length; i += batchSize) {
+                        const batch = state.subs.slice(i, i + batchSize);
+                        const results = await Promise.allSettled(batch.map(async sub => {
+                            const domain = new URL(sub.publication.base_url).hostname;
+                            const posts = await apiCall(`/posts?limit=${subLimit}&offset=${offset}&sort=new`, {
+                                headers: { 'X-Substack-Target': domain }
+                            });
+                            return (posts.posts || posts || []).map(p => {
+                                if (!p.publication) p.publication = sub.publication;
+                                return p;
+                            });
+                        }));
+
+                        results.forEach(res => {
+                            if (res.status === 'fulfilled') allPosts.push(...res.value);
+                        });
+                    }
+
+                    // Deduplicate by ID and Sort
+                    const unique = Array.from(new Map(allPosts.map(p => [p.id, p])).values());
+                    const sorted = unique.sort((a, b) => new Date(b.post_date) - new Date(a.post_date));
+                    console.log(`Fetched: ${sorted.length} posts`);
+                    return sorted;
+                }
+
+                // Pagination analysis
+                const rawLength = data ? (data?.posts || data || []).length : newPosts.length;
+                console.log(`Feed analysis: fetched=${rawLength}, currentOffset=${state.offset}, limit=${state.limit}`);
+
+                // Filter out duplicates
+                if (state.offset > 0) {
+                    const existingIds = new Set(state.inbox.map(p => p.id));
+                    newPosts = newPosts.filter(p => !existingIds.has(p.id));
+                    console.log(`After filtering duplicates: ${newPosts.length} new unique posts`);
+                }
+
+                if (state.offset === 0) {
+                    state.inbox = newPosts;
+                    renderInbox(newPosts, false);
+                } else if (newPosts.length > 0) {
+                    state.inbox = state.inbox.concat(newPosts);
+                    renderInbox(newPosts, true);
+                }
+
+                // Proactive hasMore check
+                if (rawLength < state.limit || rawLength === 0) {
+                    console.log("Reached end of feed (fetched less than limit). setting hasMore=false");
+                    state.hasMore = false;
+                } else {
+                    state.hasMore = true; // explicitly keep true if we got a full batch
+                }
+
+                // If we've fetched a lot but after filtering we have nothing, 
+                // we might need to load even more automatically or just wait for next scroll.
+                // For now, let's just let the user scroll again.
+
+            } catch (e) {
+                console.error(e);
+                if (state.offset === 0) {
+                    let msg = e.message;
+                    if (msg.includes('Access Denied')) {
+                        msg = "Access Denied. Check Settings.";
+                        openSettings();
+                    }
+                    document.getElementById('post-list').innerHTML = `<div style="padding:20px; text-align:center; color:red;">${msg}</div>`;
+                }
+            }
+        }
+
+        // --- NEW RENDERERS ---
+
+        function renderLibrary() {
+            const list = document.getElementById('post-list');
+            list.innerHTML = `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:20px; padding:20px;">
+                ${state.subs.map(sub => {
+                const pub = sub.publication;
+                const cover = pub.cover_photo_url || pub.logo_url || "rss_icon.png";
+                return `
+                    <div style="background:white; border:2px solid black; box-shadow:4px 4px 0 black; cursor:pointer;" onclick="filterBySub(${pub.id})">
+                        <div style="height:100px; background:#ddd; overflow:hidden; border-bottom:2px solid black;">
+                            <img src="${cover}" style="width:100%; height:100%; object-fit:cover;">
+                        </div>
+                        <div style="padding:10px;">
+                            <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${pub.name}</div>
+                            <div style="font-size:0.8rem; color:#666;">View Posts</div>
+                        </div>
+                    </div>
+                    `;
+            }).join('')}
+            </div>`;
+
+
+        }
+
+        // --- RENDERING ---
+        function updateUI() {
+            const authStatus = document.getElementById('auth-status');
+            const loginBtn = document.getElementById('rekindle-login-btn');
+
+            if (state.user) {
+                if (authStatus) authStatus.innerText = "Logged in as " + state.user.email;
+                if (loginBtn) {
+                    loginBtn.innerText = "Logout";
+                    loginBtn.onclick = doRekindleLogout;
+                }
+            } else {
+                if (authStatus) authStatus.innerText = "Log in to ReKindle to sync this cookie.";
+                if (loginBtn) {
+                    loginBtn.innerText = "Login to ReKindle";
+                    loginBtn.onclick = doRekindleLogin;
+                }
+            }
+        }
+
+        function renderSubs() {
+            const list = document.getElementById('sub-list');
+            list.innerHTML = '';
+
+            state.subs.forEach(sub => {
+                const pub = sub.publication;
+                if (!pub) return;
+
+                const el = document.createElement('div');
+                el.className = 'sub-item';
+                el.onclick = () => filterBySub(pub.id);
+                el.innerHTML = `
+                    <img src="${pub.logo_url || pub.author_photo_url || ''}" class="sub-icon" onerror="this.src='rss_icon.png'">
+                    <span class="nav-label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${pub.name}</span>
+                `;
+                list.appendChild(el);
+            });
+        }
+
+        function renderInbox(posts = state.inbox, append = false) {
+            const list = document.getElementById('post-list');
+            if (!append) list.innerHTML = '';
+
+            if ((!posts || posts.length === 0) && !append) {
+                list.innerHTML = '<div class="empty-state">No posts found.</div>';
+                return;
+            }
+
+            posts.forEach(post => {
+                // DEBUG: Log structure to find author
+                console.log("Post:", post.title, post);
+
+                const el = document.createElement('div');
+                el.className = 'post-card';
+
+                // Try to resolve publication name:
+                // 1. post.publication.name
+                // 2. Lookup in subscriptions via post.publication_id
+                // 3. Fallback to "Unknown"
+                let pubName = "Unknown";
+
+                // Strategy 1: Direct on post
+                if (post.publication && post.publication.name) {
+                    pubName = post.publication.name;
+                }
+                // Strategy 2: Lookup via ID
+                else if (post.publication_id) {
+                    // Ensure loose comparison for ID (string vs number)
+                    const match = state.subs.find(s => s.publication && s.publication.id == post.publication_id);
+                    if (match) pubName = match.publication.name;
+                }
+
+                // Strategy 3: Author name?
+                if (pubName === "Unknown") {
+                    // Check publishedBylines (from logs)
+                    if (post.publishedBylines && post.publishedBylines.length > 0) {
+                        pubName = post.publishedBylines.map(b => b.name).join(', ');
+                    }
+                    // Check displayed_authors (fallback)
+                    else if (post.displayed_authors && post.displayed_authors.length > 0) {
+                        pubName = post.displayed_authors[0].name;
+                    }
+                    else if (post.primary_author && post.primary_author.name) {
+                        pubName = post.primary_author.name;
+                    }
+                }
+
+                const date = new Date(post.post_date).toLocaleDateString();
+
+                el.innerHTML = `
+                    <div class="post-meta">
+                        <span>${pubName}</span>
+                        <span>${date}</span>
+                    </div>
+                    <div class="post-title">${post.title}</div>
+                    <div class="post-snippet">${post.subtitle || post.description || "No preview available."}</div>
+                `;
+                el.onclick = () => openReader(post);
+                list.appendChild(el);
+            });
+        }
+
+        // --- READER ---
+        function openReader(post) {
+            state.currentArticle = post;
+            document.getElementById('reader-modal').style.display = 'flex';
+            document.getElementById('reader-top-title').innerText = post.title;
+            const content = document.getElementById('reader-content');
+
+            // Substack API usually returns post content in `body_html`
+            if (post.body_html) {
+                content.innerHTML = `<h1>${post.title}</h1>` + post.body_html;
+            } else {
+                // Fetch full post if snippet
+                content.innerHTML = "Loading full content...";
+                fetchFullPost(post.detail_url || post.slug); // Slugs are usually safer
+            }
+        }
+
+        async function fetchFullPost(slug_or_url) {
+            try {
+                const id = state.currentArticle.id;
+                console.log("Fetching full post:", id, slug_or_url); // DEBUG
+
+                // Post Fetch Strategy:
+                // 1. Try standard /posts/{id} WITH target domain
+                // 2. Try /posts/{slug} WITH target domain
+
+                // Determine target domain
+                let targetDomain = "substack.com";
+                if (state.currentArticle.publication && state.currentArticle.publication.base_url) {
+                    try {
+                        const u = new URL(state.currentArticle.publication.base_url);
+                        targetDomain = u.hostname;
+                    } catch (e) { }
+                } else if (state.currentArticle.canonical_url) {
+                    // try from canonical
+                    try {
+                        const u = new URL(state.currentArticle.canonical_url);
+                        targetDomain = u.hostname;
+                    } catch (e) { }
+                }
+
+                console.log("Target Domain:", targetDomain);
+
+                let data;
+                try {
+                    data = await apiCall(`/posts/${id}`, { headers: { 'X-Substack-Target': targetDomain } });
+                } catch (err1) {
+                    console.warn("API /posts/{id} failed, trying slug:", err1);
+                    if (state.currentArticle.slug) {
+                        data = await apiCall(`/posts/${state.currentArticle.slug}`, { headers: { 'X-Substack-Target': targetDomain } });
+                    } else {
+                        throw err1;
+                    }
+                }
+
+                document.getElementById('reader-content').innerHTML =
+                    `<h1>${data.title}</h1>` + (data.body_html || "<p>Content not available.</p>");
+
+            } catch (e) {
+                console.warn(e);
+                document.getElementById('reader-content').innerHTML = `
+                    <div style="color:red; padding:20px;">
+                        <h3>Error loading content</h3>
+                        <p>${e.message}</p>
+                        <p>Try opening the original link.</p>
+                        <button class="sys-btn" onclick="openOriginal()">Open Original</button>
+                    </div>`;
+            }
+        }
+
+        function closeReader() {
+            document.getElementById('reader-modal').style.display = 'none';
+        }
+
+        function openOriginal() {
+            if (state.currentArticle) window.open(state.currentArticle.canonical_url, '_blank');
+        }
+
+        // --- REKINDLE AUTH ---
+        function doRekindleLogin() {
+            document.getElementById('login-modal').style.display = 'flex';
+        }
+
+        function doRekindleLogout() {
+            auth.signOut();
+        }
+
+        function performRekindleAuth(isLogin) {
+            const u = document.getElementById('rk-username').value;
+            const p = document.getElementById('rk-password').value;
+            if (!u || !p) return alert("Enter credentials");
+            const email = u.includes('@') ? u : u + "@rekindle.ink";
+
+            if (isLogin) {
+                auth.signInWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => alert(e.message));
+            } else {
+                auth.createUserWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => alert(e.message));
+            }
+        }
+
+        // --- UTILS ---
+        function toggleFullScreen() {
+            document.querySelector('.window').classList.toggle('fullscreen');
+        }
+
+        function switchView(view) {
+            state.activeFeed = view;
+            state.offset = 0;
+            state.hasMore = true;
+
+            // UI Updates
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const navEl = document.getElementById('nav-' + view);
+            if (navEl) navEl.classList.add('active');
+
+            // Header Controls logic
+            const header = document.getElementById('feed-header');
+            const title = document.getElementById('feed-title');
+            header.style.display = 'flex';
+
+            if (view === 'following') {
+                title.innerText = "Following";
+            } else if (view === 'subscriptions') {
+                title.innerText = "Library";
+            } else {
+                // Unknown/Fallback
+                header.style.display = 'none';
+            }
+
+            refreshData();
+        }
+
+        async function filterBySub(pubId) {
+            // Loose comparison needed for string/number IDs
+            const sub = state.subs.find(s => s.publication.id == pubId);
+            if (!sub) return;
+
+            state.activeFeed = pubId;
+
+            // Highlight nothing in nav or maybe "Subscriptions" if we consider this drill-down
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+            state.offset = 0;
+            state.hasMore = true;
+
+            const header = document.getElementById('feed-header');
+            header.style.display = 'flex';
+            document.getElementById('feed-title').innerText = sub.publication.name;
+
+            document.getElementById('post-list').innerHTML = '<div style="padding:40px; text-align:center;">Loading...</div>';
+            // Trigger load
+            refreshData();
+        }
+
+        async function loadMorePosts() {
+            if (state.isLoading || !state.hasMore) {
+                console.log("Skipping loadMore: isLoading=" + state.isLoading + ", hasMore=" + state.hasMore);
+                return;
+            }
+            state.isLoading = true;
+            state.offset += state.limit;
+            console.log("Loading more posts... New Offset:", state.offset, "Feed:", state.activeFeed);
+
+            try {
+                await refreshData();
+            } catch (e) {
+                console.warn("Load more failed", e);
+            } finally {
+                state.isLoading = false;
+            }
+        }
+
+
+
+    </script>
+
+</body>
+
+</html>
