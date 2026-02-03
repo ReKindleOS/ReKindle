@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dictionary</title>
+    <script src="js/i18n.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -16,35 +17,14 @@
         }
 
         body {
-            image-rendering: -webkit-crisp-edges;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -o-crisp-edges;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-            -ms-interpolation-mode: nearest-neighbor;
-            background-repeat: repeat;
-            background-position: top left;
-
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            background-repeat: repeat;
-            background-position: top left;
-
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            background-repeat: repeat;
-            background-position: top left;
-
             font-family: "Geneva", "Verdana", sans-serif;
             margin: 0;
             padding: 20px;
             height: 100vh;
             overflow: hidden;
             background-color: #e5e5e5;
-            /* Default Background (Overridden by JS) */
-            /* Background managed by settings */
-
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -376,27 +356,28 @@
             <div class="title-stripes"></div>
             <!-- Home Button -->
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Dictionary</span>
+            <span class="title-text" data-i18n="dictionary.title">Dictionary</span>
         </div>
 
         <div class="toolbar">
             <select id="lang-select">
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-                <option value="it">Italiano</option>
-                <option value="pt">Português</option>
-                <option value="grc">Ancient Greek</option>
+                <option value="en" data-i18n="dictionary.lang.en">English</option>
+                <option value="es" data-i18n="dictionary.lang.es">Español</option>
+                <option value="fr" data-i18n="dictionary.lang.fr">Français</option>
+                <option value="de" data-i18n="dictionary.lang.de">Deutsch</option>
+                <option value="it" data-i18n="dictionary.lang.it">Italiano</option>
+                <option value="pt" data-i18n="dictionary.lang.pt">Português</option>
+                <option value="grc" data-i18n="dictionary.lang.grc">Ancient Greek</option>
             </select>
-            <input type="text" id="search-input" placeholder="Look up a word..." onkeypress="handleKey(event)">
-            <button onclick="searchWord()">Define</button>
+            <input type="text" id="search-input" placeholder="Look up a word..." onkeypress="handleKey(event)"
+                data-i18n-placeholder="dictionary.placeholder">
+            <button onclick="searchWord()" data-i18n="dictionary.btn.define">Define</button>
         </div>
 
         <div id="content-area">
             <div style="text-align:center; margin-top:50px;">
-                <h1 style="font-family: 'Helvetica Neue'; font-size: 2rem;">Dictionary</h1>
-                <p>Type a word above to begin.</p>
+                <h1 style="font-family: 'Helvetica Neue'; font-size: 2rem;" data-i18n="dictionary.title">Dictionary</h1>
+                <p data-i18n="dictionary.msg.initial">Type a word above to begin.</p>
             </div>
         </div>
     </div>
@@ -438,7 +419,7 @@
             if (wordOverride) document.getElementById('search-input').value = wordOverride;
 
             const content = document.getElementById('content-area');
-            content.innerHTML = "<div class='error-msg'>Searching...</div>";
+            content.innerHTML = `<div class='error-msg'>${window.t ? window.t('dictionary.msg.searching') : "Searching..."}</div>`;
 
             const lang = document.getElementById('lang-select').value;
 
@@ -457,7 +438,7 @@
                 const res = await fetch(API_URL + encodeURIComponent(query));
 
                 if (!res.ok) {
-                    throw new Error("Word not found");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "Word not found");
                 }
 
                 const data = await res.json();
@@ -481,12 +462,12 @@
                 const pageId = Object.keys(pages)[0];
 
                 if (pageId === "-1") {
-                    throw new Error("Word not found");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "Word not found");
                 }
 
                 const extract = pages[pageId].extract;
                 if (!extract) {
-                    throw new Error("No definition found");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "No definition found");
                 }
 
                 // Extract Ancient Greek section
@@ -497,7 +478,7 @@
                     // but if 'logos' page exists (for English) but has no Ancient Greek, we fail here.
                     // We could potentially try to search for the Greek script version if the user typed Latin, but that's complex.
                     // For now, simple fail.
-                    throw new Error("No Ancient Greek definition found on this page");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "No Ancient Greek definition found on this page");
                 }
 
                 renderWiktionaryResult(query, greekContent);
@@ -552,12 +533,12 @@
                 const pageId = Object.keys(pages)[0];
 
                 if (pageId === "-1") {
-                    throw new Error("Word not found");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "Word not found");
                 }
 
                 const extract = pages[pageId].extract;
                 if (!extract) {
-                    throw new Error("No definition found");
+                    throw new Error(window.t ? window.t('dictionary.error.title') : "No definition found");
                 }
 
                 renderWiktionaryResult(query, extract);
@@ -569,11 +550,15 @@
 
         function renderError(query) {
             const content = document.getElementById('content-area');
+            const title = window.t ? window.t('dictionary.error.title') : "No Definition Found";
+            const body = (window.t ? window.t('dictionary.error.body') : "Sorry, we couldn't find definitions for \"${query}\".").replace('${query}', query);
+            const hint = window.t ? window.t('dictionary.error.hint') : "Please check your spelling.";
+
             content.innerHTML = `
                 <div class="error-msg">
-                    <h3>No Definition Found</h3>
-                    <p>Sorry, we couldn't find definitions for "${query}".</p>
-                    <p>Please check your spelling.</p>
+                    <h3>${title}</h3>
+                    <p>${body}</p>
+                    <p>${hint}</p>
                 </div>
             `;
         }
@@ -590,7 +575,7 @@
                 <div class="wiki-content">
                     ${htmlContent}
                 </div>
-                 <br><br><div style="font-size:0.7rem; color:#999; border-top:1px solid #ccc; padding-top:5px;">Source: Wiktionary</div>
+                 <br><br><div style="font-size:0.7rem; color:#999; border-top:1px solid #ccc; padding-top:5px;">${window.t ? window.t('dictionary.label.source_wiki') : "Source: Wiktionary"}</div>
             `;
 
             content.innerHTML = html;
@@ -637,13 +622,14 @@
 
                 // Synonyms/Antonyms
                 if (meaning.synonyms && meaning.synonyms.length > 0) {
+                    const synsLabel = window.t ? window.t('dictionary.label.synonyms') : "Synonyms:";
                     const syns = meaning.synonyms.slice(0, 5).map(s => `<span class="syn-tag" onclick="searchWord('${s}')">${s}</span>`).join(", ");
-                    html += `<div class="synonyms"><strong>Synonyms:</strong> ${syns}</div>`;
+                    html += `<div class="synonyms"><strong>${synsLabel}</strong> ${syns}</div>`;
                 }
             });
 
             // License/Source footer (optional, keeps it clean to omit or minimal)
-            html += `<br><br><div style="font-size:0.7rem; color:#999; border-top:1px solid #ccc; padding-top:5px;">Source: Wiktionary (via DictionaryAPI)</div>`;
+            html += `<br><br><div style="font-size:0.7rem; color:#999; border-top:1px solid #ccc; padding-top:5px;">${window.t ? window.t('dictionary.label.source_api') : "Source: Wiktionary (via DictionaryAPI)"}</div>`;
 
             content.innerHTML = html;
             content.scrollTop = 0;
@@ -651,17 +637,15 @@
 
         function playAudio(url) {
             const audio = new Audio(url);
-            audio.play().catch(e => showModal("Could not play audio."));
+            audio.play().catch(e => {
+                const msg = window.t ? window.t('dictionary.modal.audio_error') : "Could not play audio.";
+                showModal(msg);
+            });
         }
 
     </script>
 
-    <script>
 
-
-
-
-    </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
     <!-- STANDARD MODAL POPUP -->

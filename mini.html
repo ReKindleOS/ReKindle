@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -349,26 +350,26 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Mini Crossword</span>
+            <span class="title-text" data-i18n="mini.title">Mini Crossword</span>
 
             <div class="controls">
-                <button class="sys-btn" onclick="openNewGameModal()">New</button>
-                <button class="sys-btn" onclick="solveSelectedWord()">Solve</button>
-                <button class="sys-btn" onclick="checkPuzzle()">Check</button>
+                <button class="sys-btn" onclick="openNewGameModal()" data-i18n="mini.btn.new">New</button>
+                <button class="sys-btn" onclick="solveSelectedWord()" data-i18n="mini.btn.solve">Solve</button>
+                <button class="sys-btn" onclick="checkPuzzle()" data-i18n="mini.btn.check">Check</button>
             </div>
         </div>
 
         <div class="window-content">
-            <div id="clue-bar">Fetching Puzzle...</div>
+            <div id="clue-bar" data-i18n="mini.status.fetching">Fetching Puzzle...</div>
 
             <div id="grid-container"></div>
 
             <div id="clue-lists" class="clue-lists-container">
                 <div id="across-clues" class="clue-list-group">
-                    <h4>ACROSS</h4>
+                    <h4 data-i18n="mini.label.across">ACROSS</h4>
                 </div>
                 <div id="down-clues" class="clue-list-group">
-                    <h4>DOWN</h4>
+                    <h4 data-i18n="mini.label.down">DOWN</h4>
                 </div>
             </div>
 
@@ -378,17 +379,17 @@
                 <div class="key-row" id="row3"></div>
             </div>
         </div>
-        <div id="status-bar">Local Mode</div>
+        <div id="status-bar" data-i18n="mini.status.local">Local Mode</div>
     </div>
 
     <!-- NEW GAME MODAL -->
     <div id="new-game-modal" class="modal-overlay">
         <div class="modal-box">
-            <h3>Start New Puzzle?</h3>
-            <p>Current progress will be lost.</p>
+            <h3 data-i18n="mini.modal.new_title">Start New Puzzle?</h3>
+            <p data-i18n="mini.modal.new_body">Current progress will be lost.</p>
             <div class="modal-btns">
-                <button class="sys-btn" onclick="confirmNewGame()">Yes</button>
-                <button class="sys-btn" onclick="closeNewGameModal()">Cancel</button>
+                <button class="sys-btn" onclick="confirmNewGame()" data-i18n="mini.btn.yes">Yes</button>
+                <button class="sys-btn" onclick="closeNewGameModal()" data-i18n="mini.btn.cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -408,38 +409,38 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         // --- STATE ---
         let currentPuzzle = null;
@@ -455,12 +456,15 @@ if (db.settings) {
             initKeyboard();
 
             auth.onAuthStateChanged(user => {
+                const statusBar = document.getElementById('status-bar');
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    statusBar.innerText = window.t ? window.t('mini.status.synced').replace('${email}', user.email) : "Synced: " + user.email;
+                    statusBar.removeAttribute('data-i18n');
                     loadProgress();
                 } else {
-                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    statusBar.innerText = window.t ? window.t('mini.status.guest') : "Guest Mode (Local)";
+                    statusBar.removeAttribute('data-i18n');
                     loadProgress();
                 }
             });
@@ -569,7 +573,8 @@ if (db.settings) {
             if (start !== -1) selectCell(start);
             else selectCell(0);
 
-            document.getElementById('clue-bar').innerText = "Game Resumed";
+            document.getElementById('clue-bar').innerText = window.t ? window.t('mini.status.resumed') : "Game Resumed";
+            document.getElementById('clue-bar').removeAttribute('data-i18n');
             updateUI();
         }
 
@@ -577,7 +582,9 @@ if (db.settings) {
 
         async function newGame() {
             clearSave();
-            document.getElementById('clue-bar').innerText = "Loading Mini...";
+            const clueBar = document.getElementById('clue-bar');
+            clueBar.innerText = window.t ? window.t('mini.status.loading') : "Loading Mini...";
+            clueBar.removeAttribute('data-i18n');
             document.getElementById('grid-container').innerHTML = '';
 
             try {
@@ -597,7 +604,9 @@ if (db.settings) {
 
             } catch (e) {
                 console.error(e);
-                document.getElementById('clue-bar').innerText = "Error loading puzzle.";
+                const clueBar = document.getElementById('clue-bar');
+                clueBar.innerText = window.t ? window.t('mini.status.error') : "Error loading puzzle.";
+                clueBar.removeAttribute('data-i18n');
             }
         }
 
@@ -704,8 +713,8 @@ if (db.settings) {
         function renderClueList() {
             const acrossContainer = document.getElementById('across-clues');
             const downContainer = document.getElementById('down-clues');
-            acrossContainer.innerHTML = '<h4>ACROSS</h4>';
-            downContainer.innerHTML = '<h4>DOWN</h4>';
+            acrossContainer.innerHTML = `<h4 data-i18n="mini.label.across">${window.t ? window.t('mini.label.across') : 'ACROSS'}</h4>`;
+            downContainer.innerHTML = `<h4 data-i18n="mini.label.down">${window.t ? window.t('mini.label.down') : 'DOWN'}</h4>`;
 
             const acrossClues = currentPuzzle.clues.Across;
             const downClues = currentPuzzle.clues.Down;
@@ -791,8 +800,11 @@ if (db.settings) {
                 clueNum = (startIdx % 5) + 1;
             }
 
-            const clueText = currentPuzzle.clues[direction][clueNum] || "(No Clue)";
-            document.getElementById('clue-bar').innerText = escapeHTML(`${clueNum} ${direction.toUpperCase()}: ${clueText}`);
+            const clueHeader = window.t ? window.t(`mini.label.direction.${direction.toLowerCase()}`) : direction.toUpperCase();
+            const clueText = currentPuzzle.clues[direction][clueNum] || (window.t ? window.t('mini.label.no_clue') : "(No Clue)");
+            const clueBar = document.getElementById('clue-bar');
+            clueBar.innerText = `${clueNum} ${clueHeader}: ${clueText}`;
+            clueBar.removeAttribute('data-i18n');
         }
 
         function getActiveWordIndices(idx, dir) {
@@ -885,17 +897,18 @@ if (db.settings) {
 
             const bar = document.getElementById('clue-bar');
             if (isEmpty) {
-                bar.innerText = "Grid is empty.";
+                bar.innerText = window.t ? window.t('mini.msg.empty') : "Grid is empty.";
             } else if (hasError) {
-                bar.innerText = "Errors found.";
+                bar.innerText = window.t ? window.t('mini.msg.errors') : "Errors found.";
             } else if (!isFull) {
-                bar.innerText = "Correct so far!";
+                bar.innerText = window.t ? window.t('mini.msg.correct') : "Correct so far!";
             } else {
-                bar.innerText = "PUZZLE SOLVED!";
+                bar.innerText = window.t ? window.t('mini.msg.solved') : "PUZZLE SOLVED!";
                 bar.style.backgroundColor = "black";
                 bar.style.color = "white";
                 clearSave();
             }
+            bar.removeAttribute('data-i18n');
             setTimeout(() => {
                 if (bar.style.backgroundColor !== "black") {
                     updateUI();

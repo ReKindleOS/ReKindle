@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -341,17 +342,17 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Crossword</span>
+            <span class="title-text" data-i18n="crossword.title">Crossword</span>
 
             <div class="controls">
-                <button class="sys-btn" onclick="openNewGameModal()">New</button>
-                <button class="sys-btn" onclick="solveSelectedWord()">Solve</button>
-                <button class="sys-btn" onclick="checkPuzzle()">Check</button>
+                <button class="sys-btn" onclick="openNewGameModal()" data-i18n="crossword.btn.new">New</button>
+                <button class="sys-btn" onclick="solveSelectedWord()" data-i18n="crossword.btn.solve">Solve</button>
+                <button class="sys-btn" onclick="checkPuzzle()" data-i18n="crossword.btn.check">Check</button>
             </div>
         </div>
 
         <div class="window-content">
-            <div id="clue-bar">Fetching Puzzle...</div>
+            <div id="clue-bar" data-i18n="crossword.label.fetching">Fetching Puzzle...</div>
 
             <div id="grid-container"></div>
 
@@ -361,17 +362,18 @@
                 <div class="key-row" id="row3"></div>
             </div>
         </div>
-        <div id="status-bar">Local Mode</div>
+        <div id="status-bar" data-i18n="crossword.status.local">Local Mode</div>
     </div>
 
     <!-- NEW GAME MODAL -->
     <div id="new-game-modal" class="modal-overlay">
         <div class="modal-box">
-            <h3>Start New Puzzle?</h3>
-            <p>Current progress will be lost.</p>
+            <h3 data-i18n="crossword.modal.new.title">Start New Puzzle?</h3>
+            <p data-i18n="crossword.modal.new.body">Current progress will be lost.</p>
             <div class="modal-btns">
-                <button class="sys-btn" onclick="confirmNewGame()">Yes</button>
-                <button class="sys-btn" onclick="closeNewGameModal()">Cancel</button>
+                <button class="sys-btn" onclick="confirmNewGame()" data-i18n="crossword.modal.new.yes">Yes</button>
+                <button class="sys-btn" onclick="closeNewGameModal()"
+                    data-i18n="crossword.modal.new.cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -391,38 +393,38 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         // --- STATE ---
         let currentPuzzle = null;
@@ -440,10 +442,14 @@ if (db.settings) {
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+                    const syncedMsg = window.t ? window.t('crossword.status.synced').replace('${email}', user.email) : "Synced: " + user.email;
+                    document.getElementById('status-bar').innerText = syncedMsg;
+                    document.getElementById('status-bar').removeAttribute('data-i18n');
                     loadProgress(); // Try to load cloud/local save
                 } else {
-                    document.getElementById('status-bar').innerText = "Guest Mode (Local)";
+                    const guestMsg = window.t ? window.t('crossword.status.guest') : "Guest Mode (Local)";
+                    document.getElementById('status-bar').innerText = guestMsg;
+                    document.getElementById('status-bar').removeAttribute('data-i18n');
                     loadProgress(); // Try to load local save
                 }
             });
@@ -538,14 +544,18 @@ if (db.settings) {
                 // If full, just select first available non-block
                 selectCell(currentPuzzle.grid.findIndex(c => c !== '.'));
             }
-            document.getElementById('clue-bar').innerText = "Game Resumed";
+            const resumeMsg = window.t ? window.t('crossword.label.resumed') : "Game Resumed";
+            document.getElementById('clue-bar').innerText = resumeMsg;
+            document.getElementById('clue-bar').removeAttribute('data-i18n');
         }
 
         // --- GAME LOGIC ---
 
         async function newGame() {
             clearSave();
-            document.getElementById('clue-bar').innerText = "Connecting to archives...";
+            const connectMsg = window.t ? window.t('crossword.label.connecting') : "Connecting to archives...";
+            document.getElementById('clue-bar').innerText = connectMsg;
+            document.getElementById('clue-bar').removeAttribute('data-i18n');
             document.getElementById('grid-container').innerHTML = '';
 
             try {
@@ -564,7 +574,9 @@ if (db.settings) {
 
             } catch (e) {
                 console.error(e);
-                document.getElementById('clue-bar').innerText = "Error. Retrying...";
+                const errorMsg = window.t ? window.t('crossword.label.error') : "Error. Retrying...";
+                document.getElementById('clue-bar').innerText = errorMsg;
+                document.getElementById('clue-bar').removeAttribute('data-i18n');
                 setTimeout(newGame, 1000);
             }
         }
@@ -718,8 +730,12 @@ if (db.settings) {
             // Update Clue Bar
             const startIdx = indices[0];
             const num = currentPuzzle.nums[startIdx];
-            const clueText = currentPuzzle.clues[direction][num] || "(No Clue)";
-            document.getElementById('clue-bar').innerText = `${num} ${direction.toUpperCase()}: ${clueText}`;
+            const noClue = window.t ? window.t('crossword.label.no_clue') : "(No Clue)";
+            const clueText = currentPuzzle.clues[direction][num] || noClue;
+
+            const dirLabel = window.t ? window.t(`crossword.direction.${direction}`) : direction.toUpperCase();
+            document.getElementById('clue-bar').innerText = `${num} ${dirLabel}: ${clueText}`;
+            document.getElementById('clue-bar').removeAttribute('data-i18n');
         }
 
         function getActiveWordIndices(idx, dir) {
@@ -833,17 +849,18 @@ if (db.settings) {
             }
 
             const bar = document.getElementById('clue-bar');
+            bar.removeAttribute('data-i18n');
             if (isEmpty) {
-                bar.innerText = "Grid is empty.";
+                bar.innerText = window.t ? window.t('crossword.label.empty') : "Grid is empty.";
                 setTimeout(() => updateUI(), 2000);
             } else if (hasError) {
-                bar.innerText = "Errors found. Keep trying.";
+                bar.innerText = window.t ? window.t('crossword.label.errors_found') : "Errors found. Keep trying.";
                 setTimeout(() => updateUI(), 2000);
             } else if (!isFull) {
-                bar.innerText = "Correct so far!";
+                bar.innerText = window.t ? window.t('crossword.label.correct_so_far') : "Correct so far!";
                 setTimeout(() => updateUI(), 2000);
             } else {
-                bar.innerText = "SUCCESS! PUZZLE SOLVED";
+                bar.innerText = window.t ? window.t('crossword.label.solved') : "SUCCESS! PUZZLE SOLVED";
                 bar.style.backgroundColor = "black";
                 bar.style.color = "white";
                 // Optionally allow them to keep the filled grid but effectively game over

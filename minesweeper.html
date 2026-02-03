@@ -10,6 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -341,10 +342,10 @@
             <div class="title-stripes"></div>
             <!-- Home Button -->
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text">Minesweeper</span>
+            <span class="title-text" data-i18n="ms.title">Minesweeper</span>
 
             <div class="header-controls">
-                <button class="sys-btn" onclick="openNewGameModal()">New</button>
+                <button class="sys-btn" onclick="openNewGameModal()" data-i18n="ms.btn.new">New</button>
             </div>
         </div>
 
@@ -367,29 +368,33 @@
                                 d="M14.7 13.3L10.7 9.3L3 17V21H7L14.7 13.3ZM19.6 3C19.2 3 18.8 3.1 18.5 3.4L16.9 5L12 6.1L10.9 5L9.5 6.4L11.6 8.5L4 16.1V22H9.9L17.5 14.4L19.6 16.5L21 15.1L19.9 14L21 9.1L22.6 7.5C23.1 7 23.1 6.1 22.6 5.6L20.4 3.4C20.2 3.2 19.9 3 19.6 3Z" />
                         </svg>
                     </span>
-                    <span id="mode-text">DIG</span>
+                    <span id="mode-text" data-i18n="ms.mode.dig">DIG</span>
                 </button>
             </div>
 
-            <div id="auth-status">Local Mode</div>
+            <div id="auth-status" data-i18n="ms.status.local">Local Mode</div>
         </div>
     </div>
 
     <!-- NEW GAME MODAL -->
     <div id="new-game-modal" class="modal-overlay">
         <div class="modal-box">
-            <h3>New Game</h3>
-            <p>Select Difficulty</p>
+            <h3 data-i18n="ms.modal.new_game">New Game</h3>
+            <p data-i18n="ms.label.select_difficulty">Select Difficulty</p>
             <div class="modal-btns">
-                <button class="modal-btn" onclick="startNewGame('easy')">Easy<br><span
+                <button class="modal-btn" onclick="startNewGame('easy')"><span
+                        data-i18n="ms.diff.easy">Easy</span><br><span
                         style="font-size:0.7rem; font-weight:normal;">10x10</span></button>
-                <button class="modal-btn" onclick="startNewGame('medium')">Medium<br><span
+                <button class="modal-btn" onclick="startNewGame('medium')"><span
+                        data-i18n="ms.diff.medium">Medium</span><br><span
                         style="font-size:0.7rem; font-weight:normal;">18x14</span></button>
-                <button class="modal-btn" onclick="startNewGame('hard')">Hard<br><span
+                <button class="modal-btn" onclick="startNewGame('hard')"><span
+                        data-i18n="ms.diff.hard">Hard</span><br><span
                         style="font-size:0.7rem; font-weight:normal;">24x20</span></button>
             </div>
             <div style="margin-top: 15px;">
-                <button class="modal-btn" style="width:100%" onclick="closeModal()">Cancel</button>
+                <button class="modal-btn" style="width:100%" onclick="closeModal()"
+                    data-i18n="ms.btn.cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -409,38 +414,38 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
 
-if (db.settings) {
+        if (db.settings) {
 
 
-    try {
+            try {
 
 
-        db.settings({
+                db.settings({
 
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
 
-            merge: true
+                    merge: true
 
 
-        });
+                });
 
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
 
-}
+        }
 
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         // --- CONFIG ---
         const DIFFICULTY = {
@@ -483,10 +488,14 @@ if (db.settings) {
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('auth-status').innerText = "Synced: " + user.email;
+                    const syncedMsg = window.t ? window.t('ms.status.synced').replace('${email}', user.email) : "Synced: " + user.email;
+                    document.getElementById('auth-status').innerText = syncedMsg;
+                    document.getElementById('auth-status').removeAttribute('data-i18n');
                     loadGame(true); // Load Cloud
                 } else {
-                    document.getElementById('auth-status').innerText = "Guest Mode (Local)";
+                    const guestMsg = window.t ? window.t('ms.status.guest') : "Guest Mode (Local)";
+                    document.getElementById('auth-status').innerText = guestMsg;
+                    document.getElementById('auth-status').removeAttribute('data-i18n');
                     loadGame(false); // Load Local
                 }
             });
@@ -719,13 +728,14 @@ if (db.settings) {
                 mode = 'flag';
                 modeBtn.classList.add('flag-mode');
                 document.getElementById('mode-icon').innerHTML = ICON_FLAG;
-                document.getElementById('mode-text').innerText = 'FLAG';
+                document.getElementById('mode-text').innerText = window.t ? window.t('ms.mode.flag') : 'FLAG';
             } else {
                 mode = 'dig';
                 modeBtn.classList.remove('flag-mode');
                 document.getElementById('mode-icon').innerHTML = ICON_DIG;
-                document.getElementById('mode-text').innerText = 'DIG';
+                document.getElementById('mode-text').innerText = window.t ? window.t('ms.mode.dig') : 'DIG';
             }
+            document.getElementById('mode-text').removeAttribute('data-i18n');
         }
 
         function handleInput(r, c) {
@@ -837,9 +847,9 @@ if (db.settings) {
             }
 
             if (win) {
-                mineDisplay.innerText = "WIN";
+                mineDisplay.innerText = window.t ? window.t('ms.status.win') : "WIN";
             } else {
-                mineDisplay.innerText = "DEAD";
+                mineDisplay.innerText = window.t ? window.t('ms.status.dead') : "DEAD";
             }
         }
 

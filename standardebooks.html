@@ -238,6 +238,7 @@
         }
     </style>
     <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
 </head>
 
 <body>
@@ -246,7 +247,7 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="location.href='index'">X</div>
-            <span class="title-text">Standard eBooks</span>
+            <span class="title-text" data-i18n="se.title">Standard eBooks</span>
         </div>
 
         <div class="window-content">
@@ -254,8 +255,8 @@
             </div>
         </div>
 
-        <div id="status-bar">Connecting to Standard Ebooks...</div>
-        <div id="toast">Download Started...</div>
+        <div id="status-bar" data-i18n="se.status.connecting">Connecting to Standard Ebooks...</div>
+        <div id="toast" data-i18n="se.msg.started">Download Started...</div>
     </div>
 
     <script>
@@ -271,28 +272,28 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-// Configure for Safari/Mac compatibility (fixes CORS errors)
+        // Configure for Safari/Mac compatibility (fixes CORS errors)
 
-if (db.settings) {
+        if (db.settings) {
 
-    try {
+            try {
 
-        db.settings({
+                db.settings({
 
-            experimentalForceLongPolling: true,
+                    experimentalForceLongPolling: true,
 
-            merge: true
+                    merge: true
 
-        });
+                });
 
-    } catch (e) { console.warn("Settings error:", e); }
+            } catch (e) { console.warn("Settings error:", e); }
 
-}
+        }
 
 
-// Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
+        // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
-// db.enablePersistence({ synchronizeTabs: true }) ...
+        // db.enablePersistence({ synchronizeTabs: true }) ...
 
         const auth = firebase.auth();
 
@@ -316,9 +317,9 @@ if (db.settings) {
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = "Logged In: " + user.email;
+                    document.getElementById('status-bar').innerText = window.t('status.synced') + user.email;
                 } else {
-                    document.getElementById('status-bar').innerText = "Guest Mode";
+                    document.getElementById('status-bar').innerText = window.t('se.status.guest');
                 }
             });
         };
@@ -349,18 +350,18 @@ if (db.settings) {
         // --- FEED LOGIC (XML + PROXY) ---
 
         async function loadFeed() {
-            renderLoading("Fetching new releases...");
+            renderLoading(window.t('se.msg.loading'));
 
             try {
                 // Fetch via robust chain
                 const text = await fetchWithProxy(RSS_FEED_URL);
-                if (!text) throw new Error("All proxies failed");
+                if (!text) throw new Error(window.t('se.error.proxies'));
 
                 parseAndRenderXML(text);
 
             } catch (e) {
                 console.error("Feed error", e);
-                renderError("Failed to load feed. Standard Ebooks may be unreachable.");
+                renderError(window.t('se.error.feed'));
             }
         }
 
@@ -386,7 +387,7 @@ if (db.settings) {
                 // Check for parser errors
                 const parserError = xmlDoc.getElementsByTagName("parsererror");
                 if (parserError.length > 0) {
-                    throw new Error("XML Parsing Error");
+                    throw new Error(window.t('se.error.xml_parse'));
                 }
 
                 // Use getElementsByTagName for better compatibility with Kindle browser
@@ -395,11 +396,11 @@ if (db.settings) {
                 if (items.length > 0) {
                     renderXmlBooks(items);
                 } else {
-                    throw new Error("No items found in XML");
+                    throw new Error(window.t('se.error.no_items'));
                 }
             } catch (e) {
                 console.error("Parse error", e);
-                renderError("Failed to parse feed. " + e.message);
+                renderError(window.t('se.error.parse') + e.message);
             }
         }
 
@@ -410,10 +411,10 @@ if (db.settings) {
 
             items.forEach(item => {
                 const titleEl = item.getElementsByTagName("title")[0];
-                const rawTitle = titleEl ? titleEl.textContent : "Unknown Title";
+                const rawTitle = titleEl ? titleEl.textContent : window.t('se.label.unknown_title');
 
                 let title = rawTitle;
-                let author = "Unknown Author";
+                let author = window.t('se.label.unknown_author');
 
                 // Parse Standard Ebooks format: "Title, by Author"
                 if (title.includes(", by ")) {
@@ -471,7 +472,7 @@ if (db.settings) {
                 }
             });
 
-            if (grid.children.length === 0) renderError("No compatible ebooks found.");
+            if (grid.children.length === 0) renderError(window.t('se.msg.none'));
         }
 
         // --- CARD COMPONENT ---
@@ -487,7 +488,7 @@ if (db.settings) {
                 <img src="${coverUrl || ''}" class="cover-img" onerror="this.style.backgroundColor='#ccc'">
                 <div class="book-title">${title}</div>
                 <div class="book-author">${author}</div>
-                <button class="download-btn" onclick='downloadBook("${dlUrl}", "${safeTitle}", "${safeAuthor}", this)'>Download</button>
+                <button class="download-btn" onclick='downloadBook("${dlUrl}", "${safeTitle}", "${safeAuthor}", this)'>${window.t('se.btn.download')}</button>
             `;
             container.appendChild(div);
         }
@@ -507,17 +508,17 @@ if (db.settings) {
         // --- DOWNLOAD & CLEAN LOGIC ---
         async function downloadBook(url, title, author, btnElement) {
             btnElement.disabled = true;
-            btnElement.innerText = "Saving...";
-            showToast(`Downloading ${title}...`);
+            btnElement.innerText = window.t('se.btn.saving');
+            showToast(`${window.t('common.loading')} ${title}...`);
 
             try {
                 // 1. Fetch File Blob using robust proxy chain
                 const blob = await fetchWithProxy(url, true);
 
-                if (!blob || blob.size < 1000) throw new Error("Invalid file received (too small)");
+                if (!blob || blob.size < 1000) throw new Error(window.t('se.error.invalid_file'));
 
                 // 2. CLEANUP STEP: Remove blank pages
-                showToast("Cleaning EPUB...");
+                showToast(window.t('se.msg.clean'));
                 const cleanedBlob = await cleanEpub(blob);
 
                 // 3. Convert to ArrayBuffer
@@ -560,14 +561,14 @@ if (db.settings) {
                     }
                 }
 
-                btnElement.innerText = "In Library";
-                showToast("Book Saved to Reader!");
+                btnElement.innerText = window.t('se.btn.saved');
+                showToast(window.t('se.msg.saved'));
 
             } catch (e) {
                 console.error(e);
-                btnElement.innerText = "Error";
+                btnElement.innerText = window.t('se.btn.error');
                 btnElement.disabled = false;
-                showToast("Error: " + e.message);
+                showToast(window.t('se.error.generic') + e.message);
             }
         }
 
@@ -579,7 +580,7 @@ if (db.settings) {
                 // 1. Find OPF file path
                 const containerXml = await zip.file("META-INF/container.xml").async("string");
                 const rootfileMatch = containerXml.match(/full-path="([^"]+)"/);
-                if (!rootfileMatch) throw new Error("Invalid Container XML");
+                if (!rootfileMatch) throw new Error(window.t('se.error.invalid_container'));
 
                 const opfPath = rootfileMatch[1];
                 let opfContent = await zip.file(opfPath).async("string");
