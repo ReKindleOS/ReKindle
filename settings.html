@@ -495,11 +495,13 @@
             <!-- PRO UPGRADE BANNER -->
             <div id="pro-upgrade-banner"
                 style="display:none; border:2px solid black; padding:15px; margin-bottom:20px; background:white; box-shadow: 4px 4px 0 black; text-align:center;">
-                <h3 style="margin-top:0;">Unlock ReKindle+</h3>
-                <p style="font-size:0.9rem; margin-bottom:15px;">Support ReKindle development and get access to
+                <h3 style="margin-top:0;" data-i18n="paywall.unlock">Unlock ReKindle+</h3>
+                <p style="font-size:0.9rem; margin-bottom:15px;" data-i18n="paywall.desc">Support ReKindle development
+                    and get access to
                     exclusive apps.</p>
                 <button class="sys-btn" onclick="window.location.href='pay.html'"
-                    style="width:100%; max-width:200px; background:black; color:white;">Get ReKindle+</button>
+                    style="width:100%; max-width:200px; background:black; color:white;" data-i18n="paywall.get">Get
+                    ReKindle+</button>
             </div>
 
             <!-- PRO STATUS BANNER -->
@@ -599,29 +601,32 @@
 
             <div class="setting-row">
                 <div class="setting-text">
-                    <strong>Language <span class="beta-badge">BETA</span></strong>
-                    <div class="setting-desc">System language.</div>
+                    <strong data-i18n="settings.manual_location">Manual Location</strong>
+                    <div class="setting-desc" id="location-display-desc">Automatic Detection</div>
                 </div>
-                <select id="language-select" onchange="saveLanguage()">
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="pt">Português</option>
-                    <option value="pl">Polski</option>
-                </select>
+                <button class="sys-btn" onclick="openLocationModal()" style="width: auto; padding: 5px 15px;"
+                    data-i18n="settings.set_location">Edit</button>
             </div>
 
             <div class="setting-row">
                 <div class="setting-text">
-                    <strong data-i18n="settings.manual_location">Manual Location</strong>
-                    <div class="setting-desc" data-i18n="settings.desc.manual_location">Override automatic detection.
-                    </div>
+                    <strong><span data-i18n="settings.language">Language</span> <span
+                            class="beta-badge">BETA</span></strong>
+                    <div class="setting-desc" data-i18n="settings.desc.language">System language.</div>
                 </div>
-                <button class="sys-btn" onclick="openLocationModal()" style="width: auto;"
-                    data-i18n="settings.set_location">Set Location</button>
-            </div>
-            <div id="location-display"
-                style="font-size: 0.8rem; color: #666; margin-bottom: 15px; text-align: right; padding-right: 15px;">
-                Current: Automatic
+                <select id="language-select" onchange="saveLanguage()">
+                    <option value="auto">Auto (Location)</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="pt">Português</option>
+                    <option value="pl">Polski</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="fr">Français</option>
+                    <option value="ru">Русский</option>
+                    <option value="zh">中文</option>
+                    <option value="vi">Tiếng Việt</option>
+                </select>
             </div>
 
             <div class="setting-row">
@@ -1138,7 +1143,7 @@
             document.getElementById('caldav-url').value = localStorage.getItem('rekindle_caldav_url') || '';
             document.getElementById('carddav-url').value = localStorage.getItem('rekindle_carddav_url') || '';
             document.getElementById('unit-system').value = localStorage.getItem('rekindle_unit_system') || 'auto';
-            document.getElementById('display-mode-select').value = localStorage.getItem('rekindle_display_mode') || 'eink';
+            document.getElementById('display-mode-select').value = localStorage.getItem('rekindle_display_mode') || 'led';
             const autoEnabled = (localStorage.getItem('rekindle_scale_auto') !== 'false');
             document.getElementById('toggle-scaling').checked = autoEnabled;
             document.getElementById('manual-scale-section').style.display = autoEnabled ? 'none' : 'block';
@@ -1603,41 +1608,68 @@
         }
 
         function setLocation(city) {
-            const locData = { name: city.name, lat: city.latitude, lon: city.longitude, zone: city.timezone };
+            // Sanitize data: Firebase doesn't accept 'undefined'
+            const locData = {
+                name: city.name || 'Unknown',
+                lat: city.latitude || 0,
+                lon: city.longitude || 0,
+                zone: city.timezone || null,
+                country_code: city.country_code || null
+            };
             localStorage.setItem('rekindle_location_manual', JSON.stringify(locData));
-            updateLocationDisplay();
-            closeLocationModal();
 
             if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: locData }, { merge: true });
+                // Ensure manualLocation fields are valid
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({
+                    manualLocation: JSON.parse(JSON.stringify(locData)) // double-safety to strip undefined if any crept in
+                }, { merge: true }).catch(err => console.error("Error saving location:", err));
+            }
+
+            // Reload if Auto settings need to update
+            const lang = localStorage.getItem('rekindle_language') || 'auto';
+            const units = localStorage.getItem('rekindle_unit_system') || 'auto';
+            if (lang === 'auto' || units === 'auto') {
+                setTimeout(() => location.reload(), 100);
+            } else {
+                updateLocationDisplay();
+                closeLocationModal();
             }
         }
 
         function clearLocation() {
             localStorage.removeItem('rekindle_location_manual');
-            updateLocationDisplay();
-            closeLocationModal();
+
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: firebase.firestore.FieldValue.delete() }, { merge: true });
+            }
+
+            // Reload if Auto settings need to update
+            const lang = localStorage.getItem('rekindle_language') || 'auto';
+            const units = localStorage.getItem('rekindle_unit_system') || 'auto';
+            if (lang === 'auto' || units === 'auto') {
+                setTimeout(() => location.reload(), 100);
+            } else {
+                updateLocationDisplay();
+                closeLocationModal();
             }
         }
 
         function updateLocationDisplay() {
             const saved = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            const el = document.getElementById('location-display');
+            const el = document.getElementById('location-display-desc');
             if (saved) {
-                el.innerText = `Current: ${saved.name}`;
+                el.innerText = `Manual: ${saved.name}`;
             } else {
                 try {
                     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
                     if (tz && tz.includes('/')) {
                         const city = tz.split('/').pop().replace(/_/g, ' ');
-                        el.innerText = `Current: Automatic (${city})`;
+                        el.innerText = `Automatic (${city})`;
                     } else {
-                        el.innerText = "Current: Automatic";
+                        el.innerText = "Automatic Detection";
                     }
                 } catch (e) {
-                    el.innerText = "Current: Automatic";
+                    el.innerText = "Automatic Detection";
                 }
             }
         }
@@ -1656,10 +1688,137 @@
             updateLocationDisplay();
 
             // Load Language
-            const lang = localStorage.getItem('rekindle_language') || 'en';
+            const lang = localStorage.getItem('rekindle_language') || 'auto';
             const langSelect = document.getElementById('language-select');
-            if (langSelect) langSelect.value = lang;
+            if (langSelect) {
+                langSelect.value = lang;
+
+                // Update Auto Label with Resolved Language
+                const autoOption = langSelect.querySelector('option[value="auto"]');
+                if (autoOption) {
+                    let resolvedLang = 'en'; // Default
+
+                    // 1. Try to get the actual applied language from HTML tag if available (fastest if i18n already ran)
+                    if (document.documentElement.lang) {
+                        resolvedLang = document.documentElement.lang;
+                    }
+
+                    // 2. If 'auto', we can re-calculate to be sure (in case i18n hasn't finished)
+                    if (lang === 'auto') {
+                        try {
+                            const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                            if (manualLoc && manualLoc.country_code) {
+                                const cc = manualLoc.country_code.toUpperCase();
+                                const esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
+                                const ptCountries = ['PT', 'BR'];
+                                const plCountries = ['PL'];
+                                const deCountries = ['DE', 'AT', 'CH', 'LI'];
+
+                                if (esCountries.indexOf(cc) !== -1) resolvedLang = 'es';
+                                else if (ptCountries.indexOf(cc) !== -1) resolvedLang = 'pt';
+                                else if (plCountries.indexOf(cc) !== -1) resolvedLang = 'pl';
+                                else if (deCountries.indexOf(cc) !== -1) resolvedLang = 'de';
+                                else resolvedLang = navigator.language.split('-')[0];
+                            } else {
+                                resolvedLang = navigator.language.split('-')[0];
+                            }
+                        } catch (e) {
+                            resolvedLang = navigator.language.split('-')[0];
+                        }
+                    } else {
+                        resolvedLang = lang;
+                    }
+
+                    const names = { en: 'English', es: 'Español', pt: 'Português', pl: 'Polski', de: 'Deutsch' };
+                    const name = names[resolvedLang] || resolvedLang.toUpperCase();
+                    autoOption.innerText = `Auto (${name})`;
+                }
+            }
+
+            // Load Unit System
+            const unitSystem = localStorage.getItem('rekindle_unit_system') || 'auto';
+            const unitSelect = document.getElementById('unit-system');
+            if (unitSelect) {
+                unitSelect.value = unitSystem;
+            }
+
+            // Initial Update
+            updateAutoLabels();
+
+            // Listen for i18n ready to update labels again with resolved language
+            document.addEventListener('rekindle:i18n:ready', function () {
+                updateAutoLabels();
+            });
         };
+
+        function updateAutoLabels() {
+            // Update Auto Label with Resolved Language
+            const langSelect = document.getElementById('language-select');
+            const lang = localStorage.getItem('rekindle_language') || 'auto';
+
+            if (langSelect) {
+                const autoOption = langSelect.querySelector('option[value="auto"]');
+                if (autoOption) {
+                    let resolvedLang = 'en'; // Default
+
+                    // 1. Try to get the actual applied language from HTML tag if available (fastest if i18n already ran)
+                    if (document.documentElement.lang) {
+                        resolvedLang = document.documentElement.lang;
+                    }
+
+                    // 2. If 'auto', we can re-calculate to be sure (in case i18n hasn't finished)
+                    if (lang === 'auto') {
+                        try {
+                            const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                            if (manualLoc && manualLoc.country_code) {
+                                const cc = manualLoc.country_code.toUpperCase();
+                                const esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
+                                const ptCountries = ['PT', 'BR'];
+                                const plCountries = ['PL'];
+                                const deCountries = ['DE', 'AT', 'CH', 'LI'];
+                                const itCountries = ['IT', 'SM', 'VA'];
+                                const frCountries = ['FR', 'BE', 'CA', 'CH', 'LU', 'MC', 'SN'];
+                                const ruCountries = ['RU', 'BY', 'KZ', 'KG'];
+                                const zhCountries = ['CN', 'TW', 'HK', 'SG'];
+                                const viCountries = ['VN'];
+
+                                if (esCountries.indexOf(cc) !== -1) resolvedLang = 'es';
+                                else if (ptCountries.indexOf(cc) !== -1) resolvedLang = 'pt';
+                                else if (plCountries.indexOf(cc) !== -1) resolvedLang = 'pl';
+                                else if (deCountries.indexOf(cc) !== -1) resolvedLang = 'de';
+                                else if (itCountries.indexOf(cc) !== -1) resolvedLang = 'it';
+                                else if (zhCountries.indexOf(cc) !== -1) resolvedLang = 'zh';
+                                else if (viCountries.indexOf(cc) !== -1) resolvedLang = 'vi';
+                                else if (frCountries.indexOf(cc) !== -1) resolvedLang = 'fr';
+                                else if (ruCountries.indexOf(cc) !== -1) resolvedLang = 'ru';
+                                else resolvedLang = navigator.language.split('-')[0];
+                            } else {
+                                resolvedLang = navigator.language.split('-')[0];
+                            }
+                        } catch (e) {
+                            resolvedLang = navigator.language.split('-')[0];
+                        }
+                    } else {
+                        resolvedLang = lang;
+                    }
+
+                    const names = { en: 'English', es: 'Español', pt: 'Português', pl: 'Polski', de: 'Deutsch', it: 'Italiano', fr: 'Français', ru: 'Русский', zh: '中文', vi: 'Tiếng Việt' };
+                    const name = names[resolvedLang] || resolvedLang.toUpperCase();
+                    autoOption.innerText = `Auto (${name})`;
+                }
+            }
+
+            // Update Auto Label with Resolved Unit
+            const unitSelect = document.getElementById('unit-system');
+            if (unitSelect) {
+                const autoUnitOption = unitSelect.querySelector('option[value="auto"]');
+                if (autoUnitOption && window.rekindleGetUnitSystem) {
+                    const resolved = window.rekindleGetUnitSystem();
+                    const label = resolved === 'imperial' ? 'Imperial' : 'Metric';
+                    autoUnitOption.innerText = `Auto (${label})`;
+                }
+            }
+        }
 
         function loadCloudSettings() {
             db.collection('users').doc(currentUser.uid).collection('settings').doc('general').get().then(doc => {
@@ -1751,7 +1910,7 @@
                 if (doc.exists) {
                     const data = doc.data();
                     if (data.language) {
-                        const current = localStorage.getItem('rekindle_language') || 'en';
+                        const current = localStorage.getItem('rekindle_language') || 'auto';
                         if (data.language !== current) {
                             localStorage.setItem('rekindle_language', data.language);
                             if (window.rekindleSetLanguage) {
