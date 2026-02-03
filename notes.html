@@ -447,6 +447,16 @@
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
 
+            // Check for incoming note action
+            let pendingNoteContent = null;
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('action') === 'new_note') {
+                pendingNoteContent = localStorage.getItem('rekindle_new_note_content');
+                localStorage.removeItem('rekindle_new_note_content');
+                // Clean URL
+                window.history.replaceState({}, document.title, "notes.html");
+            }
+
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
@@ -457,6 +467,10 @@
                 } else {
                     document.getElementById('status-bar').innerText = window.t('status.guest', "Guest Mode (Local)");
                     loadLocalNotes();
+                }
+
+                if (pendingNoteContent) {
+                    createNote(pendingNoteContent);
                 }
             });
         };
@@ -604,11 +618,11 @@
             });
         }
 
-        function createNote() {
+        function createNote(initialContent = '') {
             const newNote = {
                 id: currentUser ? db.collection('users').doc().id : Date.now().toString(),
                 title: '',
-                content: '',
+                content: initialContent || '',
                 updated: Date.now()
             };
 
