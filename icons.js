@@ -65,7 +65,6 @@ const APPS = [
         id: 'decide',
         name: 'Decider',
         cat: 'tools',
-        newBadge: true,
         icon: '<circle cx="16" cy="18" r="12" fill="white" stroke="black" stroke-width="2"/><path d="M16 6 L16 30 M4 18 L28 18 M7.5 9.5 L24.5 26.5 M24.5 9.5 L7.5 26.5" stroke="black" stroke-width="1"/><path d="M16 2 L13 6 H19 Z" fill="black"/><circle cx="16" cy="18" r="3" fill="black"/>'
     },
     {
@@ -314,10 +313,18 @@ const APPS = [
         id: 'rssreader',
         name: 'RSS Reader',
         cat: 'lifestyle',
-        featured: true,
-        featuredOrder: 2,
         desc: 'Stay in the know',
         icon: '<circle cx="6" cy="26" r="3" fill="black"/><path d="M6 18 A 8 8 0 0 1 14 26 M6 10 A 16 16 0 0 1 22 26" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>'
+    },
+    {
+        id: 'substack',
+        name: 'Substack',
+        cat: 'lifestyle',
+        plus: true,
+        featured: true,
+        featuredOrder: 2,
+        desc: 'Stacks on, Stacks off',
+        icon: '<rect x="6" y="5" width="20" height="4" fill="black"/><rect x="6" y="11" width="20" height="4" fill="black"/><path d="M6 17 h20 v11 l-10 -6 l-10 6 z" fill="black"/>'
     },
     {
         id: 'mindmap',
@@ -330,7 +337,6 @@ const APPS = [
         id: 'flipbook',
         name: 'Flipbook',
         cat: 'lifestyle',
-        newBadge: true,
         plus: true,
         icon: '<rect x="8" y="5" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="9" width="20" height="18" fill="white" stroke="black" stroke-width="2"/><circle cx="14" cy="15" r="2" fill="black"/><line x1="14" y1="17" x2="14" y2="21" stroke="black" stroke-width="1.5"/><path d="M11 19 l6 -1" stroke="black" stroke-width="1.5"/><path d="M11 25 l3 -4 l3 4" stroke="black" stroke-width="1.5" fill="none"/>',
         desc: 'Create pixel animations.'
@@ -585,6 +591,7 @@ const APPS = [
         id: 'pet',
         name: 'Pet',
         cat: 'games',
+        beta: true,
         filled: true,
         icon: '<g transform="translate(2.27, 2.27) scale(2)" shape-rendering="crispEdges"><g fill="black"><rect x="12.75" y="11.76" width="0.98" height="0.98"/><rect x="12.75" y="10.78" width="0.98" height="0.98"/><rect x="11.77" y="12.74" width="0.98" height="0.98"/><rect x="10.79" y="12.74" width="0.98" height="0.98"/><rect x="8.83" y="11.76" width="0.98" height="0.98"/><rect x="9.81" y="11.76" width="0.98" height="0.98"/><rect x="7.85" y="12.74" width="0.98" height="0.98"/><rect x="5.88" y="12.74" width="0.98" height="0.98"/><rect x="6.86" y="12.74" width="0.99" height="0.98"/><rect x="4.9" y="11.76" width="0.98" height="0.98"/><rect x="5.88" y="11.76" width="0.98" height="0.98"/><rect x="5.88" y="10.78" width="0.98" height="0.98"/><rect x="6.86" y="10.78" width="0.99" height="0.98"/><rect x="7.85" y="9.8" width="0.98" height="0.98"/><rect x="6.86" y="9.8" width="0.99" height="0.98"/><rect x="8.83" y="8.82" width="0.98" height="0.98"/><rect x="9.81" y="8.82" width="0.98" height="0.98"/><rect x="10.79" y="7.84" width="0.98" height="0.98"/><rect x="11.77" y="6.86" width="0.98" height="0.98"/><rect x="11.77" y="5.88" width="0.98" height="0.98"/><rect x="11.77" y="4.9" width="0.98" height="0.98"/><rect x="11.77" y="3.92" width="0.98" height="0.98"/><rect x="11.77" y="2.94" width="0.98" height="0.98"/><rect x="10.79" y="1.96" width="0.98" height="0.98"/><rect x="9.81" y="0.98" width="0.98" height="0.98"/><rect x="8.83" y="1.96" width="0.98" height="0.98"/><rect x="4.9" y="1.96" width="0.98" height="0.98"/><rect x="7.85" width="0.98" height="0.98"/><rect x="8.83" width="0.98" height="0.98"/><rect x="5.88" width="0.98" height="0.98"/><rect x="4.9" width="0.98" height="0.98"/><rect x="6.86" width="0.99" height="0.98"/><rect x="3.92" y="0.98" width="0.98" height="0.98"/><rect x="7.85" y="8.82" width="0.98" height="0.98"/><rect x="5.88" y="8.82" width="0.98" height="0.98"/><rect x="4.9" y="8.82" width="0.98" height="0.98"/><rect x="6.86" y="8.82" width="0.99" height="0.98"/><rect x="3.92" y="7.84" width="0.98" height="0.98"/><rect x="2.94" y="6.86" width="0.98" height="0.98"/><rect x="2.94" y="5.88" width="0.98" height="0.98"/><rect x="1.96" y="5.88" width="0.98" height="0.98"/><rect x="0.98" y="5.88" width="0.98" height="0.98"/><rect x="1.96" y="1.96" width="0.98" height="0.98"/><rect x="2.94" y="1.96" width="0.98" height="0.98"/><rect x="0.98" y="1.96" width="0.98" height="0.98"/><rect y="2.94" width="0.98" height="0.98"/><rect x="1.96" y="3.92" width="0.98" height="0.98"/><rect x="2.94" y="3.92" width="0.98" height="0.98"/><rect x="0.98" y="3.92" width="0.98" height="0.98"/><rect y="4.9" width="0.98" height="0.98"/></g><polygon points="2.94 5.88 3.92 5.88 3.92 7.84 4.9 7.84 4.9 8.82 10.79 8.82 10.79 7.84 11.77 7.84 11.77 2.94 10.79 2.94 10.79 1.96 9.81 1.96 9.81 2.94 8.83 2.94 8.83 1.96 9.81 1.96 9.81 0.98 8.83 0.98 7.85 0.98 6.86 0.98 5.88 0.98 4.9 0.98 4.9 1.96 5.88 1.96 5.88 2.94 4.9 2.94 4.9 1.96 3.92 1.96 3.92 2.94 2.94 2.94 1.96 2.94 0.98 2.94 0.98 3.92 1.96 3.92 2.94 3.92 3.92 3.92 3.92 4.9 2.94 4.9 1.96 4.9 0.98 4.9 0.98 5.88 1.96 5.88 2.94 5.88" fill="white"/></g>',
         viewBox: '0 0 32 32'
@@ -593,6 +600,7 @@ const APPS = [
         id: 'mario',
         name: 'Mario',
         cat: 'games',
+        beta: true,
         filled: false,
         icon: '<svg viewBox="0 200 600 550"><path d="M263 207v16h-36v65h-36v32H12v65h35v33h36v32h36v65h-18l-18 1v64H65l-18 1v64H30c-17 0-17 0-18 2v62h107v-31h72v-33h72v-32h72v32h72v-32h-18l-17-1-1-16v-16h-72l-72 1v32h-36v32h-36l-35 1-1 16v16H47v-33h36v-65h36v-65h36v-65h-36v-32H83v-16l-1-17H48v-32h180v-65h36v-65h72v64l18 1h18v65h181v32h-36v33h-36v32h-36v65h36v65h36v65h36v16l-1 16-35 1h-36v-16l-1-17h-35l-36 1v31l36 1h36v31h54l53-1 1-29-1-32c0-2 0-2-17-2h-18v-32l-1-32-17-1h-18v-32l-1-32-17-1h-18v-65h36v-32h35l1-17v-16h35l1-32v-32l-91-1h-90v-32h-36v-65h-36v-32h-72v16z" fill="black"/><path d="m228 386-1 49v47l18 1h18v-98h-17l-18 1zm108 0-1 49v47l18 1h18v-98h-17l-18 1z" fill="black"/></svg>'
     },

@@ -25,22 +25,57 @@ service cloud.firestore {
 
     // --- Collection Rules ---
 
-    // 1. USER PRIVATE DATA (e.g., settings, notes)
+    // Helper to check if user is Pro (has valid proExpiresAt timestamp)
+    function isProUser() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userData != null && 
+             'proExpiresAt' in userData && 
+             userData.proExpiresAt != null &&
+             userData.proExpiresAt > request.time;
+    }
+
+    // 1. USER PRIVATE DATA (e.g., settings, notes, substack_sid)
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'ukiyo@rekindle.ink');
       
-      // Allow write generally, BUT block writes to 'isPro' and 'proExpiresAt' by the user.
-      allow create: if request.auth != null && request.auth.uid == userId;
+      // Allow create, but strictly BLOCK setting 'isPro', 'proExpiresAt', or 'substack_sid' during creation.
+      allow create: if request.auth != null && 
+                       request.auth.uid == userId &&
+                       !request.resource.data.keys().hasAny(['isPro', 'proExpiresAt', 'substack_sid']);
       
+      // Allow update, but:
+      // - BLOCK modifying 'isPro' or 'proExpiresAt' (unless admin)
+      // - BLOCK modifying 'substack_sid' unless user is Pro
       allow update: if request.auth != null && (
-                      (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']))
-                      || request.auth.token.email == 'ukiyo@rekindle.ink'
+                      // Admin can update anything
+                      request.auth.token.email == 'ukiyo@rekindle.ink'
+                      ||
+                      // Regular user update rules
+                      (request.auth.uid == userId && 
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPro', 'proExpiresAt']) &&
+                       // If changing substack_sid, must be Pro
+                       (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['substack_sid']) || isProUser())
+                      )
                     );
 
       allow delete: if request.auth != null && request.auth.uid == userId;
 
-      // Subcollections
-      match /{document=**} {
+      // PRO-ONLY SUBCOLLECTION: Contains sensitive data only Pro users can access
+      match /pro_data/{docId} {
+        allow read, write: if request.auth != null && 
+                              request.auth.uid == userId && 
+                              isProUser();
+      }
+
+      // Other known subcollections (general access for authenticated owner)
+      // NOTE: pro_data is handled above with stricter rules
+      match /settings/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /tasks/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /notes/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
