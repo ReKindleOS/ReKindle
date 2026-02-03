@@ -590,6 +590,14 @@ const APPS = [
         viewBox: '0 0 32 32'
     },
     {
+        id: 'mario',
+        name: 'Mario',
+        cat: 'games',
+        filled: false,
+        icon: '<svg viewBox="0 200 600 550"><path d="M263 207v16h-36v65h-36v32H12v65h35v33h36v32h36v65h-18l-18 1v64H65l-18 1v64H30c-17 0-17 0-18 2v62h107v-31h72v-33h72v-32h72v32h72v-32h-18l-17-1-1-16v-16h-72l-72 1v32h-36v32h-36l-35 1-1 16v16H47v-33h36v-65h36v-65h36v-65h-36v-32H83v-16l-1-17H48v-32h180v-65h36v-65h72v64l18 1h18v65h181v32h-36v33h-36v32h-36v65h36v65h36v65h36v16l-1 16-35 1h-36v-16l-1-17h-35l-36 1v31l36 1h36v31h54l53-1 1-29-1-32c0-2 0-2-17-2h-18v-32l-1-32-17-1h-18v-32l-1-32-17-1h-18v-65h36v-32h35l1-17v-16h35l1-32v-32l-91-1h-90v-32h-36v-65h-36v-32h-72v16z" fill="black"/><path d="m228 386-1 49v47l18 1h18v-98h-17l-18 1zm108 0-1 49v47l18 1h18v-98h-17l-18 1z" fill="black"/></svg>'
+    },
+
+    {
         id: 'bindings',
         name: 'Connections',
         es6: true,
