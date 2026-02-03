@@ -91,7 +91,7 @@
     var DISPLAY_MODE_KEY = 'rekindle_display_mode'; // 'eink' (default), 'led'
 
     function getDisplayMode() {
-        return localStorage.getItem(DISPLAY_MODE_KEY) || 'eink';
+        return localStorage.getItem(DISPLAY_MODE_KEY) || 'led';
     }
 
     // --- SCALING ---
@@ -147,13 +147,15 @@
         var css = '';
 
         if (rotation === '90') {
-            css = 'html, body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; } ' +
-                'body { transform: rotate(90deg); transform-origin: top left; left: 100vw; }';
+            css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
+                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; ' +
+                'transform: rotate(90deg); transform-origin: top left; left: 100vw; }';
         } else if (rotation === '180') {
             css = 'body { transform: rotate(180deg); transform-origin: center center; }';
         } else if (rotation === '270') {
-            css = 'html, body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; } ' +
-                'body { transform: rotate(270deg); transform-origin: top left; top: 100vh; }';
+            css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
+                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; ' +
+                'transform: rotate(270deg); transform-origin: top left; top: 100vh; }';
         }
 
         style.textContent = css;
