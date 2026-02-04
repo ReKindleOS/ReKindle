@@ -218,6 +218,7 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 6,
+        newBadge: true,
         desc: 'Make connections',
         icon: '<g transform="translate(0, 3)"><rect x="16" y="3" width="2" height="9" fill="black"/><path d="M12 3 L2 12 H5 V22 H19 V12 H22 L12 3 Z" fill="white" stroke="black" stroke-width="2"/><path d="M2 22 H22" stroke="black" stroke-width="2"/></g>'
     },
@@ -227,6 +228,7 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 5,
+        newBadge: true,
         desc: 'Discuss anything!',
         icon: '<g transform="translate(0, 3)"><path d="M3 3 h18 a2 2 0 0 1 2 2 v6 a2 2 0 0 1 -2 2 h-6 l-3 3 l-3 -3 h-6 a2 2 0 0 1 -2 -2 v-6 a2 2 0 0 1 2 -2 z" fill="white" stroke="black" stroke-width="2"/><circle cx="5" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M2 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="19" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M16 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="20" r="3" fill="white" stroke="black" stroke-width="2"/><path d="M9 25 q3 -4 6 0" fill="white" stroke="black" stroke-width="2"/></g>'
     },
@@ -342,6 +344,7 @@ const APPS = [
         featured: true,
         filled: true,
         featuredOrder: 2,
+        newBadge: true,
         desc: 'Stacks on, Stacks off',
         icon: '<rect x="6" y="5" width="20" height="4" fill="black"/><rect x="6" y="11" width="20" height="4" fill="black"/><path d="M6 17 h20 v11 l-10 -6 l-10 6 z" fill="black"/>'
     },
