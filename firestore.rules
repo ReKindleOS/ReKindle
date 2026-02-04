@@ -146,6 +146,40 @@ service cloud.firestore {
       match /chatLimits/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+      match /topic_states/{topicId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // --- NEIGHBOURHOOD APP ---
+    match /users_public/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // --- TOPICS APP ---
+    match /topics/{topicId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && 
+                       request.resource.data.authorId == request.auth.uid &&
+                       isValidText(request.resource.data.title);
+      // Allow update if author (to edit) or ANY user (to increment commentCount via transaction)
+      allow update: if request.auth != null && (
+        (resource.data.authorId == request.auth.uid) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount', 'lastActive']))
+      );
+      allow delete: if request.auth != null && (resource.data.authorId == request.auth.uid || request.auth.token.email == 'ukiyo@rekindle.ink');
+    }
+
+    match /topic_comments/{topicId} {
+      allow read: if request.auth != null;
+      match /{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && 
+                         request.resource.data.authorId == request.auth.uid &&
+                         isValidText(request.resource.data.body);
+        allow delete: if request.auth != null && (resource.data.authorId == request.auth.uid || request.auth.token.email == 'ukiyo@rekindle.ink');
+      }
     }
 
     // 2. KINDLECHAT
