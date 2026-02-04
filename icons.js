@@ -213,6 +213,24 @@ const APPS = [
         icon: '<path d="M4 6 h14 v12 h-4 l-4 4 v-4 h-6 z" fill="white" stroke="black" stroke-width="2"/><path d="M14 14 h14 v12 h-6 l-4 4 v-4 h-4 z" fill="black" stroke="white" stroke-width="2"/>'
     },
     {
+        id: 'neighbourhood',
+        name: 'Neighbourhood (Beta)',
+        cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 6,
+        desc: 'Make connections',
+        icon: '<g transform="translate(0, 3)"><rect x="16" y="3" width="2" height="9" fill="black"/><path d="M12 3 L2 12 H5 V22 H19 V12 H22 L12 3 Z" fill="white" stroke="black" stroke-width="2"/><path d="M2 22 H22" stroke="black" stroke-width="2"/></g>'
+    },
+    {
+        id: 'topics',
+        name: 'Topics',
+        cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 5,
+        desc: 'Discuss anything!',
+        icon: '<g transform="translate(0, 3)"><path d="M3 3 h18 a2 2 0 0 1 2 2 v6 a2 2 0 0 1 -2 2 h-6 l-3 3 l-3 -3 h-6 a2 2 0 0 1 -2 -2 v-6 a2 2 0 0 1 2 -2 z" fill="white" stroke="black" stroke-width="2"/><circle cx="5" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M2 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="19" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M16 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="20" r="3" fill="white" stroke="black" stroke-width="2"/><path d="M9 25 q3 -4 6 0" fill="white" stroke="black" stroke-width="2"/></g>'
+    },
+    {
         id: 'libby',
         name: 'Libby',
         cat: 'lifestyle',
@@ -242,7 +260,7 @@ const APPS = [
         featured: true,
         featuredOrder: 1,
         desc: 'Free reading!',
-        icon: '<path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="20" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="20" y2="18" stroke="black" stroke-width="2"/>'
+        icon: '<g transform="translate(0, 2)"><path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="20" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="20" y2="18" stroke="black" stroke-width="2"/></g>'
     },
     {
         id: 'interactive',
@@ -322,6 +340,7 @@ const APPS = [
         cat: 'lifestyle',
         plus: true,
         featured: true,
+        filled: true,
         featuredOrder: 2,
         desc: 'Stacks on, Stacks off',
         icon: '<rect x="6" y="5" width="20" height="4" fill="black"/><rect x="6" y="11" width="20" height="4" fill="black"/><path d="M6 17 h20 v11 l-10 -6 l-10 6 z" fill="black"/>'
