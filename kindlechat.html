@@ -3,7 +3,6 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KindleChat</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -1284,6 +1283,69 @@
                     // Run cleanup in background (non-blocking)
                     cleanupEmptyChats();
                     loadRooms();
+
+                    // DEEP LINK: Open DM if requested
+                    var params = new URLSearchParams(window.location.search);
+                    var chatWithUid = params.get('chat_with_uid');
+                    var chatWithName = params.get('name') || params.get('chat_with');
+
+                    if (chatWithUid && chatWithUid !== currentUser.uid) {
+                        // OPTIMIZED: Try O(1) fetch with deterministic Room ID
+                        var uids = [currentUser.uid, chatWithUid].sort();
+                        var roomId = "dm_" + uids[0] + "_" + uids[1];
+
+                        db.collection('rooms').doc(roomId).get().then(function (doc) {
+                            if (doc.exists) {
+                                switchRoom(roomId, chatWithName || "Chat");
+                                window.history.replaceState({}, document.title, window.location.pathname);
+                            } else {
+                                // Fallback: Check if old-style DM exists by name
+                                handleLegacyDeepLink(chatWithName, chatWithUid);
+                            }
+                        })['catch'](function (err) {
+                            console.error("Error fetching room:", err);
+                            handleLegacyDeepLink(chatWithName, chatWithUid);
+                        });
+                    } else if (chatWithName && chatWithName !== currentUsername) {
+                        handleLegacyDeepLink(chatWithName, null);
+                    }
+
+                    function handleLegacyDeepLink(targetName, targetUid) {
+                        if (!targetName) return;
+                        db.collection('rooms')
+                            .where('participants', 'array-contains', currentUsername)
+                            .where('type', '==', 'dm')
+                            .get()
+                            .then(function (snapshot) {
+                                var foundRoomId = null;
+                                snapshot.forEach(function (doc) {
+                                    var data = doc.data();
+                                    if (data.participants.includes(targetName)) {
+                                        foundRoomId = doc.id;
+                                    }
+                                });
+
+                                if (foundRoomId) {
+                                    switchRoom(foundRoomId, targetName);
+                                } else if (targetUid) {
+                                    // NO existing room found: Create new DM with deterministic ID
+                                    var uids = [currentUser.uid, targetUid].sort();
+                                    var newRoomId = "dm_" + uids[0] + "_" + uids[1];
+                                    db.collection('rooms').doc(newRoomId).set({
+                                        type: 'dm',
+                                        participants: [currentUsername, targetName],
+                                        participantUids: [currentUser.uid, targetUid],
+                                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                                        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp()
+                                    }).then(function () {
+                                        switchRoom(newRoomId, targetName);
+                                    });
+                                }
+                                window.history.replaceState({}, document.title, window.location.pathname);
+                            })['catch'](function (err) {
+                                console.error("Legacy deep link error:", err);
+                            });
+                    }
                 } else {
                     currentUser = null;
                     document.getElementById('app-layout').style.display = 'none';
