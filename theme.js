@@ -449,6 +449,15 @@
     }
     window.rekindleApplyDefaultFullscreen = applyDefaultFullscreen;
 
+    // --- CACHE MANAGEMENT ---
+    function clearServiceWorkerCache() {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            console.log('Sending CLEAR_CACHE message to Service Worker...');
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+        }
+    }
+    window.clearServiceWorkerCache = clearServiceWorkerCache;
+
     // --- SERVICE WORKER REGISTRATION & AUTO-RELOAD ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
