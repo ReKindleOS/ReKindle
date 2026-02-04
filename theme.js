@@ -449,7 +449,26 @@
     }
     window.rekindleApplyDefaultFullscreen = applyDefaultFullscreen;
 
-    // Timezone Exports REMOVED (Moved to time.js)
+    // --- SERVICE WORKER REGISTRATION & AUTO-RELOAD ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js')
+                .then(function (registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(function (err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+        });
 
+        // Forced Update Logic: Reload when a new service worker takes control
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (refreshing) return;
+            refreshing = true;
+            console.log('Service Worker: Controller changed. Reloading page...');
+            window.location.reload();
+        });
+    }
 
 })();
