@@ -651,8 +651,13 @@
         <!-- GALLERY SCREEN -->
         <div id="screen-gallery" class="screen active">
             <div class="gallery-header">
-                <span style="font-weight:bold; margin-left:10px;" data-i18n="pixel.gallery.title">My Drawings</span>
-                <!-- Stats or simple info -->
+                <div style="display:flex; gap:15px; margin-left:10px;">
+                    <span id="tab-my" onclick="switchGalleryTab('my')"
+                        style="font-weight:bold; cursor:pointer; text-decoration:underline;"
+                        data-i18n="pixel.gallery.title">My Drawings</span>
+                    <span id="tab-other" onclick="switchGalleryTab('other')" style="cursor:pointer; color:#666;"
+                        data-i18n="pixel.gallery.saved">Saved Drawings</span>
+                </div>
             </div>
             <div id="gallery-grid" class="gallery-grid">
                 <!-- Injected via JS -->
@@ -741,10 +746,14 @@
         let lastDrawnCol = -1;
 
         // Auto-save timer
+        // Auto-save timer
         let autoSaveTimer = null;
 
         // Manifest: Array of { id, created, modified, size, thumbnail? }
         let manifest = [];
+        let manifestOthers = [];
+        let currentGalleryTab = 'my'; // 'my' or 'other'
+        let isReadOnly = false;
 
         // Firebase variables
         let db, auth, currentUser = null;
@@ -924,6 +933,7 @@
                     user: currentUsername,
                     text: window.t ? window.t('pixel.status.shared') : 'Shared a pixel art!',
                     pixel_art: dataUrl,
+                    grid_data: JSON.stringify(grid), // Send Grid Data for others to save
                     is_pixel_art: true,
                     isPro: isPro,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
@@ -959,28 +969,28 @@
         }
 
         // --- MANIFEST & DATA ---
+        // --- MANIFEST & DATA ---
         async function loadManifest() {
             const key = 'pixel_manifest';
-
-            // Try Cloud first if logged in
+            // Load My Manifest
             if (currentUser) {
                 try {
                     const doc = await db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest').get();
                     if (doc.exists) {
                         manifest = doc.data().items || [];
                         localStorage.setItem(key, JSON.stringify(manifest));
-                        return;
                     }
                 } catch (e) { console.error("Cloud manifest load failed", e); }
             }
-
-            // Fallback to local
-            const local = localStorage.getItem(key);
-            if (local) {
-                try { manifest = JSON.parse(local); } catch (e) { manifest = []; }
-            } else {
-                manifest = [];
+            if (!manifest.length) {
+                const local = localStorage.getItem(key);
+                if (local) { try { manifest = JSON.parse(local); } catch (e) { manifest = []; } }
             }
+
+            // Load Others Manifest (Local Only for now)
+            const otherKey = 'pixel_manifest_others';
+            const localOther = localStorage.getItem(otherKey);
+            if (localOther) { try { manifestOthers = JSON.parse(localOther); } catch (e) { manifestOthers = []; } }
         }
 
         async function saveManifest() {
@@ -992,6 +1002,10 @@
                     await db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest').set({ items: manifest });
                 } catch (e) { console.error("Cloud manifest save failed", e); }
             }
+        }
+
+        function saveManifestOthers() {
+            localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers));
         }
 
         // Migrate old singular keys (pixel_art_16, pixel_art_32, etc) to new system
@@ -1061,15 +1075,54 @@
         }
 
         // --- GALLERY UI ---
+        function switchGalleryTab(tab) {
+            currentGalleryTab = tab;
+
+            // UI Update
+            const myTab = document.getElementById('tab-my');
+            const otherTab = document.getElementById('tab-other');
+
+            if (tab === 'my') {
+                myTab.style.fontWeight = 'bold';
+                myTab.style.textDecoration = 'underline';
+                myTab.style.color = 'black';
+                otherTab.style.fontWeight = 'normal';
+                otherTab.style.textDecoration = 'none';
+                otherTab.style.color = '#666';
+            } else {
+                otherTab.style.fontWeight = 'bold';
+                otherTab.style.textDecoration = 'underline';
+                otherTab.style.color = 'black';
+                myTab.style.fontWeight = 'normal';
+                myTab.style.textDecoration = 'none';
+                myTab.style.color = '#666';
+            }
+
+            renderGallery();
+        }
+
         function renderGallery() {
             const gridEl = document.getElementById('gallery-grid');
-            // Keep the "New" button (first child)
-            const newBtn = gridEl.firstElementChild;
             gridEl.innerHTML = '';
-            gridEl.appendChild(newBtn);
+
+            const listToUse = (currentGalleryTab === 'my') ? manifest : manifestOthers;
+
+            // Only show New button on My Drawings
+            if (currentGalleryTab === 'my') {
+                const newDiv = document.createElement('div');
+                newDiv.className = 'gallery-item new-btn';
+                newDiv.onclick = () => openModal('new-drawing-modal');
+                newDiv.innerHTML = '<span>+</span><div class="item-info" data-i18n="pixel.gallery.new">New Drawing</div>';
+                gridEl.appendChild(newDiv);
+            }
 
             // Sort by modified desc
-            const sorted = [...manifest].sort((a, b) => b.modified - a.modified);
+            const sorted = [...listToUse].sort((a, b) => b.modified - a.modified);
+
+            if (currentGalleryTab === 'other' && sorted.length === 0) {
+                gridEl.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#666;">No saved drawings from others.<br>Save them from KindleChat!</div>';
+                return;
+            }
 
             sorted.forEach(item => {
                 const el = document.createElement('div');
@@ -1088,7 +1141,9 @@
 
                 const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
                 const title = item.title || untitledText;
-                const dateStr = new Date(item.modified).toLocaleDateString();
+
+                // For 'Other', delete button behavior might be same (delete local copy)
+                // Rename allowed? Sure.
 
                 el.innerHTML = `
                     <div class="delete-btn action-btn" onclick="deleteDrawing('${item.id}')">X</div>
@@ -1135,12 +1190,17 @@
         }
 
         function performDelete(id) {
-            manifest = manifest.filter(m => m.id !== id);
-            saveManifest();
-            localStorage.removeItem(`pixel_drawing_${id}`);
-
-            if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('pixel_drawings').doc(id).delete();
+            if (currentGalleryTab === 'my') {
+                manifest = manifest.filter(m => m.id !== id);
+                saveManifest();
+                localStorage.removeItem(`pixel_drawing_${id}`);
+                if (currentUser) {
+                    db.collection('users').doc(currentUser.uid).collection('pixel_drawings').doc(id).delete();
+                }
+            } else {
+                manifestOthers = manifestOthers.filter(m => m.id !== id);
+                saveManifestOthers();
+                localStorage.removeItem(`pixel_drawing_other_${id}`);
             }
 
             closeModal('delete-modal');
@@ -1150,12 +1210,22 @@
         // --- EDITOR ACTIONS ---
         function createNew(size) {
             gridSize = size;
+            isReadOnly = false; // Ensure we are NOT in read-only mode for new drawings
 
             currentDrawingId = null; // Mark as new/unsaved
             grid = createGrid(size); // Empty grid
 
             closeModal('new-drawing-modal');
             showEditor();
+
+            // Restore UI for editing
+            document.querySelector('.controls-container').style.display = 'flex';
+            document.getElementById('slider-container').style.visibility = 'visible';
+            const menuBar = document.querySelector('.menu-bar');
+            if (menuBar) {
+                menuBar.querySelectorAll('button').forEach(b => b.style.display = 'inline-block');
+            }
+
             setupCanvas(false);
             redrawAllPixels(); // Force clear to white (fixes Kindle black screen)
 
@@ -1169,26 +1239,70 @@
         }
 
         async function openDrawing(id) {
-            const item = manifest.find(m => m.id === id);
+            let item;
+            if (currentGalleryTab === 'my') {
+                item = manifest.find(m => m.id === id);
+            } else {
+                item = manifestOthers.find(m => m.id === id);
+            }
             if (!item) return;
 
             currentDrawingId = id;
-            gridSize = item.size;
-
-            // Set Title - No longer needed in header
-            // document.getElementById('drawing-title').value = item.title || "Untitled";
+            gridSize = item.size || 32;
+            isReadOnly = (currentGalleryTab === 'other'); // Set Read Only Mode
 
             // Load data
-            const data = await loadDrawingData(id);
-            if (data) {
-                grid = data;
+            if (currentGalleryTab === 'my') {
+                let data = await loadDrawingData(id);
+                if (data) {
+                    grid = data;
+                } else {
+                    grid = createGrid(gridSize);
+                }
+
+                showEditor();
+                setupCanvas(false);
+                redrawAllPixels();
             } else {
-                grid = createGrid(gridSize); // Should not happen, but fallback
+                // For 'Other' drawings, we display the saved image directly
+                // No grid editing possible
+                grid = createGrid(gridSize); // Empty placeholder
+
+                showEditor();
+                setupCanvas(false);
+
+                // Draw the saved image onto the canvas
+                if (item.imageUrl) {
+                    const img = new Image();
+                    img.onload = function () {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = item.imageUrl;
+                } else {
+                    redrawAllPixels();
+                }
             }
 
-            showEditor();
-            setupCanvas(false);
-            redrawAllPixels();
+            // Update UI for Read Only
+            const menuBar = document.querySelector('.menu-bar');
+            if (isReadOnly) {
+                // Hide Post/AutoSave/Tools logic handled throughout
+                document.querySelector('.controls-container').style.display = 'none';
+                document.getElementById('slider-container').style.visibility = 'hidden';
+                // Hide specific menu buttons?
+                // menu-btn: Download, Wallpaper, Post
+                // WE Want to Disable Posting of others? Yes.
+                const btns = menuBar.querySelectorAll('button');
+                // Download and Wallpaper OK. Post NOT OK.
+                btns.forEach(b => {
+                    if (b.onclick && b.onclick.toString().indexOf('post-confirm-modal') !== -1) b.style.display = 'none';
+                    else b.style.display = 'inline-block';
+                });
+            } else {
+                document.querySelector('.controls-container').style.display = 'flex';
+                document.getElementById('slider-container').style.visibility = 'visible';
+                menuBar.querySelectorAll('button').forEach(b => b.style.display = 'inline-block');
+            }
         }
 
         // Title Input Listener - Removed
@@ -1323,7 +1437,7 @@
 
         function drawGridLines() {
             gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
-            if (cellSize <= 4) return;
+            if (isReadOnly || cellSize <= 4) return;
 
             // Adjust thickness based on scaling
             const scaleStr = localStorage.getItem('rekindle_scale') || '1.0';
@@ -1392,10 +1506,12 @@
         }
 
         function handleDraw(event) {
+            if (isReadOnly) return; // Read Only Check
             event.preventDefault();
             const rect = canvas.getBoundingClientRect();
             const x = (event.clientX || event.touches[0].clientX) - rect.left;
             const y = (event.clientY || event.touches[0].clientY) - rect.top;
+            // ... (rest of logic)
 
             const col = Math.floor(x / cellSize);
             const row = Math.floor(y / cellSize);
@@ -1531,6 +1647,23 @@
         }
 
         function setWallpaper() {
+            // For saved drawings (read-only mode), we use the canvas directly
+            // since we don't have grid data
+            if (isReadOnly) {
+                // Use the canvas image directly
+                const dataUrl = canvas.toDataURL('image/png');
+                const cssUrl = `url("${dataUrl}")`;
+                const sizeVal = `${gridSize}px ${gridSize}px`;
+
+                localStorage.setItem('rekindle_bg_image', cssUrl);
+                localStorage.setItem('rekindle_bg_size', sizeVal);
+                localStorage.setItem('rekindle_wallpaper_id', 'custom');
+
+                if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+                openModal('wallpaper-modal');
+                return;
+            }
+
             // Create a small tile from the grid data (not the scaled canvas)
             // This mimics how settings.html creates the 8x8 grid as a 32x32 tile
 
