@@ -586,10 +586,19 @@
 
         async function fetchFromAPI(leagueSlug) {
             const apiUrl = `https://site.api.espn.com/apis/site/v2/sports/${leagueSlug}/scoreboard`;
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
+            
+            // Using codetabs as proxy because corsproxy.io blocks some UAs (403) and allorigins is blocked by ESPN (500/522)
+            const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(apiUrl)}`;
 
             const res = await fetch(proxyUrl);
-            if (!res.ok) throw new Error("Network error " + leagueSlug);
+            
+            // CodeTabs sometimes returns 400 Bad Request but still delivers the JSON payload.
+            // We attempt to parse JSON regardless of status if not 403/500/etc (though 400 is technically error)
+            // If parsing fails, the catch block in caller will handle it.
+            if (!res.ok && res.status !== 400) {
+                 throw new Error("Network error " + res.status);
+            }
+            
             return await res.json();
         }
 
