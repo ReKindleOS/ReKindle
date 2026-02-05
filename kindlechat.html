@@ -445,10 +445,6 @@
 
         /* MODIFIED: CONSTANT PLUS BUTTON (REACTION TRIGGER) */
         .react-btn {
-            position: absolute;
-            top: 50%;
-            /* Center vertically with message */
-            transform: translateY(-50%);
             width: 20px;
             height: 20px;
             border: 1px solid black;
@@ -462,7 +458,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 5;
+            z-index: 1;
+            flex-shrink: 0;
             opacity: 0.5;
             /* Initial opacity */
             transition: opacity 0.2s;
@@ -474,9 +471,6 @@
 
         /* DELETE BUTTON (Admin) - matches reaction button style */
         .del-btn {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
             width: 20px;
             height: 20px;
             border: 1px solid black;
@@ -490,7 +484,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 5;
+            z-index: 1;
+            flex-shrink: 0;
             opacity: 0.5;
             color: red;
             font-weight: bold;
@@ -501,33 +496,31 @@
             background: #ffe6e6;
         }
 
-        /* Position for messages sent by others (button on right) */
-        .msg.other .react-btn {
-            right: -25px;
-            left: auto;
-        }
-
-        .msg.other .del-btn {
-            right: -50px;
-            left: auto;
-        }
-
-        /* Position for self messages (button on left) */
-        .msg.self .react-btn {
-            /* Shifted left to make room for delete btn if present */
-            left: -50px;
-            right: auto;
-        }
-
-        .msg.self .del-btn {
-            left: -25px;
-            right: auto;
-        }
 
         /* Hide the button if not logged in or a special message */
         .react-btn.hidden {
             display: none;
         }
+
+        /* SAVE BUTTON for pixel art - square style */
+        .save-btn {
+            padding: 2px 6px;
+            border: 1px solid black;
+            border-radius: 3px;
+            background: white;
+            cursor: pointer;
+            font-size: 0.65rem;
+            box-shadow: 1px 1px 0 #999;
+            z-index: 1;
+            flex-shrink: 0;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+
+        .save-btn:hover {
+            opacity: 1.0;
+        }
+
 
         /* Game Link CONTAINER - CRITICAL ADJUSTMENTS HERE */
         .game-link-container {
@@ -584,7 +577,8 @@
         }
 
         /* FIX: White text for tags inside self bubbles (black background) */
-        .msg.self .user-tag {
+        .msg.self .user-tag,
+        .msg-bubble.developer .user-tag {
             color: white;
         }
 
@@ -860,44 +854,32 @@
         }
 
         /* --- USER THEMES --- */
-        .msg-bubble.developer {
+        /* Developer Theme: White on Black with Alternating Dotted Outline */
+        .msg-bubble.developer:not(.art-bubble) {
+            background: black !important;
+            color: white !important;
+            border: 2px solid black !important;
+            outline: 2px dotted white !important;
+            outline-offset: -2px !important;
+            box-shadow: 4px 4px 0 white, 4px 4px 0 2px black !important;
+        }
+
+        /* Ensure links in developer bubbles (black bg) are visible */
+        .msg-bubble.developer a {
+            color: white;
+            text-decoration: underline;
+        }
+
+        /* Supporter Theme: Double Border */
+        .msg-bubble.supporter:not(.art-bubble) {
             border: 3px double black !important;
             box-shadow: 4px 4px 0px #000;
         }
 
-        .msg.self .msg-bubble.developer {
+        .msg.self .msg-bubble.supporter:not(.art-bubble) {
             border-color: white !important;
-            /* Ensure visibility on black background? No, self is black bg. */
-            /* If bg is black, double border needs color. */
+            /* Visible on black background */
             box-shadow: 4px 4px 0px #666;
-            background-image: none;
-        }
-
-        /* Developer Tag */
-        .dev-tag {
-            font-size: 0.7rem;
-            background: black;
-            color: white;
-            padding: 1px 4px;
-            border-radius: 4px;
-            margin-right: 5px;
-            vertical-align: middle;
-            font-weight: bold;
-        }
-
-        .msg-bubble.supporter {
-            background: black !important;
-            color: white !important;
-            border: 2px solid black !important;
-            /* Matches bg but defines size */
-            box-shadow: 4px 4px 0px #999;
-            /* Grey shadow for contrast */
-        }
-
-        /* Ensure links in supporter bubbles are visible */
-        .msg-bubble.supporter a {
-            color: white;
-            text-decoration: underline;
         }
 
         .supporter-crown {
@@ -1282,6 +1264,15 @@
 
                     // Run cleanup in background (non-blocking)
                     cleanupEmptyChats();
+
+                    // Wait for supporters to load BEFORE loading messages to avoid race condition on Pro styling
+                    fetchSupporters().then(function () {
+                        loadMessages();
+                    })['catch'](function (err) {
+                        console.warn("Continuing without supporters:", err);
+                        loadMessages();
+                    });
+
                     loadRooms();
 
                     // DEEP LINK: Open DM if requested
@@ -1350,8 +1341,21 @@
                     currentUser = null;
                     document.getElementById('app-layout').style.display = 'none';
                     document.getElementById('guest-overlay').style.display = 'flex';
+                    loadMessages();
                 }
-                loadMessages();
+            });
+
+            // Listen for Pro status changes from other tabs (e.g. after subscribing)
+            window.addEventListener('storage', function (e) {
+                if (e.key === 'rekindle_is_pro') {
+                    var newIsPro = (e.newValue !== 'false');
+                    if (newIsPro !== isPro) {
+                        isPro = newIsPro;
+                        console.log("Pro Status Sync: ", isPro);
+                        // Re-render recent messages to update styling
+                        reRenderRecentMessages();
+                    }
+                }
             });
 
             // Enter key
@@ -1999,6 +2003,9 @@
                 generalListener.off();
                 generalListener = null;
             }
+            // Reset Pixel Cache on reload
+            window.pixelGridCache = {};
+
             oldestMsgDoc = null;
             oldestGeneralTimestamp = null;
             isLoadingMore = false;
@@ -2278,12 +2285,9 @@
                     // Escape single quotes in text for the function call
                     var safeText = msg.text ? msg.text.replace(/'/g, "\\'") : "";
 
-                    // Calculate positioning for Reprocess button (further out than Delete/React)
-                    var posStyle = isSelf ? 'left: -75px; right: auto;' : 'right: -75px; left: auto;';
-
                     // Reprocess Button
                     if (currentRoomId === 'general') {
-                        adminControlsHtml += '<div class="del-btn" style="' + posStyle + ' color: blue; border-color: blue;" onclick="reprocessMessage(\'' + msgId + '\', \'' + safeText + '\')" title="Reprocess Translation">Rp</div>';
+                        adminControlsHtml += '<div class="del-btn" style="color: blue; border-color: blue;" onclick="reprocessMessage(\'' + msgId + '\', \'' + safeText + '\')" title="Reprocess Translation">Rp</div>';
                     }
 
                     // Delete Button (Shifted further left if reprocess is present)
@@ -2349,7 +2353,7 @@
 
                 var thumb = (msg.flipnote_data.frames && msg.flipnote_data.frames[0]) ? msg.flipnote_data.frames[0] : '';
 
-                bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white; text-align:center;">' +
+                bubbleContent = '<div class="msg-bubble art-bubble" style="padding: 5px; background: white !important; color: black !important; border: 2px solid black !important; outline: none !important;">' +
                     '<a href="flipbook?source=kindlechat" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">' + window.t('kindlechat.art.flipbook', 'Flipbook') + '</a>' +
                     '<div id="flipnote-view-' + msgId + '" style="width:128px; height:128px; border:2px solid black; margin:0 auto; background:white; position:relative; cursor:pointer;" onclick="playFlipnote(\'' + msgId + '\')">' +
                     '<img id="flipnote-img-' + msgId + '" src="' + thumb + '" style="width:100%; height:100%; image-rendering:pixelated; display:block;">' +
@@ -2359,7 +2363,13 @@
                     '</div>';
                 isSpecialMessage = true;
             } else if (msg.is_pixel_art) {
-                bubbleContent = '<div class="msg-bubble" style="padding: 5px; background: white;">' +
+                // Cache Grid Data
+                if (msg.grid_data) {
+                    window.pixelGridCache = window.pixelGridCache || {};
+                    window.pixelGridCache[msgId] = msg.grid_data;
+                }
+
+                bubbleContent = '<div class="msg-bubble art-bubble" style="padding: 5px; background: white !important; color: black !important; border: 2px solid black !important; outline: none !important;">' +
                     '<a href="pixel?source=kindlechat" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">' + window.t('kindlechat.art.pixel', 'Pixel Art') + '</a>' +
                     '<img src="' + msg.pixel_art + '" style="' +
                     'image-rendering: -webkit-optimize-contrast; ' +
@@ -2411,15 +2421,20 @@
                 ? '<div class="react-btn" onclick="openReactionTarget(\'' + msgId + '\', this, event)">+</div>'
                 : '';
 
+            // Save button for pixel art (appears next to reaction button)
+            var saveButton = (msg.is_pixel_art)
+                ? '<div class="save-btn" onclick="savePixelArt(\'' + msgId + '\', \'' + escapeHtml(msg.user) + '\', this)">' + (window.t ? window.t('pixel.btn.save', 'Save') : 'Save') + '</div>'
+                : '';
+
             // TRANSLATION BUTTON (Client-side fallback) - REMOVED
             // TRANSLATION BUTTON (Client-side fallback) - REMOVED for special messages
             var transBtnHtml = (isSpecialMessage || msg.is_pixel_art) ? '' : toggleBtnHtml;
 
             div.innerHTML = '<div class="msg-meta">' + nameHtml + '<span>' + timeStr + '</span>' + transBtnHtml + '</div>' +
                 '<div style="display:flex; align-items:center; gap: 5px; min-width: 0;">' +
-                (isSelf ? reactButton + adminControlsHtml : '') +
+                (isSelf ? reactButton + saveButton + adminControlsHtml : '') +
                 bubbleContent +
-                (isSelf ? '' : reactButton + adminControlsHtml) +
+                (isSelf ? '' : reactButton + saveButton + adminControlsHtml) +
                 '</div>';
 
             if (msg.reactions && Object.keys(msg.reactions).length > 0) {
@@ -2641,12 +2656,12 @@
         function deleteGeneralMessage(msgId) {
             if (!currentUser) return;
             if (currentRoomId === 'general') {
-                if (confirm("Permanently delete this message?")) {
+                showConfirmModal("Permanently delete this message?", function () {
                     rtdb.ref('kindlechat/messages/' + msgId).remove()
                     ['catch'](function (e) {
                         showModal("Delete failed: " + e.message);
                     });
-                }
+                });
             }
         }
 
@@ -2745,6 +2760,55 @@
             });
         }
 
+        // --- PIXEL ART SAVING ---
+        function savePixelArt(msgId, authorName, btnElement) {
+            // Get the image URL from the sibling msg-bubble element
+            var parent = btnElement.parentElement;
+            var bubble = parent ? parent.querySelector('.msg-bubble') : null;
+            var imgEl = bubble ? bubble.querySelector('img') : null;
+            var imageUrl = imgEl ? imgEl.src : null;
+
+            if (!imageUrl) {
+                showModal("Could not retrieve image data.");
+                return;
+            }
+
+            // Load Other Manifest
+            var otherKey = 'pixel_manifest_others';
+            var manifestOthers = [];
+            try {
+                var local = localStorage.getItem(otherKey);
+                if (local) manifestOthers = JSON.parse(local);
+            } catch (e) { }
+
+            // Check if already saved
+            var existing = manifestOthers.find(function (m) { return m.sourceMsgId === msgId; });
+            if (existing) {
+                showModal("You already saved this drawing!");
+                return;
+            }
+
+            // Create Entry
+            var id = 'saved_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+            var newEntry = {
+                id: id,
+                title: (window.t ? window.t('pixel.saved_title', 'Art by ') : 'Art by ') + authorName,
+                created: Date.now(),
+                modified: Date.now(),
+                size: 32,
+                thumbnail: imageUrl,
+                imageUrl: imageUrl,
+                sourceMsgId: msgId
+            };
+
+            // Update manifest (no separate data storage needed, image is in manifest)
+            manifestOthers.unshift(newEntry);
+            localStorage.setItem(otherKey, JSON.stringify(manifestOthers));
+
+            showModal("Drawing saved to Pixel App! Check the 'Saved Drawings' tab.");
+        }
+
         // --- REACTION FUNCTIONS ---
 
         // Global tracker for currently open reaction menu
@@ -2827,24 +2891,24 @@
         // (deleteGeneralMessage moved above)
 
         function deleteGeneralReactionType(msgId, reactionType) {
-            if (!confirm("Delete ALL '" + reactionType + "' reactions?")) return;
+            showConfirmModal("Delete ALL '" + reactionType + "' reactions?", function () {
+                var reactionsRef = rtdb.ref('kindlechat/messages/' + msgId + '/reactions');
+                reactionsRef.once('value').then(function (snapshot) {
+                    if (!snapshot.exists()) return;
 
-            var reactionsRef = rtdb.ref('kindlechat/messages/' + msgId + '/reactions');
-            reactionsRef.once('value').then(function (snapshot) {
-                if (!snapshot.exists()) return;
+                    var updates = {};
+                    snapshot.forEach(function (child) {
+                        if (child.val() === reactionType) {
+                            updates[child.key] = null; // Delete
+                        }
+                    });
 
-                var updates = {};
-                snapshot.forEach(function (child) {
-                    if (child.val() === reactionType) {
-                        updates[child.key] = null; // Delete
+                    if (Object.keys(updates).length > 0) {
+                        return reactionsRef.update(updates);
                     }
+                })['catch'](function (e) {
+                    console.error("Delete reaction error:", e);
                 });
-
-                if (Object.keys(updates).length > 0) {
-                    return reactionsRef.update(updates);
-                }
-            })['catch'](function (e) {
-                console.error("Delete reaction error:", e);
             });
         }
 
@@ -3134,27 +3198,84 @@
 
         // --- SUPPORTER LOGIC ---
         function fetchSupporters() {
-            db.collection('config').doc('supporters').get().then(function (doc) {
+            return db.collection('config').doc('supporters').get().then(function (doc) {
                 if (doc.exists) {
                     var data = doc.data();
-                    supporterUsers = {};
-                    // Handle new map format and legacy array format
+                    var newSupporters = {};
+                    var now = Date.now();
+
+                    function isValidPro(val) {
+                        if (val === true) return true; // Legacy/Lifetime
+                        if (val && val.expiresAt) {
+                            var exp = 0;
+                            if (typeof val.expiresAt.toMillis === 'function') {
+                                exp = val.expiresAt.toMillis();
+                            } else {
+                                exp = new Date(val.expiresAt).getTime();
+                            }
+                            return exp > now;
+                        }
+                        return false;
+                    }
+
                     if (data.usernames && Array.isArray(data.usernames)) {
                         for (var i = 0; i < data.usernames.length; i++) {
-                            supporterUsers[data.usernames[i]] = true;
+                            newSupporters[data.usernames[i]] = true;
                         }
                     } else {
                         // Map format: keys are usernames
                         for (var key in data) {
                             if (key !== 'usernames' && key !== 'list') {
-                                supporterUsers[key] = true;
+                                if (isValidPro(data[key])) {
+                                    newSupporters[key] = true;
+                                }
                             }
                         }
                     }
+                    supporterUsers = newSupporters;
+                    // Trigger a re-render of recent messages now that we have the list
+                    reRenderRecentMessages();
                 }
             })['catch'](function (e) {
                 console.error("Error loading supporters:", e);
+                throw e;
             });
+        }
+
+        function reRenderRecentMessages() {
+            var history = document.getElementById('chat-history');
+            if (!history) return;
+            var msgs = history.querySelectorAll('.msg');
+            // We only need to re-render bubbles that might need Pro styling
+            // To be safe and simple, we check the last 20 messages
+            var count = 0;
+            for (var i = msgs.length - 1; i >= 0 && count < 20; i--) {
+                var msgEl = msgs[i];
+                var msgId = msgEl.dataset.msgId;
+                var user = msgEl.dataset.user;
+
+                // If the user is now known to be a supporter but the bubble doesn't have the class
+                var bubble = msgEl.querySelector('.msg-bubble');
+                var isSupporter = supporterUsers[user];
+                var isDev = (user === 'ukiyo' || user === 'ukiyo@rekindle.ink');
+
+                if (bubble) {
+                    if (isDev && !bubble.classList.contains('developer')) {
+                        bubble.classList.add('developer');
+                    } else if (isSupporter && !bubble.classList.contains('supporter')) {
+                        bubble.classList.add('supporter');
+                        // Also update Name to include crown if missing
+                        var nameMeta = msgEl.querySelector('.msg-meta span:first-child');
+                        if (nameMeta && !nameMeta.querySelector('.supporter-crown')) {
+                            var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+                            var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
+                            var isSelf = currentUser && (user === currentUsername);
+                            nameMeta.innerHTML = crown + (isSelf ? window.t('kindlechat.msg.you', 'You') : user);
+                        }
+                    }
+                }
+                count++;
+            }
         }
 
 
@@ -3250,6 +3371,26 @@
             document.querySelector('.window').classList.toggle('fullscreen');
         }
 
+        var _confirmCallback = null;
+        function showConfirmModal(msg, callback) {
+            var m = document.getElementById('confirm-modal-custom');
+            if (m) {
+                document.getElementById('confirm-modal-message-custom').innerText = msg;
+                _confirmCallback = callback;
+                m.style.display = 'flex';
+            } else {
+                if (confirm(msg)) callback();
+            }
+        }
+        function onConfirmYesCustom() {
+            if (_confirmCallback) _confirmCallback();
+            closeConfirmModalCustom();
+        }
+        function closeConfirmModalCustom() {
+            var m = document.getElementById('confirm-modal-custom');
+            if (m) m.style.display = 'none';
+            _confirmCallback = null;
+        }
     </script>
 
     <script>
@@ -3258,6 +3399,21 @@
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
     <!-- Duplicate Modal Removed -->
+    <!-- REKINDLE CONFIRM MODAL -->
+    <div id="confirm-modal-custom" class="modal-overlay"
+        style="z-index:99999; display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div class="modal-box"
+            style="background:#fff; border:2px solid #000; padding:20px; max-width:300px; width:80%; text-align:center; box-shadow:4px 4px 0 rgba(0,0,0,0.2);">
+            <h3 id="confirm-modal-title-custom" style="margin-top:0;">Confirm</h3>
+            <p id="confirm-modal-message-custom"></p>
+            <div style="margin-top:15px; display:flex; justify-content:center; gap:10px;">
+                <button class="sys-btn" onclick="onConfirmYesCustom()"
+                    style="border:2px solid #000; background:#000; color:#fff; padding:5px 15px; font-weight:bold; cursor:pointer;">Yes</button>
+                <button class="sys-btn" onclick="closeConfirmModalCustom()"
+                    style="border:2px solid #000; background:#fff; padding:5px 15px; font-weight:bold; cursor:pointer;">No</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
