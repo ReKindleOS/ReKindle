@@ -6,6 +6,7 @@ const glob = require('glob');
 const { execSync } = require('child_process');
 const postcss = require('postcss');
 const postcssPresetEnv = require('postcss-preset-env');
+const generateSitemap = require('./scripts/generate-sitemap');
 
 // --- CONFIGURATION ---
 const SOURCE_DIR = '.';
@@ -1550,6 +1551,19 @@ async function run() {
         require('./scripts/legacy-patch.js');
     } catch (err) {
         console.error("Failed to run scripts/legacy-patch.js", err);
+    }
+
+    // 9. Generate Sitemaps
+    try {
+        console.log("🗺️  Generating Sitemaps...");
+        // Main
+        await generateSitemap('https://rekindle.ink', MAIN_DIR);
+        // Lite
+        await generateSitemap('https://lite.rekindle.ink', LITE_DIR);
+        // Legacy
+        await generateSitemap('https://legacy.rekindle.ink', LEGACY_DIR);
+    } catch (err) {
+        console.error("Failed to generate sitemap", err);
     }
 
     console.log("✅ Build Complete!");
