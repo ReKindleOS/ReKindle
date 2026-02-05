@@ -219,7 +219,7 @@ const APPS = [
         featured: true,
         featuredOrder: 6,
         newBadge: true,
-        desc: 'Make connections',
+        desc: 'Post & make connections',
         icon: '<g transform="translate(0, 3)"><rect x="16" y="3" width="2" height="9" fill="black"/><path d="M12 3 L2 12 H5 V22 H19 V12 H22 L12 3 Z" fill="white" stroke="black" stroke-width="2"/><path d="M2 22 H22" stroke="black" stroke-width="2"/></g>'
     },
     {
