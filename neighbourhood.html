@@ -249,6 +249,12 @@
             font-weight: bold;
         }
 
+        /* Invert for developer theme (Black BG -> White Text normally, so make tag White BG -> Black Text) */
+        .developer .dev-tag {
+            background: white !important;
+            color: black !important;
+        }
+
         .supporter-crown {
             width: 14px;
             height: 14px;
@@ -1425,9 +1431,25 @@
         function renderProfileView(profile, isMe) {
             const kName = getKindleName(profile);
             const dName = profile.displayName || 'Anonymous';
+
+            // Badge Logic
+            let badgeHtml = '';
+            const isDev = (profile.uid === 'ukiyo' || profile.email === 'ukiyo@rekindle.ink' || dName === 'ukiyo' || dName === 'ukiyo@rekindle.ink') || (isMe && currentUser.email === 'ukiyo@rekindle.ink');
+            // Check Pro: profile.kindlePlus might be present if it's 'myProfile', but for public profiles we need to rely on what's passed in or stored.
+            // In renderProfileView, input 'profile' is usually from users_public.
+            // We can also check global supporterUsers map if we have it here? 
+            // supporterUsers is populated in fetchSupporters().
+            const isPro = profile.kindlePlus || supporterUsers[dName] || (profile.email && supporterUsers[profile.email]);
+
+            if (isDev) {
+                badgeHtml = '<span class="dev-tag">DEV</span>';
+            } else if (isPro) {
+                badgeHtml = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+            }
+
             const fullName = (dName === kName) ? escapeHtml(dName) :
                 `${escapeHtml(dName)} <span style="font-size:0.8em; font-weight:normal; color:#666; margin-left:5px;">@${escapeHtml(kName)}</span>`;
-            document.getElementById('profile-view-name').innerHTML = fullName;
+            document.getElementById('profile-view-name').innerHTML = badgeHtml + fullName;
 
             const pronouns = profile.pronouns ? `(${profile.pronouns})` : '';
             const pronunciation = profile.pronunciation ? `• /${profile.pronunciation}/` : '';
@@ -2136,8 +2158,17 @@
             // Match badge
             const matchBadge = showMatch && user.matchScore ? `<span style="font-size:0.7rem; background:#000; color:#fff; padding:2px 5px; margin-left:5px; border-radius:2px;">★${user.matchScore}</span>` : '';
 
-            // Plus badge
-            const plusBadge = user.kindlePlus ? `<span class="badge-plus" style="margin-left:5px;">+</span>` : '';
+            // Badge Logic
+            let badgeHtml = '';
+            const dName = user.displayName || 'Anonymous';
+            const isDev = (user.uid === 'ukiyo' || user.email === 'ukiyo@rekindle.ink' || dName === 'ukiyo' || dName === 'ukiyo@rekindle.ink');
+            const isPro = user.kindlePlus || supporterUsers[dName] || (user.email && supporterUsers[user.email]);
+
+            if (isDev) {
+                badgeHtml = '<span class="dev-tag" style="margin-left:5px;">DEV</span>';
+            } else if (isPro) {
+                badgeHtml = '<span style="margin-left:5px; display:inline-block; vertical-align:middle;"><svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:14px; height:14px;"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg></span>';
+            }
 
             // Avatar ID
             const avatarId = 'avatar-' + (user.uid || Math.random().toString(36).substr(2));
@@ -2175,7 +2206,7 @@
                     const dName = user.displayName || 'Anonymous';
                     if (dName === kName) return escapeHtml(dName);
                     return `${escapeHtml(dName)} <span class="user-handle">@${escapeHtml(kName)}</span>`;
-                })()}${matchBadge}${plusBadge}
+                })()}${matchBadge}${badgeHtml}
                     </div>
                     <div style="font-size:0.8rem; color:#666;">${escapeHtml(subtitle)}</div>
                     ${user.bio ? `<div style="font-size:0.8rem; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;">${escapeHtml(user.bio.substring(0, 60))}${user.bio.length > 60 ? '...' : ''}</div>` : ''}
@@ -2240,11 +2271,22 @@
             // Basic Info
             const kName = getKindleName(user);
             const dName = user.displayName || 'Anonymous';
+
+            // Badge Logic
+            let badgeHtml = '';
+            const isDev = (user.uid === 'ukiyo' || user.email === 'ukiyo@rekindle.ink' || dName === 'ukiyo' || dName === 'ukiyo@rekindle.ink');
+            const isPro = user.kindlePlus || supporterUsers[dName] || (user.email && supporterUsers[user.email]);
+
+            if (isDev) {
+                badgeHtml = '<span class="dev-tag">DEV</span>';
+            } else if (isPro) {
+                badgeHtml = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+            }
+
             const fullName = (dName === kName) ? escapeHtml(dName) :
                 `${escapeHtml(dName)} <span style="font-size:0.8em; font-weight:normal; color:#666; margin-left:5px;">@${escapeHtml(kName)}</span>`;
 
-            document.getElementById('popup-view-name').innerHTML = fullName +
-                (user.kindlePlus ? ` <span class="badge-plus" title="Kindle+ Subscriber">PLUS</span>` : '');
+            document.getElementById('popup-view-name').innerHTML = badgeHtml + fullName;
 
             const pronouns = user.pronouns ? `(${escapeHtml(user.pronouns)})` : '';
             const pronunciation = user.pronunciation ? ` • <span style="font-style:italic;">"${escapeHtml(user.pronunciation)}"</span>` : '';
