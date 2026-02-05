@@ -363,12 +363,14 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
     const result = await res.json();
 
     // --- SYNC TO config/supporters ---
-    // Try to get the username for this user and add them to the supporters list
+    // Try to get the email for this user and add them to the supporters list
     try {
-        const username = await getUsernameForUid(env, uid, token);
-        if (username) {
-            await addToSupportersConfig(env, token, username, finalExpiryDate, subscriptionType === 'lifetime');
-            console.log(`Added ${username} to config/supporters (expires: ${finalExpiryDate.toISOString()})`);
+        const email = await getEmailForUid(env, uid, token);
+        if (email) {
+            await addToSupportersConfig(env, token, email, finalExpiryDate, subscriptionType === 'lifetime');
+            console.log(`Added ${email} to config/supporters (expires: ${finalExpiryDate.toISOString()})`);
+        } else {
+            console.warn(`Could not find email for ${uid}, skipping config/supporters sync`);
         }
     } catch (e) {
         console.warn("Failed to sync to config/supporters:", e.message);
@@ -499,10 +501,10 @@ async function revokeProByCustomerId(env, stripeCustomerId) {
 
         // --- REMOVE FROM config/supporters ---
         try {
-            const username = await getUsernameForUid(env, uid, token);
-            if (username) {
-                await removeFromSupportersConfig(env, token, username);
-                console.log(`Removed ${username} from config/supporters`);
+            const email = await getEmailForUid(env, uid, token);
+            if (email) {
+                await removeFromSupportersConfig(env, token, email);
+                console.log(`Removed ${email} from config/supporters`);
             }
         } catch (e) {
             console.warn("Failed to remove from config/supporters:", e.message);
@@ -651,7 +653,8 @@ async function fetchActiveSubscribers(env) {
     // However, this matches the behavior of the 'get_subscribers.js' script the user referenced.
 
     while (hasMore) {
-        let url = `https://api.stripe.com/v1/checkout/sessions?status=complete&limit=100`;
+        // Expand subscription to get current_period_end
+        let url = `https://api.stripe.com/v1/checkout/sessions?status=complete&limit=100&expand[]=data.subscription`;
         if (startingAfter) {
             url += `&starting_after=${startingAfter}`;
         }
@@ -674,8 +677,21 @@ async function fetchActiveSubscribers(env) {
             const email = session.customer_details ? session.customer_details.email : null;
 
             if (uid) {
-                // Deduplicate? The script doesn't, but pro-admin might want uniques.
-                // We'll return all and let frontend handle or we push simple objects.
+                let expiresAt = null; // Unix Timestamp
+
+                if (session.mode === 'payment') {
+                    // Lifetime: +100 years from now
+                    const now = new Date();
+                    now.setFullYear(now.getFullYear() + 100);
+                    expiresAt = Math.floor(now.getTime() / 1000);
+                } else if (session.subscription && typeof session.subscription === 'object') {
+                    // Recurring: Use current_period_end
+                    expiresAt = session.subscription.current_period_end;
+                } else {
+                    // Fallback (shouldn't happen if expanded correctly)
+                    expiresAt = session.created + (86400 * 32);
+                }
+
                 subscribers.push({
                     uid: uid,
                     email: email,
@@ -684,7 +700,8 @@ async function fetchActiveSubscribers(env) {
                     type: session.mode === 'payment' ? 'Lifetime' : 'Subscription',
                     amount: session.amount_total,
                     currency: session.currency,
-                    created: session.created
+                    created: session.created,
+                    expiresAt: expiresAt
                 });
             }
         }
@@ -743,16 +760,16 @@ async function resolveFirebaseUsers(env, uids) {
     return uids.map(uid => result[uid] || { uid, displayName: null, email: null });
 }
 
-// --- GET USERNAME FOR UID ---
-// Tries Firebase Auth displayName first, then Firestore user doc
-async function getUsernameForUid(env, uid, existingToken = null) {
+// --- GET EMAIL FOR UID ---
+// Tries Firebase Auth first, then Firestore user doc
+async function getEmailForUid(env, uid, existingToken = null) {
     const token = existingToken || await getGoogleAccessToken(env);
 
-    // 1. Try Firebase Auth (displayName)
+    // 1. Try Firebase Auth
     try {
         const resolved = await resolveFirebaseUsers(env, [uid]);
-        if (resolved[0] && resolved[0].displayName) {
-            return resolved[0].displayName;
+        if (resolved[0] && resolved[0].email) {
+            return resolved[0].email;
         }
     } catch (e) {
         console.warn("Firebase Auth lookup failed:", e.message);
@@ -766,13 +783,8 @@ async function getUsernameForUid(env, uid, existingToken = null) {
         });
         if (res.ok) {
             const doc = await res.json();
-            if (doc.fields) {
-                if (doc.fields.username && doc.fields.username.stringValue) {
-                    return doc.fields.username.stringValue;
-                }
-                if (doc.fields.displayName && doc.fields.displayName.stringValue) {
-                    return doc.fields.displayName.stringValue;
-                }
+            if (doc.fields && doc.fields.email && doc.fields.email.stringValue) {
+                return doc.fields.email.stringValue;
             }
         }
     } catch (e) {
@@ -784,7 +796,9 @@ async function getUsernameForUid(env, uid, existingToken = null) {
 
 // --- ADD TO CONFIG/SUPPORTERS ---
 // Updates config/supporters document with username and expiry
-async function addToSupportersConfig(env, token, username, expiresAt, isLifetime = false) {
+// --- ADD TO CONFIG/SUPPORTERS ---
+// Updates config/supporters document with email and expiry
+async function addToSupportersConfig(env, token, email, expiresAt, isLifetime = false) {
     const projectId = env.FIREBASE_PROJECT_ID;
     const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
@@ -793,7 +807,7 @@ async function addToSupportersConfig(env, token, username, expiresAt, isLifetime
 
     // We need to update a single field within the map. 
     // Firestore REST API uses field masks with dot notation for nested fields.
-    // config/supporters structure: { "username1": { expiresAt: timestamp }, ... }
+    // config/supporters structure: { "email@example.com": { expiresAt: timestamp }, ... }
 
     // First, get the current document to merge
     let existingData = {};
@@ -812,7 +826,7 @@ async function addToSupportersConfig(env, token, username, expiresAt, isLifetime
     }
 
     // Add/update this user
-    existingData[username] = {
+    existingData[email] = {
         mapValue: {
             fields: {
                 expiresAt: { timestampValue: finalExpiry.toISOString() },
@@ -843,7 +857,7 @@ async function addToSupportersConfig(env, token, username, expiresAt, isLifetime
 }
 
 // --- REMOVE FROM CONFIG/SUPPORTERS ---
-async function removeFromSupportersConfig(env, token, username) {
+async function removeFromSupportersConfig(env, token, email) {
     const projectId = env.FIREBASE_PROJECT_ID;
     const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
@@ -864,7 +878,7 @@ async function removeFromSupportersConfig(env, token, username) {
     }
 
     // Remove this user
-    delete existingData[username];
+    delete existingData[email];
 
     // Write the document back
     const url = `${baseUrl}/config/supporters`;
@@ -896,7 +910,8 @@ async function bulkSyncSupporters(env, users) {
 
     const fields = {};
     for (const user of users) {
-        if (!user.username || user.username === user.uid) continue; // Skip if no username
+        // Use EMAIL as the key
+        if (!user.email) continue;
 
         let expiresAt;
         if (user.type === 'lifetime' || user.isLifetime) {
@@ -906,7 +921,7 @@ async function bulkSyncSupporters(env, users) {
             expiresAt = user.expiresAt ? new Date(user.expiresAt).toISOString() : new Date().toISOString();
         }
 
-        fields[user.username] = {
+        fields[user.email] = {
             mapValue: {
                 fields: {
                     expiresAt: { timestampValue: expiresAt },
@@ -915,6 +930,10 @@ async function bulkSyncSupporters(env, users) {
             }
         };
     }
+
+    // Note: This does NOT clear old keys (username keys will persist until manually removed)
+    // To fix that, we would need to read the existing doc, filter out non-emails, or do a full replace.
+    // For safety, we will merge (PATCH), but the user might want a full cleanup later.
 
     const res = await fetch(`${baseUrl}/config/supporters`, {
         method: 'PATCH',
