@@ -186,9 +186,76 @@
             box-shadow: 3px 3px 0 #999;
         }
 
+        .post-card {
+            border: 2px solid black;
+            padding: 10px;
+            margin-bottom: 12px;
+            background: white;
+            box-shadow: 3px 3px 0 #ccc;
+            position: relative;
+        }
+
         .card-content {
             flex-grow: 1;
             min-width: 0;
+        }
+
+        /* --- USER THEMES --- */
+        /* Developer Theme: White on Black with Alternating Dotted Outline */
+        .developer {
+            background: black !important;
+            color: white !important;
+            border: 2px solid black !important;
+            outline: 2px dotted white !important;
+            outline-offset: -2px !important;
+            box-shadow: 4px 4px 0 white, 4px 4px 0 2px black !important;
+        }
+
+        .developer a,
+        .developer small,
+        .developer strong,
+        .developer span {
+            color: white !important;
+        }
+
+        /* Supporter Theme: Double Border */
+        .supporter {
+            border: 3px double black !important;
+            box-shadow: 4px 4px 0px #000;
+        }
+
+        /* Ensure links/text in black backgrounds are visible */
+        .developer a {
+            text-decoration: underline;
+        }
+
+        .user-handle {
+            color: #666;
+        }
+
+        .developer .user-handle {
+            color: #ccc !important;
+        }
+
+        /* Developer Tag */
+        .dev-tag {
+            font-size: 0.7rem;
+            background: black;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 4px;
+            margin-right: 5px;
+            vertical-align: middle;
+            font-weight: bold;
+        }
+
+        .supporter-crown {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            vertical-align: middle;
+            fill: currentColor;
+            margin-right: 4px;
         }
 
         .form-group {
@@ -306,6 +373,61 @@
             background: #eee;
         }
 
+        /* COMMENTS */
+        .comments-section {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #ccc;
+        }
+
+        .comments-toggle {
+            font-size: 0.75rem;
+            color: #666;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .comments-toggle:hover {
+            text-decoration: underline;
+        }
+
+        .comments-list {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .comment-item {
+            font-size: 0.8rem;
+            padding: 5px 8px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            position: relative;
+        }
+
+        .comment-item strong {
+            cursor: pointer;
+        }
+
+        .comment-input-row {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .comment-input-row input {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid black;
+            font-size: 0.8rem;
+        }
+
+        .comment-input-row button {
+            padding: 5px 10px;
+            font-size: 0.75rem;
+        }
+
         /* PIXEL EDITOR MODAL */
         .pixel-grid {
             display: grid;
@@ -415,8 +537,10 @@
     <!-- FIREBASE (WITH RTDB) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="theme.js"></script>
+    <script src="bad_words.js?v=2"></script>
     <script src="js/i18n.js"></script>
 </head>
 
@@ -432,15 +556,17 @@
 
         <div class="content">
             <div class="toolbar">
-                <div id="btn-profile" class="tab-btn active" onclick="switchTab('profile')"
-                    data-i18n="neighbourhood.btn.view_profile">My Profile</div>
+                <div id="btn-posts" class="tab-btn active" onclick="switchTab('posts')"
+                    data-i18n="neighbourhood.btn.view_posts">Posts</div>
                 <div id="btn-list" class="tab-btn" onclick="switchTab('list')" data-i18n="neighbourhood.btn.view_list">
                     Find
-                    Neighbors</div>
+                    Neighbours</div>
+                <div id="btn-profile" class="tab-btn" onclick="switchTab('profile')"
+                    data-i18n="neighbourhood.btn.view_profile">My Profile</div>
             </div>
 
             <!-- PROFILE TAB -->
-            <div id="view-profile" class="view-panel active">
+            <div id="view-profile" class="view-panel">
                 <!-- READ ONLY PROFILE VIEW -->
                 <div id="profile-read-only">
                     <div
@@ -456,6 +582,8 @@
                                 data-i18n="neighbourhood.btn.edit">Edit Profile</button>
                             <button id="btn-message-profile" class="sys-btn" onclick="messageUser()"
                                 style="display:none;" data-i18n="neighbourhood.btn.message">Message</button>
+                            <button id="btn-repair-handles" class="sys-btn" onclick="repairHandles()"
+                                style="display:none; background:#000; color:#fff;">Repair Handles</button>
                         </div>
                     </div>
 
@@ -573,63 +701,12 @@
                                 </div>
                                 <div>
                                     <label class="form-label" data-i18n="neighbourhood.lbl.location">Location</label>
-                                    <select id="input-location" class="input-field">
-                                        <option value="">Select city...</option>
-                                        <option value="Amsterdam">Amsterdam</option>
-                                        <option value="Athens">Athens</option>
-                                        <option value="Bangkok">Bangkok</option>
-                                        <option value="Barcelona">Barcelona</option>
-                                        <option value="Beijing">Beijing</option>
-                                        <option value="Berlin">Berlin</option>
-                                        <option value="Boston">Boston</option>
-                                        <option value="Buenos Aires">Buenos Aires</option>
-                                        <option value="Cairo">Cairo</option>
-                                        <option value="Cape Town">Cape Town</option>
-                                        <option value="Chicago">Chicago</option>
-                                        <option value="Copenhagen">Copenhagen</option>
-                                        <option value="Dubai">Dubai</option>
-                                        <option value="Dublin">Dublin</option>
-                                        <option value="Edinburgh">Edinburgh</option>
-                                        <option value="Hong Kong">Hong Kong</option>
-                                        <option value="Istanbul">Istanbul</option>
-                                        <option value="Jakarta">Jakarta</option>
-                                        <option value="Kyoto">Kyoto</option>
-                                        <option value="Las Vegas">Las Vegas</option>
-                                        <option value="Lisbon">Lisbon</option>
-                                        <option value="London">London</option>
-                                        <option value="Los Angeles">Los Angeles</option>
-                                        <option value="Madrid">Madrid</Madrid>
-                                        <option value="Melbourne">Melbourne</option>
-                                        <option value="Mexico City">Mexico City</option>
-                                        <option value="Miami">Miami</option>
-                                        <option value="Montreal">Montreal</option>
-                                        <option value="Moscow">Moscow</option>
-                                        <option value="Mumbai">Mumbai</option>
-                                        <option value="Munich">Munich</option>
-                                        <option value="New Delhi">New Delhi</option>
-                                        <option value="New York">New York</option>
-                                        <option value="Osaka">Osaka</option>
-                                        <option value="Oslo">Oslo</option>
-                                        <option value="Paris">Paris</option>
-                                        <option value="Prague">Prague</option>
-                                        <option value="Reykjavik">Reykjavik</option>
-                                        <option value="Rio de Janeiro">Rio de Janeiro</option>
-                                        <option value="Rome">Rome</option>
-                                        <option value="San Francisco">San Francisco</option>
-                                        <option value="Sao Paulo">Sao Paulo</option>
-                                        <option value="Seoul">Seoul</option>
-                                        <option value="Shanghai">Shanghai</option>
-                                        <option value="Singapore">Singapore</option>
-                                        <option value="Stockholm">Stockholm</option>
-                                        <option value="Sydney">Sydney</option>
-                                        <option value="Taipei">Taipei</option>
-                                        <option value="Tokyo">Tokyo</option>
-                                        <option value="Toronto">Toronto</option>
-                                        <option value="Vancouver">Vancouver</option>
-                                        <option value="Vienna">Vienna</option>
-                                        <option value="Warsaw">Warsaw</option>
-                                        <option value="Zurich">Zurich</option>
-                                    </select>
+                                    <div style="display:flex; gap:5px;">
+                                        <input type="text" id="input-location" class="input-field" readonly
+                                            placeholder="City, Country" style="cursor:pointer;"
+                                            onclick="openCityPicker('input-location')">
+                                    </div>
+
                                 </div>
                                 <div>
                                     <label class="form-label"
@@ -639,8 +716,11 @@
                                 </div>
                                 <div>
                                     <label class="form-label" data-i18n="neighbourhood.lbl.hometown">Hometown</label>
-                                    <input type="text" id="input-hometown" class="input-field" placeholder="Where from?"
-                                        maxlength="50">
+                                    <div style="display:flex; gap:5px;">
+                                        <input type="text" id="input-hometown" class="input-field" readonly
+                                            placeholder="City, Country" style="cursor:pointer;"
+                                            onclick="openCityPicker('input-hometown')">
+                                    </div>
                                 </div>
                                 <div style="grid-column: span 2;">
                                     <label class="form-label" data-i18n="neighbourhood.lbl.language">Languages</label>
@@ -673,8 +753,8 @@
                             <div class="form-group">
                                 <div
                                     style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                    <label class="form-label" style="margin:0;">Select up to 15:</label>
-                                    <span id="interest-counter" style="font-size:0.75rem; color:#666;">0/15</span>
+                                    <label class="form-label" style="margin:0;">Select:</label>
+                                    <span id="interest-counter" style="font-size:0.75rem; color:#666;">0</span>
                                 </div>
                                 <div id="suggested-interests"
                                     style="display:flex; flex-wrap:wrap; gap:5px; max-height:200px; overflow-y:auto;">
@@ -721,19 +801,51 @@
 
             <!-- LIST TAB -->
             <div id="view-list" class="view-panel">
-                <div id="loading-msg" data-i18n="neighbourhood.msg.loading">Looking for neighbors...</div>
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="input-search" class="input-field"
+                        data-i18n-placeholder="neighbourhood.ph.search" placeholder="Search neighbours..."
+                        style="flex:1;" onkeyup="if(event.key === 'Enter') renderLists()" oninput="toggleSearchClear()">
+                    <button id="btn-search" class="sys-btn" onclick="renderLists()"
+                        data-i18n="neighbourhood.btn.search">Search</button>
+                    <button id="btn-clear-search" class="sys-btn" onclick="clearSearch()"
+                        style="display:none; padding:5px 10px;" title="Clear search">✕</button>
+                </div>
+
+                <div id="loading-msg" data-i18n="neighbourhood.msg.loading">Looking for neighbours...</div>
 
                 <div id="dual-match-view" style="display:none; margin-bottom:20px;">
-                    <div class="header-sep" data-i18n="neighbourhood.header.similar">Neighbors Like You</div>
+                    <div class="header-sep" data-i18n="neighbourhood.header.similar">Neighbours Like You</div>
                     <div id="similar-list"></div>
                 </div>
 
                 <div id="near-list" style="display:none;"></div>
                 <!-- Legacy container kept hidden to prevent JS null ref if needed, though variable was removed from loadAllUsers usage -->
 
-                <div class="header-sep" data-i18n="neighbourhood.header.all" style="margin-top: 20px;">All Neighbors
+                <div class="header-sep" data-i18n="neighbourhood.header.all" style="margin-top: 20px;">All Neighbours
                 </div>
                 <div id="all-list"></div>
+            </div>
+
+            <!-- POSTS TAB -->
+            <div id="view-posts" class="view-panel active">
+                <div style="padding-bottom:15px; border-bottom:2px solid black; margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3>Neighbourhood Posts</h3>
+                        <div id="admin-toggle-container" style="display:none;">
+                            <label style="font-size:0.8rem; cursor:pointer;">
+                                <input type="checkbox" id="admin-mode-check" onchange="toggleAdminMode(this.checked)">
+                                Admin Mode
+                            </label>
+                        </div>
+                    </div>
+                    <textarea id="input-post" class="input-field" placeholder="What's happening?"
+                        style="height:60px; resize:none; margin-bottom:10px;"></textarea>
+                    <div style="display:flex; justify-content:flex-end;">
+                        <button class="sys-btn" onclick="submitPost()" data-i18n="neighbourhood.btn.post">Post</button>
+                    </div>
+                </div>
+                <div id="loading-posts" style="display:none; text-align:center; padding:20px;">Loading...</div>
+                <div id="posts-feed" style="display:flex; flex-direction:column; gap:15px; padding-bottom: 20px;"></div>
             </div>
         </div>
     </div>
@@ -861,6 +973,55 @@
         let currentDrawMode = 1;
         let isDrawing = false;
         let tempPixelData = new Array(64).fill(0);
+        let cachedUsers = []; // Cache for search/filtering
+        let supporterUsers = {}; // Store supporter usernames as object for ES5 compatibility
+
+        function fetchSupporters() {
+            const fs = firebase.firestore();
+            try {
+                if (fs.settings) {
+                    fs.settings({ experimentalForceLongPolling: true });
+                }
+            } catch (e) { }
+            return fs.collection('config').doc('supporters').get().then(function (doc) {
+                if (doc.exists) {
+                    var data = doc.data();
+                    supporterUsers = {};
+                    var now = Date.now();
+
+                    function isValidPro(val) {
+                        if (val === true) return true; // Legacy/Lifetime
+                        if (val && val.expiresAt) {
+                            var exp = 0;
+                            if (typeof val.expiresAt.toMillis === 'function') {
+                                exp = val.expiresAt.toMillis();
+                            } else {
+                                exp = new Date(val.expiresAt).getTime();
+                            }
+                            return exp > now;
+                        }
+                        return false;
+                    }
+
+                    if (data.usernames && Array.isArray(data.usernames)) {
+                        for (var i = 0; i < data.usernames.length; i++) {
+                            supporterUsers[data.usernames[i]] = true;
+                        }
+                    } else {
+                        // Map format: keys are usernames
+                        for (var key in data) {
+                            if (key !== 'usernames' && key !== 'list') {
+                                if (isValidPro(data[key])) {
+                                    supporterUsers[key] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }).catch(function (e) {
+                console.error("Error loading supporters:", e);
+            });
+        }
 
         const SUGGESTED_INTERESTS = [
             // Books & Writing
@@ -888,13 +1049,74 @@
             if (user) {
                 currentUser = user;
                 document.getElementById('login-overlay').style.display = 'none';
+
+                // Initial Pro check from storage
+                isPlus = localStorage.getItem('rekindle_is_pro') !== 'false';
+
+                fetchSupporters().then(() => {
+                    renderSuggestedInterests();
+                    initAdminTools(user);
+                    loadPosts();
+                });
                 loadMyProfile();
-                renderSuggestedInterests();
-                initAdminTools(user);
             } else {
                 document.getElementById('login-overlay').style.display = 'flex';
             }
         });
+
+        // Sync Pro Status across tabs
+        window.addEventListener('storage', function (e) {
+            if (e.key === 'rekindle_is_pro') {
+                const newIsPlus = (e.newValue !== 'false');
+                if (newIsPlus !== isPlus) {
+                    isPlus = newIsPlus;
+                    console.log("Pro Status Sync (Neighbourhood): ", isPlus);
+                    reRenderRecentPosts();
+                }
+            }
+        });
+
+        function reRenderRecentPosts() {
+            const feed = document.getElementById('posts-feed');
+            if (!feed) return;
+            const cards = feed.querySelectorAll('.post-card');
+            cards.forEach(card => {
+                const uid = card.dataset.uid; // I need to make sure I add data-uid to the card
+                if (!uid) return;
+
+                // Simple re-check logic (similar to renderPostItem)
+                const postUser = cachedUsers.find(u => u.uid === uid) || (currentUser && uid === currentUser.uid ? myProfile : null);
+
+                if (postUser) {
+                    const isDev = (uid === 'ukiyo' || postUser.email === 'ukiyo@rekindle.ink' || postUser.displayName === 'ukiyo' || postUser.displayName === 'ukiyo@rekindle.ink') || (currentUser && uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink');
+                    const isPro = postUser.kindlePlus || supporterUsers[postUser.displayName] || supporterUsers[postUser.email] || false;
+
+                    card.classList.remove('developer', 'supporter');
+                    if (isDev) card.classList.add('developer');
+                    else if (isPro) card.classList.add('supporter');
+
+                    // Note: We don't fully re-render innerHTML to avoid flickering/losing focus,
+                    // but classes and shadows will update.
+                    // For comments, we'd need to target individual comment items.
+                    const commentLists = card.querySelectorAll('.comments-list');
+                    commentLists.forEach(list => {
+                        const items = list.querySelectorAll('.comment-item');
+                        items.forEach(item => {
+                            const cUid = item.dataset.uid; // Need data-uid here too
+                            if (!cUuid) return;
+                            const cu = cachedUsers.find(u => u.uid === cUid) || (currentUser && cUid === currentUser.uid ? myProfile : null);
+                            if (cu) {
+                                const cid = (cUuid === 'ukiyo' || cu.email === 'ukiyo@rekindle.ink' || cu.displayName === 'ukiyo' || cu.displayName === 'ukiyo@rekindle.ink') || (currentUser && cUid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink');
+                                const sip = cu.kindlePlus || supporterUsers[cu.displayName] || supporterUsers[cu.email] || false;
+                                item.classList.remove('developer', 'supporter');
+                                if (cid) item.classList.add('developer');
+                                else if (sip) item.classList.add('supporter');
+                            }
+                        });
+                    });
+                }
+            });
+        }
 
         // UI TABS
         function switchTab(tab) {
@@ -913,6 +1135,8 @@
 
             if (tab === 'list') {
                 loadAllUsers();
+            } else if (tab === 'posts') {
+                loadPosts();
             }
         }
 
@@ -1013,69 +1237,166 @@
             if (!currentUser) return;
             db.ref('users_public/' + currentUser.uid).once('value')
                 .then(snapshot => {
-                    if (snapshot.exists()) {
-                        myProfile = snapshot.val();
-                        // ensure favorite_topics is preserved in local cache if we save later
-                        // actually update() handles that, but good to have complete object in myProfile
+                    var data = snapshot.val();
+                    var fallbackName = (currentUser.email || currentUser.uid).split('@')[0];
 
-                        // Populate Inputs
-                        const p = myProfile;
-                        document.getElementById('input-name').value = p.displayName || '';
-                        document.getElementById('input-bio').value = p.bio || '';
-
-                        // Populate selectedInterests Set
-                        selectedInterests.clear();
-                        if (Array.isArray(p.interests)) {
-                            p.interests.forEach(i => selectedInterests.add(i));
-                        } else if (typeof p.interests === 'string' && p.interests) {
-                            p.interests.split(',').map(s => s.trim()).filter(s => s).forEach(i => selectedInterests.add(i));
-                        }
-
-                        document.getElementById('input-location').value = p.location || '';
-                        document.getElementById('input-pronunciation').value = p.pronunciation || '';
-                        document.getElementById('input-occupation').value = p.occupation || '';
-                        document.getElementById('input-hometown').value = p.hometown || '';
-                        document.getElementById('input-birthday').value = p.birthday || '';
-                        document.getElementById('input-gender').value = p.gender || '';
-                        document.getElementById('input-pronouns').value = p.pronouns || '';
-                        document.getElementById('input-language').value = p.language || '';
-
-                        if (p.favorites) {
-                            document.getElementById('input-fav-music').value = p.favorites.music || '';
-                            document.getElementById('input-fav-tv').value = p.favorites.tv || '';
-                            document.getElementById('input-fav-movies').value = p.favorites.movies || '';
-                            document.getElementById('input-fav-games').value = p.favorites.games || '';
-                            document.getElementById('input-fav-sports').value = p.favorites.sports || '';
-                        }
-                        document.getElementById('input-travel').value = p.travel || '';
-
-                        if (p.socialLinks) {
-                            document.getElementById('input-goodreads').value = p.socialLinks.goodreads || '';
-                            document.getElementById('input-instagram').value = p.socialLinks.instagram || '';
-                            document.getElementById('input-youtube').value = p.socialLinks.youtube || '';
-                            document.getElementById('input-twitch').value = p.socialLinks.twitch || '';
-                            document.getElementById('input-pinterest').value = p.socialLinks.pinterest || '';
-                            document.getElementById('input-tumblr').value = p.socialLinks.tumblr || '';
-                            document.getElementById('input-website').value = p.socialLinks.website || '';
-                        }
-
-                        // Populate View Mode
-                        renderProfileView(p, true); // true = isMe
-
-                        drawAvatar('my-avatar', p.customAvatar || p.avatarSeed || currentUser.uid);
-                        updatePrivacyButton();
+                    if (!data) {
+                        // Create basic profile if it doesn't exist (KindleChat style)
+                        myProfile = {
+                            displayName: currentUser.displayName || fallbackName,
+                            email: currentUser.email || "",
+                            avatarSeed: Math.floor(Math.random() * 10000),
+                            lastActive: firebase.database.ServerValue.TIMESTAMP
+                        };
+                        db.ref('users_public/' + currentUser.uid).set(myProfile);
                     } else {
-                        // New user - set defaults
-                        const defaultName = currentUser.displayName ||
-                            (currentUser.email ? currentUser.email.split('@')[0] : 'New User');
-                        document.getElementById('input-name').value = defaultName;
-                        drawAvatar('my-avatar', currentUser.uid);
-                        toggleEditMode(true); // Default to edit for new users
+                        myProfile = data;
+                        // Ensure email is synced if missing
+                        if (!myProfile.email && currentUser.email) {
+                            myProfile.email = currentUser.email;
+                            db.ref('users_public/' + currentUser.uid).update({ email: currentUser.email });
+                        }
                     }
+                    // ensure favorite_topics is preserved in local cache if we save later
+                    // actually update() handles that, but good to have complete object in myProfile
+
+                    // Show repair button to ukiyo
+                    if (currentUser.email === 'ukiyo@rekindle.ink') {
+                        document.getElementById('btn-repair-handles').style.display = 'inline-block';
+                    }
+
+                    // Populate Inputs
+                    const p = myProfile;
+                    document.getElementById('input-name').value = p.displayName || '';
+                    document.getElementById('input-bio').value = p.bio || '';
+
+                    // Populate selectedInterests Set
+                    selectedInterests.clear();
+                    if (Array.isArray(p.interests)) {
+                        p.interests.forEach(i => selectedInterests.add(i));
+                    } else if (typeof p.interests === 'string' && p.interests) {
+                        p.interests.split(',').map(s => s.trim()).filter(s => s).forEach(i => selectedInterests.add(i));
+                    }
+
+                    document.getElementById('input-location').value = p.location || '';
+                    document.getElementById('input-pronunciation').value = p.pronunciation || '';
+                    document.getElementById('input-occupation').value = p.occupation || '';
+                    document.getElementById('input-hometown').value = p.hometown || '';
+                    document.getElementById('input-birthday').value = p.birthday || '';
+                    document.getElementById('input-gender').value = p.gender || '';
+                    document.getElementById('input-pronouns').value = p.pronouns || '';
+                    document.getElementById('input-language').value = p.language || '';
+
+                    // Populate Favorites
+                    if (p.favorites) {
+                        document.getElementById('input-fav-music').value = p.favorites.music || '';
+                        document.getElementById('input-fav-tv').value = p.favorites.tv || '';
+                        document.getElementById('input-fav-movies').value = p.favorites.movies || '';
+                        document.getElementById('input-fav-games').value = p.favorites.games || '';
+                        document.getElementById('input-fav-sports').value = p.favorites.sports || '';
+                    }
+                    document.getElementById('input-travel').value = p.travel || '';
+
+                    if (p.socialLinks) {
+                        document.getElementById('input-goodreads').value = p.socialLinks.goodreads || '';
+                        document.getElementById('input-instagram').value = p.socialLinks.instagram || '';
+                        document.getElementById('input-youtube').value = p.socialLinks.youtube || '';
+                        document.getElementById('input-twitch').value = p.socialLinks.twitch || '';
+                        document.getElementById('input-pinterest').value = p.socialLinks.pinterest || '';
+                        document.getElementById('input-tumblr').value = p.socialLinks.tumblr || '';
+                        document.getElementById('input-website').value = p.socialLinks.website || '';
+                    }
+
+                    // Populate View Mode
+                    renderProfileView(p, true); // true = isMe
+
+                    drawAvatar('my-avatar', p.customAvatar || p.avatarSeed || currentUser.uid);
+                    updatePrivacyButton();
                 })
                 .catch(err => {
                     console.error("Error loading profile:", err);
                 });
+        }
+
+        // KINDLE NAME HELPER
+        function getKindleName(user) {
+            if (!user) return 'Anonymous';
+            // If it's the current user, prioritize their active Auth email
+            if (currentUser && user.uid === currentUser.uid && currentUser.email) {
+                return currentUser.email.split('@')[0];
+            }
+            if (user.email) return user.email.split('@')[0];
+            // Fallback to checking displayName if it looks like an email
+            if (user.displayName && user.displayName.indexOf('@') !== -1) {
+                return user.displayName.split('@')[0];
+            }
+            if (user.uid) return user.uid.split('@')[0].substring(0, 8);
+            return 'Anonymous';
+        }
+
+        async function repairHandles() {
+            if (!currentUser || currentUser.email !== 'ukiyo@rekindle.ink') return;
+            if (!confirm("Start Handle Repair? This will scan public profiles and recent KindleChat reactions to fix missing handles.")) return;
+
+            const btn = document.getElementById('btn-repair-handles');
+            btn.disabled = true;
+            btn.innerText = "Repairing...";
+
+            try {
+                // 1. Scan Public Profiles
+                const snap = await db.ref('users_public').once('value');
+                const users = snap.val();
+                let fixCount = 0;
+
+                for (let uid in users) {
+                    const u = users[uid];
+                    let needsSync = false;
+                    let email = u.email;
+
+                    // A. Email is empty but displayName is an email
+                    if (!email && u.displayName && u.displayName.indexOf('@') !== -1) {
+                        email = u.displayName;
+                        needsSync = true;
+                    }
+
+                    if (needsSync && email) {
+                        console.log(`[Repair] Syncing handle for ${uid} as ${email}`);
+                        await db.ref('users_public/' + uid).update({ email: email });
+                        fixCount++;
+                    }
+                }
+
+                // 2. Scan Recent KindleChat Reactions
+                // Reactions often store { reaction: "...", username: "handle" }
+                // This is a great source of Truth for UIDs
+                const reactionSnap = await db.ref('kindlechat/messages').limitToLast(200).once('value');
+                const msgs = reactionSnap.val();
+                for (let mid in msgs) {
+                    const msg = msgs[mid];
+                    if (msg.reactions) {
+                        for (let rUid in msg.reactions) {
+                            const r = msg.reactions[rUid];
+                            if (r && typeof r === 'object' && r.username) {
+                                // Check if this user needs repair
+                                if (!users[rUid] || !users[rUid].email) {
+                                    const emailVal = r.username.includes('@') ? r.username : r.username + '@rekindle.ink';
+                                    console.log(`[Repair] Found handle in reaction for ${rUid}: ${emailVal}`);
+                                    await db.ref('users_public/' + rUid).update({ email: emailVal });
+                                    fixCount++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                showAlertModal(`Repair Complete! Processed ${fixCount} handles.`);
+            } catch (e) {
+                console.error("Repair Error:", e);
+                showAlertModal("Repair Error: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Repair Handles";
+            }
         }
 
         // VIEW / EDIT MODES
@@ -1095,7 +1416,11 @@
         }
 
         function renderProfileView(profile, isMe) {
-            document.getElementById('profile-view-name').innerText = profile.displayName || 'Anonymous';
+            const kName = getKindleName(profile);
+            const dName = profile.displayName || 'Anonymous';
+            const fullName = (dName === kName) ? escapeHtml(dName) :
+                `${escapeHtml(dName)} <span style="font-size:0.8em; font-weight:normal; color:#666; margin-left:5px;">@${escapeHtml(kName)}</span>`;
+            document.getElementById('profile-view-name').innerHTML = fullName;
 
             const pronouns = profile.pronouns ? `(${profile.pronouns})` : '';
             const pronunciation = profile.pronunciation ? `• /${profile.pronunciation}/` : '';
@@ -1185,8 +1510,6 @@
             // Check if we have favorites container, or create a specific one for Topics
             // The HTML structure has a 'Favorites' section for Music/TV etc. 
             // We should probably add a separate 'Topics' section or append to it.
-            // Let's look at the HTML refactor: keys were "Interests", "Favorites" (music etc), "Travel".
-            // I should insert a "Favorite Topics" section or append to Interests?
             // "Interests" is tags. "Favorites" is Key:Value.
             // Let's create a NEW header "Favorite Topics" in the column if it doesn't exist.
 
@@ -1350,10 +1673,7 @@
                 selectedInterests.delete(interest);
                 pill.classList.remove('selected');
             } else {
-                if (selectedInterests.size >= 15) {
-                    alert("Maximum 15 interests allowed!");
-                    return;
-                }
+                // Limit removed
                 selectedInterests.add(interest);
                 pill.classList.add('selected');
             }
@@ -1362,7 +1682,7 @@
 
         function updateInterestCounter() {
             const counter = document.getElementById('interest-counter');
-            if (counter) counter.innerText = `${selectedInterests.size}/15`;
+            if (counter) counter.innerText = `${selectedInterests.size}`;
         }
 
         function getSelectedInterests() {
@@ -1502,21 +1822,131 @@
             }
         }
 
+        // CITY PICKER LOGIC
+        let pickerTargetId = null;
+        let pickerTimeout;
+
+        function openCityPicker(targetId) {
+            pickerTargetId = targetId;
+            document.getElementById('city-picker-modal').style.display = 'flex';
+            document.getElementById('picker-search').value = '';
+            document.getElementById('picker-results').style.display = 'none';
+            document.getElementById('picker-search').focus();
+        }
+
+        function closeCityPicker() {
+            document.getElementById('city-picker-modal').style.display = 'none';
+            pickerTargetId = null;
+        }
+
+        function handleCitySearch(query) {
+            clearTimeout(pickerTimeout);
+            const resultsContainer = document.getElementById('picker-results');
+
+            if (query.length < 2) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            resultsContainer.style.display = 'block';
+            resultsContainer.innerHTML = '<div style="padding:10px; color:#666;">Searching...</div>';
+
+            pickerTimeout = setTimeout(() => {
+                fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
+                    .then(res => res.json())
+                    .then(data => {
+                        renderPickerResults(data.results || []);
+                    })
+                    .catch(e => resultsContainer.innerHTML = 'Error');
+            }, 500);
+        }
+
+        function renderPickerResults(results) {
+            const container = document.getElementById('picker-results');
+            container.innerHTML = '';
+            if (results.length === 0) {
+                container.innerHTML = '<div style="padding:10px;">No results</div>';
+                return;
+            }
+
+            results.forEach(city => {
+                const div = document.createElement('div');
+                div.style.padding = '8px';
+                div.style.borderBottom = '1px solid #eee';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `<strong>${city.name}</strong> <small>${city.country || ''}</small>`;
+                div.onclick = () => selectCity(city);
+                container.appendChild(div);
+            });
+        }
+
+        // --- CONFIRM MODAL ---
+        let confirmCallback = null;
+        function showConfirmModal(msg, onConfirm) {
+            const modal = document.getElementById('confirm-modal');
+            const msgEl = document.getElementById('confirm-modal-message');
+            if (msgEl) msgEl.innerText = msg;
+            confirmCallback = onConfirm;
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+            confirmCallback = null;
+        }
+
+        function onConfirmYes() {
+            if (confirmCallback) confirmCallback();
+            closeConfirmModal();
+        }
+
+        // --- PROMPT MODAL ---
+        let promptCallback = null;
+        function showPromptModal(msg, initialValue, onResult) {
+            const modal = document.getElementById('prompt-modal');
+            const msgEl = document.getElementById('prompt-modal-message');
+            const inputEl = document.getElementById('prompt-modal-input');
+
+            if (msgEl) msgEl.innerText = msg;
+            if (inputEl) inputEl.value = initialValue || '';
+
+            promptCallback = onResult;
+            if (modal) modal.style.display = 'flex';
+            if (inputEl) inputEl.focus();
+        }
+
+        function closePromptModal() {
+            document.getElementById('prompt-modal').style.display = 'none';
+            promptCallback = null;
+        }
+
+        function onPromptSubmit() {
+            const inputEl = document.getElementById('prompt-modal-input');
+            const val = inputEl ? inputEl.value : '';
+            if (promptCallback) promptCallback(val);
+            closePromptModal();
+        }
+
+        function selectCity(city) {
+            if (pickerTargetId) {
+                const input = document.getElementById(pickerTargetId);
+                if (input) {
+                    input.value = `${city.name}`; // Just name, or Name, Country? Original list was just names.
+                    // But open-meteo returns detailed data. 
+                    // Let's stick to Name for now to match style, but maybe append country code if ambiguous?
+                    // Settings app stores full object but displays generic.
+                    // For neighbourhood profile, let's just use the Name property for simplicity in display,
+                    // or "Name, Country" if available.
+                    if (city.country) input.value += `, ${city.country}`;
+                }
+            }
+            closeCityPicker();
+        }
+
         // LOAD ALL USERS & FIND SIMILAR/NEAR
         function loadAllUsers() {
             console.log("loadAllUsers called");
-            const listContainer = document.getElementById('all-list');
-            const similarContainer = document.getElementById('similar-list');
-            // const nearContainer = document.getElementById('near-list'); // Unused
             const loadingMsg = document.getElementById('loading-msg');
-            const dualMatchView = document.getElementById('dual-match-view');
-
-            if (!loadingMsg) console.error("loadingMsg element missing!");
-            if (!listContainer) console.error("listContainer element missing!");
-
-            listContainer.innerHTML = '';
-            similarContainer.innerHTML = '';
-            // nearContainer.innerHTML = '';
             if (loadingMsg) loadingMsg.style.display = 'block';
 
             if (!currentUser) {
@@ -1527,102 +1957,164 @@
             db.ref('users_public').limitToLast(100).once('value')
                 .then(snapshot => {
                     if (loadingMsg) loadingMsg.style.display = 'none';
-                    const users = [];
+                    cachedUsers = [];
 
                     snapshot.forEach(child => {
                         const u = child.val();
                         u.uid = child.key;
                         // Exclude self and private profiles
                         if (u.uid !== currentUser.uid && !u.isPrivate) {
-                            users.push(u);
+                            cachedUsers.push(u);
                         }
                     });
 
                     // Sort by last active (newest first)
-                    users.reverse();
-                    if (users.length === 0) {
-                        listContainer.innerHTML = '<div style="padding:20px; text-align:center;">No other users found.</div>';
-                        dualMatchView.style.display = 'none';
-                        return;
-                    }
+                    cachedUsers.reverse();
 
-                    // Sort by last active (newest first)
-                    users.reverse();
-
-                    // Calculate Matches & Filtering
-                    // Normalize my interests to lowercase for case-insensitive matching
-                    const myTags = new Set((myProfile.interests || []).map(t => t.toLowerCase()));
-                    const myLoc = myProfile.location ? myProfile.location.toLowerCase() : '';
-
-                    const similarUsers = [];
-                    const shownInSpecial = new Set();
-
-                    users.forEach(u => {
-                        let score = 0;
-
-                        // Location match (+3 points) - case insensitive
-                        if (myLoc && u.location && u.location.toLowerCase() === myLoc) {
-                            score += 3;
-                        }
-
-                        // Interests match (+1 point each) - case insensitive
-                        if (u.interests && myTags.size > 0) {
-                            if (Array.isArray(u.interests)) {
-                                u.interests.forEach(tag => {
-                                    if (myTags.has(tag.toLowerCase())) score++;
-                                });
-                            }
-                        }
-                        u.matchScore = score;
-                        if (score > 0) {
-                            similarUsers.push(u);
-                            shownInSpecial.add(u.uid);
-                        }
-                    });
-
-                    // Sort Similar by Score
-                    similarUsers.sort((a, b) => b.matchScore - a.matchScore);
-
-                    console.log("Matches found:", similarUsers.length);
-
-                    // Render Matches
-                    if (similarUsers.length > 0) {
-                        dualMatchView.style.display = 'block';
-
-                        // Clear and render similar list
-                        similarContainer.innerHTML = '';
-                        similarUsers.forEach((u, idx) => {
-                            try { renderUserCard(u, similarContainer, true, idx * 50); }
-                            catch (e) { console.error("Error rendering similar user", u, e); }
-                        });
-                    } else {
-                        dualMatchView.style.display = 'none';
-                    }
-
-                    // Render All List (Excluding those in special lists)
-                    let allIdx = 0;
-                    users.forEach(u => {
-                        if (!shownInSpecial.has(u.uid)) {
-                            try { renderUserCard(u, listContainer, false, allIdx * 50); }
-                            catch (e) { console.error("Error rendering user", u, e); }
-                            allIdx++;
-                        }
-                    });
-
-                    if (allIdx === 0 && users.length > 0 && (similarUsers.length > 0 || nearUsers.length > 0)) {
-                        // All users shown in matches, so 'all list' is empty. That's fine.
-                    } else if (allIdx === 0 && users.length > 0) {
-                        // Should not happen if logic is correct
-                    }
+                    // Initial Render
+                    renderLists();
                 })
                 .catch(err => {
                     console.error("Load error:", err);
                     if (loadingMsg) {
                         loadingMsg.style.display = 'block';
-                        loadingMsg.innerText = window.t('neighbourhood.msg.error_loading', "Error loading list: " + err.message);
+                        loadingMsg.innerText = "Error loading list: " + err.message;
                     }
                 });
         }
+
+        function toggleSearchClear() {
+            const input = document.getElementById('input-search');
+            const clearBtn = document.getElementById('btn-clear-search');
+            if (input && clearBtn) {
+                clearBtn.style.display = input.value.trim() ? 'inline-block' : 'none';
+            }
+        }
+
+        function clearSearch() {
+            const input = document.getElementById('input-search');
+            if (input) {
+                input.value = '';
+                toggleSearchClear();
+                renderLists();
+            }
+        }
+
+        function renderLists() {
+            const listContainer = document.getElementById('all-list');
+            const similarContainer = document.getElementById('similar-list');
+            const dualMatchView = document.getElementById('dual-match-view');
+            const searchInput = document.getElementById('input-search');
+
+            listContainer.innerHTML = '';
+            similarContainer.innerHTML = '';
+
+            if (cachedUsers.length === 0) {
+                listContainer.innerHTML = '<div style="padding:20px; text-align:center;">No other users found.</div>';
+                dualMatchView.style.display = 'none';
+                return;
+            }
+
+            // FILTERING
+            const term = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            const displayUsers = cachedUsers.filter(u => {
+                if (!term) return true;
+                const name = (u.displayName || '').toLowerCase();
+                const loc = (u.location || '').toLowerCase();
+                const interests = Array.isArray(u.interests) ? u.interests.join(' ').toLowerCase() : (u.interests || '').toLowerCase();
+                const bio = (u.bio || '').toLowerCase();
+                const occupation = (u.occupation || '').toLowerCase();
+                const hometown = (u.hometown || '').toLowerCase();
+                const language = (u.language || '').toLowerCase();
+
+                return name.includes(term) || loc.includes(term) || interests.includes(term) ||
+                    bio.includes(term) || occupation.includes(term) || hometown.includes(term) || language.includes(term);
+            });
+
+            if (displayUsers.length === 0) {
+                listContainer.innerHTML = '<div style="padding:20px; text-align:center;">No users match your search.</div>';
+                dualMatchView.style.display = 'none';
+                return;
+            }
+
+            // Calculate Matches & Filtering
+            // Normalize my interests to lowercase for case-insensitive matching
+            const myTags = new Set((myProfile.interests || []).map(t => t.toLowerCase()));
+            const myLoc = myProfile.location ? myProfile.location.toLowerCase() : '';
+            const myAge = calculateAge(myProfile.birthday);
+
+            const similarUsers = [];
+            const shownInSpecial = new Set();
+
+            displayUsers.forEach(u => {
+                let score = 0;
+
+                // Location match (+3 points) - case insensitive
+                if (myLoc && u.location && u.location.toLowerCase() === myLoc) {
+                    score += 3;
+                }
+
+                // Interests match (+1 point each) - case insensitive
+                if (u.interests && myTags.size > 0) {
+                    if (Array.isArray(u.interests)) {
+                        u.interests.forEach(tag => {
+                            if (myTags.has(tag.toLowerCase())) score++;
+                        });
+                    }
+                }
+
+                // Age match
+                if (myAge !== null && u.birthday) {
+                    const uAge = calculateAge(u.birthday);
+                    if (uAge !== null) {
+                        const ageDiff = Math.abs(myAge - uAge);
+                        if (ageDiff <= 2) score += 5;
+                        else if (ageDiff <= 5) score += 3;
+                        else if (ageDiff <= 10) score += 1;
+                    }
+                }
+
+                u.matchScore = score;
+                if (score > 0) {
+                    similarUsers.push(u);
+                    shownInSpecial.add(u.uid);
+                }
+            });
+
+            // Sort Similar by Score
+            similarUsers.sort((a, b) => b.matchScore - a.matchScore);
+
+            console.log("Matches found:", similarUsers.length);
+
+            // Render Matches
+            if (similarUsers.length > 0) {
+                dualMatchView.style.display = 'block';
+
+                // Clear and render similar list
+                similarContainer.innerHTML = '';
+                similarUsers.forEach((u, idx) => {
+                    try { renderUserCard(u, similarContainer, true, idx * 50); }
+                    catch (e) { console.error("Error rendering similar user", u, e); }
+                });
+            } else {
+                dualMatchView.style.display = 'none';
+            }
+
+            // Render All List (Excluding those in special lists IF NOT SEARCHING? 
+            // Actually, if searching, you probably want to see everyone in valid result list.
+            // But let's keep the exclusion logic for cleaner UI where "Top Matches" are highlighted 
+            // and removed from the general list below to avoid duplicates.
+
+            let allIdx = 0;
+            displayUsers.forEach(u => {
+                if (!shownInSpecial.has(u.uid)) {
+                    renderUserCard(u, listContainer, false, allIdx * 50);
+                    allIdx++;
+                }
+            });
+        }
+
+
 
         function renderUserCard(user, container, showMatch = false, delay = 0) {
             const div = document.createElement('div');
@@ -1650,20 +2142,33 @@
                 if (age !== null) subtitle += (subtitle ? ', ' : '') + age;
             }
 
-            // Interests preview (first 3)
+            // Common Interests only (White text on black squares)
             let tagsHtml = '';
             if (user.interests && Array.isArray(user.interests)) {
-                const preview = user.interests.slice(0, 3);
-                if (preview.length > 0) {
-                    tagsHtml = '<div style="margin-top:6px;">' + preview.map(t => `<span class="tag" style="font-size:0.7rem;">${escapeHtml(t)}</span>`).join(' ') + '</div>';
+                // Get my interests for intersection
+                // myProfile is global
+                const myInterests = new Set((myProfile.interests || []).map(i => i.toLowerCase()));
+
+                // Filter for common
+                const common = user.interests.filter(i => myInterests.has(i.toLowerCase()));
+
+                if (common.length > 0) {
+                    tagsHtml = '<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">' +
+                        common.map(t => `<span class="tag" style="font-size:0.75rem; background:black; color:white; border-color:black; padding:3px 6px;">${escapeHtml(t)}</span>`).join('') +
+                        '</div>';
                 }
             }
 
             div.innerHTML = `
-                <canvas id="${avatarId}" width="32" height="32" style="width:32px; height:32px; border:2px solid black; image-rendering:pixelated; flex-shrink:0;"></canvas>
+                <canvas id="${avatarId}" width="64" height="64" style="width:64px; height:64px; border:2px solid black; image-rendering:pixelated; flex-shrink:0;"></canvas>
                 <div style="flex-grow:1; min-width:0;">
-                    <div style="font-weight:bold; font-size:0.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        ${escapeHtml(user.displayName || 'Anonymous')}${matchBadge}${plusBadge}
+                    <div style="font-weight:bold; font-size:1.1rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        ${(function () {
+                    const kName = getKindleName(user);
+                    const dName = user.displayName || 'Anonymous';
+                    if (dName === kName) return escapeHtml(dName);
+                    return `${escapeHtml(dName)} <span class="user-handle">@${escapeHtml(kName)}</span>`;
+                })()}${matchBadge}${plusBadge}
                     </div>
                     <div style="font-size:0.8rem; color:#666;">${escapeHtml(subtitle)}</div>
                     ${user.bio ? `<div style="font-size:0.8rem; color:#333; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;">${escapeHtml(user.bio.substring(0, 60))}${user.bio.length > 60 ? '...' : ''}</div>` : ''}
@@ -1710,7 +2215,7 @@
                     user.uid = uid;
                     renderProfileInModal(user);
                 } else {
-                    alert("User not found.");
+                    showAlertModal("User not found.");
                     closeProfileModal();
                 }
             });
@@ -1726,7 +2231,12 @@
             drawAvatar('popup-view-avatar', avatarSeed);
 
             // Basic Info
-            document.getElementById('popup-view-name').innerHTML = `${escapeHtml(user.displayName || 'Anonymous')}` +
+            const kName = getKindleName(user);
+            const dName = user.displayName || 'Anonymous';
+            const fullName = (dName === kName) ? escapeHtml(dName) :
+                `${escapeHtml(dName)} <span style="font-size:0.8em; font-weight:normal; color:#666; margin-left:5px;">@${escapeHtml(kName)}</span>`;
+
+            document.getElementById('popup-view-name').innerHTML = fullName +
                 (user.kindlePlus ? ` <span class="badge-plus" title="Kindle+ Subscriber">PLUS</span>` : '');
 
             const pronouns = user.pronouns ? `(${escapeHtml(user.pronouns)})` : '';
@@ -1850,7 +2360,7 @@
 
                 db.ref('users_public/' + uid).set(user);
             }
-            alert(`Generated ${count} test users. Refresh to see them.`);
+            showAlertModal(`Generated ${count} test users. Refresh to see them.`);
         }
 
         // --- DRAW AVATAR ---
@@ -1931,8 +2441,23 @@
             const parts = dateString.split('/');
             let birthDate;
             if (parts.length === 3) {
-                // assume DD/MM/YYYY
-                birthDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                // assume DD/MM/YYYY default
+                let d = parseInt(parts[0], 10);
+                let m = parseInt(parts[1], 10);
+                let y = parseInt(parts[2], 10);
+
+                // Support MM/DD/YYYY if user entered Month > 12 in the DD slot? 
+                // Wait, standard is DD/MM/YYYY.
+                // Input: 8/20/2013 -> parts[0]=8, parts[1]=20. 
+                // Here m=20. If m > 12, it's definitely not a month.
+                // Swap if d <= 12 (meaning d could be the month).
+                if (m > 12 && d <= 12) {
+                    const temp = d;
+                    d = m;
+                    m = temp;
+                }
+
+                birthDate = new Date(y, m - 1, d);
             } else {
                 // Try YYYY-MM-DD
                 birthDate = new Date(dateString);
@@ -1951,7 +2476,520 @@
             if (age < 0 || age > 120) return null;
             return age;
         }
+
+        // --- POSTS FEATURE ---
+        let postsListener = null;
+        let recentPosts = [];
+        let isAdminMode = false;
+        let openCommentsPosts = new Set(); // Track which posts have comments expanded
+
+        function loadPosts() {
+            // Check Admin capability
+            if (currentUser && currentUser.email === 'ukiyo@rekindle.ink') {
+                const toggler = document.getElementById('admin-toggle-container');
+                if (toggler) toggler.style.display = 'block';
+            }
+
+            const feed = document.getElementById('posts-feed');
+            const loader = document.getElementById('loading-posts');
+
+            if (postsListener) return; // Already listening
+
+            loader.style.display = 'block';
+            feed.innerHTML = '';
+
+            const postsRef = db.ref('neighbourhood_posts').limitToLast(50);
+
+            postsListener = postsRef.on('value', snapshot => {
+                loader.style.display = 'none';
+                feed.innerHTML = '';
+
+                recentPosts = [];
+                snapshot.forEach(child => {
+                    recentPosts.push({ id: child.key, ...child.val() });
+                });
+
+                recentPosts.reverse(); // Newest first
+
+                if (recentPosts.length === 0) {
+                    feed.innerHTML = '<div style="text-align:center; color:#666;">No posts yet. Be the first!</div>';
+                    return;
+                }
+
+                recentPosts.forEach(post => {
+                    renderPostItem(post, feed);
+                });
+            });
+        }
+
+        function toggleAdminMode(enabled) {
+            isAdminMode = enabled;
+            // Rerender list
+            const feed = document.getElementById('posts-feed');
+            feed.innerHTML = '';
+            recentPosts.forEach(post => renderPostItem(post, feed));
+        }
+
+        async function renderPostItem(post, container) {
+            const div = document.createElement('div');
+
+            // Fetch user info
+            let postUser = cachedUsers.find(u => u.uid === post.uid);
+            if (!postUser && currentUser && post.uid === currentUser.uid) {
+                postUser = myProfile;
+                if (postUser) postUser.uid = currentUser.uid;
+            }
+
+            let bubbleClass = '';
+            if (postUser) {
+                const isDev = (post.uid === 'ukiyo' || postUser.email === 'ukiyo@rekindle.ink' || postUser.displayName === 'ukiyo' || postUser.displayName === 'ukiyo@rekindle.ink') || (currentUser && post.uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink');
+                const isPro = postUser.kindlePlus || supporterUsers[postUser.displayName] || supporterUsers[postUser.email] || false;
+                if (isDev) bubbleClass = 'developer';
+                else if (isPro) bubbleClass = 'supporter';
+            }
+
+            div.className = 'post-card ' + bubbleClass;
+            div.dataset.uid = post.uid; // Add for re-render sync
+            div.style.position = 'relative'; // Ensure absolute children are positioned relative to this card
+
+            // Placeholder while loading user
+            div.innerHTML = `<div style="padding:10px;">Loading...</div>`;
+            container.appendChild(div);
+
+            if (!postUser) {
+                try {
+                    const snap = await db.ref('users_public/' + post.uid).once('value');
+                    postUser = snap.val();
+                    if (postUser) postUser.uid = post.uid;
+                } catch (e) {
+                    console.error(e);
+                    postUser = { displayName: 'Unknown', uid: post.uid };
+                }
+            }
+
+            if (!postUser) postUser = { displayName: 'Unknown', uid: post.uid };
+
+            // Determine styles again after async fetch if needed
+            if (bubbleClass === '') {
+                const isDev = (post.uid === 'ukiyo' || postUser.email === 'ukiyo@rekindle.ink' || postUser.displayName === 'ukiyo' || postUser.displayName === 'ukiyo@rekindle.ink') || (currentUser && post.uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink');
+                const isPro = postUser.kindlePlus || supporterUsers[postUser.displayName] || supporterUsers[postUser.email] || false;
+                if (isDev) bubbleClass = 'developer';
+                else if (isPro) bubbleClass = 'supporter';
+                div.className = 'post-card ' + bubbleClass;
+            }
+
+            const kName = getKindleName(postUser);
+            let dName = postUser.displayName;
+            if (!dName || dName === 'Unknown' || dName === 'Anonymous') {
+                dName = kName;
+            }
+
+            const avatarSeed = postUser.customAvatar || postUser.avatarSeed || post.uid;
+            const date = new Date(post.timestamp);
+            const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const avatarId = 'post-av-' + post.id;
+
+            let adminControls = '';
+            if (isAdminMode) {
+                adminControls = `
+                <div style="position:absolute; top:5px; right:5px; display:flex; gap:5px; z-index:10;">
+                    <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem;" onclick="editPost('${post.id}')">Edit</button>
+                    <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; background:black; color:white;" onclick="deletePost('${post.id}')">Del</button>
+                </div>
+                `;
+            }
+
+            let displayText = post.text;
+            const filterEnabled = localStorage.getItem('rekindle_profanity_filter') !== 'false';
+            if (filterEnabled && window.filterBadWords) {
+                displayText = window.filterBadWords(displayText);
+            }
+
+            let nameBadge = '';
+            if (bubbleClass === 'developer') {
+                nameBadge = '<span class="dev-tag">DEV</span>';
+            } else if (bubbleClass === 'supporter') {
+                nameBadge = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+            }
+
+            const handleHtml = (dName === kName) ? '' : `<span class="user-handle">@${escapeHtml(kName)}</span>`;
+
+            div.innerHTML = `
+                ${adminControls}
+                <div style="display:flex; gap:10px; align-items:flex-start;">
+                    <canvas id="${avatarId}" width="48" height="48" style="width:48px; height:48px; border:2px solid black; image-rendering:pixelated; flex-shrink:0; cursor:pointer;"></canvas>
+                    <div style="flex:1; min-width:0;">
+                         <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                            <div style="display:flex; align-items:center; gap:4px; cursor:pointer;" onclick="openUserProfile('${post.uid}')">
+                                ${nameBadge}
+                                <strong style="font-size:0.95rem;">${escapeHtml(dName)}</strong>
+                                ${handleHtml}
+                            </div>
+                            <small style="color:#666; font-size:0.75rem; margin-right:${isAdminMode ? '70px' : '0'};">${timeStr}</small>
+                         </div>
+                         <div style="white-space:pre-wrap; font-size:0.9rem; line-height:1.4; margin-top:5px;">${escapeHtml(displayText)}</div>
+                    </div>
+                </div>
+                <!-- COMMENTS SECTION -->
+                <div class="comments-section">
+                    <span class="comments-toggle" onclick="toggleComments('${post.id}', this)">
+                        <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align: middle; margin-right: 2px; display: inline-block;"><rect x="3" y="3" width="18" height="14" stroke="currentColor" stroke-width="2" fill="none"/><path d="M7 17v4l4-4" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                        <span class="toggle-text">${openCommentsPosts.has(post.id) ? 'Hide Comments' : 'Comments'}</span><span id="comments-count-${post.id}"></span>
+                    </span>
+                    <div id="comments-area-${post.id}" style="display:${openCommentsPosts.has(post.id) ? 'block' : 'none'};">
+                        <div id="comments-list-${post.id}" class="comments-list"></div>
+                        <div class="comment-input-row">
+                            <input type="text" id="comment-input-${post.id}" placeholder="Add a comment..." maxlength="200">
+                            <button class="sys-btn" onclick="submitComment('${post.id}')">Add</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Draw Avatar
+            setTimeout(() => {
+                drawAvatar(avatarId, avatarSeed);
+                // click avatar to profile
+                const cvs = document.getElementById(avatarId);
+                if (cvs) cvs.onclick = () => openUserProfile(post.uid);
+            }, 0);
+
+            // Load comments for this post
+            loadComments(post.id);
+        }
+
+        // --- COMMENTS ---
+        function toggleComments(postId, toggleEl) {
+            const area = document.getElementById('comments-area-' + postId);
+            if (!area) return;
+            const isHidden = area.style.display === 'none';
+            area.style.display = isHidden ? 'block' : 'none';
+
+            if (isHidden) {
+                openCommentsPosts.add(postId);
+            } else {
+                openCommentsPosts.delete(postId);
+            }
+
+            const textEl = toggleEl.querySelector('.toggle-text');
+            if (textEl) textEl.innerText = isHidden ? 'Hide Comments' : 'Comments';
+        }
+
+        function loadComments(postId) {
+            const listContainer = document.getElementById('comments-list-' + postId);
+            if (!listContainer) return;
+
+            db.ref('neighbourhood_posts/' + postId + '/comments').orderByChild('timestamp').on('value', async snapshot => {
+                listContainer.innerHTML = '';
+                if (!snapshot.exists()) return;
+
+                const comments = [];
+                snapshot.forEach(child => {
+                    comments.push({ id: child.key, ...child.val() });
+                });
+
+                // Update count in toggle
+                const countEl = document.getElementById('comments-count-' + postId);
+                if (countEl) {
+                    countEl.innerText = comments.length > 0 ? ' (' + comments.length + ')' : '';
+                }
+
+                // Render each comment
+                for (const comment of comments) {
+                    await renderComment(comment, postId, listContainer);
+                }
+            });
+        }
+
+        async function renderComment(comment, postId, container) {
+            // Fetch user info
+            let commUser = cachedUsers.find(u => u.uid === comment.uid);
+            if (!commUser && currentUser && comment.uid === currentUser.uid) {
+                commUser = myProfile;
+            }
+            if (!commUser) {
+                try {
+                    const snap = await db.ref('users_public/' + comment.uid).once('value');
+                    commUser = snap.val();
+                } catch (e) {
+                    commUser = { displayName: 'Unknown' };
+                }
+            }
+            if (!commUser) commUser = { displayName: 'Unknown', uid: comment.uid };
+
+            let kindleName = getKindleName(commUser);
+            let displayName = commUser.displayName;
+            if (!displayName || displayName === 'Unknown' || displayName === 'Anonymous') {
+                displayName = kindleName;
+            }
+
+            const date = new Date(comment.timestamp);
+            const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            // Profanity filter
+            let displayText = comment.text;
+            const filterEnabled = localStorage.getItem('rekindle_profanity_filter') !== 'false';
+            if (filterEnabled && window.filterBadWords) {
+                displayText = window.filterBadWords(displayText);
+            }
+
+            let isDev = (comment.uid === 'ukiyo' || commUser.email === 'ukiyo@rekindle.ink' || commUser.displayName === 'ukiyo' || commUser.displayName === 'ukiyo@rekindle.ink');
+            if (!isDev && currentUser && comment.uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink') isDev = true;
+
+            const isPro = commUser.kindlePlus || supporterUsers[displayName] || supporterUsers[commUser.email] || false;
+
+            let nameBadge = '';
+            let bubbleClass = '';
+
+            if (isDev) {
+                nameBadge = '<span class="dev-tag">DEV</span>';
+                bubbleClass = 'developer';
+            } else if (isPro) {
+                const crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+                nameBadge = crownSvg;
+                bubbleClass = 'supporter';
+            }
+
+            // Admin delete button
+            let adminDelBtn = '';
+            if (isAdminMode) {
+                adminDelBtn = `<button class="sys-btn" style="position:absolute; right:3px; top:3px; padding:1px 4px; font-size:0.6rem; background:black; color:white;" onclick="deleteComment('${postId}', '${comment.id}')">Del</button>`;
+            }
+
+            const commentDiv = document.createElement('div');
+            commentDiv.className = 'comment-item ' + bubbleClass;
+            commentDiv.dataset.uid = comment.uid; // Add for re-render sync
+            commentDiv.style.position = 'relative';
+
+            const handleHtml = (displayName === kindleName) ? '' : `<span class="user-handle" style="margin-left:5px;">@${escapeHtml(kindleName)}</span>`;
+
+            commentDiv.innerHTML = `
+                ${adminDelBtn}
+                <div style="display:flex; gap:8px;">
+                    <strong style="font-size:0.85rem; display:flex; align-items:center; gap:3px; cursor:pointer;" onclick="openUserProfile('${comment.uid}')">
+                        ${nameBadge}
+                        ${escapeHtml(displayName)}
+                        ${handleHtml}
+                    </strong>
+                    <small style="color:#666; font-size:0.7rem;">${timeStr}</small>
+                </div>
+                <div style="margin-top:2px; font-size:0.85rem; line-height:1.3;">${escapeHtml(displayText)}</div>
+            `;
+            container.appendChild(commentDiv);
+        }
+
+        function submitComment(postId) {
+            if (!currentUser) { showAlertModal("Please log in to comment."); return; }
+            if (!myProfile || !myProfile.displayName || myProfile.displayName === 'Anonymous') { showPublicProfileModal(); return; }
+
+            const input = document.getElementById('comment-input-' + postId);
+            const text = input.value.trim();
+
+            if (!text) return;
+            if (text.length < 2) { showAlertModal("Comment too short."); return; }
+            if (text.length > 200) { showAlertModal("Comment too long (max 200 chars)."); return; }
+
+            input.disabled = true;
+
+            db.ref('neighbourhood_posts/' + postId + '/comments').push({
+                uid: currentUser.uid,
+                text: text,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            }).then(() => {
+                input.value = '';
+                input.disabled = false;
+            }).catch(err => {
+                showAlertModal("Error posting comment: " + err.message);
+                input.disabled = false;
+            });
+        }
+
+        function deleteComment(postId, commentId) {
+            showConfirmModal("Delete this comment?", () => {
+                db.ref('neighbourhood_posts/' + postId + '/comments/' + commentId).remove()
+                    .catch(e => showAlertModal("Delete failed: " + e.message, "Error"));
+            });
+        }
+
+        // --- RESTRICTIONS & SPAM ---
+        function canUserSend(history, currentUserId) {
+            // Decay algorithm from KindleChat
+            const MAX_SCORE = 3.0;
+            const DECAY_RATE = 0.05;
+            const SCAN_DEPTH = 50;
+
+            let score = 0;
+            if (!history || history.length === 0) return true;
+
+            const limit = Math.min(history.length, SCAN_DEPTH);
+            for (let i = 0; i < limit; i++) {
+                if (history[i].uid === currentUserId) {
+                    let weight = 1.0 - (i * DECAY_RATE);
+                    if (weight <= 0) break;
+                    score += weight;
+                }
+            }
+            return score < MAX_SCORE;
+        }
+
+        function submitPost() {
+            if (!currentUser) { showAlertModal("Please log in to post."); return; }
+
+            // CHECK 0: Public Profile with proper name
+            if (!myProfile || !myProfile.displayName || myProfile.displayName === 'Anonymous') {
+                showPublicProfileModal();
+                return;
+            }
+
+            const input = document.getElementById('input-post');
+            const text = input.value.trim();
+
+            if (!text) return;
+            // CHECK 1: Min Word Count
+            const wordCount = text.trim().split(/\s+/).length;
+            if (wordCount < 10) return showAlertModal("Keep it meaningful! Minimum 10 words.");
+            // CHECK 2: Max Length
+            if (text.length > 280) { showAlertModal("Message too long (max 280 chars)."); return; }
+
+            // CHECK 3: Back-to-Back
+            if (recentPosts.length > 0 && recentPosts[0].uid === currentUser.uid) {
+                showAlertModal("No double posting! Please wait for a neighbour to confirm.");
+                return;
+            }
+
+            // CHECK 4: Spam Algo
+            if (!canUserSend(recentPosts, currentUser.uid)) {
+                showAlertModal("You're posting too frequently. Please slow down.");
+                return;
+            }
+
+            const btn = document.querySelector('button[onclick="submitPost()"]');
+            if (btn) btn.disabled = true;
+
+            db.ref('neighbourhood_posts').push({
+                uid: currentUser.uid,
+                text: text,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            }).then(() => {
+                input.value = '';
+                if (btn) btn.disabled = false;
+            }).catch(err => {
+                showAlertModal("Error posting: " + err.message);
+                if (btn) btn.disabled = false;
+            });
+        }
+
+        // --- ADMIN ACTIONS ---
+        function deletePost(id) {
+            showConfirmModal("Are you sure you want to delete this post?", () => {
+                db.ref('neighbourhood_posts/' + id).remove()
+                    .catch(e => showAlertModal("Delete failed: " + e.message, "Error"));
+            });
+        }
+
+        function editPost(id) {
+            const post = recentPosts.find(p => p.id === id);
+            if (!post) return;
+
+            showPromptModal("Edit Post Content:", post.text, (newText) => {
+                if (newText !== null && newText.trim() !== "") {
+                    db.ref('neighbourhood_posts/' + id).update({ text: newText.trim() })
+                        .catch(e => showAlertModal("Update failed: " + e.message, "Error"));
+                }
+            });
+        }
+
+        function showPublicProfileModal() {
+            const modal = document.getElementById('public-profile-modal');
+            if (modal) modal.style.display = 'flex';
+        }
+        function closePublicProfileModal() {
+            const modal = document.getElementById('public-profile-modal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        // --- GENERIC ALERT MODAL ---
+        function showAlertModal(msg, title = "Alert") {
+            const modal = document.getElementById('alert-modal');
+            const titleEl = document.getElementById('alert-modal-title');
+            const msgEl = document.getElementById('alert-modal-message');
+
+            if (titleEl) titleEl.innerText = title;
+            if (msgEl) msgEl.innerText = msg;
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeAlertModal() {
+            const modal = document.getElementById('alert-modal');
+            if (modal) modal.style.display = 'none';
+        }
     </script>
+    <!-- PUBLIC PROFILE MODAL -->
+    <div id="public-profile-modal" class="modal-overlay"
+        style="z-index: 20000; align-items:center; justify-content:center; display:none;">
+        <div class="modal-box">
+            <h3>Public Profile Required</h3>
+            <p>You must have a public profile to post in the neighbourhood.</p>
+            <div class="modal-buttons" style="margin-top: 15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="closePublicProfileModal()">OK</button>
+            </div>
+        </div>
+    </div>
+    <!-- GENERIC ALERT MODAL -->
+    <div id="alert-modal" class="modal-overlay"
+        style="z-index: 20002; align-items:center; justify-content:center; display:none;">
+        <div class="modal-box">
+            <h3 id="alert-modal-title">Alert</h3>
+            <p id="alert-modal-message"></p>
+            <div class="modal-buttons" style="margin-top: 15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="closeAlertModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRM MODAL -->
+    <div id="confirm-modal" class="modal-overlay"
+        style="z-index: 20003; align-items:center; justify-content:center; display:none;">
+        <div class="modal-box">
+            <h3 data-i18n="modal.confirm_title">Confirmation</h3>
+            <p id="confirm-modal-message"></p>
+            <div class="modal-buttons" style="margin-top: 15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="onConfirmYes()" data-i18n="btn.yes">Yes</button>
+                <button class="sys-btn" onclick="closeConfirmModal()" data-i18n="btn.no">No</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROMPT MODAL -->
+    <div id="prompt-modal" class="modal-overlay"
+        style="z-index: 20004; align-items:center; justify-content:center; display:none;">
+        <div class="modal-box">
+            <h3 data-i18n="modal.edit_title">Edit</h3>
+            <p id="prompt-modal-message"></p>
+            <input type="text" id="prompt-modal-input" class="input-field" style="width: 100%; box-sizing: border-box;">
+            <div class="modal-buttons" style="margin-top: 15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="onPromptSubmit()" data-i18n="btn.save">Save</button>
+                <button class="sys-btn" onclick="closePromptModal()" data-i18n="btn.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CITY PICKER MODAL -->
+    <div id="city-picker-modal" class="modal-overlay"
+        style="z-index: 20000; align-items:center; justify-content:center;">
+        <div class="modal-box">
+            <h3 data-i18n="neighbourhood.modal.set_city">Set City</h3>
+            <input type="text" id="picker-search" data-i18n-placeholder="neighbourhood.ph.search_city"
+                placeholder="Search city..." autocomplete="off" class="input-field"
+                oninput="handleCitySearch(this.value)">
+            <div id="picker-results"
+                style="max-height: 150px; overflow-y: auto; text-align: left; border: 1px solid #ccc; margin-top: 5px; display: none;">
+            </div>
+            <div class="modal-buttons" style="margin-top: 15px; display:flex; gap:10px; justify-content:center;">
+                <button class="sys-btn" onclick="closeCityPicker()" data-i18n="btn.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
