@@ -36,6 +36,14 @@ async function generateSitemap(domain = DEFAULT_DOMAIN, outputDir = ROOT_DIR) {
             continue;
         }
 
+        // --- NEW CODE START ---
+        // Create the clean URL (remove .html)
+        let cleanUrl = file.replace('.html', '');
+        
+        // Handle Homepage (index.html becomes just the domain)
+        if (cleanUrl === 'index') cleanUrl = '';
+        // --- NEW CODE END ---
+
         const filePath = path.join(ROOT_DIR, file);
         const stats = await fs.stat(filePath);
         const lastmod = stats.mtime.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -44,7 +52,7 @@ async function generateSitemap(domain = DEFAULT_DOMAIN, outputDir = ROOT_DIR) {
         if (file === 'index.html') priority = '1.00';
 
         xml += `  <url>
-    <loc>${domain}/${file}</loc>
+    <loc>${domain}/${cleanUrl}</loc>
     <lastmod>${lastmod}</lastmod>
     <priority>${priority}</priority>
   </url>
