@@ -672,7 +672,7 @@
         <div class="sidebar">
             <div class="system-header">
                 <h1 class="os-title">ReKindle<span id="title-plus"
-                        style="vertical-align: super; font-size: 0.6em; display: inline-block;">+</span></h1>
+                        style="vertical-align: super; font-size: 0.6em; display: none;">+</span></h1>
                 <div class="user-info" id="user-display" data-i18n="home.guest_mode">Guest Mode</div>
                 <div class="info-btn" onclick="openAbout()">i</div>
             </div>
@@ -817,7 +817,7 @@
         let favoriteApps = [];
         let isEditMode = false;
         let isFirebaseAvailable = false;
-        let isPro = (localStorage.getItem('rekindle_is_pro') !== 'false'); // Global Pro Status (Optimistic UI: Assume Pro until verified)
+        let isPro = (localStorage.getItem('rekindle_is_pro') === 'true'); // Global Pro Status (Pessimistic UI: Default to false)
         const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
         // const CACHE_TTL_MS = 60 * 60 * 1000; // REMOVED: Using Signal Field Strategy
 
@@ -1052,6 +1052,54 @@
                 });
         }
 
+        function syncGeneralSettings(serverTimestamp = null) {
+            if (!currentUser || !isFirebaseAvailable || !db) return;
+
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('general').get().then(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+
+                    if (data.manualLocation) {
+                        localStorage.setItem('rekindle_location_manual', JSON.stringify(data.manualLocation));
+                    }
+                    if (data.unitSystem) {
+                        localStorage.setItem('rekindle_unit_system', data.unitSystem);
+                    }
+                    if (data.themeMode) {
+                        localStorage.setItem('rekindle_theme_mode', data.themeMode);
+                        if (window.rekindleApplyTheme) window.rekindleApplyTheme();
+                    }
+                    if (data.disableGames !== undefined) {
+                        localStorage.setItem('rekindle_disable_games', data.disableGames);
+                    }
+                    if (data.censorProfanity !== undefined) {
+                        localStorage.setItem('rekindle_censor_profanity', data.censorProfanity);
+                    }
+                    if (data.defaultFullscreen !== undefined) {
+                        localStorage.setItem('rekindle_default_fullscreen', data.defaultFullscreen);
+                    }
+                    if (data.rotation) {
+                        localStorage.setItem('rekindle_rotation', data.rotation);
+                        if (window.rekindleApplyRotation) window.rekindleApplyRotation();
+                    }
+                    if (data.customPattern && Array.isArray(data.customPattern)) {
+                        localStorage.setItem('rekindle_pixel_data', JSON.stringify(data.customPattern));
+                        // Re-trigger wallpaper apply if theme.js is loaded
+                        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+                    }
+
+                    // Update local sync timestamp
+                    if (serverTimestamp) {
+                        localStorage.setItem('rekindle_settings_last_sync', serverTimestamp.toString());
+                    } else {
+                        localStorage.setItem('rekindle_settings_last_sync', Date.now().toString());
+                    }
+                }
+            }).catch(err => {
+                console.error("Error fetching general settings:", err);
+            });
+        }
+
         function monitorUserProfile(uid) {
             if (!isFirebaseAvailable || !db) return;
             // Listen for changes to Pro status AND Favorites Signal
@@ -1060,6 +1108,7 @@
                 let expires = 0;
                 let newProStatus = false;
                 let serverFavTimestamp = 0;
+                let serverSettingsTimestamp = 0;
 
                 if (doc.exists) {
                     const data = doc.data();
@@ -1078,6 +1127,13 @@
                             ? data.favoritesLastUpdated.toMillis()
                             : new Date(data.favoritesLastUpdated).getTime();
                     }
+
+                    // 3. Settings Signal Logic
+                    if (data.settingsLastUpdated) {
+                        serverSettingsTimestamp = typeof data.settingsLastUpdated.toMillis === 'function'
+                            ? data.settingsLastUpdated.toMillis()
+                            : new Date(data.settingsLastUpdated).getTime();
+                    }
                 }
 
                 // Handle Pro Status Change
@@ -1094,14 +1150,16 @@
 
                 // Handle Favorites Sync Signal
                 const localFavTimestamp = parseInt(localStorage.getItem('rekindle_fav_last_sync') || '0');
-
-                // If server has a newer timestamp than our local sync, we must fetch.
-                // OR: If we have never synced (local is 0), we must fetch at least once.
                 if (serverFavTimestamp > localFavTimestamp || localFavTimestamp === 0) {
                     console.log("Remote favorites changed (or first run). Syncing...", serverFavTimestamp, localFavTimestamp);
                     syncFavorites(); // This will fetch & update local timestamp
-                } else {
-                    // Debug: console.log("Favorites are up to date.");
+                }
+
+                // Handle General Settings Sync Signal
+                const localSettingsTimestamp = parseInt(localStorage.getItem('rekindle_settings_last_sync') || '0');
+                if (serverSettingsTimestamp > localSettingsTimestamp || localSettingsTimestamp === 0) {
+                    console.log("Remote settings changed (or first run). Syncing...", serverSettingsTimestamp, localSettingsTimestamp);
+                    syncGeneralSettings(serverSettingsTimestamp); // This will fetch & update local timestamp
                 }
             });
         }

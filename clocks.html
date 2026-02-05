@@ -528,35 +528,29 @@
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        var auth = firebase.auth();
-        var db = firebase.firestore();
+        var isFirebaseAvailable = false;
+        var auth, db;
 
-        // Configure for Safari/Mac compatibility (fixes CORS errors)
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
 
-
-        if (db.settings) {
-
-
-            try {
-
-
-                db.settings({
-
-
-                    experimentalForceLongPolling: true,
-
-
-                    merge: true
-
-
-                });
-
-
-            } catch (e) { console.warn("Settings error:", e); }
-
-
+                if (db.settings) {
+                    try {
+                        db.settings({
+                            experimentalForceLongPolling: true,
+                            merge: true
+                        });
+                    } catch (e) { console.warn("Settings error:", e); }
+                }
+                isFirebaseAvailable = true;
+            }
+        } catch (e) {
+            console.error("Firebase init failed:", e);
         }
+
 
 
 
@@ -612,13 +606,30 @@
 
 
         // --- DATA SYNC ---
+        function triggerSettingsSyncSignal() {
+            if (!currentUser || !isFirebaseAvailable || !db) return;
+            db.collection('users').doc(currentUser.uid).set({
+                settingsLastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(err => console.error("Error triggering sync signal:", err));
+        }
+
         function loadCloudData() {
             db.collection('users').doc(currentUser.uid).collection('apps').doc('clocks')
                 .get().then(function (doc) {
                     if (doc.exists) {
                         var data = doc.data();
                         if (data.cities) cities = data.cities;
-                        if (data.homeCity) homeCity = data.homeCity;
+
+                        // Logic: Prioritize Global Manual Location from Settings.
+                        // If it exists, it overrides the home clock, regardless of what's in the clocks doc.
+                        var cloudHome = data.homeCity || { name: "Local", zone: null };
+                        var globalManual = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+
+                        if (globalManual && globalManual.zone) {
+                            homeCity = { name: globalManual.name, zone: globalManual.zone };
+                        } else {
+                            homeCity = cloudHome;
+                        }
 
                         localStorage.setItem('rekindle_clocks', JSON.stringify(cities));
                         localStorage.setItem('rekindle_clocks_home', JSON.stringify(homeCity));
@@ -821,6 +832,7 @@
                 // Also update User Settings in Firestore if needed (mirroring settings.html logic)
                 if (currentUser) {
                     db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: locData }, { merge: true });
+                    triggerSettingsSyncSignal();
                 }
 
             } else {

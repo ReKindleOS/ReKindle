@@ -260,8 +260,13 @@
                 // Option A: Use 'rekindle_weather_settings' which stores 'autoUnit' ('celsius'/'fahrenheit') calculated from country code.
                 // We can proxy that: Celsius -> Metric, Fahrenheit -> Imperial.
                 var weatherSettings = JSON.parse(localStorage.getItem('rekindle_weather_settings'));
-                if (weatherSettings && weatherSettings.autoUnit) {
-                    return weatherSettings.autoUnit === 'fahrenheit' ? 'imperial' : 'metric';
+                if (weatherSettings && weatherSettings.locations && weatherSettings.locations.length > 0) {
+                    // Get the current location's autoUnit (not the top-level one which is never updated)
+                    var currentIdx = weatherSettings.currentIndex || 0;
+                    var currentLoc = weatherSettings.locations[currentIdx] || weatherSettings.locations[0];
+                    if (currentLoc && currentLoc.autoUnit) {
+                        return currentLoc.autoUnit === 'fahrenheit' ? 'imperial' : 'metric';
+                    }
                 }
             }
         } catch (e) { }

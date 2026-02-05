@@ -838,34 +838,31 @@
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        let isFirebaseAvailable = false;
+        let auth, db;
 
-        // Configure for Safari/Mac compatibility (fixes CORS errors)
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
 
-
-        if (db.settings) {
-
-
-            try {
-
-
-                db.settings({
-
-
-                    experimentalForceLongPolling: true,
-
-
-                    merge: true
-
-
-                });
-
-
-            } catch (e) { console.warn("Settings error:", e); }
-
-
+                if (db.settings) {
+                    try {
+                        db.settings({
+                            experimentalForceLongPolling: true,
+                            merge: true
+                        });
+                    } catch (e) { console.warn("Settings error:", e); }
+                }
+                isFirebaseAvailable = true;
+                console.log("Firebase initialized successfully.");
+            } else {
+                console.warn("Firebase SDK not loaded.");
+            }
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+            isFirebaseAvailable = false;
         }
 
 
@@ -1164,6 +1161,13 @@
             loadRotation();
         };
 
+        function triggerSettingsSyncSignal() {
+            if (!currentUser || !isFirebaseAvailable || !db) return;
+            db.collection('users').doc(currentUser.uid).set({
+                settingsLastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(err => console.error("Error triggering sync signal:", err));
+        }
+
         function saveRotation() {
             const val = document.getElementById('rotation-select').value;
             localStorage.setItem('rekindle_rotation', val);
@@ -1171,6 +1175,7 @@
 
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ rotation: val }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1338,6 +1343,7 @@
                     customPattern: pixelData,
                     wallpaperSize: '16px 16px'
                 }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1353,6 +1359,7 @@
                 localStorage.setItem(key, isEnabled);
                 if (currentUser) {
                     db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ disableGames: isEnabled }, { merge: true });
+                    triggerSettingsSyncSignal();
                 }
                 showModal(isEnabled ? "Games and entertainment apps are now disabled and hidden." : "Games and entertainment apps are now enabled.");
                 return;
@@ -1364,6 +1371,7 @@
                 localStorage.setItem(key, isEnabled);
                 if (currentUser) {
                     db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ censorProfanity: isEnabled }, { merge: true });
+                    triggerSettingsSyncSignal();
                 }
                 return;
             }
@@ -1374,6 +1382,7 @@
                 localStorage.setItem(key, isEnabled);
                 if (currentUser) {
                     db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ defaultFullscreen: isEnabled }, { merge: true });
+                    triggerSettingsSyncSignal();
                 }
                 return;
             }
@@ -1391,6 +1400,7 @@
                 const update = {};
                 update[`google_${serviceName}`] = isEnabled;
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set(update, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1408,6 +1418,7 @@
                 const update = {};
                 update[type === 'calendar' ? 'caldav_url' : 'carddav_url'] = url;
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set(update, { merge: true });
+                triggerSettingsSyncSignal();
             }
             showModal("Success", "URL saved.");
         }
@@ -1470,6 +1481,7 @@
                     useByoKey: useByo,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).catch(console.error);
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1483,6 +1495,7 @@
             localStorage.setItem('rekindle_unit_system', val);
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ unitSystem: val }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1499,6 +1512,7 @@
                 db.collection('users').doc(currentUser.uid).collection('privateSettings').doc('preferences').set({
                     language: val
                 }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1510,6 +1524,7 @@
 
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ themeMode: val }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1518,6 +1533,7 @@
             localStorage.setItem('rekindle_display_mode', val);
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ displayMode: val }, { merge: true });
+                triggerSettingsSyncSignal();
             }
         }
 
@@ -1533,12 +1549,25 @@
                 updateManualScaleUI('1.0');
                 if (window.rekindleApplyScale) window.rekindleApplyScale();
             }
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({
+                    scaleAuto: isEnabled,
+                    scale: localStorage.getItem('rekindle_scale') || '1.0'
+                }, { merge: true });
+                triggerSettingsSyncSignal();
+            }
         }
 
         function saveManualScale(val) {
             localStorage.setItem('rekindle_scale', val);
             updateManualScaleUI(val);
             if (window.rekindleApplyScale) window.rekindleApplyScale();
+
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ scale: val }, { merge: true });
+                triggerSettingsSyncSignal();
+            }
         }
 
         function updateManualScaleUI(scale) {
@@ -1623,6 +1652,7 @@
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({
                     manualLocation: JSON.parse(JSON.stringify(locData)) // double-safety to strip undefined if any crept in
                 }, { merge: true }).catch(err => console.error("Error saving location:", err));
+                triggerSettingsSyncSignal();
             }
 
             // Reload if Auto settings need to update
@@ -1641,6 +1671,7 @@
 
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ manualLocation: firebase.firestore.FieldValue.delete() }, { merge: true });
+                triggerSettingsSyncSignal();
             }
 
             // Reload if Auto settings need to update
