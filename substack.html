@@ -764,19 +764,19 @@
                     state.user = u;
                     updateUI();
 
-                    // Pro gate will handle showing/hiding paywall
-                    // Only sync SID if user is pro (pro-gate.isPro())
-                    if (u && window.rekindleProGate && window.rekindleProGate.isPro()) {
-                        syncSID();
+                    // Use pro-gate check callback to ensure we have the latest status
+                    // Only sync SID if user is pro
+                    if (u && window.rekindleProGate) {
+                        window.rekindleProGate.check(isPro => {
+                            if (isPro) {
+                                syncSID();
+                            }
+                        });
                     }
                 });
             } catch (e) { console.warn("Firebase Error", e); }
 
-            // Only load content if we have an SID AND user is pro
-            if (state.sid && window.rekindleProGate && window.rekindleProGate.isPro()) {
-                switchView('following');
-            }
-
+            // Setup scrolling
             const list = document.getElementById('post-list');
             list.addEventListener('scroll', () => {
                 if (list.scrollTop + list.clientHeight >= list.scrollHeight - 200) {
@@ -889,7 +889,7 @@
         async function saveSettings() {
             const sid = document.getElementById('sid-input').value.trim();
 
-            if (!sid) return alert("Please enter a valid SID");
+            if (!sid) { showAlertModal("Please enter a valid SID"); return; }
 
             // Must save to Pro-only subcollection first - will fail for non-Pro users
             if (state.user && db) {
@@ -907,7 +907,7 @@
                     document.getElementById('pro-required-modal').style.display = 'flex';
                 }
             } else {
-                alert("Please log in first.");
+                showAlertModal("Please log in first.");
             }
         }
 
@@ -922,12 +922,20 @@
                     const cloudSid = doc.data().sid;
                     if (cloudSid && cloudSid !== state.sid) {
                         state.sid = cloudSid;
-                        refreshData();
+                        // Initial load if we just got the SID
+                        if (state.activeFeed === 'following' && state.inbox.length === 0) {
+                            switchView('following');
+                        } else {
+                            refreshData();
+                        }
+                    } else if (cloudSid && state.inbox.length === 0) {
+                        // SIDs match but nothing loaded (initial load)
+                        switchView('following');
                     }
                 }
             } catch (e) {
-                // Expected for non-Pro users - Firestore rules block read
-                console.log("Could not sync SID (Pro required):", e.code);
+                // Expected for non-Pro users - suppress console clutter
+                // console.log("Could not sync SID (Pro required):", e.code);
             }
         }
 
@@ -1346,13 +1354,13 @@
         function performRekindleAuth(isLogin) {
             const u = document.getElementById('rk-username').value;
             const p = document.getElementById('rk-password').value;
-            if (!u || !p) return alert("Enter credentials");
+            if (!u || !p) { showAlertModal("Enter credentials"); return; }
             const email = u.includes('@') ? u : u + "@rekindle.ink";
 
             if (isLogin) {
-                auth.signInWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => alert(e.message));
+                auth.signInWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => showAlertModal(e.message));
             } else {
-                auth.createUserWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => alert(e.message));
+                auth.createUserWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => showAlertModal(e.message));
             }
         }
 
@@ -1430,8 +1438,35 @@
 
 
 
+        // MODAL FUNCTIONS
+        function showAlertModal(msg, title = "Alert") {
+            const m = document.getElementById('alert-modal');
+            if (m) {
+                document.getElementById('alert-modal-message').innerText = msg;
+                const t = document.getElementById('alert-modal-title');
+                if (t) t.innerText = title;
+                m.style.display = 'flex';
+            } else {
+                alert(msg); // Fallback
+            }
+        }
+        function closeAlertModal() {
+            const m = document.getElementById('alert-modal');
+            if (m) m.style.display = 'none';
+        }
     </script>
 
+    <!-- REKINDLE MODALS -->
+    <div id="alert-modal" class="modal-overlay"
+        style="z-index:99999; display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div class="modal-box"
+            style="background:#fff; border:2px solid #000; padding:20px; max-width:300px; width:80%; text-align:center; box-shadow:4px 4px 0 rgba(0,0,0,0.2);">
+            <h3 id="alert-modal-title" style="margin-top:0;">Alert</h3>
+            <p id="alert-modal-message"></p>
+            <button class="sys-btn" onclick="closeAlertModal()"
+                style="border:2px solid #000; background:#fff; padding:5px 15px; font-weight:bold; cursor:pointer; margin-top:15px;">OK</button>
+        </div>
+    </div>
 </body>
 
 </html>
