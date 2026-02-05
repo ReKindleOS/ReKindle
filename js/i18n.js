@@ -113,7 +113,13 @@
 
         // Set HTML Lang
         document.documentElement.lang = lang;
-        document.body.classList.add('lang-' + lang);
+        if (document.body) {
+            document.body.classList.add('lang-' + lang);
+        } else {
+            document.addEventListener('DOMContentLoaded', function () {
+                document.body.classList.add('lang-' + lang);
+            });
+        }
 
         // Save choice (only if not in auto mode)
         // If current setting is null, treating it as 'auto', so DO NOT save 'en' over it.
@@ -161,20 +167,29 @@
     function initObserver(translations) {
         if (typeof MutationObserver === 'undefined') return;
 
-        var observer = new MutationObserver(function (mutations) {
-            mutations.forEach(function (mutation) {
-                mutation.addedNodes.forEach(function (node) {
-                    if (node.nodeType === 1) { // 1 = Element
-                        applyTranslations(translations, node);
-                    }
+        var startObserver = function () {
+            if (!document.body) return;
+            var observer = new MutationObserver(function (mutations) {
+                mutations.forEach(function (mutation) {
+                    mutation.addedNodes.forEach(function (node) {
+                        if (node.nodeType === 1) { // 1 = Element
+                            applyTranslations(translations, node);
+                        }
+                    });
                 });
             });
-        });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        };
+
+        if (document.body) {
+            startObserver();
+        } else {
+            document.addEventListener('DOMContentLoaded', startObserver);
+        }
     }
 
 })();
