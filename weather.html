@@ -167,17 +167,60 @@
             position: relative;
         }
 
-        .location-badge {
+        /* NAVIGATION WRAPPER */
+        .city-nav-wrapper {
             position: absolute;
-            top: -12px;
-            left: 20px;
+            top: -15px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .location-badge {
             background: white;
-            padding: 0 10px;
+            padding: 2px 15px;
             font-weight: 900;
             font-size: 1rem;
             text-transform: uppercase;
-            border-left: 2px solid black;
-            border-right: 2px solid black;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 #ccc;
+            cursor: pointer;
+        }
+
+        .nav-btn {
+            background: white;
+            border: 2px solid black;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 2px 2px 0 #ccc;
+        }
+
+        .nav-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .nowcast-alert {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            background: black;
+            color: white;
+            padding: 4px 10px;
+            display: none;
+            font-family: "Courier New", monospace;
         }
 
         .current-date {
@@ -387,18 +430,97 @@
             text-transform: uppercase;
             border-bottom: 1px solid black;
             padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .saved-locations-list {
+            max-height: 200px;
+            min-height: 50px;
+            overflow-y: auto;
+            border: 2px solid black;
+            margin-bottom: 15px;
+            text-align: left;
+            background: white;
+            box-shadow: inset 2px 2px 0 #eee;
+        }
+
+        .saved-loc-row {
+            padding: 6px 10px;
+            border-bottom: 1px solid #000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .saved-loc-row:last-child {
+            border-bottom: none;
+        }
+
+        .saved-loc-row:hover {
+            background: #000;
+            color: #fff;
+        }
+
+        .saved-loc-row.active {
+            background: #000;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .sl-name {
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sl-del {
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: white;
+            color: black;
+            border: 2px solid black;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            box-sizing: border-box;
+        }
+
+        .saved-loc-row.active .sl-del {
+            background: transparent;
+            color: white;
+            border: 1px solid white;
+        }
+
+        /* Prevent parent hover when clicking delete */
+        .sl-del:hover {
+            opacity: 0.7;
+        }
+
+        .modal-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
         }
 
         .modal-box input {
             width: 100%;
             padding: 10px;
-            margin: 10px 0;
+            margin-bottom: 10px;
             border: 2px solid black;
             font-family: inherit;
             font-size: 1.1rem;
             text-align: left;
             font-weight: bold;
             box-sizing: border-box;
+            display: none;
+            /* Hidden initially */
         }
 
         /* SEARCH RESULTS */
@@ -447,7 +569,29 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
+
+        /* WIDE SCREEN LAYOUT */
+        @media (min-width: 450px) {
+            .main-display {
+                flex-direction: row;
+                justify-content: center;
+                gap: 40px;
+                padding-bottom: 20px;
+                /* Add some space before the line */
+            }
+
+            .temp-group {
+                text-align: center;
+                /* Keep text centered within the group */
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+        }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="time.js"></script>
     <script src="theme.js"></script>
     <script src="js/i18n.js"></script>
@@ -461,14 +605,19 @@
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" data-i18n="app.weather.name">Weather</span>
             <div class="controls">
-                <button class="sys-btn" onclick="openModal()" data-i18n="weather.btn.city">City</button>
+                <button class="sys-btn" onclick="openModal()" data-i18n="weather.btn.locations">Locations</button>
             </div>
         </div>
 
         <div class="window-content">
             <!-- CURRENT -->
             <div class="current-wrapper">
-                <div class="location-badge" id="current-city" data-i18n="weather.status.loading">LOADING...</div>
+                <div class="city-nav-wrapper">
+                    <div class="nav-btn" id="btn-prev" onclick="changeCity(-1)">&lt;</div>
+                    <div class="location-badge" id="current-city" onclick="openModal()"
+                        data-i18n="weather.status.loading">LOADING...</div>
+                    <div class="nav-btn" id="btn-next" onclick="changeCity(1)">&gt;</div>
+                </div>
                 <div class="current-date" id="current-date">--/--</div>
 
                 <div class="main-display">
@@ -476,6 +625,7 @@
                     <div class="temp-group">
                         <div class="temp-big" id="current-temp">--</div>
                         <div class="condition-text" id="current-cond">...</div>
+                        <div class="nowcast-alert" id="nowcast-alert"></div>
                     </div>
                 </div>
 
@@ -500,55 +650,286 @@
     <!-- LOCATION MODAL -->
     <div id="modal-overlay">
         <div class="modal-box">
-            <h3 data-i18n="weather.modal.title">Change Location</h3>
+            <h3 data-i18n="weather.modal.title">Locations</h3>
+
+            <div id="saved-list" class="saved-locations-list">Loading locations...</div>
+
             <input type="text" id="city-input" placeholder="Search city..." data-i18n-placeholder="weather.ph.city"
                 autocomplete="off" oninput="handleSearchInput(this.value)">
+
             <div id="search-results"></div>
-            <div style="margin-top:10px; display:flex; justify-content:center; gap:10px;">
-                <button class="sys-btn" onclick="closeModal()" data-i18n="weather.btn.cancel">Cancel</button>
+
+            <div class="modal-controls">
+                <button class="sys-btn" id="btn-add-city" onclick="toggleSearch()"
+                    data-i18n="weather.btn.add">Add</button>
+                <button class="sys-btn" onclick="closeModal()" data-i18n="weather.btn.close">Close</button>
             </div>
         </div>
     </div>
 
     <script>
         // --- CONFIGURATION ---
-        let userSettings = JSON.parse(localStorage.getItem('rekindle_weather_settings')) || {
-            lat: 40.7128,
-            long: -74.0060,
-            city: "New York",
+        // Migrate old settings to new format
+        let stored = localStorage.getItem('rekindle_weather_settings');
+        let userSettings = {
+            locations: [],
+            currentIndex: 0,
             autoUnit: "fahrenheit"
         };
 
+        if (stored) {
+            let old = JSON.parse(stored);
+            if (old.locations) {
+                userSettings = old;
+                // Ensure index safety
+                if (!userSettings.locations || userSettings.locations.length === 0) {
+                    userSettings.locations = [{
+                        lat: 40.7128, long: -74.0060, city: "New York",
+                        autoUnit: "fahrenheit", country_code: "US"
+                    }];
+                }
+                if (userSettings.currentIndex >= userSettings.locations.length) {
+                    userSettings.currentIndex = 0;
+                }
+            } else {
+                // Migration
+                userSettings.locations.push({
+                    lat: old.lat || 40.7128,
+                    long: old.long || -74.0060,
+                    city: old.city || "New York",
+                    autoUnit: old.autoUnit || "fahrenheit",
+                    country_code: old.country_code || "US" // fallback
+                });
+                userSettings.currentIndex = 0;
+            }
+        } else {
+            // Default default
+            userSettings.locations.push({
+                lat: 40.7128, long: -74.0060, city: "New York", autoUnit: "fahrenheit", country_code: "US"
+            });
+        }
+
         let searchTimeout = null;
+        let auth, db, currentUser;
+        let isFirebaseAvailable = false;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
+                if (db.settings) {
+                    try {
+                        db.settings({ experimentalForceLongPolling: true, merge: true });
+                    } catch (e) { console.warn("Settings error:", e); }
+                }
+                isFirebaseAvailable = true;
+            }
+        } catch (e) {
+            console.error("Firebase init failed:", e);
+        }
 
         // --- INIT ---
         window.onload = () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
 
-            // Check for Global Manual Location override
-            const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            if (manualLoc) {
-                userSettings.lat = manualLoc.lat;
-                userSettings.long = manualLoc.lon; // Note: Settings uses 'lon', Weather uses 'long' usually, check consistnecy. 
-                // Wait, Open-Meteo uses 'longitude'. My settings code used 'lon' (from clocks adaptation maybe?). 
-                // Let's check settings.html code in Step 44: setLocation uses 'lon': city.longitude.
-                // Weather.html variable is 'long'.
-                userSettings.long = manualLoc.lon;
-                userSettings.city = manualLoc.name;
-                // We keep autoUnit from existing settings or default
+            // Check for Global Manual Location override from Settings
+            const manualLocStr = localStorage.getItem('rekindle_location_manual');
+            if (manualLocStr) {
+                try {
+                    const manualLoc = JSON.parse(manualLocStr);
+                    if (manualLoc && manualLoc.lat && manualLoc.lon && manualLoc.name) {
+                        // Check if this location already exists in our list
+                        const existingIdx = userSettings.locations.findIndex(l =>
+                            Math.abs(l.lat - manualLoc.lat) < 0.1 && Math.abs(l.long - manualLoc.lon) < 0.1
+                        );
+
+                        if (existingIdx !== -1) {
+                            // Already exists, just select it
+                            userSettings.currentIndex = existingIdx;
+                        } else {
+                            // Add as the first location and select it (this is "My Location")
+                            // Calculate autoUnit based on country code
+                            const fahrenheitCountries = ['US', 'LR', 'MM'];
+                            const cc = manualLoc.country_code || "";
+                            const autoUnit = fahrenheitCountries.includes(cc) ? 'fahrenheit' : 'celsius';
+
+                            const newLoc = {
+                                lat: manualLoc.lat,
+                                long: manualLoc.lon,
+                                city: manualLoc.name,
+                                autoUnit: autoUnit,
+                                country_code: cc
+                            };
+                            userSettings.locations.unshift(newLoc);
+                            userSettings.currentIndex = 0;
+                        }
+                        saveSettings();
+                    }
+                } catch (e) {
+                    console.error("Error parsing manual location:", e);
+                }
             }
 
-            document.getElementById('current-city').innerText = userSettings.city;
+            if (isFirebaseAvailable && auth) {
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        currentUser = user;
+                        monitorWeatherProfile(user.uid);
+                    } else {
+                        currentUser = null;
+                        updateUI();
+                        fetchWeather();
+                    }
+                });
+            } else {
+                updateUI();
+                fetchWeather();
+            }
+        }
+
+        function monitorWeatherProfile(uid) {
+            if (!isFirebaseAvailable || !db) return;
+            db.collection('users').doc(uid).onSnapshot(doc => {
+                const data = doc.data();
+                if (data && data.weatherLastUpdated) {
+                    const serverTimestamp = typeof data.weatherLastUpdated.toMillis === 'function'
+                        ? data.weatherLastUpdated.toMillis()
+                        : new Date(data.weatherLastUpdated).getTime();
+                    const localTimestamp = parseInt(localStorage.getItem('rekindle_weather_last_sync') || '0');
+
+                    if (serverTimestamp > localTimestamp) {
+                        syncWeatherSettings();
+                    }
+                } else if (data && !data.weatherLastUpdated) {
+                    // First time or no data, but we can try to sync if it exists in subcollection
+                    syncWeatherSettings();
+                }
+            });
+        }
+
+        function syncWeatherSettings() {
+            if (!currentUser || !isFirebaseAvailable || !db) return;
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('weather')
+                .get()
+                .then(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data.locations) {
+                            userSettings.locations = data.locations;
+                            userSettings.currentIndex = data.currentIndex || 0;
+                            if (userSettings.currentIndex >= userSettings.locations.length) {
+                                userSettings.currentIndex = 0;
+                            }
+                            localStorage.setItem('rekindle_weather_settings', JSON.stringify(userSettings));
+                            localStorage.setItem('rekindle_weather_last_sync', Date.now().toString());
+                            updateUI();
+                            fetchWeather();
+                        }
+                    }
+                });
+        }
+
+        function updateUI() {
+            const current = userSettings.locations[userSettings.currentIndex];
+            document.getElementById('current-city').innerText = current.city;
+            document.getElementById('current-city').removeAttribute('data-i18n');
 
             const options = { weekday: 'long', month: 'short', day: 'numeric' };
             document.getElementById('current-date').innerText = window.rekindleFormatTime(new Date(), options);
 
+            // Hide arrows if only 1 city
+            const showArrows = userSettings.locations.length > 1;
+            document.getElementById('btn-prev').style.visibility = showArrows ? 'visible' : 'hidden';
+            document.getElementById('btn-next').style.visibility = showArrows ? 'visible' : 'hidden';
+        }
+
+        function getEffectiveUnit() {
+            // Check global system first
+            if (window.rekindleGetUnitSystem) {
+                const sys = window.rekindleGetUnitSystem();
+                if (sys === 'imperial') return 'fahrenheit';
+                if (sys === 'metric') return 'celsius';
+            }
+
+            const current = userSettings.locations[userSettings.currentIndex];
+            return current.autoUnit || 'celsius';
+        }
+
+        function changeCity(delta) {
+            let newIndex = userSettings.currentIndex + delta;
+            if (newIndex < 0) newIndex = userSettings.locations.length - 1;
+            if (newIndex >= userSettings.locations.length) newIndex = 0;
+
+            userSettings.currentIndex = newIndex;
+            saveSettings();
+            updateUI();
+
+            // Show loading
+            document.getElementById('current-cond').innerText = window.t('weather.status.updating', "Updating...");
+            document.getElementById('nowcast-alert').style.display = 'none';
             fetchWeather();
+        }
+
+        function saveSettings() {
+            localStorage.setItem('rekindle_weather_settings', JSON.stringify(userSettings));
+
+            if (currentUser && isFirebaseAvailable && db) {
+                const now = Date.now();
+                localStorage.setItem('rekindle_weather_last_sync', (now + 5000).toString());
+
+                const batch = db.batch();
+                const userRef = db.collection('users').doc(currentUser.uid);
+                const weatherRef = userRef.collection('settings').doc('weather');
+
+                batch.set(weatherRef, {
+                    locations: userSettings.locations,
+                    currentIndex: userSettings.currentIndex
+                });
+
+                batch.set(userRef, {
+                    weatherLastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                batch.commit().catch(e => console.error("Error saving weather settings:", e));
+            }
+        }
+
+        // --- MODAL & SEARCH ---
+        function toggleSearch() {
+            const input = document.getElementById('city-input');
+            const btn = document.getElementById('btn-add-city');
+            const list = document.getElementById('saved-list');
+
+            if (input.style.display === 'block') {
+                // Cancel search mode
+                input.style.display = 'none';
+                input.value = '';
+                document.getElementById('search-results').style.display = 'none';
+                list.style.display = 'block';
+                btn.innerText = window.t('weather.btn.add', "Add");
+            } else {
+                // Enter search mode
+                input.style.display = 'block';
+                list.style.display = 'none';
+                input.focus();
+                btn.innerText = window.t('weather.btn.cancel', "Cancel");
+            }
         }
 
         function renderSearchResults(results) {
             const container = document.getElementById('search-results');
             container.innerHTML = '';
+            container.style.display = 'block';
 
             if (results.length === 0) {
                 container.innerHTML = `<div style="padding:10px; color:#666;">${window.t('weather.status.nocity', 'No cities found.')}</div>`;
@@ -566,46 +947,162 @@
                     <div class="result-sub">${locStr}</div>
                 `;
 
-                div.onclick = () => selectCity(city);
+                div.onclick = () => addCity(city);
                 container.appendChild(div);
             });
         }
 
-        function selectCity(city) {
+        function addCity(city) {
             // Determine Auto-Unit
             const fahrenheitCountries = ['US', 'LR', 'MM'];
             const autoUnit = fahrenheitCountries.includes(city.country_code) ? 'fahrenheit' : 'celsius';
 
-            userSettings.lat = city.latitude;
-            userSettings.long = city.longitude;
-            userSettings.city = city.name;
-            userSettings.autoUnit = autoUnit;
+            const newLoc = {
+                lat: city.latitude,
+                long: city.longitude,
+                city: city.name,
+                autoUnit: autoUnit,
+                country_code: city.country_code
+            };
 
-            localStorage.setItem('rekindle_weather_settings', JSON.stringify(userSettings));
+            // Check duplicates (simple name check, or lat/long check?)
+            // Simple check
+            const exists = userSettings.locations.some(l => Math.abs(l.lat - newLoc.lat) < 0.1 && Math.abs(l.long - newLoc.long) < 0.1);
 
-            document.getElementById('current-city').innerText = city.name;
+            if (!exists) {
+                userSettings.locations.push(newLoc);
+                userSettings.currentIndex = userSettings.locations.length - 1;
+                saveSettings();
+            } else {
+                // Just switch to it
+                const idx = userSettings.locations.findIndex(l => Math.abs(l.lat - newLoc.lat) < 0.1 && Math.abs(l.long - newLoc.long) < 0.1);
+                userSettings.currentIndex = idx;
+                saveSettings(); // save index
+            }
+
             closeModal();
-
-            // Show loading state
-            // Show loading state
-            document.getElementById('current-cond').innerText = window.t('weather.status.updating', "Updating...");
+            updateUI();
             fetchWeather();
         }
 
-        // --- UNIT LOGIC ---
-        function getEffectiveUnit() {
-            // Check global system first
-            if (window.rekindleGetUnitSystem) {
-                const sys = window.rekindleGetUnitSystem();
-                if (sys === 'imperial') return 'fahrenheit';
-                if (sys === 'metric') return 'celsius';
+        function removeCity(index, event) {
+            event.stopPropagation();
+            // Prevent deleting index 0 (Current Location) or last remaining city
+            if (index === 0) return;
+            if (userSettings.locations.length <= 1) return;
+
+            userSettings.locations.splice(index, 1);
+            if (userSettings.currentIndex >= userSettings.locations.length) {
+                userSettings.currentIndex = userSettings.locations.length - 1;
+            }
+            // If we deleted the current one logic: index shifts automatically.
+            // If we deleted one BEFORE current, index needs decrement.
+            // Actually, if we delete index 0, and current was 1 (now 0), current stays 1 (now pointing to old 2), so we might skip?
+            // Better: if index < currentIndex, currentIndex--.
+            // Wait, logic above:
+            // if we delete idx, array shifts.
+            // if currentIndex == index, we point to new item at that index. valid.
+            // BUT if we delete index < currentIndex, we must decrement currentIndex.
+            if (index < userSettings.currentIndex) {
+                userSettings.currentIndex--;
             }
 
-            // Fallback (shouldn't be reached if theme.js is loaded, but safe)
-            const pref = localStorage.getItem('rekindle_weather_unit_preference');
-            if (pref === 'celsius') return 'celsius';
-            if (pref === 'fahrenheit') return 'fahrenheit';
-            return userSettings.autoUnit || 'celsius';
+            saveSettings();
+            renderSavedList();
+
+            // If background update needed?
+            updateUI();
+            fetchWeather();
+        }
+
+        function selectSavedCity(index) {
+            userSettings.currentIndex = index;
+            saveSettings();
+            closeModal();
+            updateUI();
+            fetchWeather();
+        }
+
+        function renderSavedList() {
+            const div = document.getElementById('saved-list');
+            div.innerHTML = '';
+
+            if (!userSettings.locations || userSettings.locations.length === 0) {
+                div.innerHTML = '<div style="padding:10px; color:#666;">No locations saved.</div>';
+                return;
+            }
+
+            userSettings.locations.forEach((loc, idx) => {
+                const row = document.createElement('div');
+                row.className = 'saved-loc-row' + (idx === userSettings.currentIndex ? ' active' : '');
+                row.onclick = () => selectSavedCity(idx);
+
+                const name = document.createElement('div');
+                name.className = 'sl-name';
+
+                // Index 0 is the "Current Location" from settings
+                let label = loc.city;
+                if (idx === 0) {
+                    label = loc.city + " " + (window.t ? window.t('weather.label.currentloc', '(Home)') : '(Home)');
+                }
+                name.innerText = label;
+
+                row.appendChild(name);
+
+                // Only show delete button for non-current-location cities (idx > 0)
+                if (idx > 0) {
+                    const del = document.createElement('div');
+                    del.className = 'sl-del';
+                    del.innerText = "X";
+                    del.onclick = (e) => {
+                        e.stopPropagation();
+                        removeCity(idx, e);
+                    };
+                    row.appendChild(del);
+                }
+
+                div.appendChild(row);
+            });
+        }
+
+        // --- SEARCH ---
+        function handleSearchInput(query) {
+            clearTimeout(searchTimeout);
+            const container = document.getElementById('search-results');
+
+            if (!query || query.length < 2) {
+                container.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
+                    .then(res => res.json())
+                    .then(data => {
+                        renderSearchResults(data.results || []);
+                    })
+                    .catch(e => console.error(e));
+            }, 500);
+        }
+
+        function openModal() {
+            try {
+                document.getElementById('modal-overlay').style.display = 'flex';
+
+                // Default view: List
+                document.getElementById('saved-list').style.display = 'block';
+                document.getElementById('city-input').style.display = 'none';
+                document.getElementById('search-results').style.display = 'none';
+                document.getElementById('btn-add-city').innerText = window.t ? window.t('weather.btn.add', "Add") : "Add";
+
+                renderSavedList();
+            } catch (e) {
+                alert('openModal error: ' + e.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
         }
 
         // --- APP LOGIC ---
@@ -613,8 +1110,11 @@
             const unit = getEffectiveUnit();
             const windUnit = unit === 'fahrenheit' ? 'mph' : 'kmh';
 
+            const currentLoc = userSettings.locations[userSettings.currentIndex];
+
             try {
-                const url = `https://api.open-meteo.com/v1/forecast?latitude=${userSettings.lat}&longitude=${userSettings.long}&current_weather=true&hourly=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=${unit}&windspeed_unit=${windUnit}`;
+                // ADD minutely_15=precipitation to URL
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${currentLoc.lat}&longitude=${currentLoc.long}&current_weather=true&hourly=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&minutely_15=precipitation&timezone=auto&temperature_unit=${unit}&windspeed_unit=${windUnit}`;
 
                 const res = await fetch(url);
                 const data = await res.json();
@@ -626,10 +1126,14 @@
                 document.getElementById('current-icon').innerHTML = getIcon(current.weathercode, true);
 
                 document.getElementById('wind-stat').innerHTML = `<span data-i18n="weather.label.wind">${window.t('weather.label.wind', 'WIND')}</span> ${current.windspeed}${data.current_weather_units.windspeed}`;
-                // Humidity not in basic packet, hide
                 document.getElementById('humid-stat').style.display = 'none';
                 document.querySelector('.extra-stats').style.borderTop = '1px solid black';
                 document.getElementById('wind-stat').style.borderRight = 'none';
+
+                // NOWCAST Logic
+                if (data.minutely_15) {
+                    processNowcast(data.minutely_15);
+                }
 
                 // 2. Render Hourly
                 renderHourly(data.hourly, data.timezone);
@@ -640,6 +1144,67 @@
             } catch (e) {
                 document.getElementById('current-cond').innerText = window.t('weather.status.error', "Connection Error");
                 console.error(e);
+            }
+        }
+
+        function processNowcast(minutely) {
+            // Find current time index
+            const now = new Date();
+            let startIdx = -1;
+
+            // minutely.time is ISO string array
+            for (let i = 0; i < minutely.time.length; i++) {
+                if (new Date(minutely.time[i]) >= now) {
+                    startIdx = i;
+                    break;
+                }
+            }
+
+            const alertBox = document.getElementById('nowcast-alert');
+
+            if (startIdx === -1) {
+                alertBox.style.display = 'none';
+                return;
+            }
+
+            // Look ahead 4 intervals (1 hour)
+            const lookahead = 4;
+            const rains = [];
+            for (let i = 0; i < lookahead; i++) {
+                if (startIdx + i < minutely.precipitation.length) {
+                    rains.push(minutely.precipitation[startIdx + i]);
+                }
+            }
+
+            // Logic:
+            // 1. Is it raining now? (First slot > 0)
+            const rainingNow = rains[0] > 0;
+
+            let msg = "";
+
+            if (rainingNow) {
+                // Check if it stops
+                const stopIdx = rains.findIndex(r => r === 0);
+                if (stopIdx !== -1) {
+                    const minutes = stopIdx * 15;
+                    msg = window.t('weather.nc.stopping', `Rain stopping in ${minutes} min`);
+                } else {
+                    msg = window.t('weather.nc.ongoing', "Rain continuing");
+                }
+            } else {
+                // Check if it starts
+                const startRainIdx = rains.findIndex(r => r > 0);
+                if (startRainIdx !== -1) {
+                    const minutes = startRainIdx * 15;
+                    msg = window.t('weather.nc.starting', `Rain starting in ${minutes} min`);
+                }
+            }
+
+            if (msg) {
+                alertBox.innerText = msg;
+                alertBox.style.display = 'block';
+            } else {
+                alertBox.style.display = 'none';
             }
         }
 
@@ -749,15 +1314,24 @@
         }
 
         // --- MODAL & SEARCH ---
-        function openModal() {
-            document.getElementById('modal-overlay').style.display = 'flex';
-            document.getElementById('city-input').value = "";
-            document.getElementById('search-results').style.display = 'none';
-            document.getElementById('city-input').focus();
-        }
+        function handleSearchInput(query) {
+            clearTimeout(searchTimeout);
+            const container = document.getElementById('search-results');
 
-        function closeModal() {
-            document.getElementById('modal-overlay').style.display = 'none';
+            if (!query || query.length < 2) {
+                container.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
+                    .then(res => res.json())
+                    .then(data => {
+                        container.style.display = 'block';
+                        renderSearchResults(data.results || []);
+                    })
+                    .catch(e => console.error(e));
+            }, 500);
         }
 
 
