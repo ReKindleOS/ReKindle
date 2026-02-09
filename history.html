@@ -2,7 +2,9 @@
 <html lang="en">
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
+    
     <title>On This Day</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -222,6 +224,7 @@
     </style>
     <script src="theme.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="time.js"></script>
 </head>
 
 <body>
@@ -238,7 +241,7 @@
 
             <div class="app-header">
                 <h1 class="app-title" data-i18n="history.header">History</h1>
-                <div id="date-display" data-i18n="history.msg.loading_date">Loading Date...</div>
+                <div id="date-display">Loading Date...</div>
             </div>
 
             <div class="tabs">
@@ -265,18 +268,52 @@
         // --- INIT ---
         window.onload = () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            updateDateHeader();
+        };
 
-            const date = new Date();
+        // Re-update when translations are ready (in case they load after window.onload)
+        document.addEventListener('rekindle:i18n:ready', () => {
+            updateDateHeader();
+        });
+
+        function updateDateHeader() {
+            // Use timezone-aware date
+            const date = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
             const lang = document.documentElement.lang || 'en';
-            const month = date.toLocaleString(lang, { month: 'long' });
+
+            // Robust Month Name (Kindle totoLocaleString fallback)
+            let month;
+            try {
+                month = window.rekindleFormatWallDate ? window.rekindleFormatWallDate(date, { month: 'long' }) : (window.rekindleFormatTime ? window.rekindleFormatTime(date, { month: 'long' }) : date.toLocaleString(lang, { month: 'long' }));
+                // If it returns something numerical or fails to be a string on ancient browsers
+                if (!month || /^\d/.test(month)) throw new Error("Fallback needed");
+            } catch (e) {
+                const months = {
+                    'en': ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+                    'es': ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+                    'fr': ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+                    'de': ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+                    // Add more if needed, but these cover the major Kindle markets
+                };
+                const list = months[lang] || months['en'];
+                month = list[date.getMonth()];
+            }
+
             const day = date.getDate();
 
-            // Use a default value for window.t
-            const title = window.t('history.title', 'On This Day');
-            document.getElementById('date-display').innerText = `${title}: ${month} ${day}`;
+            // Use window.t with fallback
+            const t = window.t || ((key, def) => def);
+            const title = t('history.title', 'On This Day');
+            const display = document.getElementById('date-display');
+            if (display) {
+                display.innerText = `${title}: ${month} ${day}`;
+            }
 
-            fetchHistory(date.getMonth() + 1, day);
-        };
+            // Only fetch if we haven't already
+            if (!historyData) {
+                fetchHistory(date.getMonth() + 1, day);
+            }
+        }
 
         // --- WALLPAPER LOADER ---
 
