@@ -1,8 +1,19 @@
-<!DOCTYPE html><html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    <title>Gmail</title>
+    
+    <title>Mail</title>
 
     <style>
+        /* E-INK COMPATIBILITY */
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
         /* SYSTEM 7 AESTHETICS */
         :root {
             --bg-color: #ffffff;
@@ -121,9 +132,9 @@
             align-items: center;
         }
 
-        .title-controls > * + * {
+        .title-controls>*+* {
             margin-left: 8px;
-}
+        }
 
         .icon-btn {
             width: 18px;
@@ -167,9 +178,10 @@
             background: #f5f5f5;
             flex-wrap: wrap;
         }
-        .toolbar > * + * {
+
+        .toolbar>*+* {
             margin-left: 8px;
-}
+        }
 
         .toolbar-btn {
             background: white;
@@ -275,16 +287,27 @@
         .email-sender {
             font-weight: bold;
             margin-bottom: 2px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .email-sender-name {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin-right: 8px;
+            min-width: 0;
         }
 
         .email-subject {
             margin-bottom: 2px;
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
-            text-overflow: ellipsis;
+            line-height: 1.3;
+            line-clamp: 2;
         }
 
         .email-snippet {
@@ -302,7 +325,8 @@
         .email-date {
             font-size: 0.75rem;
             color: #888;
-            float: right;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .email-item.selected .email-date {
@@ -346,9 +370,9 @@
             flex-wrap: wrap;
         }
 
-        .email-actions > * + * {
+        .email-actions>*+* {
             margin-left: 8px;
-}
+        }
 
         .email-body {
             font-size: 1rem;
@@ -463,9 +487,9 @@
             justify-content: flex-end;
         }
 
-        .modal-btns > * + * {
+        .modal-btns>*+* {
             margin-left: 10px;
-}
+        }
 
         /* CONFIRM MODAL */
         .confirm-modal {
@@ -513,9 +537,9 @@
             justify-content: center;
         }
 
-        .modal-btns > * + * {
+        .modal-btns>*+* {
             margin-left: 10px;
-}
+        }
 
         .modal-btn {
             background: white;
@@ -533,14 +557,55 @@
             transform: translate(1px, 1px);
             box-shadow: none;
         }
+
+        .provider-btn {
+            width: 100%;
+            padding: 12px;
+            background: white;
+            border: 2px solid black;
+            font-family: inherit;
+            font-weight: bold;
+            text-align: left;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 1rem;
+        }
+
+        .provider-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .provider-btn:hover {
+            background: #f0f0f0;
+        }
     </style>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
     <script src="time.js"></script>
     <script src="theme.js"></script>
     <script src="pro-gate.js"></script>
     <script src="js/i18n.js"></script>
+    <style>
+        .login-input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 2px solid black;
+            font-family: inherit;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 300px;
+        }
+    </style>
 </head>
 
 <body>
@@ -549,10 +614,12 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
-            <span class="title-text" data-i18n="app.mail.name">Gmail</span>
+            <span class="title-text" data-i18n="app.mail.name">Mail</span>
             <div class="title-controls">
+                <button class="toolbar-btn" onclick="openSettings()">Settings</button>
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
                         <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"></path>
                         <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6"></path>
                     </svg>
@@ -580,30 +647,82 @@
         <div class="content-area">
             <div class="email-list-pane">
                 <div class="search-box">
-                    <input type="text" id="search-input" placeholder="Search emails..." data-i18n-placeholder="mail.ph.search" onkeyup="filterEmails()">
+                    <input type="text" id="search-input" placeholder="Search emails..."
+                        data-i18n-placeholder="mail.ph.search" onkeyup="filterEmails()">
                 </div>
                 <div id="list-container"></div>
             </div>
             <div class="details-pane" id="details-pane">
-                <div style="text-align:center; margin-top:50px; font-style:italic; color:#666;" data-i18n="mail.details.select">Select an email to read.
+                <div style="text-align:center; margin-top:50px; font-style:italic; color:#666;"
+                    data-i18n="mail.details.select">Select an email to read.
                 </div>
             </div>
         </div>
 
         <div id="status-bar" data-i18n="mail.status.loading">Loading...</div>
 
-        <div id="paywall-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.98); z-index:10002; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
+        <div id="paywall-overlay"
+            style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.98); z-index:10002; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;">
             <h2 style="margin-top:0;" data-i18n="mail.paywall.title">ReKindle+</h2>
             <p data-i18n-html="mail.paywall.desc">Support ReKindle development and get<br>access to exclusive apps.</p>
             <button class="sys-btn" onclick="window.location.href='pay.html'" data-i18n="mail.paywall.btn">Subscribe /
                 Login</button>
-            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status" data-i18n="mail.paywall.checking">Checking subscription...</p>
+            <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status"
+                data-i18n="mail.paywall.checking">Checking subscription...</p>
         </div>
 
         <div id="auth-overlay">
-            <h2 style="margin-bottom:10px;" data-i18n="mail.auth.title">Gmail</h2>
-            <p style="margin-bottom:20px;" data-i18n="mail.auth.desc">Connect to access your inbox.</p>
-            <button id="btn-login" class="sys-btn" onclick="oauthSignIn()" disabled="" data-i18n="mail.btn.connect">Connect</button>
+            <h2 style="margin-bottom:10px;" data-i18n="mail.auth.title">Email Client</h2>
+
+            <!-- STEP 1: Provider List -->
+            <div id="provider-step" style="width:100%; max-width:320px; display:flex; flex-direction:column;">
+                <p style="margin-bottom:20px;" data-i18n="mail.auth.desc">Select your email provider.</p>
+                <button class="provider-btn" onclick="selectProvider('gmail')"
+                    style="margin-bottom:10px;">Gmail</button>
+                <button class="provider-btn" onclick="selectProvider('outlook')" style="margin-bottom:10px;">Outlook /
+                    Hotmail</button>
+                <button class="provider-btn" onclick="selectProvider('yahoo')" style="margin-bottom:10px;">Yahoo
+                    Mail</button>
+                <button class="provider-btn" onclick="selectProvider('icloud')"
+                    style="margin-bottom:10px;">iCloud</button>
+                <button class="provider-btn" onclick="selectProvider('custom')" style="margin-bottom:10px;">Custom
+                    (IMAP)</button>
+                <button class="sys-btn" onclick="closeSettings()"
+                    style="margin-top:10px; background:#ccc;">Cancel</button>
+            </div>
+
+            <!-- STEP 2: Login Form -->
+            <div id="login-step" class="login-form" style="display:none;">
+                <p id="provider-help-text"
+                    style="font-size:0.85rem; margin-bottom:15px; background:#f9f9f9; padding:10px; border:1px solid #ccc; text-align:left;">
+                </p>
+
+                <input type="email" id="imap-user" class="login-input" placeholder="Email" value="">
+                <input type="password" id="imap-pass" class="login-input" placeholder="Password" value="">
+
+                <div id="custom-server-settings" style="display:none;">
+                    <div style="display:flex;">
+                        <input type="text" id="imap-host" class="login-input" placeholder="IMAP Host" value=""
+                            style="margin-right:10px;">
+                        <input type="number" id="imap-port" class="login-input" placeholder="Port" value="993"
+                            style="width: 80px;">
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="smtp-host" class="login-input" placeholder="SMTP Host" value=""
+                            style="margin-right:10px;">
+                        <input type="number" id="smtp-port" class="login-input" placeholder="Port" value="465"
+                            style="width: 80px;">
+                    </div>
+                </div>
+
+                <div style="display:flex; margin-top:10px;">
+                    <button class="sys-btn" onclick="showProviderList()"
+                        style="background:#eee; flex:1; margin-right:10px;">&lt;
+                        Back</button>
+                    <button id="btn-login" class="sys-btn" onclick="login()" data-i18n="mail.btn.connect"
+                        style="flex:2;">Connect</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -613,15 +732,18 @@
             <h3 data-i18n="mail.compose.title">Compose Email</h3>
             <div class="form-group">
                 <label data-i18n="mail.compose.label.to">To:</label>
-                <input type="text" id="compose-to" placeholder="recipient@example.com" data-i18n-placeholder="mail.compose.ph.to">
+                <input type="text" id="compose-to" placeholder="recipient@example.com"
+                    data-i18n-placeholder="mail.compose.ph.to">
             </div>
             <div class="form-group">
                 <label data-i18n="mail.compose.label.subject">Subject:</label>
-                <input type="text" id="compose-subject" placeholder="Subject" data-i18n-placeholder="mail.compose.ph.subject">
+                <input type="text" id="compose-subject" placeholder="Subject"
+                    data-i18n-placeholder="mail.compose.ph.subject">
             </div>
             <div class="form-group">
                 <label data-i18n="mail.compose.label.message">Message:</label>
-                <textarea id="compose-body" placeholder="Write your message..." data-i18n-placeholder="mail.compose.ph.message" style="height: 150px;"></textarea>
+                <textarea id="compose-body" placeholder="Write your message..."
+                    data-i18n-placeholder="mail.compose.ph.message" style="height: 150px;"></textarea>
             </div>
             <div class="modal-btns">
                 <button class="toolbar-btn" onclick="closeComposeModal()" data-i18n="btn.cancel">Cancel</button>
@@ -651,20 +773,17 @@
         </div>
     </div>
 
-    <script src="https://apis.google.com/js/api.js"></script>
-
     <script>
-        // Google Config - Full access for send/modify
-        const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
-        const SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send';
-        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest';
+        // IMAP/SMTP Config
+        let imapConfig = null;
+        let smtpConfig = null;
 
         let emails = [];
-        let allEmails = [];
-        let nextPageToken = null;
+        let allFolders = [];
         let currentFolder = 'INBOX';
         let currentEmail = null;
         let userEmail = '';
+        let functions;
 
         function waitForFirebase(callback, attempts = 0) {
             if (typeof firebase !== 'undefined') {
@@ -768,7 +887,10 @@
                                         // UNLOCKED - overlay stays hidden
                                         isPro = true;
                                         if (btnLogin) btnLogin.disabled = false;
-                                        initGmailMode();
+                                        // Load settings from cloud
+                                        loadSettingsFromFirebase(user.uid).then(() => {
+                                            initGmailMode();
+                                        });
                                     } else {
                                         // LOCKED
                                         status.innerText = expires > 0 ? "Subscription expired." : "Subscription required.";
@@ -800,433 +922,561 @@
             }
         }
 
-        function initGmailMode() {
-            gapi.load('client', async () => {
-                try {
-                    await gapi.client.init({
-                        discoveryDocs: [DISCOVERY_DOC]
-                    });
-
-                    const fragmentString = location.hash.substring(1);
-                    const params = new URLSearchParams(fragmentString);
-                    const newAccessToken = params.get('access_token');
-
-                    if (newAccessToken) {
-                        // Save token to Pro-only Firestore subcollection
-                        window.history.replaceState({}, document.title, window.location.pathname);
-
-                        // 1. Set Token Immediately & Hide Overlay
-                        gapi.client.setToken({ access_token: newAccessToken });
-                        document.getElementById('auth-overlay').style.display = 'none';
-
-                        // 2. Start Loading Data Optimistically (don't await yet)
-                        const dataLoadPromise = Promise.all([getUserEmail(), loadEmails()]);
-
-                        try {
-                            // 3. Save Token (Pro Check) - allow this to happen in background/parallel
-                            await db.collection('users').doc(auth.currentUser.uid)
-                                .collection('pro_data').doc('mail')
-                                .set({ token: newAccessToken }, { merge: true });
-
-                            await dataLoadPromise;
-                        } catch (e) {
-                            console.error("Failed to save token (Pro required):", e);
-
-                            // Security Hardening: Clear all data if Pro check fails
-                            emails = [];
-                            allEmails = [];
-                            document.getElementById('list-container').innerHTML = '';
-                            document.getElementById('details-pane').innerHTML = '';
-                            if (gapi && gapi.client) gapi.client.setToken(null);
-
-                            document.getElementById('pro-required-modal').style.display = 'flex';
-                        }
-                    } else {
-                        // Load token from Pro-only Firestore subcollection
-                        try {
-                            const doc = await db.collection('users').doc(auth.currentUser.uid)
-                                .collection('pro_data').doc('mail').get();
-
-                            if (doc.exists && doc.data().token) {
-                                const token = doc.data().token;
-                                gapi.client.setToken({ access_token: token });
-                                document.getElementById('auth-overlay').style.display = 'none';
-                                await getUserEmail();
-                                await loadEmails();
-                            } else {
-                                // No saved token - prompt for login
-                                if (!location.hash.includes('error=')) {
-                                    document.getElementById('auth-overlay').style.display = 'flex';
-                                    document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
-                                    document.querySelector('#auth-overlay p').innerText = "Connecting to Gmail";
-                                    oauthSignIn();
-                                } else {
-                                    document.getElementById('auth-overlay').style.display = 'flex';
-                                }
-                            }
-                        } catch (e) {
-                            console.error("Failed to load token (Pro required):", e);
-                            document.getElementById('pro-required-modal').style.display = 'flex';
-                        }
-                    }
-                } catch (e) {
-                    console.error('Failed to initialize Gmail API:', JSON.stringify(e));
-                    document.getElementById('status-bar').innerText = 'Error loading Gmail API';
-                }
-            });
-        }
-
-        async function getUserEmail() {
-            try {
-                const res = await gapi.client.gmail.users.getProfile({ userId: 'me' });
-                userEmail = res.result.emailAddress;
-            } catch (e) {
-                console.error('Error getting user email:', e);
-                if (e.status === 401) {
-                    handleUnauthorized();
-                }
+        const PROVIDERS = {
+            gmail: {
+                name: 'Gmail',
+                imapHost: 'imap.gmail.com', imapPort: 993,
+                smtpHost: 'smtp.gmail.com', smtpPort: 465,
+                helpHtml: '<b>Important:</b> You must use an <b>App Password</b>.<br><a href="https://myaccount.google.com/apppasswords" target="_blank">Generate App Password here</a> (requires 2FA).'
+            },
+            outlook: {
+                name: 'Outlook / Hotmail',
+                imapHost: 'outlook.office365.com', imapPort: 993,
+                smtpHost: 'smtp.office365.com', smtpPort: 587,
+                helpHtml: 'Use your Microsoft account password. If 2FA is enabled, you must generate an <b>App Password</b>.<br><a href="https://account.live.com/proofs/AppPassword" target="_blank">Generate App Password here</a>.'
+            },
+            yahoo: {
+                name: 'Yahoo Mail',
+                imapHost: 'imap.mail.yahoo.com', imapPort: 993,
+                smtpHost: 'smtp.mail.yahoo.com', smtpPort: 465,
+                helpHtml: '<b>Important:</b> You must generate and use an <b>App Password</b> via Yahoo Account Security.<br><a href="https://login.yahoo.com/account/security" target="_blank">Manage App Passwords</a>'
+            },
+            icloud: {
+                name: 'iCloud',
+                imapHost: 'imap.mail.me.com', imapPort: 993,
+                smtpHost: 'smtp.mail.me.com', smtpPort: 587,
+                helpHtml: '<b>Important:</b> You must use an <b>App-Specific Password</b>.<br><a href="https://appleid.apple.com/" target="_blank">Manage Apple ID</a> to generate one.'
+            },
+            custom: {
+                name: 'Custom',
+                imapHost: '', imapPort: 993,
+                smtpHost: '', smtpPort: 465,
+                helpHtml: 'Enter your provider\'s IMAP and SMTP settings manualy.'
             }
-        }
+        };
 
-        async function handleUnauthorized() {
-            console.warn("Unauthorized (401). Clearing token and redirecting...");
-            // Clear token from Firestore
-            if (auth.currentUser && db) {
-                try {
-                    await db.collection('users').doc(auth.currentUser.uid)
-                        .collection('pro_data').doc('mail').delete();
-                } catch (e) { console.warn("Could not clear token:", e); }
-            }
-            // Prevent rapid redirect loops
-            const lastAuth = sessionStorage.getItem('last_auth_attempt') || 0;
-            const now = Date.now();
-            if (now - lastAuth < 5000) {
-                console.error("Auth loop detected.");
-                document.getElementById('auth-overlay').style.display = 'flex';
-                document.querySelector('#auth-overlay h2').innerText = "Login Failed";
-                document.querySelector('#auth-overlay p').innerText = "Please try again manually.";
-                return;
-            }
-            sessionStorage.setItem('last_auth_attempt', now.toString());
-            oauthSignIn();
-        }
+        async function initGmailMode() {
+            functions = firebase.functions();
 
-        function oauthSignIn() {
-            const endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
-            const form = document.createElement('form');
-            form.setAttribute('method', 'GET');
-            form.setAttribute('action', endpoint);
-            const params = {
-                'client_id': CLIENT_ID,
-                'redirect_uri': window.location.href.split('#')[0],
-                'response_type': 'token',
-                'scope': SCOPES
-            };
-            for (var p in params) {
-                var input = document.createElement('input');
-                input.setAttribute('type', 'hidden');
-                input.setAttribute('name', p);
-                input.setAttribute('value', params[p]);
-                form.appendChild(input);
-            }
-            document.body.appendChild(form);
-            form.submit();
-        }
+            const savedUser = localStorage.getItem('rekindle_imap_user');
+            const encryptedPass = localStorage.getItem('rekindle_imap_pass');
+            const savedUid = localStorage.getItem('rekindle_imap_uid');
 
-        function changeFolder() {
-            currentFolder = document.getElementById('folder-select').value;
-            allEmails = [];
-            nextPageToken = null;
-            loadEmails();
-        }
-
-        async function loadEmails(pageToken = null) {
-            try {
-                document.getElementById('status-bar').innerText = 'Loading emails...';
-
-                const params = {
-                    'userId': 'me',
-                    'maxResults': 25
-                };
-
-                // "ALL" means All Mail - don't filter by label
-                // Other folders use their specific label
-                if (currentFolder !== 'ALL') {
-                    params.labelIds = [currentFolder];
-                }
-
-                if (pageToken) {
-                    params.pageToken = pageToken;
-                }
-
-                const res = await gapi.client.gmail.users.messages.list(params);
-
-                nextPageToken = res.result.nextPageToken || null;
-                const messages = res.result.messages || [];
-
-                if (messages.length === 0 && !pageToken) {
-                    document.getElementById('list-container').innerHTML =
-                        '<div style="padding:20px;text-align:center;">No emails found.</div>';
-                    document.getElementById('status-bar').innerText = currentFolder + ' empty';
+            if (savedUser && encryptedPass && savedUid) {
+                // Decrypt password from localStorage
+                const savedPass = await decryptPassword(encryptedPass, savedUid);
+                if (!savedPass) {
+                    console.error("Failed to decrypt password from localStorage");
+                    openSettings();
                     return;
                 }
 
-                // Fetch details for each message
-                const emailDetails = await Promise.all(
-                    messages.map(msg => gapi.client.gmail.users.messages.get({
-                        'userId': 'me',
-                        'id': msg.id,
-                        'format': 'metadata',
-                        'metadataHeaders': ['From', 'To', 'Subject', 'Date']
-                    }))
-                );
+                // Populate hidden fields just in case
+                document.getElementById('imap-user').value = savedUser;
+                document.getElementById('imap-pass').value = savedPass;
+                document.getElementById('imap-host').value = localStorage.getItem('rekindle_imap_host') || 'imap.gmail.com';
+                document.getElementById('imap-port').value = localStorage.getItem('rekindle_imap_port') || '993';
+                document.getElementById('smtp-host').value = localStorage.getItem('rekindle_smtp_host') || 'smtp.gmail.com';
+                document.getElementById('smtp-port').value = localStorage.getItem('rekindle_smtp_port') || '465';
 
-                const newEmails = emailDetails.map(response => {
-                    const msg = response.result;
-                    const headers = msg.payload.headers;
-                    const getHeader = (name) => {
-                        const h = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
-                        return h ? h.value : '';
-                    };
-
-                    return {
-                        id: msg.id,
-                        threadId: msg.threadId,
-                        from: getHeader('From'),
-                        to: getHeader('To'),
-                        subject: getHeader('Subject') || '(No Subject)',
-                        date: getHeader('Date'),
-                        snippet: msg.snippet,
-                        labelIds: msg.labelIds || [],
-                        unread: msg.labelIds && msg.labelIds.includes('UNREAD')
-                    };
-                });
-
-                if (pageToken) {
-                    allEmails = [...allEmails, ...newEmails];
-                } else {
-                    allEmails = newEmails;
-                }
-
-                emails = allEmails;
-                renderList(emails);
-                document.getElementById('status-bar').innerText = `${currentFolder}: ${allEmails.length} emails`;
-
-            } catch (e) {
-                console.error('Error loading emails:', e);
-                if (e.status === 401) {
-                    handleUnauthorized();
-                } else {
-                    document.getElementById('status-bar').innerText = 'Error loading emails';
-                }
+                login();
+            } else {
+                openSettings(); // Shows provider list by default
             }
         }
 
-        function renderList(list) {
-            const container = document.getElementById('list-container');
-            container.innerHTML = '';
+        function openSettings() {
+            // Restore from localStorage (if any)
+            const savedUser = localStorage.getItem('rekindle_imap_user');
+            if (savedUser) {
+                document.getElementById('imap-user').value = savedUser;
+                // Don't auto-fill pass for security/UX flow, user can re-enter or we could, but let's stick to flow
+            }
 
-            if (!list || list.length === 0) {
-                container.innerHTML = `<div style="padding:20px;text-align:center;">${window.t('mail.list.empty', 'No emails.')}</div>`;
+            showProviderList();
+            document.getElementById('auth-overlay').style.display = 'flex';
+        }
+
+        function closeSettings() {
+            document.getElementById('auth-overlay').style.display = 'none';
+        }
+
+        function showProviderList() {
+            document.getElementById('provider-step').style.display = 'flex';
+            document.getElementById('login-step').style.display = 'none';
+        }
+
+        function selectProvider(key) {
+            const config = PROVIDERS[key];
+            if (!config) return;
+
+            document.getElementById('provider-step').style.display = 'none';
+            document.getElementById('login-step').style.display = 'flex';
+
+            document.getElementById('provider-help-text').innerHTML = config.helpHtml;
+
+            // Set placeholders/values
+            if (key === 'custom') {
+                document.getElementById('custom-server-settings').style.display = 'block';
+                // Clear values for custom if empty, or keep last
+            } else {
+                document.getElementById('custom-server-settings').style.display = 'none';
+                document.getElementById('imap-host').value = config.imapHost;
+                document.getElementById('imap-port').value = config.imapPort;
+                document.getElementById('smtp-host').value = config.smtpHost;
+                document.getElementById('smtp-port').value = config.smtpPort;
+            }
+        }
+
+        async function login() {
+            const user = document.getElementById('imap-user').value.trim();
+            const pass = document.getElementById('imap-pass').value.replace(/\s/g, ''); // Strip spaces (Google App Passwords)
+            const imapHost = document.getElementById('imap-host').value;
+            const imapPort = parseInt(document.getElementById('imap-port').value);
+            const smtpHost = document.getElementById('smtp-host').value;
+            const smtpPort = parseInt(document.getElementById('smtp-port').value);
+
+            if (!user || !pass) {
+                showModal("Please enter email and password");
                 return;
             }
 
-            list.forEach(email => {
-                const div = document.createElement('div');
-                div.className = 'email-item' + (email.unread ? ' unread' : '');
+            document.getElementById('btn-login').innerText = "Connecting...";
+            document.getElementById('btn-login').disabled = true;
 
-                // For Sent folder, show "To" instead of "From"
-                const displayPerson = currentFolder === 'SENT' ? email.to : email.from;
+            imapConfig = {
+                host: imapHost,
+                port: imapPort,
+                secure: imapPort === 993,
+                auth: { user, pass }
+            };
+
+            smtpConfig = {
+                host: smtpHost,
+                port: smtpPort,
+                secure: smtpPort === 465,
+                auth: { user, pass }
+            };
+
+            userEmail = user;
+
+            // Attempt to list emails to verify credentials
+            try {
+                await loadFolders();
+                await loadEmails();
+
+                // Save credentials if successful (encrypted)
+                const authUser = firebase.auth().currentUser;
+                if (authUser) {
+                    const encryptedPass = await encryptPassword(pass, authUser.uid);
+                    if (encryptedPass) {
+                        localStorage.setItem('rekindle_imap_user', user);
+                        localStorage.setItem('rekindle_imap_pass', encryptedPass);
+                        localStorage.setItem('rekindle_imap_uid', authUser.uid);
+                    } else {
+                        console.error("Failed to encrypt password for localStorage");
+                    }
+                }
+                localStorage.setItem('rekindle_imap_host', imapHost);
+                localStorage.setItem('rekindle_imap_port', imapPort);
+                localStorage.setItem('rekindle_smtp_host', smtpHost);
+                localStorage.setItem('rekindle_smtp_port', smtpPort);
+
+                document.getElementById('auth-overlay').style.display = 'none';
+
+                // Save to Firebase (Pro Data)
+                saveSettingsToFirebase(user, pass, imapHost, imapPort, smtpHost, smtpPort);
+            } catch (e) {
+                console.error("Login failed", e);
+                showModal("Connection failed: " + e.message);
+                document.getElementById('btn-login').innerText = "Connect";
+                document.getElementById('btn-login').disabled = false;
+            } finally {
+                if (!document.getElementById('auth-overlay').style.display || document.getElementById('auth-overlay').style.display === 'none') {
+                    // If success, overlay is closed. We reset for next time.
+                    document.getElementById('btn-login').innerText = "Connect";
+                    document.getElementById('btn-login').disabled = false;
+                }
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('rekindle_imap_user');
+            localStorage.removeItem('rekindle_imap_pass');
+            localStorage.removeItem('rekindle_imap_uid');
+            location.reload();
+        }
+
+        async function loadFolders() {
+            if (!imapConfig) {
+                console.error("loadFolders: missing imapConfig");
+                return;
+            }
+            console.log("Loading folders with config", imapConfig); // DEBUG
+            const getFoldersFn = functions.httpsCallable('getFolders');
+
+            try {
+                const result = await getFoldersFn({ imap: imapConfig });
+                console.log("getFolders result:", result); // DEBUG
+                if (result.data.success) {
+                    const folders = result.data.folders;
+                    allFolders = folders; // Store globally
+                    const select = document.getElementById('folder-select');
+                    select.innerHTML = '';
+
+                    // Priority sorting: Inbox first
+                    folders.sort((a, b) => {
+                        if (a.specialUse === '\\Inbox') return -1;
+                        if (b.specialUse === '\\Inbox') return 1;
+                        return a.path.localeCompare(b.path);
+                    });
+
+                    folders.forEach(f => {
+                        // Skip folders that are not selectable (e.g. "[Gmail]")
+                        if (f.flags && f.flags.includes('\\Noselect')) {
+                            return;
+                        }
+
+                        const opt = document.createElement('option');
+                        opt.value = f.path;
+                        // Use special use name if available, else path/name
+                        let name = f.name || f.path;
+                        if (f.specialUse && f.specialUse !== '\\Noselect') {
+                            name = f.specialUse.replace('\\', '') + " (" + name + ")";
+                        }
+                        opt.innerText = name;
+                        select.appendChild(opt);
+                    });
+
+                    // Set current folder to Inbox if available
+                    const inbox = folders.find(f => f.specialUse === '\\Inbox' || f.path.toLowerCase() === 'inbox');
+                    if (inbox) {
+                        select.value = inbox.path;
+                        currentFolder = inbox.path;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load folders", e);
+                // Propagate error for login
+                throw e;
+            }
+        }
+
+        // Pagination state
+        let currentCursor = null;
+        let isLoadingMore = false;
+
+        async function loadEmails(reset = true) {
+            if (reset) {
+                currentCursor = null; // Reset cursor
+                emails = []; // Clear list
+                document.getElementById('status-bar').innerText = "Fetching emails...";
+                document.getElementById('list-container').innerHTML = '<div style="padding:20px; text-align:center;">Loading...</div>';
+            } else {
+                isLoadingMore = true;
+                const btn = document.getElementById('btn-load-more');
+                if (btn) btn.innerText = "Loading...";
+            }
+
+            const fetchEmailsFn = functions.httpsCallable('fetchEmails');
+
+            try {
+                const result = await fetchEmailsFn({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    cursor: currentCursor,
+                    limit: 20
+                });
+
+                if (result.data.success) {
+                    if (reset) {
+                        emails = result.data.messages;
+                    } else {
+                        emails = emails.concat(result.data.messages);
+                        isLoadingMore = false;
+                    }
+
+                    // Sort emails by date (newest first)
+                    emails.sort((a, b) => {
+                        const dateA = new Date(a.envelope.date || a.internalDate);
+                        const dateB = new Date(b.envelope.date || b.internalDate);
+                        return dateB - dateA; // Descending order
+                    });
+
+                    currentCursor = result.data.nextCursor;
+                    renderEmailList();
+                    document.getElementById('status-bar').innerText = `Loaded ${emails.length} emails.`;
+                } else {
+                    throw new Error(result.data.error);
+                }
+            } catch (e) {
+                console.error("Load error", e);
+                document.getElementById('status-bar').innerText = "Error loading emails.";
+                if (reset) {
+                    document.getElementById('list-container').innerHTML = `<div style="padding:20px; text-align:center; color:red;">Error: ${e.message}</div>`;
+                } else {
+                    showModal("Error loading more: " + e.message);
+                    isLoadingMore = false;
+                    renderEmailList(); // Re-render to restore button
+                }
+                throw e; // Propagate for login check
+            }
+        }
+
+        function renderEmailList() {
+            const container = document.getElementById('list-container');
+            container.innerHTML = '';
+
+            emails.forEach(email => {
+                const div = document.createElement('div');
+                div.className = `email-item ${!email.flags.includes('\\Seen') ? 'unread' : ''}`;
+                div.onclick = () => openEmail(email);
+
+                const date = new Date(email.envelope.date || email.internalDate);
+                const zonedDate = window.rekindleGetDateInZone ? window.rekindleGetDateInZone(date) : date;
+                const nowZoned = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
+
+                const dateStr = !isNaN(date.getTime()) ? (
+                    zonedDate.toLocaleDateString() === nowZoned.toLocaleDateString() ?
+                        (window.rekindleFormatTime ? window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit' }) : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) :
+                        (window.rekindleFormatTime ? window.rekindleFormatTime(date, { month: 'numeric', day: 'numeric', year: 'numeric' }) : date.toLocaleDateString([], { month: 'numeric', day: 'numeric', year: 'numeric' }))
+                ) : 'Unknown Date';
+
+                // Snippet
+                const snippet = email.snippet ? `<div class="email-snippet">${escapeHtml(email.snippet)}</div>` : '';
 
                 div.innerHTML = `
-                    <span class="email-date">${formatDate(email.date)}</span>
-                    <div class="email-sender">${escapeHtml(extractName(displayPerson))}</div>
-                    <div class="email-subject">${escapeHtml(email.subject) || window.t('mail.subject.none', '(No Subject)')}</div>
-                    <div class="email-snippet">${escapeHtml(email.snippet)}</div>
+                    <div class="email-sender">
+                        <span class="email-sender-name">${escapeHtml(email.envelope.from[0].name || email.envelope.from[0].address)}</span>
+                        <span class="email-date">${dateStr}</span>
+                    </div>
+                    <div class="email-subject">${escapeHtml(email.envelope.subject || '(No Subject)')}</div>
+                    ${snippet}
                 `;
-                div.onclick = () => showEmailDetails(email, div);
                 container.appendChild(div);
             });
 
-            if (nextPageToken) {
-                const loadMoreBtn = document.createElement('button');
-                loadMoreBtn.className = 'load-more-btn';
-                loadMoreBtn.innerText = window.t('mail.list.loadmore', 'Load More...');
-                loadMoreBtn.onclick = () => loadEmails(nextPageToken);
-                container.appendChild(loadMoreBtn);
+            // Load More Button
+            if (currentCursor) {
+                const btn = document.createElement('button');
+                btn.id = 'btn-load-more';
+                btn.className = 'load-more-btn';
+                btn.innerText = "Load More...";
+                btn.onclick = () => loadEmails(false);
+                container.appendChild(btn);
             }
         }
 
-        async function showEmailDetails(email, el) {
-            document.querySelectorAll('.email-item').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function filterEmails() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const container = document.getElementById('list-container');
+            const items = container.getElementsByClassName('email-item');
+
+            Array.from(items).forEach((item, index) => {
+                const email = emails[index];
+                const text = (email.envelope.subject + (email.envelope.from[0].name || '')).toLowerCase();
+                item.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        async function openEmail(email) {
             currentEmail = email;
 
-            const pane = document.getElementById('details-pane');
-            pane.innerHTML = `<div style="text-align:center; padding:20px;">${window.t('mail.details.loading', 'Loading...')}</div>`;
+            // Highlight selected
+            const items = document.getElementsByClassName('email-item');
+            Array.from(items).forEach(i => i.classList.remove('selected'));
+            // Refine selection highlight later if needed
+
+            // Mark as read locally and remotely
+            if (!email.flags.includes('\\Seen')) {
+                email.flags.push('\\Seen');
+                renderEmailList(); // Update UI
+                // Call modifyFlags backend
+                functions.httpsCallable('modifyFlags')({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    uid: email.uid,
+                    addFlags: ['\\Seen']
+                }).catch(console.error);
+            }
+
+            const detailsPane = document.getElementById('details-pane');
+            detailsPane.innerHTML = '<div style="padding:20px; text-align:center;">Loading body...</div>';
+
+            const fetchBodyFn = functions.httpsCallable('fetchEmailBody');
 
             try {
-                const res = await gapi.client.gmail.users.messages.get({
-                    'userId': 'me',
-                    'id': email.id,
-                    'format': 'full'
+                const result = await fetchBodyFn({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    uid: email.uid
                 });
 
-                const msg = res.result;
-                email.labelIds = msg.labelIds || [];
-                const body = getEmailBody(msg.payload);
-                const isUnread = email.labelIds.includes('UNREAD');
+                if (result.data.success) {
+                    const fullEmail = result.data.email;
 
-                pane.innerHTML = `
-                    <div class="email-header">
-                        <h2 class="email-title">${escapeHtml(email.subject)}</h2>
-                        <div class="email-meta">
-                            <span><strong>${window.t('mail.label.from', 'From:')}</strong> ${escapeHtml(email.from)}</span>
-                            <span><strong>${window.t('mail.label.to', 'To:')}</strong> ${escapeHtml(email.to)}</span>
-                            <span><strong>${window.t('mail.label.date', 'Date:')}</strong> ${email.date}</span>
+                    detailsPane.innerHTML = `
+                        <div class="email-header">
+                            <h2 class="email-title">${escapeHtml(fullEmail.subject || '(No Subject)')}</h2>
+                            <div class="email-meta">
+                                <span><b>From:</b> ${escapeHtml(fullEmail.from ? fullEmail.from.text : 'Unknown')}</span>
+                                <span><b>To:</b> ${escapeHtml(fullEmail.to ? fullEmail.to.text : 'Unknown')}</span>
+                                <span><b>Date:</b> ${fullEmail.date ? (window.rekindleFormatTime ? window.rekindleFormatTime(new Date(fullEmail.date), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date(fullEmail.date).toLocaleString()) : 'Unknown Date'}</span>
+                            </div>
+                            <div class="email-actions">
+                                <button class="toolbar-btn" onclick="replyEmail()">Reply</button>
+                                <button class="toolbar-btn" onclick="toggleReadStatus()">Mark Unread</button>
+                                <button class="toolbar-btn" onclick="archiveEmail()">Archive</button>
+                                <button class="toolbar-btn" onclick="deleteEmail()">Delete</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="email-actions">
-                        <button class="toolbar-btn" onclick="replyToEmail()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 9l-6 6 6 6"/><path d="M4 15h10c4 0 6-2 6-6s-2-6-6-6"/></svg> ${window.t('mail.action.reply', 'Reply')}</button>
-                        <button class="toolbar-btn" onclick="toggleReadStatus()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${isUnread ? '<path d="M20 6L9 17l-5-5"/>' : '<circle cx="12" cy="12" r="8"/>'}</svg> ${isUnread ? window.t('mail.action.read', 'Mark Read') : window.t('mail.action.unread', 'Mark Unread')}</button>
-                        <button class="toolbar-btn" onclick="archiveEmail()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="6"/><path d="M3 9v10h18V9"/><path d="M10 14h4"/></svg> ${window.t('mail.action.archive', 'Archive')}</button>
-                        <button class="toolbar-btn" onclick="confirmDeleteEmail()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6v14h14V6"/><path d="M10 10v8"/><path d="M14 10v8"/></svg> ${window.t('mail.action.delete', 'Delete')}</button>
-                    </div>
-                    <div class="email-body">${body}</div>
-                `;
+                        <div id="email-body-host" class="email-body" style="border-top:1px solid #ccc; padding-top:20px;"></div>
+                    `;
+
+                    // Shadow DOM isolation for email body
+                    const host = document.getElementById('email-body-host');
+                    if (host) {
+                        try {
+                            const shadow = host.attachShadow({ mode: 'open' });
+                            // Inject basic styles for the shadow content
+                            const style = `
+                                <style>
+                                    :host { display: block; font-family: sans-serif; }
+                                    img { max-width: 100%; height: auto; }
+                                    a { color: blue; }
+                                    blockquote { margin-left: 10px; border-left: 2px solid #ccc; padding-left: 10px; }
+                                </style>
+                            `;
+                            shadow.innerHTML = style + (fullEmail.html || fullEmail.text.replace(/\n/g, '<br>'));
+                        } catch (e) {
+                            console.error("Shadow DOM error", e);
+                            host.innerHTML = "Error rendering email body.";
+                        }
+                    }
+
+                } else {
+                    detailsPane.innerHTML = `<div style="padding:20px; color:red;">Error loading body: ${result.data.error}</div>`;
+                }
+
             } catch (e) {
-                console.error('Error loading email:', e);
-                pane.innerHTML = `<div style="text-align:center; padding:20px; color:red;">${window.t('mail.details.error', 'Error loading email.')}</div>`;
+                console.error("Body error", e);
+                detailsPane.innerHTML = `<div style="padding:20px; color:red;">Error: ${e.message}</div>`;
             }
         }
-
-        // --- CONFIGURATION ---
-        function showModal(msg, isConfirm = false, callback = null) {
-            const overlay = document.getElementById('generic-modal-overlay');
-            const messageEl = document.getElementById('modal-message');
-            const btnsEl = document.getElementById('modal-btns');
-            messageEl.textContent = msg;
-            if (isConfirm) {
-                btnsEl.innerHTML = '<button class="modal-btn" id="modal-cancel">Cancel</button><button class="modal-btn" id="modal-ok">OK</button>';
-                document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
-                document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
-            } else {
-                btnsEl.innerHTML = '<button class="modal-btn" onclick="hideModal()">OK</button>';
-            }
-            overlay.style.display = 'flex';
-        }
-        function hideModal() { document.getElementById('generic-modal-overlay').style.display = 'none'; }
-
-        // --- EMAIL ACTIONS ---
 
         async function toggleReadStatus() {
             if (!currentEmail) return;
-
-            const isUnread = currentEmail.labelIds.includes('UNREAD');
+            // Currently it is read (we mark it on open). Toggle to unread.
+            currentEmail.flags = currentEmail.flags.filter(f => f !== '\\Seen');
+            renderEmailList();
 
             try {
-                document.getElementById('status-bar').innerText = 'Updating...';
-
-                if (isUnread) {
-                    await gapi.client.gmail.users.messages.modify({
-                        userId: 'me',
-                        id: currentEmail.id,
-                        resource: { removeLabelIds: ['UNREAD'] }
-                    });
-                    currentEmail.labelIds = currentEmail.labelIds.filter(l => l !== 'UNREAD');
-                    currentEmail.unread = false;
-                } else {
-                    await gapi.client.gmail.users.messages.modify({
-                        userId: 'me',
-                        id: currentEmail.id,
-                        resource: { addLabelIds: ['UNREAD'] }
-                    });
-                    currentEmail.labelIds.push('UNREAD');
-                    currentEmail.unread = true;
-                }
-
-                document.getElementById('status-bar').innerText = isUnread ? 'Marked as read' : 'Marked as unread';
-
-                // Refresh the email view
-                const selectedEl = document.querySelector('.email-item.selected');
-                if (selectedEl) {
-                    selectedEl.classList.toggle('unread', currentEmail.unread);
-                    showEmailDetails(currentEmail, selectedEl);
-                }
+                await functions.httpsCallable('modifyFlags')({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    uid: currentEmail.uid,
+                    removeFlags: ['\\Seen']
+                });
+                showModal("Marked as Unread");
             } catch (e) {
-                console.error('Error updating read status:', e);
-                document.getElementById('status-bar').innerText = 'Error updating email';
+                showModal("Error: " + e.message);
             }
         }
 
         async function archiveEmail() {
             if (!currentEmail) return;
 
-            try {
-                document.getElementById('status-bar').innerText = 'Archiving...';
+            // Find Archive/All Mail folder
+            const archiveFolder = allFolders.find(f =>
+                f.specialUse === '\\All' ||
+                f.specialUse === '\\Archive' ||
+                f.path.toLowerCase().includes('all mail') ||
+                f.path.toLowerCase() === 'archive'
+            );
 
-                await gapi.client.gmail.users.messages.modify({
-                    userId: 'me',
-                    id: currentEmail.id,
-                    resource: { removeLabelIds: ['INBOX'] }
-                });
-
-                document.getElementById('status-bar').innerText = 'Email archived';
-
-                // Remove from list and reload
-                allEmails = allEmails.filter(e => e.id !== currentEmail.id);
-                emails = allEmails;
-                renderList(emails);
-                document.getElementById('details-pane').innerHTML =
-                    '<div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Email archived. Select another email.</div>';
-                currentEmail = null;
-            } catch (e) {
-                console.error('Error archiving email:', e);
-                document.getElementById('status-bar').innerText = 'Error archiving email';
+            if (!archiveFolder) {
+                showModal("Could not find an Archive or All Mail folder.");
+                return;
             }
-        }
 
-        function confirmDeleteEmail() {
-            if (!currentEmail) return;
+            const moveEmailFn = functions.httpsCallable('moveEmail');
 
-            document.getElementById('confirm-title').innerText = 'Delete Email?';
-            document.getElementById('confirm-message').innerText = 'This will move the email to Trash.';
-            document.getElementById('confirm-btn').onclick = deleteEmail;
-            document.getElementById('confirm-modal').style.display = 'flex';
+            // Optimistic UI update
+            const uid = currentEmail.uid;
+            emails = emails.filter(e => e.uid !== uid);
+            renderEmailList();
+            document.getElementById('details-pane').innerHTML = '<div style="padding:20px; text-align:center;">Archived</div>';
+            currentEmail = null;
+
+            try {
+                await moveEmailFn({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    uid: uid,
+                    destination: archiveFolder.path
+                });
+                // showModal("Archived"); // Optional feedback
+            } catch (e) {
+                console.error("Archive failed", e);
+                showModal("Failed to archive: " + e.message);
+                loadEmails(true);
+            }
         }
 
         async function deleteEmail() {
-            closeConfirmModal();
             if (!currentEmail) return;
 
+            // Find Trash folder
+            const trashFolder = allFolders.find(f =>
+                f.specialUse === '\\Trash' ||
+                f.path.toLowerCase().includes('trash') ||
+                f.path.toLowerCase() === 'bin'
+            );
+
+            if (!trashFolder) {
+                showModal("Could not find a Trash folder.");
+                return;
+            }
+
+            const moveEmailFn = functions.httpsCallable('moveEmail');
+
+            // Optimistic UI update
+            const uid = currentEmail.uid;
+            emails = emails.filter(e => e.uid !== uid);
+            renderEmailList();
+            document.getElementById('details-pane').innerHTML = '<div style="padding:20px; text-align:center;">Deleted</div>';
+            currentEmail = null;
+
             try {
-                document.getElementById('status-bar').innerText = 'Deleting...';
-
-                await gapi.client.gmail.users.messages.trash({
-                    userId: 'me',
-                    id: currentEmail.id
+                await moveEmailFn({
+                    imap: imapConfig,
+                    path: currentFolder,
+                    uid: uid,
+                    destination: trashFolder.path
                 });
-
-                document.getElementById('status-bar').innerText = 'Email deleted';
-
-                allEmails = allEmails.filter(e => e.id !== currentEmail.id);
-                emails = allEmails;
-                renderList(emails);
-                document.getElementById('details-pane').innerHTML =
-                    '<div style="text-align:center; margin-top:50px; font-style:italic; color:#666;">Email deleted. Select another email.</div>';
-                currentEmail = null;
+                // showModal("Moved to Trash"); // Optional
             } catch (e) {
-                console.error('Error deleting email:', e);
-                document.getElementById('status-bar').innerText = 'Error deleting email';
+                console.error("Delete failed", e);
+                showModal("Failed to move to Trash: " + e.message);
+                loadEmails(true);
             }
         }
 
-        // --- COMPOSE ---
+        function changeFolder() {
+            currentFolder = document.getElementById('folder-select').value;
+            console.log("Changed folder to:", currentFolder); // DEBUG
+            loadEmails();
+        }
 
-        function openComposeModal(to = '', subject = '', body = '') {
-            document.getElementById('compose-to').value = to;
-            document.getElementById('compose-subject').value = subject;
-            document.getElementById('compose-body').value = body;
+        function openComposeModal() {
+            document.getElementById('compose-to').value = '';
+            document.getElementById('compose-subject').value = '';
+            document.getElementById('compose-body').value = '';
             document.getElementById('compose-modal').style.display = 'flex';
         }
 
@@ -1234,173 +1484,224 @@
             document.getElementById('compose-modal').style.display = 'none';
         }
 
-        function replyToEmail() {
+        function replyEmail() {
             if (!currentEmail) return;
-
-            const replyTo = currentEmail.from;
-            const subject = currentEmail.subject.startsWith('Re:') ? currentEmail.subject : 'Re: ' + currentEmail.subject;
-            const body = '\n\n--- Original Message ---\n' + currentEmail.snippet;
-
-            openComposeModal(replyTo, subject, body);
+            // Need the full body details which we might not have stored globally ideally
+            // simple reply setup
+            openComposeModal();
+            document.getElementById('compose-to').value = currentEmail.envelope.from[0].address;
+            document.getElementById('compose-subject').value = "Re: " + currentEmail.envelope.subject;
         }
 
         async function sendEmail() {
-            const to = document.getElementById('compose-to').value.trim();
-            const subject = document.getElementById('compose-subject').value.trim();
+            const to = document.getElementById('compose-to').value;
+            const subject = document.getElementById('compose-subject').value;
             const body = document.getElementById('compose-body').value;
 
             if (!to) {
-                showModal('Please enter a recipient email address.');
+                showModal("Please specify a recipient.");
                 return;
             }
 
+            const sendBtn = document.querySelector('#compose-modal .primary');
+            const originalText = sendBtn.innerText;
+            sendBtn.innerText = "Sending...";
+            sendBtn.disabled = true;
+
+            const sendEmailFn = functions.httpsCallable('sendEmail');
+
             try {
-                document.getElementById('status-bar').innerText = 'Sending...';
-
-                // Build RFC 2822 email
-                const email = [
-                    'Content-Type: text/plain; charset="UTF-8"',
-                    'MIME-Version: 1.0',
-                    'Content-Transfer-Encoding: 7bit',
-                    `To: ${to}`,
-                    `From: ${userEmail}`,
-                    `Subject: ${subject}`,
-                    '',
-                    body
-                ].join('\r\n');
-
-                // Base64 URL-safe encode
-                const encodedEmail = btoa(unescape(encodeURIComponent(email)))
-                    .replace(/\+/g, '-')
-                    .replace(/\//g, '_')
-                    .replace(/=+$/, '');
-
-                await gapi.client.gmail.users.messages.send({
-                    userId: 'me',
-                    resource: { raw: encodedEmail }
+                const result = await sendEmailFn({
+                    smtp: smtpConfig,
+                    message: {
+                        to,
+                        subject,
+                        text: body,
+                        html: body.replace(/\n/g, '<br>')
+                    }
                 });
 
-                document.getElementById('status-bar').innerText = 'Email sent!';
-                closeComposeModal();
-
-            } catch (e) {
-                console.error('Error sending email:', e);
-                document.getElementById('status-bar').innerText = 'Error sending email';
-                showModal('Failed to send email. Please try again.');
-            }
-        }
-
-        function closeConfirmModal() {
-            document.getElementById('confirm-modal').style.display = 'none';
-        }
-
-        // --- HELPERS ---
-
-        function getEmailBody(payload) {
-            let body = '';
-
-            if (payload.body && payload.body.data) {
-                body = decodeBase64(payload.body.data);
-            } else if (payload.parts) {
-                const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
-                const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
-
-                if (textPart && textPart.body && textPart.body.data) {
-                    body = decodeBase64(textPart.body.data);
-                } else if (htmlPart && htmlPart.body && htmlPart.body.data) {
-                    body = htmlToText(decodeBase64(htmlPart.body.data));
+                if (result.data.success) {
+                    closeComposeModal();
+                    showModal("Email sent!");
                 } else {
-                    for (const part of payload.parts) {
-                        if (part.parts) {
-                            const nestedText = part.parts.find(p => p.mimeType === 'text/plain');
-                            if (nestedText && nestedText.body && nestedText.body.data) {
-                                body = decodeBase64(nestedText.body.data);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            return escapeHtml(body);
-        }
-
-        function decodeBase64(data) {
-            try {
-                const decoded = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
-                return decodeURIComponent(escape(decoded));
-            } catch (e) {
-                return data;
-            }
-        }
-
-        function htmlToText(html) {
-            const temp = document.createElement('div');
-            temp.innerHTML = html;
-            temp.querySelectorAll('script, style').forEach(el => el.remove());
-            return temp.textContent || temp.innerText || '';
-        }
-
-        function filterEmails() {
-            const q = document.getElementById('search-input').value.toLowerCase();
-            const filtered = allEmails.filter(e => {
-                return e.from.toLowerCase().includes(q) ||
-                    e.subject.toLowerCase().includes(q) ||
-                    e.snippet.toLowerCase().includes(q);
-            });
-            emails = filtered;
-            renderList(filtered);
-        }
-
-        function formatDate(dateStr) {
-            try {
-                const date = new Date(dateStr);
-                const now = new Date();
-
-                // Use time.js helpers for proper timezone handling
-                const zonedDate = window.rekindleGetZonedDate(date);
-                const zonedNow = window.rekindleGetZonedDate(now);
-                const isToday = zonedDate.toDateString() === zonedNow.toDateString();
-
-                if (isToday) {
-                    return window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
-                } else {
-                    return window.rekindleFormatTime(date, { month: 'short', day: 'numeric' });
+                    showModal("Error sending: " + result.data.error);
                 }
             } catch (e) {
-                return dateStr;
+                console.error("Send error", e);
+                showModal("Error sending: " + e.message);
+            } finally {
+                sendBtn.innerText = originalText;
+                sendBtn.disabled = false;
             }
         }
 
-        function extractName(fromStr) {
-            if (!fromStr) return '';
-            const match = fromStr.match(/^(.+?)\s*<.+>$/);
-            if (match) {
-                return match[1].replace(/"/g, '');
-            }
-            return fromStr;
-        }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
 
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
         }
 
 
+
+    </script>
+
+    <script>
+        // --- PASSWORD ENCRYPTION ---
+        async function encryptPassword(password, uid) {
+            try {
+                const encoder = new TextEncoder();
+                const keyMaterial = await crypto.subtle.importKey(
+                    'raw', encoder.encode(uid),
+                    { name: 'PBKDF2' }, false, ['deriveKey']
+                );
+
+                const key = await crypto.subtle.deriveKey(
+                    { name: 'PBKDF2', salt: encoder.encode('rekindle-mail-salt'), iterations: 100000, hash: 'SHA-256' },
+                    keyMaterial,
+                    { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+                );
+
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv },
+                    key,
+                    encoder.encode(password)
+                );
+
+                // Return as base64 string with IV prepended
+                return btoa(String.fromCharCode(...iv) + String.fromCharCode(...new Uint8Array(encrypted)));
+            } catch (e) {
+                console.error("Encryption failed:", e);
+                return null;
+            }
+        }
+
+        async function decryptPassword(encryptedStr, uid) {
+            try {
+                const encoder = new TextEncoder();
+                const data = Uint8Array.from(atob(encryptedStr), c => c.charCodeAt(0));
+                const iv = data.slice(0, 12);
+                const encrypted = data.slice(12);
+
+                const keyMaterial = await crypto.subtle.importKey(
+                    'raw', encoder.encode(uid),
+                    { name: 'PBKDF2' }, false, ['deriveKey']
+                );
+
+                const key = await crypto.subtle.deriveKey(
+                    { name: 'PBKDF2', salt: encoder.encode('rekindle-mail-salt'), iterations: 100000, hash: 'SHA-256' },
+                    keyMaterial,
+                    { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+                );
+
+                const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted);
+                return new TextDecoder().decode(decrypted);
+            } catch (e) {
+                console.error("Decryption failed:", e);
+                return null;
+            }
+        }
+
+        // --- CLOUD SYNC ---
+        async function loadSettingsFromFirebase(uid) {
+            if (!uid) return;
+            try {
+                const db = firebase.firestore();
+                const doc = await db.collection('users').doc(uid).collection('pro_data').doc('mail').get();
+
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.imapUser && data.imapPass) {
+                        // Decrypt password before storing locally
+                        let password = data.imapPass;
+                        if (data.encrypted) {
+                            password = await decryptPassword(data.imapPass, uid);
+                            if (!password) {
+                                console.error("Failed to decrypt password from cloud");
+                                return;
+                            }
+                        }
+
+                        // Store encrypted password in localStorage (re-encrypt with same uid)
+                        const encryptedForLocal = await encryptPassword(password, uid);
+                        if (encryptedForLocal) {
+                            localStorage.setItem('rekindle_imap_user', data.imapUser);
+                            localStorage.setItem('rekindle_imap_pass', encryptedForLocal);
+                            localStorage.setItem('rekindle_imap_uid', uid);
+                            localStorage.setItem('rekindle_imap_host', data.imapHost);
+                            localStorage.setItem('rekindle_imap_port', data.imapPort);
+                            localStorage.setItem('rekindle_smtp_host', data.smtpHost);
+                            localStorage.setItem('rekindle_smtp_port', data.smtpPort);
+                            console.log("Mail settings synced from cloud (encrypted in localStorage).");
+                        } else {
+                            console.error("Failed to encrypt password for localStorage");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading mail settings from cloud:", e);
+            }
+        }
+
+        async function saveSettingsToFirebase(user, pass, imapHost, imapPort, smtpHost, smtpPort) {
+            const authUser = firebase.auth().currentUser;
+            if (!authUser) return;
+
+            try {
+                // Encrypt password before saving
+                const encryptedPass = await encryptPassword(pass, authUser.uid);
+                if (!encryptedPass) {
+                    console.error("Failed to encrypt password, not saving to cloud");
+                    return;
+                }
+
+                const db = firebase.firestore();
+                await db.collection('users').doc(authUser.uid).collection('pro_data').doc('mail').set({
+                    imapUser: user,
+                    imapPass: encryptedPass,
+                    encrypted: true,
+                    imapHost: imapHost,
+                    imapPort: imapPort,
+                    smtpHost: smtpHost,
+                    smtpPort: smtpPort,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                console.log("Mail settings saved to cloud (encrypted).");
+            } catch (e) {
+                console.error("Error saving mail settings to cloud:", e);
+            }
+        }
     </script>
 
     <!-- STANDARD MODAL POPUP -->
     <div id="generic-modal-overlay">
         <div class="modal-box">
-            <div id="modal-message" class="modal-text"></div>
-            <div id="modal-btns" class="modal-btns"></div>
+            <div id="generic-modal-text" class="modal-text"></div>
+            <div class="modal-btns">
+                <button class="modal-btn" onclick="closeGenericModal()">OK</button>
+            </div>
         </div>
     </div>
 
+    <script>
+        function showModal(text) {
+            const overlay = document.getElementById('generic-modal-overlay');
+            const textEl = document.getElementById('generic-modal-text');
+            if (overlay && textEl) {
+                textEl.innerText = text;
+                overlay.style.display = 'flex';
+            } else {
+                console.log("Modal fallback (elements missing):", text);
+            }
+        }
 
-</body></html>
+        function closeGenericModal() {
+            document.getElementById('generic-modal-overlay').style.display = 'none';
+        }
+    </script>
+
+
+</body>
+
+</html>
