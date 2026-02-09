@@ -44,7 +44,7 @@ ReKindle operates in two modes: **Guest Mode** (all data stored locally on your 
 ### Productivity & Organization
 *   **Quick ToDo⁺:** A unique task manager that uses **OCR (Handwriting Recognition)** to convert your handwriting into digital, sync-able tasks.
 *   **Google Integration:** Full read/write sync for **Google Tasks**, **Google Calendar**, and **Google Contacts**.
-*   **Gmail⁺:** A fully functional email client for your E-ink device.
+*   **Mail⁺:** A fully functional email client for your E-ink device.
 *   **Universal Sync:** Supports **CalDAV** and **CardDAV** for non-Google users.
 *   **Note Pad:** A clean, distraction-free writing environment.
 *   **Habit Tracker:** Keep your streaks alive with a visual weekly tracker.
@@ -94,7 +94,7 @@ ReKindle operates in two modes: **Guest Mode** (all data stored locally on your 
 
 ## ⚡ ReKindle+
 
-Support the development of ReKindle and unlock premium features, including Gmail integration, AI-powered handwriting recognition, and advanced productivity tools.
+Support the development of ReKindle and unlock premium features, including Mail integration, AI-powered handwriting recognition, and advanced productivity tools.
 
 **Pricing:**
 *   **Monthly:** $2/mo

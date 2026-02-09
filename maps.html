@@ -2,10 +2,18 @@
 <html lang="en">
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
+    
     <title>Maps</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <!-- MapLibre GL JS (v2 for Kindle compatibility) -->
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <!-- Leaflet (Fallback for Kindle/No-WebGL) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=VT323&amp;display=swap" rel="stylesheet">
 
@@ -190,15 +198,12 @@
             width: 100%;
             height: 100%;
             background: #ffffff;
-            /* Critical: Background must be white */
             z-index: 1;
         }
 
-        /* E-INK FILTER APPLICATION - commented out for performance on E-ink devices */
-        /* .leaflet-layer { filter: grayscale(100%) contrast(130%) brightness(0.9); } */
-
-        .leaflet-marker-icon {
-            filter: none;
+        /* MapLibre specifics */
+        .maplibregl-ctrl-attrib {
+            font-size: 10px;
         }
 
         /* OVERLAYS */
@@ -397,7 +402,8 @@
             }
         }
 
-        .leaflet-control-attribution {
+        .maplibregl-ctrl-bottom-right,
+        .maplibregl-ctrl-bottom-left {
             display: none !important;
         }
 
@@ -479,27 +485,21 @@
         }
 
         /* POPUP STYLING TO MATCH */
-        .leaflet-popup-content-wrapper {
+        /* POPUP STYLING TO MATCH */
+        .maplibregl-popup-content {
             background: white;
             border: 2px solid black;
             border-radius: 0;
             box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
-            padding: 0;
+            padding: 8px 12px;
             font-family: inherit;
-        }
-
-        .leaflet-popup-tip {
-            background: white;
-            border: 2px solid black;
-            border-top: none;
-            border-left: none;
-            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
-        }
-
-        .leaflet-popup-content {
-            margin: 8px 12px;
             font-weight: bold;
             font-size: 0.9rem;
+        }
+
+        .maplibregl-popup-tip {
+            border-top-color: black !important;
+            border-bottom-color: black !important;
         }
     </style>
 
@@ -606,7 +606,7 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 
     <script>
         // --- INTERNAL PROXY (Cloudflare Function) ---
@@ -644,7 +644,8 @@
 
         let map;
         let markers = [];
-        let routeLayer = null;
+        let routeLayers = []; // For Leaflet
+        let mapType = 'gl'; // 'gl' or 'leaflet'
         let currentMode = 'find';
 
         window.onload = () => {
@@ -653,42 +654,124 @@
             initMap();
         };
 
-
-        function initMap() {
-            // Using Stamen Toner (Hosted by Stadia Maps) - High contrast Line Drawing style
-            // Note: This service typically requires an API key for production domains.
-            const tileUrl = 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png?api_key=d03c70b5-65ef-4dcf-ae08-a5bfa5c52010';
-            const attribution = '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
-            let defaultCenter = [40.7128, -74.0060]; // Default NYC
-            let defaultZoom = 13;
-
-            try {
-                const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-                if (manualLoc && manualLoc.lat && manualLoc.lon) {
-                    defaultCenter = [parseFloat(manualLoc.lat), parseFloat(manualLoc.lon)];
-                }
-            } catch (e) {
-                console.warn("Failed to load manual location", e);
+        async function initMap() {
+            // DECIDE ENGINE
+            // If WebGL is supported, use MapLibre (Vector) -> Smooth, Better.
+            // If NOT supported (Kindle), use Leaflet (Raster) -> Reliable Fallback.
+            if (typeof maplibregl !== 'undefined' && maplibregl.supported && maplibregl.supported()) {
+                console.log("WebGL Supported: Initializing OpenFreeMap (Vector)");
+                mapType = 'gl';
+                await initGLMap();
+            } else {
+                console.log("WebGL Not Supported: Initializing Leaflet (Raster)");
+                mapType = 'leaflet';
+                initLeafletMap();
             }
+        }
 
-            map = L.map('map', {
-                zoomControl: false,
-                attributionControl: true,
-                center: defaultCenter,
-                zoom: defaultZoom,
-                zoomAnimation: false,
-                fadeAnimation: false,
-                markerZoomAnimation: false,
-                inertia: false
-            });
+        async function initGLMap() {
+            try {
+                // Vector Style from data.gouv.fr (Toner)
+                // This replaces our local file and OpenFreeMap, but still looks like Toner.
+                const styleUrl = 'https://openmaptiles.geo.data.gouv.fr/styles/maptiler-toner/style.json';
 
-            L.tileLayer(tileUrl, {
-                attribution: attribution,
-                maxZoom: 19,
-                updateWhenIdle: true,
-                keepBuffer: 2
-            }).addTo(map);
+                let defaultCenter = [-74.0060, 40.7128]; // Default NYC [Lon, Lat]
+                let defaultZoom = 13;
+
+                try {
+                    const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                    if (manualLoc && manualLoc.lat && manualLoc.lon) {
+                        defaultCenter = [parseFloat(manualLoc.lon), parseFloat(manualLoc.lat)];
+                    }
+                } catch (e) {
+                    console.warn("Failed to load manual location", e);
+                }
+
+                map = new maplibregl.Map({
+                    container: 'map',
+                    style: styleUrl, // Direct URL works now
+                    center: defaultCenter,
+                    zoom: defaultZoom,
+                    attributionControl: false, // We add it manually below
+                    // E-ink optimizations
+                    fadeDuration: 0,
+                    inertia: false
+                });
+
+                // ERROR HANDLING -> Fallback to Leaflet if GL fails mid-stream
+                map.on('error', (e) => {
+                    console.error("Map Error:", e);
+                    // Critical failure? Maybe fallback is needed even here, 
+                    // but usually supported() catches the big ones.
+                    if (e.error && e.error.message && e.error.message.includes("WebGL")) {
+                        document.getElementById('map').innerHTML = ''; // Clear container
+                        mapType = 'leaflet';
+                        initLeafletMap();
+                        return;
+                    }
+
+                    if (e.error && e.error.status === 404) {
+                        console.warn("Missing resource:", e.error.url);
+                    } else if (!e.error || e.error.status !== 404) {
+                        openStatusModal("Map Error", (e.error ? e.error.message : "An unknown error occurred."));
+                    }
+                });
+
+                map.on('load', () => {
+                    console.log("Map Fully Loaded");
+                    map.resize(); // Force resize to ensure canvas is correct
+                });
+
+                map.addControl(new maplibregl.AttributionControl({
+                    compact: true
+                }));
+            } catch (e) {
+                console.error("Map Init Failed", e);
+                // Try fallback
+                document.getElementById('map').innerHTML = '';
+                mapType = 'leaflet';
+                initLeafletMap();
+            }
+        }
+
+        function initLeafletMap() {
+            try {
+                // Get Start Location
+                let startLat = 40.7128;
+                let startLon = -74.0060;
+                try {
+                    const manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                    if (manualLoc && manualLoc.lat && manualLoc.lon) {
+                        startLat = parseFloat(manualLoc.lat);
+                        startLon = parseFloat(manualLoc.lon);
+                    }
+                } catch (e) { }
+
+                // Init Leaflet
+                map = L.map('map', {
+                    zoomControl: false,
+                    attributionControl: false,
+                    zoomAnimation: false, // E-ink optimization
+                    fadeAnimation: false,
+                    markerZoomAnimation: false
+                }).setView([startLat, startLon], 13);
+
+                // Add Stadia/Stamen Toner Layer
+                // API Key: d03c70b5-65ef-4dcf-ae08-a5bfa5c52010
+                L.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png?api_key=d03c70b5-65ef-4dcf-ae08-a5bfa5c52010', {
+                    minZoom: 0,
+                    maxZoom: 20,
+                    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>'
+                }).addTo(map);
+
+                // Add Attribution manually if needed, or stick to Stadia requirements? 
+                // We disabled logic control, let's add compact one.
+                L.control.attribution({ prefix: false }).addTo(map);
+
+            } catch (e) {
+                console.error("Leaflet Init Failed", e);
+                openStatusModal("Error", "Could not load fallback map. " + e.message);
+            }
         }
 
         function setMode(mode) {
@@ -700,12 +783,22 @@
         }
 
         function clearMap() {
-            markers.forEach(m => map.removeLayer(m));
+            // Clear Markers
+            markers.forEach(m => m.remove());
             markers = [];
-            if (routeLayer) {
-                map.removeLayer(routeLayer);
-                routeLayer = null;
+
+            if (mapType === 'gl') {
+                // Clear route layers and source
+                if (map.getLayer('route-bottom')) map.removeLayer('route-bottom');
+                if (map.getLayer('route-middle')) map.removeLayer('route-middle');
+                if (map.getLayer('route-top')) map.removeLayer('route-top');
+                if (map.getSource('route')) map.removeSource('route');
+            } else {
+                // Leaflet Clear
+                routeLayers.forEach(l => map.removeLayer(l));
+                routeLayers = [];
             }
+
             document.getElementById('search-input').value = '';
             document.getElementById('route-stats').innerText = '';
         }
@@ -731,24 +824,19 @@
                 div.className = 'result-item';
                 div.innerText = item.display_name;
                 div.onclick = () => {
-                    // Pass the item object (stringified) to keep the data clean
                     jumpTo(JSON.parse(div.dataset.item));
                     closeModal('selection-modal');
                 };
-                // Store the full object data in a data attribute
                 div.dataset.item = JSON.stringify(item);
                 content.appendChild(div);
             });
             document.getElementById('selection-modal').style.display = 'flex';
         }
 
-
-
         function getViewboxParams() {
             if (!map) return '';
-            // Pad bounds by 500% (5x) to include a very large surrounding area
-            const b = map.getBounds().pad(5);
-            // viewbox=left,top,right,bottom
+            const b = map.getBounds();
+            // viewbox=west,north,east,south
             return `&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`;
         }
 
@@ -757,19 +845,11 @@
             if (!query) return;
 
             const loader = document.getElementById('search-loader');
-
             loader.style.display = 'inline-block';
 
             try {
-                // Nominatim API endpoint for search:
-                // Include viewbox to bias results to current map view
                 const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&accept-language=en${getViewboxParams()}`;
-
-                // Use robust fetch with proxy fallback
                 const res = await fetchWithProxyFallback(nominatimUrl);
-
-                // The fetchWithProxyFallback already checks res.ok, so no need for explicit check here
-
                 const data = await res.json();
 
                 if (data.length === 0) {
@@ -777,51 +857,79 @@
                 } else if (data.length === 1) {
                     jumpTo(data[0]);
                 } else {
-                    // Kindle Fix: Show modal list instead of rendering unstable DIV
                     openSelectionModal(data);
                 }
             } catch (e) {
-                openStatusModal("Search Error", e.message || "Search failed. Check network connection.");
+                openStatusModal("Search Error", e.message || "Search failed.");
             } finally {
                 loader.style.display = 'none';
             }
         }
 
-        function createSystem7Marker(latlng) {
-            const sys7Icon = L.divIcon({
-                className: 'system7-marker',
-                html: '<div class="system7-pin"></div>',
-                iconSize: [14, 14],
-                iconAnchor: [7, 7],
-                popupAnchor: [0, -10]
-            });
-            return L.marker(latlng, { icon: sys7Icon });
+        function createSystem7Marker(lngLat) {
+            if (mapType === 'leaflet') {
+                // Leaflet uses [Lat, Lng] order for constructor, but we pass [Lon, Lat] because GeoJSON.
+                // Reversing for Leaflet call
+                const lat = lngLat[1];
+                const lon = lngLat[0];
+
+                const icon = L.divIcon({
+                    className: 'system7-marker', // Reuse existing CSS class
+                    html: '<div class="system7-pin"></div>',
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                });
+                return L.marker([lat, lon], { icon: icon });
+            } else {
+                // MapLibre
+                const el = document.createElement('div');
+                el.className = 'system7-marker';
+                el.innerHTML = '<div class="system7-pin"></div>';
+                // Explicit size for GL marker container to ensure centering
+                el.style.width = '14px';
+                el.style.height = '14px';
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.justifyContent = 'center';
+
+                return new maplibregl.Marker({
+                    element: el,
+                    anchor: 'center' // Center of the 14x14 box
+                }).setLngLat(lngLat);
+            }
         }
 
         function jumpTo(item) {
-            // Clear existing markers when jumping to a new search result
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-            if (routeLayer) {
-                map.removeLayer(routeLayer);
-                routeLayer = null;
-            }
+            // Clear existing
+            clearMap();
 
             const lat = parseFloat(item.lat);
             const lon = parseFloat(item.lon);
-            map.setView([lat, lon], 14);
 
-            const marker = createSystem7Marker([lat, lon]).addTo(map)
-                .bindPopup(item.display_name.split(',')[0])
-                .openPopup();
-            markers.push(marker);
+            if (mapType === 'leaflet') {
+                map.setView([lat, lon], 15);
+                const marker = createSystem7Marker([lon, lat]).addTo(map);
+                marker.bindPopup(item.display_name.split(',')[0]).openPopup();
+                markers.push(marker);
+            } else {
+                // Pan
+                map.jumpTo({ center: [lon, lat], zoom: 15 });
+
+                // Add Marker
+                const marker = createSystem7Marker([lon, lat])
+                    .setPopup(new maplibregl.Popup({ offset: 15 }).setText(item.display_name.split(',')[0]))
+                    .addTo(map);
+
+                markers.push(marker);
+                marker.togglePopup();
+            }
         }
 
         async function calcRoute() {
             let start = document.getElementById('route-start').value.trim();
             const end = document.getElementById('route-end').value.trim();
 
-            if (!end) return openStatusModal("Input Required", "Destination is required for routing.");
+            if (!end) return openStatusModal("Input Required", "Destination is required.");
 
             const loader = document.getElementById('route-loader');
             loader.style.display = 'inline-block';
@@ -829,43 +937,40 @@
 
             try {
                 // 1. Geocode Start/End
-                let startCoords = null;
+                let startCoords = null; // [lon, lat]
                 if (!start) {
                     const center = map.getCenter();
-                    startCoords = [center.lat, center.lng];
+                    startCoords = [center.lng, center.lat];
                 } else {
-                    // Nominatim geocoding for start
-                    // Nominatim geocoding for start
                     const nominatimStartUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(start)}&accept-language=en${getViewboxParams()}`;
-
-                    const resS = await fetchWithProxyFallback(nominatimStartUrl, { referrerPolicy: 'no-referrer' });
+                    const resS = await fetchWithProxyFallback(nominatimStartUrl);
                     const dataS = await resS.json();
                     if (!dataS || dataS.length === 0) throw new Error("Start location not found");
-                    startCoords = [parseFloat(dataS[0].lat), parseFloat(dataS[0].lon)];
+                    startCoords = [parseFloat(dataS[0].lon), parseFloat(dataS[0].lat)];
                 }
 
-                // Nominatim geocoding for end
-                // Nominatim geocoding for end
                 const nominatimEndUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(end)}&accept-language=en${getViewboxParams()}`;
-
-                const resE = await fetchWithProxyFallback(nominatimEndUrl, { referrerPolicy: 'no-referrer' });
+                const resE = await fetchWithProxyFallback(nominatimEndUrl);
                 const dataE = await resE.json();
                 if (!dataE || dataE.length === 0) throw new Error("Destination not found");
-                const endCoords = [parseFloat(dataE[0].lat), parseFloat(dataE[0].lon)];
+                const endCoords = [parseFloat(dataE[0].lon), parseFloat(dataE[0].lat)];
 
-                const startM = createSystem7Marker(startCoords).addTo(map).bindPopup("Start");
-                const endM = createSystem7Marker(endCoords).addTo(map).bindPopup("End");
+                // Add Markers (Hybrid)
+                const startM = createSystem7Marker(startCoords).addTo(map);
+                const endM = createSystem7Marker(endCoords).addTo(map);
+
+                if (mapType === 'leaflet') {
+                    startM.bindPopup("Start");
+                    endM.bindPopup("End");
+                } else {
+                    startM.setPopup(new maplibregl.Popup().setText("Start"));
+                    endM.setPopup(new maplibregl.Popup().setText("End"));
+                }
                 markers.push(startM, endM);
 
-                const startLon = startCoords[1];
-                const startLat = startCoords[0];
-                const endLon = endCoords[1];
-                const endLat = endCoords[0];
-
-                // 2. OSRM Routing 
-                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
-
-                const routeRes = await fetchWithProxyFallback(osrmUrl, { referrerPolicy: 'no-referrer' });
+                // 2. OSRM Routing
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords[0]},${startCoords[1]};${endCoords[0]},${endCoords[1]}?overview=full&geometries=geojson`;
+                const routeRes = await fetchWithProxyFallback(osrmUrl);
                 const routeData = await routeRes.json();
 
                 if (!routeData.code || routeData.code !== 'Ok') throw new Error("Routing failed (No path found)");
@@ -873,29 +978,62 @@
                 const route = routeData.routes[0];
                 const geojson = route.geometry;
 
-                // Triple-Layer Route Style: White -> Black -> White
-                routeLayer = L.featureGroup([
-                    // 1. Bottom: Thick White (Outer Border)
-                    L.geoJSON(geojson, {
-                        style: { color: 'white', weight: 10, opacity: 1.0 }
-                    }),
-                    // 2. Middle: Black (Main Border)
-                    L.geoJSON(geojson, {
-                        style: { color: 'black', weight: 6, opacity: 1.0 }
-                    }),
-                    // 3. Top: White (Inner Line)
-                    L.geoJSON(geojson, {
-                        style: { color: 'white', weight: 2, opacity: 1.0 }
-                    })
-                ]).addTo(map);
+                // 3. Add Source & Layers for Route
+                if (mapType === 'leaflet') {
+                    // Leaflet Rendering (White Outline -> Black Inner -> White Thin)
+                    const bottom = L.geoJSON(geojson, { style: { color: 'white', weight: 10, lineCap: 'round', opacity: 1 } }).addTo(map);
+                    const middle = L.geoJSON(geojson, { style: { color: 'black', weight: 6, lineCap: 'round', opacity: 1 } }).addTo(map);
+                    const top = L.geoJSON(geojson, { style: { color: 'white', weight: 2, lineCap: 'round', opacity: 1 } }).addTo(map);
 
-                if (routeLayer.getBounds().isValid()) {
-                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                    routeLayers.push(bottom, middle, top);
+
+                    // Fit Bounds
+                    const leafletBounds = L.geoJSON(geojson).getBounds();
+                    map.fitBounds(leafletBounds, { padding: [50, 50] });
+
+                } else {
+                    if (map.getSource('route')) map.removeSource('route');
+
+                    map.addSource('route', {
+                        'type': 'geojson',
+                        'data': {
+                            'type': 'Feature',
+                            'properties': {},
+                            'geometry': geojson
+                        }
+                    });
+
+                    // Style: White Outline -> Black Inner -> White Center (System 7)
+                    map.addLayer({
+                        'id': 'route-bottom',
+                        'type': 'line',
+                        'source': 'route',
+                        'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                        'paint': { 'line-color': '#ffffff', 'line-width': 10 }
+                    });
+                    map.addLayer({
+                        'id': 'route-middle',
+                        'type': 'line',
+                        'source': 'route',
+                        'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                        'paint': { 'line-color': '#000000', 'line-width': 6 }
+                    });
+                    map.addLayer({
+                        'id': 'route-top',
+                        'type': 'line',
+                        'source': 'route',
+                        'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                        'paint': { 'line-color': '#ffffff', 'line-width': 2 }
+                    });
+
+                    // Fit Bounds
+                    const bounds = new maplibregl.LngLatBounds();
+                    geojson.coordinates.forEach(coord => bounds.extend(coord));
+                    map.fitBounds(bounds, { padding: 50 });
                 }
 
-                // Calculate timeMin (OSRM duration is in seconds)
+                // Stats
                 const timeMin = Math.round(route.duration / 60);
-
                 if (window.rekindleConvertDistance) {
                     document.getElementById('route-stats').innerText = window.rekindleConvertDistance(route.distance) + ` • ~${timeMin} min`;
                 } else {
@@ -904,39 +1042,35 @@
                 }
 
             } catch (e) {
-                openStatusModal("Routing Failed", e.message || "Route calculation failed. Service may be busy.");
+                openStatusModal("Routing Failed", e.message || "Route calculation failed.");
             } finally {
                 loader.style.display = 'none';
             }
         }
 
         function panMap(dx, dy) {
-            map.panBy([dx * 150, dy * 150], { animate: false });
+            // MapLibre uses pixels for panBy. Leaflet does too.
+            // dx, dy are directional inputs (1, -1), let's scale them up.
+            map.panBy([dx * 100, dy * 100], { duration: 0, animate: false });
         }
 
         function resetView() {
-            if (routeLayer) {
-                // 1. If a route exists, center on the route bounds
-                if (routeLayer.getBounds().isValid()) {
-                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-                }
-            } else if (markers.length > 0) {
-                // 2. If markers exist (from a search), center on the first one
-                map.setView(markers[0].getLatLng(), 14);
-            } else {
-                // 3. Fallback: Saved Location -> Default NYC
-                let dest = [40.7128, -74.0060]; // Default
-                try {
-                    const saved = localStorage.getItem('rekindle_location_manual');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (parsed.lat && parsed.lon) {
-                            dest = [parseFloat(parsed.lat), parseFloat(parsed.lon)];
-                        }
+            // Fallback: Saved Location -> Default NYC
+            let dest = [-74.0060, 40.7128]; // [Lon, Lat]
+            try {
+                const saved = localStorage.getItem('rekindle_location_manual');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed.lat && parsed.lon) {
+                        dest = [parseFloat(parsed.lon), parseFloat(parsed.lat)];
                     }
-                } catch (e) { console.warn("Error reading saved loc", e); }
+                }
+            } catch (e) { console.warn("Error reading saved loc", e); }
 
-                map.setView(dest, 13);
+            if (mapType === 'leaflet') {
+                map.setView([dest[1], dest[0]], 13);
+            } else {
+                map.jumpTo({ center: dest, zoom: 13 });
             }
         }
 
@@ -951,7 +1085,7 @@
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
             if (map) {
-                setTimeout(() => { map.invalidateSize(); }, 200);
+                setTimeout(() => { map.resize(); }, 200);
             }
         }
     </script>

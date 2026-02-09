@@ -1,6 +1,13 @@
-<!DOCTYPE html><html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
+    
     <title>News</title>
+    <script src="time.js"></script>
+    <script src="js/i18n.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -226,9 +233,10 @@
             padding-bottom: 15px;
             border-bottom: 1px solid #ccc;
         }
-        .category-nav > * + * {
+
+        .category-nav>*+* {
             margin-left: 10px;
-}
+        }
 
         .cat-btn {
             background: white;
@@ -271,9 +279,9 @@
             justify-content: space-between;
         }
 
-        .article > * + * {
+        .article>*+* {
             margin-left: 25px;
-}
+        }
 
         .article:last-child {
             border-bottom: none;
@@ -323,7 +331,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(255, 255, 255, 0.95);
+            background: white;
             z-index: 10000;
             display: none;
             justify-content: center;
@@ -395,6 +403,7 @@
             flex-grow: 1;
             border: none;
             background: white;
+            /* Keep simple - no transforms or compositor hints for e-ink */
         }
     </style>
     <script src="theme.js"></script>
@@ -410,7 +419,8 @@
             <span class="title-text" data-i18n="app.news.name">News</span>
             <div class="title-controls">
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
                         <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"></path>
                         <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6"></path>
                     </svg>
@@ -429,12 +439,17 @@
             </div>
 
             <div class="category-nav">
-                <button class="cat-btn active" onclick="switchCategory('world', this)" data-i18n="news.cat.headlines">Headlines</button>
-                <button class="cat-btn" onclick="switchCategory('technology', this)" data-i18n="news.cat.tech">Tech</button>
-                <button class="cat-btn" onclick="switchCategory('business', this)" data-i18n="news.cat.business">Business</button>
-                <button class="cat-btn" onclick="switchCategory('science', this)" data-i18n="news.cat.science">Science</button>
+                <button class="cat-btn active" onclick="switchCategory('world', this)"
+                    data-i18n="news.cat.headlines">Headlines</button>
+                <button class="cat-btn" onclick="switchCategory('technology', this)"
+                    data-i18n="news.cat.tech">Tech</button>
+                <button class="cat-btn" onclick="switchCategory('business', this)"
+                    data-i18n="news.cat.business">Business</button>
+                <button class="cat-btn" onclick="switchCategory('science', this)"
+                    data-i18n="news.cat.science">Science</button>
                 <button class="cat-btn" onclick="switchCategory('arts', this)" data-i18n="news.cat.arts">Arts</button>
-                <button class="cat-btn" onclick="switchCategory('finance', this)" data-i18n="news.cat.finance">Finance</button>
+                <button class="cat-btn" onclick="switchCategory('finance', this)"
+                    data-i18n="news.cat.finance">Finance</button>
             </div>
 
             <div class="news-section">
@@ -500,7 +515,9 @@
 
         function initDate() {
             const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('current-date').innerText = new Date().toLocaleDateString('en-US', dateOptions);
+            const now = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
+            const dateStr = window.rekindleFormatWallDate ? window.rekindleFormatWallDate(now, dateOptions) : (window.rekindleFormatTime ? window.rekindleFormatTime(now, dateOptions) : now.toLocaleDateString('en-US', dateOptions));
+            document.getElementById('current-date').innerText = dateStr;
         }
 
         function switchCategory(category, btnElement) {
@@ -649,9 +666,16 @@
                     if (serviceUrl.includes('jina.ai')) {
                         if (content.length < 500) throw new Error("Jina content too short");
                         if (content.includes("Cloudflare due to")) throw new Error("Jina blocked by Cloudflare");
-                        // Convert Markdown to HTML for display
+                        // Convert Markdown to HTML for display with e-ink optimizations
                         return `
                             <html>
+                            <head>
+                            <style>
+                                *, *::before, *::after { animation: none !important; transition: none !important;
+                                    box-shadow: none !important; text-shadow: none !important; }
+                                html, body { background: white !important; }
+                            </style>
+                            </head>
                             <body style="font-family:sans-serif; background-color:white;">
                                 ${parseMarkdown(content)}
 </body>
@@ -717,6 +741,35 @@
                     throw lastError || new Error("All strategies failed");
                 }
 
+                // INJECT E-INK OPTIMIZED CSS - simple, flat rendering
+                const einkStyles = `
+                    <style>
+                        /* E-ink: Disable animations and transitions */
+                        *, *::before, *::after {
+                            animation: none !important;
+                            transition: none !important;
+                            box-shadow: none !important;
+                            text-shadow: none !important;
+                        }
+                        html, body {
+                            background: white !important;
+                            overflow-x: hidden;
+                        }
+                        img {
+                            image-rendering: pixelated;
+                        }
+                    </style>
+                `;
+
+                // Inject styles right after <head> or at start of document
+                if (html.includes('<head>')) {
+                    html = html.replace('<head>', '<head>' + einkStyles);
+                } else if (html.includes('<html>')) {
+                    html = html.replace('<html>', '<html><head>' + einkStyles + '</head>');
+                } else {
+                    html = einkStyles + html;
+                }
+
                 // CRITICAL: Use Blob URL for src to isolate content in a new origin
                 const blob = new Blob([html], { type: 'text/html' });
                 const blobUrl = URL.createObjectURL(blob);
@@ -778,7 +831,10 @@
             document.querySelector('.window').classList.toggle('fullscreen');
         }
     </script>
-    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 
 
-</body></html>
+</body>
+
+</html>

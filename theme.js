@@ -161,6 +161,28 @@
         style.textContent = css;
     }
 
+    function injectEInkStyles() {
+        var mode = getDisplayMode();
+        // If mode is eink (or not led), disable animations
+        if (mode === 'eink') {
+            var style = document.getElementById('rekindle-eink-optimizations');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'rekindle-eink-optimizations';
+                style.textContent =
+                    '/* E-INK OPTIMIZATIONS: Disable animations and transitions */\n' +
+                    '*, *:before, *:after {\n' +
+                    '    transition: none !important;\n' +
+                    '    animation: none !important;\n' +
+                    '}\n';
+                document.head.appendChild(style);
+            }
+        } else {
+            var style = document.getElementById('rekindle-eink-optimizations');
+            if (style) style.remove();
+        }
+    }
+
     function applyRotation() {
         injectRotationStyle();
     }
@@ -170,6 +192,7 @@
         applyScale();
         applyRotation();
         applyViewport();
+        injectEInkStyles();
     }
 
     // Run as soon as possible
@@ -184,6 +207,7 @@
     applyScale();
     applyRotation();
     applyViewport();
+    injectEInkStyles();
 
     // --- VIEWPORT ---
     function applyViewport() {
@@ -331,6 +355,7 @@
     window.rekindleConvertDistance = convertDistance;
     window.rekindleConvertTemperatureContext = convertTemperatureContext;
     window.rekindleApplyRotation = applyRotation;
+    window.rekindleInjectEInkStyles = injectEInkStyles;
 
     // --- WALLPAPER LOGIC ---
     function applyWallpaper() {
@@ -484,5 +509,22 @@
             window.location.reload();
         });
     }
+
+    // --- VIEWPORT LOCKDOWN (Kindle/E-ink) ---
+    // Prevent pinch-zoom and double-tap zoom specifically for E-ink browsers that ignore meta tags
+    document.addEventListener('touchstart', function (event) {
+        if (event.touches.length > 1) {
+            event.preventDefault();
+        }
+    }, { passive: false });
+
+    var lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+        var now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+            event.preventDefault();
+        }
+        lastTouchEnd = now;
+    }, false);
 
 })();

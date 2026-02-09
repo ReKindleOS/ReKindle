@@ -1,5 +1,10 @@
-<!DOCTYPE html><html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
+    
     <title>Clock</title>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -132,9 +137,10 @@
             background: white;
             display: flex;
         }
-        .controls > * + * {
+
+        .controls>*+* {
             margin-left: 10px;
-}
+        }
 
         .sys-btn {
             background: white;
@@ -378,9 +384,9 @@
             margin-top: 10px;
         }
 
-        .modal-buttons > * + * {
+        .modal-buttons>*+* {
             margin-left: 10px;
-}
+        }
 
 
         .loc-badge {
@@ -431,9 +437,9 @@
             justify-content: center;
         }
 
-        .modal-btns > * + * {
+        .modal-btns>*+* {
             margin-left: 10px;
-}
+        }
 
         .modal-btn {
             background: white;
@@ -465,7 +471,8 @@
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" data-i18n="clocks.title">Clock</span>
             <div class="controls">
-                <button class="sys-btn" onclick="toggleSeconds()" id="secs-btn" style="display: none;" data-i18n="clocks.btn.secs">Secs</button>
+                <button class="sys-btn" onclick="toggleSeconds()" id="secs-btn" style="display: none;"
+                    data-i18n="clocks.btn.secs">Secs</button>
                 <button class="sys-btn" onclick="toggleEdit()" id="edit-btn" data-i18n="clocks.btn.edit">Edit</button>
             </div>
         </div>
@@ -484,7 +491,8 @@
         <!-- ADD CITY MODAL -->
         <div id="add-modal" class="modal-box">
             <h3 data-i18n="clocks.modal.add.title">Location</h3>
-            <input type="text" id="city-search" data-i18n-placeholder="clocks.modal.add.ph" placeholder="Search city..." autocomplete="off" oninput="handleSearchInput(this.value)">
+            <input type="text" id="city-search" data-i18n-placeholder="clocks.modal.add.ph" placeholder="Search city..."
+                autocomplete="off" oninput="handleSearchInput(this.value)">
             <div id="search-results"></div>
             <div class="modal-buttons">
                 <button class="sys-btn" onclick="closeModal()" data-i18n="clocks.modal.add.cancel">Cancel</button>
@@ -502,7 +510,7 @@
         </div>
     </div>
 
-    
+
 
     <script>
         function showModal(msg, isConfirm = false, callback = null) {
@@ -666,7 +674,7 @@
         }
 
         function updateClocks() {
-            var now = new Date();
+            var now = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
 
             // --- 1. Update Home Clock ---
             var localTimeEl = document.getElementById('time-local');
@@ -674,9 +682,9 @@
             if (localTimeEl) {
                 var timeData = { hours: now.getHours(), mins: now.getMinutes(), secs: now.getSeconds(), dayDiff: 0 };
 
-                if (homeCity.zone) {
-                    timeData = getTimeInZone(now, homeCity.zone);
-                }
+                // FIX: Always use zone-aware helper, even for "Local" (null zone), 
+                // because we might have a Manual Offset that `time.js` handles internally.
+                timeData = getTimeInZone(now, homeCity.zone);
 
                 var hours = timeData.hours;
                 var ampm = hours >= 12 ? 'PM' : 'AM';
@@ -719,14 +727,38 @@
                     if (tData.dayDiff < 0) dayText = window.t ? window.t('clocks.offset.yesterday', 'Yesterday') : "Yesterday";
 
                     // Approximate hour offset calculation
-                    var baseH = now.getHours();
-                    // If home is zoned, use that as base
-                    if (homeCity.zone) {
-                        var homeT = getTimeInZone(now, homeCity.zone);
-                        baseH = homeT.hours;
-                    }
+                    // We compare the WALL CLOCK hours of Target vs Home
+                    // This is robust against the browser's system timezone being weird (UTC)
+                    var tH = tData.hours + (tData.dayDiff * 24);
 
-                    var diffH = (tData.hours - baseH) + (tData.dayDiff * 24);
+                    // Home Time - ALWAYS use rekindleGetDateInZone to respect user's manual offset
+                    // When homeCity.zone is null, rekindleGetDateInZone will apply the manual offset
+                    const homeT = getTimeInZone(now, homeCity.zone);
+                    var homeH = homeT.hours + (homeT.dayDiff * 24);
+
+                    var diffH = tH - homeH;
+
+                    // Normalize Day Diff Text based on relative difference
+                    // If target is +26h total and home is +2h total (same day), diff is +24h (Tomorrow)
+                    // But dayText logic in UI was using `tData.dayDiff` which is relative to BROWSER system time.
+                    // We want it relative to HOME time. 
+
+                    // Recalculate Day Diff relative to Home
+                    // 1. Get Midnight of Home Date (Wall Time)
+                    // 2. Get Midnight of Target Date (Wall Time)
+                    // 3. Compare
+
+                    var homeDate = homeCity.zone ? window.rekindleGetDateInZone(now, homeCity.zone) : now;
+                    var targetDate = window.rekindleGetDateInZone(now, city.zone);
+
+                    var homeMid = new Date(homeDate.getFullYear(), homeDate.getMonth(), homeDate.getDate());
+                    var targetMid = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+                    var relDayDiff = Math.round((targetMid - homeMid) / (1000 * 60 * 60 * 24));
+
+                    var dayText = window.t ? window.t('clocks.offset.today', 'Today') : "Today";
+                    if (relDayDiff > 0) dayText = window.t ? window.t('clocks.offset.tomorrow', 'Tomorrow') : "Tomorrow";
+                    if (relDayDiff < 0) dayText = window.t ? window.t('clocks.offset.yesterday', 'Yesterday') : "Yesterday";
+
                     var sign = diffH >= 0 ? "+" : "";
 
                     offsetEl.innerText = dayText + ', ' + sign + diffH + (window.t ? window.t('clocks.offset.hrs', 'HRS') : 'HRS');
@@ -993,7 +1025,8 @@
 
 
 
-    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
     <!-- STANDARD MODAL POPUP -->
     <div id="generic-modal-overlay">
         <div class="modal-box">
@@ -1003,4 +1036,6 @@
     </div>
 
 
-</body></html>
+</body>
+
+</html>

@@ -230,6 +230,14 @@ Icons are stored as raw SVG strings in `icons.js`.
 *   **Limit:** **64MB** Global Cache Limit. If exceeded, the OS performs `rm -rf` on the entire cache directory at launch.
 *   **Sync:** Rely on Firebase Firestore for critical data; do not trust `localStorage` for long-term storage.
 
+### 5. Timezone & Date Quirks
+*   **Constraint:** The Kindle browser (`Intl` API) often defaults to **UTC** or ignores the system timezone configuration.
+*   **Impact:** `new Date().getHours()` return UTC hours, not local wall time. `toLocaleString()` often fails to apply named timezones (e.g. "Australia/Sydney").
+*   **Solution:**
+    *   Avoid relying on `Intl.DateTimeFormat` for timezone shifting.
+    *   Use a **Manual Offset** strategy: Store a numeric offset (e.g., `+11`) and mathematically shift the timestamp before displaying.
+    *   Use the `time.js` helper `rekindleGetZonedDate()` which handles this shim.
+
 ## ✅ Best Practices
 -   **Images:** Use **WebP** or **SVG**. They are fully supported and perform best.
 -   **Modals:** Always stick to the `.modal-overlay` / `.modal-box` DOM structure found in `weather.html`.

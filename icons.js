@@ -23,13 +23,11 @@ const APPS = [
     },
     {
         id: 'mail',
-        name: 'Gmail',
+        name: 'Mail',
         cat: 'essentials',
         featured: true,
         featuredOrder: 3,
 
-        plus: true,
-        desc: 'Read & send emails',
         plus: true,
         desc: 'Read & send emails',
         icon: '<rect x="4" y="8" width="24" height="16" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M4 10 L16 18 L28 10" fill="none" stroke="black" stroke-width="2"/>'
@@ -148,11 +146,6 @@ const APPS = [
         name: 'Quick ToDo',
         es6: true,
         cat: 'tools',
-        desc: 'Handwritten, sync-able todos!',
-        id: 'quicktodo',
-        name: 'Quick ToDo',
-        es6: true,
-        cat: 'tools',
         plus: true,
         desc: 'Handwritten, sync-able todos!',
         icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/><path d="M28 8h2 M28 16h3 M27 24h3" stroke="black" stroke-width="2" stroke-linecap="round"/>'
@@ -190,11 +183,6 @@ const APPS = [
         icon: '<rect x="6" y="4" width="20" height="24"/><text x="16" y="22" font-size="14" text-anchor="middle" stroke="none" fill="black" font-family="serif" font-weight="bold">Az</text>'
     },
     {
-        id: 'airtype',
-        name: 'AirType',
-        cat: 'tools',
-        desc: 'Phone-based typewriter',
-        icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>',
         id: 'airtype',
         name: 'AirType',
         cat: 'tools',
@@ -247,18 +235,12 @@ const APPS = [
         featured: true,
         featuredOrder: 4,
         desc: 'Now with more pixels!',
-        featured: true,
-        featuredOrder: 4,
-        desc: 'Now with more pixels!',
         icon: '<rect x="4" y="6" width="24" height="16" stroke="black" stroke-width="2" fill="none"/><path d="M8 22 L8 28 L14 22" stroke="black" stroke-width="2" fill="none"/>'
     },
     {
         id: 'reader',
         name: 'Reader',
         cat: 'lifestyle',
-        featured: true,
-        featuredOrder: 1,
-        desc: 'Free reading!',
         featured: true,
         featuredOrder: 1,
         desc: 'Free reading!',
