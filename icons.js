@@ -241,8 +241,6 @@ const APPS = [
         id: 'reader',
         name: 'Reader',
         cat: 'lifestyle',
-        featured: true,
-        featuredOrder: 1,
         desc: 'Free reading!',
         icon: '<g transform="translate(0, 2)"><path d="M6 4 h18 v24 h-18 z M6 4 l-2 2 v24 l2 -2 M24 4 l2 2 v24 l-2 -2" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="20" y2="10" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="20" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="20" y2="18" stroke="black" stroke-width="2"/></g>'
     },
@@ -315,6 +313,8 @@ const APPS = [
         id: 'rssreader',
         name: 'RSS Reader',
         cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 1,
         desc: 'Stay in the know',
         icon: '<circle cx="6" cy="26" r="3" fill="black"/><path d="M6 18 A 8 8 0 0 1 14 26 M6 10 A 16 16 0 0 1 22 26" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>'
     },
