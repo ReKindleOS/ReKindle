@@ -29,7 +29,7 @@ const APPS = [
         featuredOrder: 3,
 
         plus: true,
-        desc: 'Read & send emails',
+        desc: 'Now supporting all mail!',
         icon: '<rect x="4" y="8" width="24" height="16" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M4 10 L16 18 L28 10" fill="none" stroke="black" stroke-width="2"/>'
     },
     {
