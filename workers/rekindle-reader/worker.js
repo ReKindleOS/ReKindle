@@ -12,6 +12,8 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 
+
+
 const ALLOWED_ORIGINS = [
     "https://beta.rekindle.pages.dev",
     "https://rekindle.ink",
@@ -26,67 +28,72 @@ export default {
         const origin = request.headers.get("Origin");
         const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
-        const headers = {
+        const corsHeaders = {
             "Access-Control-Allow-Origin": isAllowed ? origin : "null",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",
-            "Content-Type": "application/json",
         };
 
         // Handle CORS preflight
         if (request.method === "OPTIONS") {
-            return new Response(null, { headers });
-        }
-
-        if (request.method !== "GET") {
-            return new Response(
-                JSON.stringify({ error: "Method not allowed" }),
-                { status: 405, headers }
-            );
-        }
-
-        const url = new URL(request.url);
-
-        // --- SEARCH ENDPOINT ---
-        if (url.pathname === "/search") {
-            return handleSearch(url, headers);
-        }
-
-        // --- ARTICLE READABILITY ENDPOINT (default) ---
-        const targetUrl = url.searchParams.get("url");
-
-        if (!targetUrl) {
-            return new Response(
-                JSON.stringify({ error: "Missing 'url' query parameter" }),
-                { status: 400, headers }
-            );
+            return new Response(null, { headers: corsHeaders });
         }
 
         try {
+            const url = new URL(request.url);
+
+            // --- SEARCH ENDPOINT ---
+            if (url.pathname === "/search") {
+                return handleSearch(url, corsHeaders);
+            }
+
+            // --- ARTICLE READABILITY ENDPOINT (default) ---
+            const targetUrl = url.searchParams.get("url");
+
+            if (!targetUrl) {
+                return new Response(
+                    JSON.stringify({ error: "Missing 'url' query parameter" }),
+                    { status: 400, headers: corsHeaders }
+                );
+            }
+
             // 1. Fetch the page HTML with a timeout
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 15000);
 
-            const response = await fetch(targetUrl, {
-                headers: {
-                    "User-Agent": USER_AGENT,
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                },
-                signal: controller.signal,
-                redirect: "follow",
-            });
+            let response;
+            try {
+                response = await fetch(targetUrl, {
+                    headers: {
+                        "User-Agent": USER_AGENT,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                    },
+                    signal: controller.signal,
+                    redirect: "follow",
+                });
+            } catch (err) {
+                clearTimeout(timeout);
+                throw err;
+            }
 
             clearTimeout(timeout);
 
             if (!response.ok) {
-                throw new Error(`Upstream HTTP ${response.status}`);
+                // If upstream fails, we should still return JSON error, not crash
+                return new Response(
+                    JSON.stringify({ error: `Upstream HTTP ${response.status}`, details: response.statusText }),
+                    { status: response.status >= 500 ? 502 : 400, headers: corsHeaders }
+                );
             }
 
             const html = await response.text();
 
             if (!html || html.length < 100) {
-                throw new Error("Empty or too-short response from upstream");
+                return new Response(
+                    JSON.stringify({ error: "Empty or too-short response from upstream" }),
+                    { status: 422, headers: corsHeaders }
+                );
             }
 
             // 2. Parse with linkedom + Readability
@@ -115,7 +122,7 @@ export default {
                         excerpt: null,
                         fallback: true,
                     }),
-                    { status: 200, headers }
+                    { status: 200, headers: corsHeaders }
                 );
             }
 
@@ -129,11 +136,11 @@ export default {
                     siteName: article.siteName,
                     excerpt: article.excerpt,
                 }),
-                { status: 200, headers }
+                { status: 200, headers: corsHeaders }
             );
 
         } catch (error) {
-            console.error("Reader Worker Error:", error.message);
+            console.error("Reader Worker Error:", error.message, error.stack);
 
             let status = 500;
             let message = "Failed to fetch and parse article";
@@ -145,7 +152,7 @@ export default {
 
             return new Response(
                 JSON.stringify({ error: message, detail: error.message }),
-                { status, headers }
+                { status, headers: corsHeaders }
             );
         }
     },
