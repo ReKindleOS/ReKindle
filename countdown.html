@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Countdown</title>
 
     <!-- Firebase SDKs -->
@@ -595,6 +596,39 @@
             renderEvents();
         }
 
+        // Parse a datetime-local string ("YYYY-MM-DDTHH:MM") using the user's
+        // manual timezone offset instead of the browser's timezone.
+        // This ensures a Kindle (UTC browser) and a Mac (+11 browser) both
+        // produce the same UTC timestamp for the same wall-clock input.
+        function parseLocalInputAsUTC(dateStr) {
+            // Get the user's manual offset (hours from UTC)
+            let offsetHours = null;
+            try {
+                const loc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                if (loc && typeof loc.utc_offset === 'number') offsetHours = loc.utc_offset;
+            } catch (e) { }
+            if (offsetHours === null) {
+                const os = localStorage.getItem('rekindle_timezone_offset');
+                if (os) { offsetHours = parseFloat(os); if (isNaN(offsetHours)) offsetHours = null; }
+            }
+
+            if (offsetHours !== null) {
+                // Parse components manually so we don't depend on browser TZ
+                const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+                if (parts) {
+                    const utcMs = Date.UTC(
+                        parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]),
+                        parseInt(parts[4]), parseInt(parts[5])
+                    );
+                    // The input represents wall-clock time in the user's zone,
+                    // so subtract the offset to get true UTC.
+                    return utcMs - (offsetHours * 3600000);
+                }
+            }
+            // Fallback: let the browser interpret it (works when browser TZ is correct)
+            return new Date(dateStr).getTime();
+        }
+
         function addEvent() {
             const name = document.getElementById('event-name').value;
             const dateStr = document.getElementById('event-date').value;
@@ -606,7 +640,7 @@
                 return;
             }
 
-            const timestamp = new Date(dateStr).getTime();
+            const timestamp = parseLocalInputAsUTC(dateStr);
 
             const newEvent = {
                 name: name,
@@ -645,7 +679,10 @@
 
         // --- TIME LOGIC ---
         function calculateRecurringDates(baseDate, frequency) {
-            const now = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
+            // Use real UTC "now" — NOT rekindleGetZonedDate() — because baseDate
+            // is a true UTC timestamp. Wall-clock Dates have wrong .getTime()
+            // on devices where browser TZ ≠ manual offset (e.g. Kindle).
+            const now = new Date();
             let next = new Date(baseDate);
             let prev = new Date(baseDate);
 
@@ -676,7 +713,9 @@
         function getDuration(target) {
             if (!target) return { mainValue: "-", mainUnit: "", detail: "" };
 
-            const now = (window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date()).getTime();
+            // Real UTC now — event timestamps are true UTC, so comparisons
+            // must also use true UTC (not wall-clock dates).
+            const now = new Date().getTime();
             const diff = target - now;
             const absDiff = Math.abs(diff);
 
@@ -717,6 +756,22 @@
             return { mainValue, mainUnit, detail };
         }
 
+        // Manual date formatter for cross-device consistency.
+        // Produces: "Feb 10, 2026 at 2:42 PM"
+        function formatEventDate(utcDate) {
+            const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            // Convert to wall-clock date in user's timezone
+            const w = window.rekindleGetDateInZone ? window.rekindleGetDateInZone(utcDate) : utcDate;
+            const mon = MONTHS[w.getMonth()];
+            const day = w.getDate();
+            const year = w.getFullYear();
+            let h = w.getHours();
+            const min = w.getMinutes().toString().padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return mon + ' ' + day + ', ' + year + ' at ' + h + ':' + min + ' ' + ampm;
+        }
+
         // --- RENDER UI ---
         function renderEvents() {
             const list = document.getElementById('events-container');
@@ -727,8 +782,8 @@
                 return;
             }
 
-            // Sort logic
-            const now = (window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date()).getTime();
+            // Sort logic — use real UTC now for consistent comparison
+            const now = new Date().getTime();
 
             const processedEvents = events.map(e => {
                 if (e.recurring) {
@@ -757,7 +812,7 @@
                     const nextCalc = getDuration(e.nextDate);
                     const prevCalc = getDuration(e.prevDate);
 
-                    const nextDateStr = window.rekindleFormatTime ? window.rekindleFormatTime(e.nextDate) : e.nextDate.toLocaleDateString();
+                    const nextDateStr = formatEventDate(e.nextDate);
 
                     div.innerHTML = `
                         <div class="card-header">
@@ -791,7 +846,7 @@
                 } else {
                     // One-time View
                     const calc = getDuration(e.nextDate);
-                    const dateStr = window.rekindleFormatTime ? window.rekindleFormatTime(e.nextDate, { dateStyle: 'medium', timeStyle: 'short' }) : e.nextDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+                    const dateStr = formatEventDate(e.nextDate);
                     const isPast = e.nextDate < now;
                     const label = isPast ? window.t('countdown.text.ago', "AGO") : window.t('countdown.text.left', "LEFT");
 
