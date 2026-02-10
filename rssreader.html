@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>RSS Reader</title>
 
     <!-- Firebase SDKs -->
@@ -522,7 +523,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: white;
+            background: transparent;
             z-index: 10000;
             display: none;
             justify-content: center;
@@ -863,6 +864,9 @@
 
 
         // db.enablePersistence({ synchronizeTabs: true }) ...
+
+        // --- READABILITY WORKER ---
+        const READER_WORKER_URL = "https://rekindle-reader.timjarnott.workers.dev";
 
         // --- STATE ---
         let feeds = []; // { id, name, url }
@@ -1458,61 +1462,41 @@
             // Show loading state
             frame.srcdoc = `
                 <html>
-                <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:white;">
+                <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:transparent;">
                     <h2>Loading...</h2>
-                    <p style="color:#666;">Cleaning up article for E-ink display...</p>
+                    <p style="color:#666;">Extracting article...</p>
                 </body>
                 </html>`;
 
             try {
-                // TIMEOUT WRAPPER
-                const fetchWithTimeout = (url, ms) => {
-                    const controller = new AbortController();
-                    const promise = fetch(url, { signal: controller.signal });
-                    const timeout = new Promise((_, reject) =>
-                        setTimeout(() => {
-                            controller.abort();
-                            reject(new Error("Request timed out"));
-                        }, ms)
-                    );
-                    return Promise.race([promise, timeout]);
-                };
+                // Fetch from Readability worker
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 20000);
 
-                // PROXY ROTATION - try multiple proxies in case one fails with 400
-                const fetchViaProxy = async (targetUrl) => {
-                    const proxies = [
-                        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                        (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
-                    ];
+                const res = await fetch(`${READER_WORKER_URL}/?url=${encodeURIComponent(url)}`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
 
-                    let lastError = null;
-                    for (let proxyFn of proxies) {
-                        try {
-                            const proxyUrl = proxyFn(targetUrl);
-                            const res = await fetchWithTimeout(proxyUrl, 10000);
-                            if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-                            return await res.text();
-                        } catch (e) {
-                            console.warn("Proxy failed:", e);
-                            lastError = e;
-                        }
-                    }
-                    throw lastError || new Error("All proxies failed");
-                };
-
-                // Get clean text version via FrogFind (Readability)
-                const frogUrl = `https://frogfind.com/read.php?a=${encodeURIComponent(url)}`;
-
-                let html = await fetchViaProxy(frogUrl);
-
-                if (!html || html.length < 50) { // arbitrary small check for empty/fail
-                    throw new Error("Empty or invalid response");
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${res.status}`);
                 }
 
-                // INJECT E-INK OPTIMIZED CSS - simple, flat rendering
-                const einkStyles = `
+                const articleData = await res.json();
+
+                // Build clean HTML from Readability output
+                let articleHtml = '';
+                if (articleData.title) articleHtml += `<h1>${articleData.title}</h1>`;
+                if (articleData.byline) articleHtml += `<p style="font-style:italic; color:#555;">${articleData.byline}</p>`;
+                if (articleData.siteName) articleHtml += `<p style="font-size:0.8rem; color:#888;">${articleData.siteName}</p>`;
+                articleHtml += '<hr style="border:1px solid #ccc; margin:15px 0;">';
+                articleHtml += articleData.content || articleData.textContent || '<p>No readable content found.</p>';
+
+                const html = `
+                    <html>
+                    <head>
                     <style>
-                        /* E-ink: Disable animations and transitions */
                         *, *::before, *::after {
                             animation: none !important;
                             transition: none !important;
@@ -1520,39 +1504,34 @@
                             text-shadow: none !important;
                         }
                         html, body {
-                            background: white !important;
+                            background: transparent !important;
                             overflow-x: hidden;
+                            font-family: Georgia, serif;
+                            line-height: 1.6;
+                            padding: 20px;
                         }
                         img {
+                            max-width: 100%;
+                            height: auto;
                             image-rendering: pixelated;
                         }
                     </style>
-                `;
+                    </head>
+                    <body>${articleHtml}</body>
+                    </html>`;
 
-                // Inject styles right after <head> or at start of document
-                if (html.includes('<head>')) {
-                    html = html.replace('<head>', '<head>' + einkStyles);
-                } else if (html.includes('<html>')) {
-                    html = html.replace('<html>', '<html><head>' + einkStyles + '</head>');
-                } else {
-                    html = einkStyles + html;
-                }
-
-                // CRITICAL: Use Blob URL for src to isolate content in a new origin
                 const blob = new Blob([html], { type: 'text/html' });
                 const blobUrl = URL.createObjectURL(blob);
 
-                // FIX: srcdoc takes precedence over src, so we must REMOVE it first
                 frame.removeAttribute('srcdoc');
                 frame.src = blobUrl;
 
             } catch (e) {
                 console.error("Reader Error:", e);
-                let errorMsg = "Could not load article directly.";
-                if (e.message.includes('time')) errorMsg = "Request timed out.";
+                let errorMsg = "Could not load article.";
+                if (e.message.includes('time') || e.name === 'AbortError') errorMsg = "Request timed out.";
 
-                // Re-apply srcdoc for error message
-                frame.removeAttribute('src'); // Clear src just in case
+                frame.removeAttribute('src');
                 frame.srcdoc = `
                     <html>
                     <body style="font-family:sans-serif; text-align:center; padding-top:50px;">

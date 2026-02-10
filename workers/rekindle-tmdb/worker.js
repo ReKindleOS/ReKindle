@@ -11,8 +11,7 @@ export default {
         const origin = request.headers.get("Origin");
 
         // Allow localhost for development if needed, or strict mode
-        // const isAllowed = ALLOWED_ORIGINS.includes(origin) || (origin && origin.includes('localhost'));
-        const isAllowed = ALLOWED_ORIGINS.includes(origin) || (origin && origin.includes('localhost'));
+        const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
         const corsHeaders = {
             "Access-Control-Allow-Origin": isAllowed ? origin : "null",
