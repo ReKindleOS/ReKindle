@@ -2,14 +2,12 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Clock</title>
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -542,25 +540,7 @@
         var isFirebaseAvailable = false;
         var auth, db;
 
-        try {
-            if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(firebaseConfig);
-                auth = firebase.auth();
-                db = firebase.firestore();
 
-                if (db.settings) {
-                    try {
-                        db.settings({
-                            experimentalForceLongPolling: true,
-                            merge: true
-                        });
-                    } catch (e) { console.warn("Settings error:", e); }
-                }
-                isFirebaseAvailable = true;
-            }
-        } catch (e) {
-            console.error("Firebase init failed:", e);
-        }
 
 
 
@@ -596,24 +576,57 @@
         var searchTimeout = null;
         var deleteTargetIndex = -1;
         var editTarget = null; // 'home' or null
+        var timeOffset = 0; // Difference between Server Time and Local System Time (ms)
+        var domCache = null;
+
+        // Start sync immediately
+        syncWithServer();
 
         // --- INIT ---
-        window.onload = function () {
+        document.addEventListener('DOMContentLoaded', function () {
+            // Init Firebase
+            try {
+                if (typeof firebase !== 'undefined') {
+                    firebase.initializeApp(firebaseConfig);
+                    auth = firebase.auth();
+                    db = firebase.firestore();
+
+                    if (db.settings) {
+                        try {
+                            db.settings({
+                                experimentalForceLongPolling: true,
+                                merge: true
+                            });
+                        } catch (e) { console.warn("Settings error:", e); }
+                    }
+                    isFirebaseAvailable = true;
+                }
+            } catch (e) {
+                console.error("Firebase init failed:", e);
+            }
+
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             updateSecondsBtn();
 
-            auth.onAuthStateChanged(function (user) {
-                if (user) {
-                    currentUser = user;
-                    document.getElementById('status-bar').innerText = (window.t ? window.t('status.synced', 'Synced: ') : "Synced: ") + user.email;
-                    loadCloudData();
-                } else {
-                    document.getElementById('status-bar').innerText = (window.t ? window.t('status.guest', 'Guest Mode (Local)') : "Guest Mode (Local)");
-                    renderClocks();
-                    startTimer();
-                }
-            });
-        };
+            // IMMEDIATE RENDER FOR PERCEIVED SPEED
+            renderClocks();
+            startTimer();
+
+            if (auth) {
+                auth.onAuthStateChanged(function (user) {
+                    if (user) {
+                        currentUser = user;
+                        document.getElementById('status-bar').innerText = (window.t ? window.t('status.synced', 'Synced: ') : "Synced: ") + user.email;
+                        loadCloudData();
+                    } else {
+                        document.getElementById('status-bar').innerText = (window.t ? window.t('status.guest', 'Guest Mode (Local)') : "Guest Mode (Local)");
+                    }
+                });
+            } else {
+                // Fallback if auth failed
+                document.getElementById('status-bar').innerText = (window.t ? window.t('status.guest', 'Guest Mode (Local)') : "Guest Mode (Local)");
+            }
+        });
 
 
         // --- DATA SYNC ---
@@ -629,7 +642,9 @@
                 .get().then(function (doc) {
                     if (doc.exists) {
                         var data = doc.data();
-                        if (data.cities) cities = data.cities;
+
+                        var newCities = data.cities || cities;
+                        var newHomeCity = { name: "Local", zone: null };
 
                         // Logic: Prioritize Global Manual Location from Settings.
                         // If it exists, it overrides the home clock, regardless of what's in the clocks doc.
@@ -637,20 +652,30 @@
                         var globalManual = JSON.parse(localStorage.getItem('rekindle_location_manual'));
 
                         if (globalManual && globalManual.zone) {
-                            homeCity = { name: globalManual.name, zone: globalManual.zone };
+                            newHomeCity = { name: globalManual.name, zone: globalManual.zone };
                         } else {
-                            homeCity = cloudHome;
+                            newHomeCity = cloudHome;
                         }
 
-                        localStorage.setItem('rekindle_clocks', JSON.stringify(cities));
-                        localStorage.setItem('rekindle_clocks_home', JSON.stringify(homeCity));
+                        // Check for changes (JSON stringify is sufficient for simple strict structure)
+                        var citiesChanged = JSON.stringify(cities) !== JSON.stringify(newCities);
+                        var homeChanged = JSON.stringify(homeCity) !== JSON.stringify(newHomeCity);
+
+                        if (citiesChanged || homeChanged) {
+                            cities = newCities;
+                            homeCity = newHomeCity;
+                            localStorage.setItem('rekindle_clocks', JSON.stringify(cities));
+                            localStorage.setItem('rekindle_clocks_home', JSON.stringify(homeCity));
+
+                            console.log("Cloud data updated, re-rendering clocks.");
+                            renderClocks();
+                            // No need to restart timer, it's running.
+                        } else {
+                            console.log("Local data matches Cloud, skipping re-render.");
+                        }
                     }
-                    renderClocks();
-                    startTimer();
                 }).catch(function (e) {
-                    console.error(e);
-                    renderClocks();
-                    startTimer();
+                    console.error("Cloud load error:", e);
                 });
         }
 
@@ -666,6 +691,50 @@
             }
         }
 
+
+
+        // --- TIME SYNC ---
+        function syncWithServer() {
+            try {
+                // Fetch current page headers only (HEAD request is fast)
+                fetch(window.location.href, { method: 'HEAD', cache: 'no-cache' })
+                    .then(response => {
+                        const dateHeader = response.headers.get('Date');
+                        if (dateHeader) {
+                            const serverTime = new Date(dateHeader).getTime();
+                            const localTime = Date.now();
+                            timeOffset = serverTime - localTime;
+                            console.log("Time synced! Offset: " + timeOffset + "ms");
+                            updateClocks(); // Immediate update
+                        }
+                    })
+                    .catch(e => console.warn("Time sync failed, using system time.", e));
+            } catch (e) {
+                console.warn("Time sync error:", e);
+            }
+        }
+
+        // --- TIME SYNC ---
+        function syncWithServer() {
+            try {
+                // Fetch current page headers only (HEAD request is fast)
+                fetch(window.location.href, { method: 'HEAD', cache: 'no-cache' })
+                    .then(response => {
+                        const dateHeader = response.headers.get('Date');
+                        if (dateHeader) {
+                            const serverTime = new Date(dateHeader).getTime();
+                            const localTime = Date.now();
+                            timeOffset = serverTime - localTime;
+                            console.log("Time synced! Offset: " + timeOffset + "ms");
+                            updateClocks(); // Immediate update
+                        }
+                    })
+                    .catch(e => console.warn("Time sync failed, using system time.", e));
+            } catch (e) {
+                console.warn("Time sync error:", e);
+            }
+        }
+
         // --- CLOCK LOGIC ---
         function startTimer() {
             updateClocks();
@@ -674,16 +743,27 @@
         }
 
         function updateClocks() {
-            var now = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
+            var now = new Date(Date.now() + timeOffset);
+
+            // Build Cache if needed
+            if (!domCache) {
+                domCache = {
+                    localTime: document.getElementById('time-local'),
+                    cities: []
+                };
+                cities.forEach(function (city, index) {
+                    domCache.cities.push({
+                        // Store mostly static references
+                        time: document.getElementById('time-' + index),
+                        offset: document.getElementById('offset-' + index),
+                        zone: city.zone
+                    });
+                });
+            }
 
             // --- 1. Update Home Clock ---
-            var localTimeEl = document.getElementById('time-local');
-
-            if (localTimeEl) {
+            if (domCache.localTime) {
                 var timeData = { hours: now.getHours(), mins: now.getMinutes(), secs: now.getSeconds(), dayDiff: 0 };
-
-                // FIX: Always use zone-aware helper, even for "Local" (null zone), 
-                // because we might have a Manual Offset that `time.js` handles internally.
                 timeData = getTimeInZone(now, homeCity.zone);
 
                 var hours = timeData.hours;
@@ -695,17 +775,15 @@
                 var timeStr = displayHours + ':' + displayMins;
                 if (showSeconds) timeStr += ':' + displaySecs;
 
-                localTimeEl.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
+                domCache.localTime.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
             }
 
-            cities.forEach(function (city, index) {
-                var clockRow = document.getElementById('clock-row-' + index);
-                if (!clockRow) return;
+            // --- 2. Update Cities ---
+            domCache.cities.forEach(function (cityCache) {
+                if (!cityCache.time) return;
 
-                var tData = getTimeInZone(now, city.zone);
-                // hours, mins, secs, dayDiff
+                var tData = getTimeInZone(now, cityCache.zone);
 
-                // Format display
                 var ampm = tData.hours >= 12 ? 'PM' : 'AM';
                 var displayHours = tData.hours % 12 || 12;
                 var displayMins = String(tData.mins).padStart(2, '0');
@@ -714,42 +792,16 @@
                 var timeStr = displayHours + ':' + displayMins;
                 if (showSeconds) timeStr += ':' + displaySecs;
 
-                var timeEl = document.getElementById('time-' + index);
-                if (timeEl) {
-                    timeEl.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
-                }
+                cityCache.time.innerHTML = timeStr + '<span class="ampm">' + ampm + '</span>';
 
-                // Format Offset string
-                var offsetEl = document.getElementById('offset-' + index);
-                if (offsetEl) {
-                    var dayText = window.t ? window.t('clocks.offset.today', 'Today') : "Today";
-                    if (tData.dayDiff > 0) dayText = window.t ? window.t('clocks.offset.tomorrow', 'Tomorrow') : "Tomorrow";
-                    if (tData.dayDiff < 0) dayText = window.t ? window.t('clocks.offset.yesterday', 'Yesterday') : "Yesterday";
-
-                    // Approximate hour offset calculation
-                    // We compare the WALL CLOCK hours of Target vs Home
-                    // This is robust against the browser's system timezone being weird (UTC)
+                if (cityCache.offset) {
                     var tH = tData.hours + (tData.dayDiff * 24);
-
-                    // Home Time - ALWAYS use rekindleGetDateInZone to respect user's manual offset
-                    // When homeCity.zone is null, rekindleGetDateInZone will apply the manual offset
                     const homeT = getTimeInZone(now, homeCity.zone);
                     var homeH = homeT.hours + (homeT.dayDiff * 24);
-
                     var diffH = tH - homeH;
 
-                    // Normalize Day Diff Text based on relative difference
-                    // If target is +26h total and home is +2h total (same day), diff is +24h (Tomorrow)
-                    // But dayText logic in UI was using `tData.dayDiff` which is relative to BROWSER system time.
-                    // We want it relative to HOME time. 
-
-                    // Recalculate Day Diff relative to Home
-                    // 1. Get Midnight of Home Date (Wall Time)
-                    // 2. Get Midnight of Target Date (Wall Time)
-                    // 3. Compare
-
-                    var homeDate = homeCity.zone ? window.rekindleGetDateInZone(now, homeCity.zone) : now;
-                    var targetDate = window.rekindleGetDateInZone(now, city.zone);
+                    var homeDate = window.rekindleGetDateInZone(now, homeCity.zone);
+                    var targetDate = window.rekindleGetDateInZone(now, cityCache.zone);
 
                     var homeMid = new Date(homeDate.getFullYear(), homeDate.getMonth(), homeDate.getDate());
                     var targetMid = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
@@ -761,7 +813,7 @@
 
                     var sign = diffH >= 0 ? "+" : "";
 
-                    offsetEl.innerText = dayText + ', ' + sign + diffH + (window.t ? window.t('clocks.offset.hrs', 'HRS') : 'HRS');
+                    cityCache.offset.innerText = dayText + ', ' + sign + diffH + (window.t ? window.t('clocks.offset.hrs', 'HRS') : 'HRS');
                 }
             });
         }
@@ -881,6 +933,7 @@
 
         // --- RENDERER ---
         function renderClocks() {
+            domCache = null; // Invalidate cache on re-render
             var list = document.getElementById('clock-list');
             list.innerHTML = '';
 
@@ -1036,6 +1089,9 @@
     </div>
 
 
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 </body>
 
 </html>
