@@ -116,6 +116,7 @@
             font-weight: bold;
             z-index: 1;
             font-size: 1.1rem;
+            border: 2px solid transparent;
         }
 
         /* CLOSE BUTTON (HOME) */
@@ -349,62 +350,40 @@
             flex-direction: column;
         }
 
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px;
-            border-bottom: 2px solid black;
-            background: #eee;
-        }
-
-        .modal-title {
-            font-weight: bold;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            font-family: sans-serif;
-        }
-
-        .close-btn {
-            border: 2px solid black;
+        iframe {
+            flex-grow: 1;
+            border: none;
             background: white;
+            min-height: 0;
+            /* Important for flex container */
+        }
+
+        /* System Buttons */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 6px 12px;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-weight: bold;
-            width: 24px;
-            height: 24px;
+            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-        }
-
-        .close-btn:active {
-            background: black;
-            color: white;
-        }
-
-        .sys-btn {
-            background: white;
-            border: 2px solid black;
-            padding: 4px 10px;
-            font-family: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 1px 1px 0 black;
+            box-shadow: 2px 2px 0 black;
             font-size: 0.8rem;
+        }
+
+        .sys-btn.small {
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            box-shadow: 1px 1px 0 black;
         }
 
         .sys-btn:active {
             background: black;
             color: white;
-            transform: translate(1px, 1px);
             box-shadow: none;
-        }
-
-        iframe {
-            flex-grow: 1;
-            border: none;
-            background: white;
-            /* Keep simple - no transforms or compositor hints for e-ink */
         }
     </style>
     <script src="theme.js"></script>
@@ -465,15 +444,23 @@
         <!-- READER MODAL -->
         <div id="article-modal">
             <div class="article-view-box">
-                <div class="modal-header">
-                    <span class="modal-title" data-i18n="news.modal.title">Article View</span>
-                    <div style="display: flex">
+                <div class="title-bar">
+                    <div class="title-stripes"></div>
+                    <div class="close-box" onclick="closeArticleModal()">X</div>
+                    <span class="title-text" data-i18n="news.modal.title">Article View</span>
+                    <div class="title-controls">
                         <button class="sys-btn small" onclick="openExternal()" data-i18n="news.btn.external">Open
                             Externally</button>
-                        <button class="close-btn" onclick="closeArticleModal()" style="margin-left: 10px">X</button>
                     </div>
                 </div>
                 <iframe id="article-frame" src=""></iframe>
+                <div class="modal-footer"
+                    style="border-top: 2px solid black; padding: 8px; display: flex; justify-content: space-between; align-items: center; background: #eee; flex-shrink: 0;">
+                    <button class="sys-btn" onclick="prevPage()" id="btn-prev">Previous</button>
+                    <span id="page-indicator"
+                        style="font-weight: bold; font-family: sans-serif; font-size: 0.9rem;">Page 1</span>
+                    <button class="sys-btn" onclick="nextPage()" id="btn-next">Next</button>
+                </div>
             </div>
         </div>
 
@@ -629,8 +616,13 @@
                 if (article.title) articleHtml += `<h1>${article.title}</h1>`;
                 if (article.byline) articleHtml += `<p style="font-style:italic; color:#555;">${article.byline}</p>`;
                 if (article.siteName) articleHtml += `<p style="font-size:0.8rem; color:#888;">${article.siteName}</p>`;
-                articleHtml += '<hr style="border:1px solid #ccc; margin:15px 0;">';
-                articleHtml += article.content || article.textContent || '<p>No readable content found.</p>';
+                if (article.siteName) articleHtml += `<p style="font-size:0.8rem; color:#888;">${article.siteName}</p>`;
+                if (article.content || article.textContent) { // Check if content exists
+                    articleHtml += '<hr style="border:1px solid #ccc; margin:15px 0;">';
+                    articleHtml += article.content || article.textContent;
+                } else {
+                    articleHtml += '<p>No readable content found.</p>';
+                }
 
                 const html = `
                     <html>
@@ -642,17 +634,47 @@
                             box-shadow: none !important;
                             text-shadow: none !important;
                         }
-                        html, body {
+                        html {
+                            height: 100%;
+                            width: 100%;
+                            overflow: hidden;
+                        }
+                        body {
                             background: transparent !important;
-                            overflow-x: hidden;
+                            margin: 0;
+                            padding: 0 20px;
+                            height: 100%;
+                            width: 100%;
+                            box-sizing: border-box;
+                            
                             font-family: Georgia, serif;
                             line-height: 1.6;
-                            padding: 20px;
+                            
+                            
+                            /* Column Layout */
+                            column-width: calc(100vw - 80px); /* Exactly match content box width */
+                            column-gap: 40px;
+                            column-fill: auto;
+                            
+                            overflow-y: hidden; /* Hide vertical scroll */
+                            overflow-x: hidden; /* Disable user scrolling */
+                            scrollbar-width: none; /* Firefox */
+                        }
+                        body::-webkit-scrollbar {
+                            display: none; /* Chrome/Safari */
+                        }
+                        h1, h2, h3 {
+                            break-inside: avoid; /* Keep headings with their text if possible */
                         }
                         img {
                             max-width: 100%;
                             height: auto;
                             image-rendering: pixelated;
+                            display: block;
+                            margin: 10px auto;
+                        }
+                        img[title*="placeholder" i], img[src*="placeholder" i] {
+                            display: none !important;
                         }
                     </style>
                     </head>
@@ -664,6 +686,37 @@
 
                 frame.removeAttribute('srcdoc');
                 frame.src = blobUrl;
+
+                // Init Pagination
+                frame.onload = () => {
+                    currentPage = 1;
+                    updatePaginationUI();
+
+                    // Tap Navigation & Link Handling
+                    frame.contentDocument.addEventListener('click', (e) => {
+                        // Handle links
+                        const link = e.target.closest('a');
+                        if (link) {
+                            e.preventDefault();
+                            const href = link.href;
+                            if (href && !href.startsWith('javascript:')) {
+                                parent.window.location.href = 'browser.html?url=' + encodeURIComponent(href);
+                            }
+                            return;
+                        }
+
+                        // Ignore if text is selected
+                        const sel = frame.contentWindow.getSelection();
+                        if (sel && sel.toString().length > 0) return;
+
+                        const width = frame.contentWindow.innerWidth;
+                        if (e.clientX < width / 2) {
+                            prevPage();
+                        } else {
+                            nextPage();
+                        }
+                    });
+                };
 
             } catch (e) {
                 console.error("Reader Error:", e);
@@ -710,9 +763,74 @@
 
 
 
+
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
         }
+
+        // --- PAGINATION LOGIC ---
+        let currentPage = 1;
+        let totalPages = 1;
+
+        function updatePaginationUI() {
+            const frame = document.getElementById('article-frame');
+            if (!frame.contentWindow || !frame.contentWindow.document) return;
+
+            const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+
+            const scrollW = scroller.scrollWidth;
+            const clientW = scroller.clientWidth;
+
+            if (clientW === 0) return;
+
+            // Round up
+            totalPages = Math.ceil(scrollW / clientW);
+            if (totalPages < 1) totalPages = 1;
+
+            // Current page calculation
+            const scrollL = scroller.scrollLeft;
+            currentPage = Math.round(scrollL / clientW) + 1;
+
+            document.getElementById('page-indicator').innerText = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('btn-prev').disabled = currentPage <= 1;
+            document.getElementById('btn-next').disabled = currentPage >= totalPages;
+        }
+
+        function prevPage() {
+            const frame = document.getElementById('article-frame');
+            if (frame.contentWindow && frame.contentWindow.document) {
+                const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+                const clientW = scroller.clientWidth;
+
+                if (currentPage > 1) {
+                    currentPage--;
+                    scroller.scrollTo({ left: (currentPage - 1) * clientW, behavior: 'auto' });
+                    updatePaginationUI();
+                }
+            }
+        }
+
+        function nextPage() {
+            const frame = document.getElementById('article-frame');
+            if (frame.contentWindow && frame.contentWindow.document) {
+                const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+                const clientW = scroller.clientWidth;
+
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    scroller.scrollTo({ left: (currentPage - 1) * clientW, behavior: 'auto' });
+                    updatePaginationUI();
+                }
+            }
+        }
+
+        // Keyboard Nav
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('article-modal').style.display === 'flex') {
+                if (e.key === 'ArrowLeft') prevPage();
+                if (e.key === 'ArrowRight') nextPage();
+            }
+        });
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>

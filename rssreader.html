@@ -112,6 +112,19 @@
             margin-left: 10px;
         }
 
+        .title-controls {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            background: white;
+            display: flex;
+            align-items: center;
+        }
+
+        .title-controls>*+* {
+            margin-left: 10px;
+        }
+
         /* TITLE BAR */
         .title-bar {
             height: 35px;
@@ -421,7 +434,6 @@
         .sys-btn:active {
             background: black;
             color: white;
-            transform: translate(1px, 1px);
             box-shadow: none;
         }
 
@@ -518,7 +530,6 @@
         /* MODAL (IFRAME READER) */
         #article-modal {
             position: fixed;
-            /* Changed to fixed for fullscreen */
             top: 0;
             left: 0;
             width: 100%;
@@ -540,63 +551,17 @@
             flex-direction: column;
         }
 
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px;
-            border-bottom: 2px solid black;
-            background: #eee;
-        }
-
-        .modal-controls {
-            display: flex;
-            align-items: center;
-        }
-
-        .modal-controls>*+* {
-            margin-left: 10px;
-        }
-
-        .modal-title {
-            font-weight: bold;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            max-width: 150px;
-        }
-
-        .close-btn {
-            border: 2px solid black;
-            background: white;
-            font-weight: bold;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-
-        .close-btn:active {
-            background: black;
-            color: white;
-        }
-
         iframe {
             flex-grow: 1;
             border: none;
             background: white;
-            /* Keep simple - no transforms or compositor hints for e-ink */
+            min-height: 0;
         }
 
         /* GENERAL MODAL STYLES */
         .modal-overlay {
             display: none;
             position: fixed;
-            /* Changed to fixed for fullscreen */
             top: 0;
             left: 0;
             width: 100%;
@@ -610,9 +575,10 @@
         .modal-box {
             background: white;
             border: 2px solid black;
-            box-shadow: 8px 8px 0 black;
             padding: 20px;
-            width: 300px;
+            box-shadow: 6px 6px 0 black;
+            max-width: 300px;
+            width: 80%;
             text-align: center;
         }
 
@@ -629,16 +595,6 @@
             align-items: center;
             justify-content: center;
             font-family: "Geneva", "Verdana", sans-serif;
-        }
-
-        .modal-box {
-            background: white;
-            border: 2px solid black;
-            padding: 20px;
-            box-shadow: 6px 6px 0 black;
-            max-width: 300px;
-            width: 80%;
-            text-align: center;
         }
 
         .modal-text {
@@ -760,16 +716,24 @@
         <!-- READER MODAL -->
         <div id="article-modal">
             <div class="article-view-box">
-                <div class="modal-header">
-                    <span class="modal-title" data-i18n="rss.modal.reader">Reader</span>
-                    <div class="modal-controls">
-                        <button class="sys-btn small read-toggle-btn" id="read-toggle"
+                <div class="title-bar">
+                    <div class="title-stripes"></div>
+                    <div class="close-box" onclick="closeArticleModal()">X</div>
+                    <span class="title-text" data-i18n="rss.modal.reader">Reader</span>
+                    <div class="title-controls">
+                        <button class="sys-btn small read-toggle-btn" id="read-toggle" style="margin-right: 10px;"
                             onclick="toggleReadStatusInModal()">Mark Unread</button>
                         <button class="sys-btn small" onclick="openExternal()" data-i18n="rss.btn.web">Open Ext</button>
-                        <button class="close-btn" onclick="closeArticleModal()">X</button>
                     </div>
                 </div>
                 <iframe id="article-frame" src=""></iframe>
+                <div class="modal-footer"
+                    style="border-top: 2px solid black; padding: 8px; display: flex; justify-content: space-between; align-items: center; background: #eee; flex-shrink: 0;">
+                    <button class="sys-btn" onclick="prevPage()" id="btn-prev">Previous</button>
+                    <span id="page-indicator"
+                        style="font-weight: bold; font-family: sans-serif; font-size: 0.9rem;">Page 1</span>
+                    <button class="sys-btn" onclick="nextPage()" id="btn-next">Next</button>
+                </div>
             </div>
         </div>
 
@@ -1396,15 +1360,13 @@
 
             // Mark as Read
             markAsRead(url);
-            // Update UI in background so it shows as read when closed
-            renderArticles();
+            renderArticles(); // Update UI in background
 
             const modal = document.getElementById('article-modal');
             const frame = document.getElementById('article-frame');
             const btn = document.getElementById('read-toggle');
 
-            // Set button text correctly
-            btn.innerText = "Mark Unread";
+            if (btn) btn.innerText = "Mark Unread";
 
             modal.style.display = 'flex';
 
@@ -1412,61 +1374,60 @@
             if (article && article.feedUrl && article.feedUrl.includes('xkcd.com')) {
                 frame.removeAttribute('src');
                 frame.srcdoc = `
-                    <html>
-                    <head>
-                        <style>
-                            body { 
-                                font-family: "Geneva", "Verdana", sans-serif; 
-                                text-align: center; 
-                                padding: 20px; 
-                                background-color: white; 
-                                display: flex; 
-                                flex-direction: column; 
-                                align-items: center; 
-                                justify-content: center;
-                                min-height: 100vh;
-                                margin: 0;
-                            }
-                            img { 
-                                max-width: 100%; 
-                                height: auto; 
-                                border: 2px solid black; 
-                                box-shadow: 4px 4px 0 black;
-                                margin-bottom: 20px;
-                            }
-                            .alt-text {
-                                font-size: 1rem;
-                                color: #333;
-                                max-width: 600px;
-                                line-height: 1.4;
-                                border: 1px dashed #999;
-                                padding: 15px;
-                                background: #f9f9f9;
-                            }
-                            .title {
-                                font-weight: bold;
-                                font-size: 1.2rem;
-                                margin-bottom: 20px;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="title">${article.title}</div>
-                        <img src="${article.image}">
-                        <div class="alt-text">${article.xkcdTitle || "No title text found."}</div>
-                    </body>
-                    </html>`;
+                <html>
+                <head>
+                    <style>
+                        body {
+                            font-family: "Geneva", "Verdana", sans-serif;
+                            text-align: center;
+                            padding: 20px;
+                            background-color: white;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            min-height: 100vh;
+                            margin: 0;
+                        }
+                        img {
+                            max-width: 100%;
+                            height: auto;
+                            border: 2px solid black;
+                            box-shadow: 4px 4px 0 black;
+                            margin-bottom: 20px;
+                        }
+                        .alt-text {
+                            font-size: 1rem;
+                            color: #333;
+                            max-width: 600px;
+                            line-height: 1.4;
+                            border: 1px dashed #999;
+                            padding: 15px;
+                            background: #f9f9f9;
+                        }
+                        .title {
+                            font-weight: bold;
+                            font-size: 1.2rem;
+                            margin-bottom: 20px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="title">${article.title}</div>
+                    <img src="${article.image}">
+                    <div class="alt-text">${article.xkcdTitle || "No title text found."}</div>
+                </body>
+                </html>`;
                 return;
             }
 
-            // Show loading state
             frame.srcdoc = `
-                <html>
-                <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:transparent;">
-                    <h2>Loading...</h2>
-                    <p style="color:#666;">Extracting article...</p>
-                </body>
-                </html>`;
+            <html>
+            <body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:transparent;">
+                <h2 data-i18n="rss.modal.loading">Loading...</h2>
+                <p style="color:#666;" data-i18n="rss.modal.cleaning">Cleaning up article for E-ink display...</p>
+            </body>
+            </html>`;
 
             try {
                 // Fetch from Readability worker
@@ -1494,37 +1455,97 @@
                 articleHtml += articleData.content || articleData.textContent || '<p>No readable content found.</p>';
 
                 const html = `
-                    <html>
-                    <head>
-                    <style>
-                        *, *::before, *::after {
-                            animation: none !important;
-                            transition: none !important;
-                            box-shadow: none !important;
-                            text-shadow: none !important;
-                        }
-                        html, body {
-                            background: transparent !important;
-                            overflow-x: hidden;
-                            font-family: Georgia, serif;
-                            line-height: 1.6;
-                            padding: 20px;
-                        }
-                        img {
-                            max-width: 100%;
-                            height: auto;
-                            image-rendering: pixelated;
-                        }
-                    </style>
-                    </head>
-                    <body>${articleHtml}</body>
-                    </html>`;
+                <html>
+                <head>
+                <style>
+                    *, *::before, *::after {
+                        animation: none !important;
+                        transition: none !important;
+                        box-shadow: none !important;
+                        text-shadow: none !important;
+                    }
+                    html {
+                        height: 100%;
+                        width: 100%;
+                        overflow: hidden;
+                    }
+                    body {
+                        background: transparent !important;
+                        margin: 0;
+                        padding: 0 20px;
+                        height: 100%;
+                        width: 100%;
+                        box-sizing: border-box;
+
+                        font-family: Georgia, serif;
+                        line-height: 1.6;
+
+                        /* Column Layout */
+                        column-width: calc(100vw - 80px); /* Exactly match content box width */
+                        column-gap: 40px;
+                        column-fill: auto;
+
+                        overflow-y: hidden; /* Hide vertical scroll locally */
+                        overflow-x: hidden; /* Disable user scrolling */
+                        scrollbar-width: none; /* Firefox */
+                    }
+                    body::-webkit-scrollbar {
+                        display: none; /* Chrome/Safari */
+                    }
+                    img {
+                        max-width: 100%;
+                        height: auto;
+                        image-rendering: pixelated;
+                        display: block;
+                        margin: 10px auto;
+                    }
+                    img[title*="placeholder" i], img[src*="placeholder" i] {
+                        display: none !important;
+                    }
+                    h1, h2, h3 {
+                        break-inside: avoid; /* Keep headings with their text if possible */
+                    }
+                </style>
+                </head>
+                <body>${articleHtml}</body>
+                </html>`;
 
                 const blob = new Blob([html], { type: 'text/html' });
                 const blobUrl = URL.createObjectURL(blob);
 
                 frame.removeAttribute('srcdoc');
                 frame.src = blobUrl;
+
+                // Init Pagination
+                frame.onload = () => {
+                    currentPage = 1;
+                    updatePaginationUI();
+
+                    // Tap Navigation & Link Handling
+                    frame.contentDocument.addEventListener('click', (e) => {
+                        // Handle links
+                        const link = e.target.closest('a');
+                        if (link) {
+                            e.preventDefault();
+                            const href = link.href;
+                            if (href && !href.startsWith('javascript:')) {
+                                parent.window.location.href = 'browser.html?url=' + encodeURIComponent(href);
+                            }
+                            return;
+                        }
+
+                        // Ignore if text is selected
+                        const sel = frame.contentWindow.getSelection();
+                        if (sel && sel.toString().length > 0) return;
+
+                        const width = frame.contentWindow.innerWidth;
+                        if (e.clientX < width / 2) {
+                            prevPage();
+                        } else {
+                            nextPage();
+                        }
+                    });
+                };
 
             } catch (e) {
                 console.error("Reader Error:", e);
@@ -1561,6 +1582,75 @@
                 window.open(currentArticleUrl, '_blank');
             }
         }
+
+        // --- PAGINATION LOGIC ---
+        let currentPage = 1;
+        let totalPages = 1;
+
+        function updatePaginationUI() {
+            const frame = document.getElementById('article-frame');
+            if (!frame.contentWindow || !frame.contentWindow.document) return;
+
+            const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+
+            const scrollW = scroller.scrollWidth;
+            const clientW = scroller.clientWidth;
+
+            if (clientW === 0) return;
+
+            // Round up
+            totalPages = Math.ceil(scrollW / clientW);
+            if (totalPages < 1) totalPages = 1;
+
+            // Current page calculation
+            const scrollL = scroller.scrollLeft;
+            currentPage = Math.round(scrollL / clientW) + 1;
+
+            const indicator = document.getElementById('page-indicator');
+            if (indicator) indicator.innerText = `Page ${currentPage} of ${totalPages}`;
+
+            const btnPrev = document.getElementById('btn-prev');
+            if (btnPrev) btnPrev.disabled = currentPage <= 1;
+
+            const btnNext = document.getElementById('btn-next');
+            if (btnNext) btnNext.disabled = currentPage >= totalPages;
+        }
+
+        function prevPage() {
+            const frame = document.getElementById('article-frame');
+            if (frame.contentWindow && frame.contentWindow.document) {
+                const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+                const clientW = scroller.clientWidth;
+
+                if (currentPage > 1) {
+                    currentPage--;
+                    scroller.scrollTo({ left: (currentPage - 1) * clientW, behavior: 'auto' });
+                    updatePaginationUI();
+                }
+            }
+        }
+
+        function nextPage() {
+            const frame = document.getElementById('article-frame');
+            if (frame.contentWindow && frame.contentWindow.document) {
+                const scroller = frame.contentWindow.document.scrollingElement || frame.contentWindow.document.body;
+                const clientW = scroller.clientWidth;
+
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    scroller.scrollTo({ left: (currentPage - 1) * clientW, behavior: 'auto' });
+                    updatePaginationUI();
+                }
+            }
+        }
+
+        // Keyboard Nav
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('article-modal').style.display === 'flex') {
+                if (e.key === 'ArrowLeft') prevPage();
+                if (e.key === 'ArrowRight') nextPage();
+            }
+        });
 
 
 
