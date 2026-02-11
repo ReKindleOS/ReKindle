@@ -940,7 +940,7 @@
                     loadFavorites().then(function () {
                         loadTopicStates().then(function () {
                             // Load topics
-                            db.ref('topics').orderByChild('lastActive').limitToLast(50).on('value', function (snapshot) {
+                            db.ref('topics').orderByChild('lastActive').on('value', function (snapshot) {
                                 allTopicsCache = [];
                                 snapshot.forEach(function (child) {
                                     allTopicsCache.push(Object.assign({ id: child.key }, child.val()));
@@ -1373,6 +1373,7 @@
             editingTopicId = topicId;
             var modalTitle = document.getElementById('create-modal-title');
             var submitBtn = document.getElementById('btn-submit-topic');
+            if (submitBtn) submitBtn.disabled = false;
             var picker = document.getElementById('icon-picker');
 
             // Reset Fields
@@ -1535,21 +1536,48 @@
                 });
             } else {
                 // CREATING NEW
-                var newTopicRef = db.ref('topics').push();
-                newTopicRef.set({
-                    title: title,
-                    subheading: subheading,
-                    body: "",
-                    icon: selectedIconSvg,
-                    authorName: currentUserName,
-                    authorId: currentUser.uid,
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    lastActive: firebase.database.ServerValue.TIMESTAMP,
-                    commentCount: 0
-                }).then(function () {
-                    closeCreateModal();
-                    selectTopic(newTopicRef.key);
-                });
+                var isAdmin = currentUser.email === 'ukiyo@rekindle.ink';
+                if (isAdmin) {
+                    executeCreation();
+                } else {
+                    // Check limit
+                    var submitBtn = document.getElementById('btn-submit-topic');
+                    submitBtn.disabled = true;
+                    submitBtn.innerText = "Checking...";
+
+                    db.ref('topics').orderByChild('authorId').equalTo(currentUser.uid).once('value').then(function (snap) {
+                        var count = snap.numChildren();
+                        if (count >= 3) {
+                            showAlertModal("You are allowed a maximum of 3 topics. Please edit your existing topics or contact an admin.");
+                            submitBtn.disabled = false;
+                            submitBtn.innerText = "Create";
+                            return;
+                        }
+                        executeCreation();
+                    }).catch(function (err) {
+                        console.error("Limit check error:", err);
+                        submitBtn.disabled = false;
+                        submitBtn.innerText = "Create";
+                    });
+                }
+
+                function executeCreation() {
+                    var newTopicRef = db.ref('topics').push();
+                    newTopicRef.set({
+                        title: title,
+                        subheading: subheading,
+                        body: "",
+                        icon: selectedIconSvg,
+                        authorName: currentUserName,
+                        authorId: currentUser.uid,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        lastActive: firebase.database.ServerValue.TIMESTAMP,
+                        commentCount: 0
+                    }).then(function () {
+                        closeCreateModal();
+                        selectTopic(newTopicRef.key);
+                    });
+                }
             }
         }
 
