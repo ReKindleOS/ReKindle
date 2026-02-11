@@ -521,7 +521,12 @@
     var lastTouchEnd = 0;
     document.addEventListener('touchend', function (event) {
         var now = (new Date()).getTime();
-        if (now - lastTouchEnd <= 300) {
+        // Allow double-tap on editable elements or inputs
+        var target = event.target;
+        var isEditable = target.isContentEditable ||
+            (['input', 'textarea', 'select'].includes(target.tagName.toLowerCase()));
+
+        if (now - lastTouchEnd <= 300 && !isEditable) {
             event.preventDefault();
         }
         lastTouchEnd = now;

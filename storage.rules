@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+  
+    // Helper function to check auth
+    function isAuth() {
+      return request.auth != null;
+    }
+    
+    // Helper to check if user owns the path
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Helper to check if user has pro custom claim
+    function isPro() {
+      return isAuth() && request.auth.token.pro == true;
+    }
+
+    // Allow read/write for the user's files recursively (PRO ONLY)
+    match /users/{userId}/files/{allPaths=**} {
+      allow read, write: if isOwner(userId) && isPro();
+    }
+    
+    // Default Deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -94,6 +94,29 @@ export default {
             }
         }
 
+        // --- NEW: Sync Pro Custom Claims for all active subscribers ---
+        if (request.method === 'POST' && url.pathname.endsWith('/sync-pro-claims')) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader || authHeader !== `Bearer ${env.ADMIN_SECRET}`) {
+                return new Response('Unauthorized', {
+                    status: 401,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            try {
+                const result = await bulkSyncProClaims(env);
+                return new Response(JSON.stringify(result), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } catch (err) {
+                return new Response('Error syncing pro claims: ' + err.message, {
+                    status: 500,
+                    headers: { 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+        }
+
         if (request.method !== 'POST') {
             return new Response('Method Not Allowed', { status: 405 });
         }
@@ -376,6 +399,14 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
         console.warn("Failed to sync to config/supporters:", e.message);
     }
 
+    // --- SYNC PRO CUSTOM CLAIM ---
+    try {
+        await setFirebaseCustomClaims(env, uid, { pro: true });
+        console.log(`Set pro=true custom claim for UID: ${uid}`);
+    } catch (e) {
+        console.warn("Failed to set pro custom claim:", e.message);
+    }
+
     return result;
 }
 
@@ -508,6 +539,14 @@ async function revokeProByCustomerId(env, stripeCustomerId) {
             }
         } catch (e) {
             console.warn("Failed to remove from config/supporters:", e.message);
+        }
+
+        // --- REVOKE PRO CUSTOM CLAIM ---
+        try {
+            await setFirebaseCustomClaims(env, uid, { pro: false });
+            console.log(`Removed pro custom claim for UID: ${uid}`);
+        } catch (e) {
+            console.warn("Failed to revoke pro custom claim:", e.message);
         }
 
         console.log(`Revoked Pro status for UID: ${uid} due to refund.`);
@@ -949,4 +988,133 @@ async function bulkSyncSupporters(env, users) {
     }
 
     return { status: 'success', count: Object.keys(fields).length };
+}
+
+// --- SET FIREBASE CUSTOM CLAIMS ---
+// Uses the Identity Toolkit REST API to set custom claims on a user's auth token
+async function setFirebaseCustomClaims(env, uid, claims) {
+    const token = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+
+    // Identity Toolkit v1: accounts:update with customAttributes
+    const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:update`;
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            localId: uid,
+            customAttributes: JSON.stringify(claims)
+        })
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Custom Claims Error ${res.status}: ${text}`);
+    }
+
+    return await res.json();
+}
+
+// --- BULK SYNC PRO CLAIMS ---
+// Iterates all users in Firestore, checks pro status, and sets custom claims accordingly
+async function bulkSyncProClaims(env) {
+    const token = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    // 1. Load supporters config
+    let supporters = {};
+    try {
+        const suppRes = await fetch(`${baseUrl}/config/supporters`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (suppRes.ok) {
+            const suppDoc = await suppRes.json();
+            if (suppDoc.fields) {
+                for (const [email, value] of Object.entries(suppDoc.fields)) {
+                    if (value.mapValue && value.mapValue.fields && value.mapValue.fields.expiresAt) {
+                        supporters[email] = value.mapValue.fields.expiresAt.timestampValue;
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Could not load supporters config:", e.message);
+    }
+
+    // 2. Query all user docs
+    const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+    const queryBody = {
+        structuredQuery: {
+            from: [{ collectionId: 'users' }],
+            limit: 500
+        }
+    };
+
+    const queryRes = await fetch(queryUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(queryBody)
+    });
+
+    if (!queryRes.ok) {
+        throw new Error(`Firestore Query Error: ${queryRes.status}`);
+    }
+
+    const results = await queryRes.json();
+    let updated = 0;
+    let proCount = 0;
+    let errors = 0;
+
+    for (const result of results) {
+        if (!result.document) continue;
+
+        const docPath = result.document.name;
+        const uid = docPath.split('/').pop();
+        const fields = result.document.fields || {};
+        let isPro = false;
+
+        // Check proExpiresAt
+        if (fields.proExpiresAt && fields.proExpiresAt.timestampValue) {
+            const expiresAt = new Date(fields.proExpiresAt.timestampValue).getTime();
+            if (expiresAt > Date.now()) {
+                isPro = true;
+            }
+        }
+
+        // Check supporters by email
+        if (!isPro) {
+            try {
+                const resolved = await resolveFirebaseUsers(env, [uid]);
+                const email = resolved[0]?.email;
+                if (email && supporters[email]) {
+                    const expiry = new Date(supporters[email]).getTime();
+                    if (expiry > Date.now()) {
+                        isPro = true;
+                    }
+                }
+            } catch (e) {
+                // Skip
+            }
+        }
+
+        // Set claim
+        try {
+            await setFirebaseCustomClaims(env, uid, { pro: isPro });
+            updated++;
+            if (isPro) proCount++;
+        } catch (e) {
+            errors++;
+            console.warn(`Failed to set claims for ${uid}: ${e.message}`);
+        }
+    }
+
+    return { status: 'success', updated, proCount, errors };
 }
