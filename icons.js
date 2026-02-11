@@ -99,6 +99,23 @@ const APPS = [
         icon: '<path d="M6 12 H26 L22 8 M26 20 H6 L10 24" stroke-width="2" />'
     },
     {
+        id: 'files',
+        name: 'Files',
+        plus: true,
+        cat: 'tools',
+        newBadge: true,
+        // Folder Icon
+        icon: '<path d="M4 6 h8 l2 2 h14 v16 h-24 z" fill="white" stroke="black" stroke-width="2"/><line x1="4" y1="11" x2="28" y2="11" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'docs',
+        name: 'Docs',
+        plus: true,
+        cat: 'tools',
+        newBadge: true,
+        icon: '<path d="M6 4 h14 l6 6 v18 h-20 z" fill="white" stroke="black" stroke-width="2"/><polyline points="20 4 20 10 26 10" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="22" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="22" y2="18" stroke="black" stroke-width="2"/><line x1="10" y1="22" x2="18" y2="22" stroke="black" stroke-width="2"/>'
+    },
+    {
         id: 'countdown',
         name: 'Countdown',
         cat: 'tools',

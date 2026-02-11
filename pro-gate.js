@@ -44,7 +44,7 @@
             overlay.innerHTML = `
                 <h2 style="margin-top:0;">ReKindle+</h2>
                 <p>Support ReKindle development and get<br>access to exclusive apps.</p>
-                <button class="sys-btn" onclick="window.location.href='pay.html'" style="padding:10px 20px; cursor:pointer;">Subscribe / Login</button>
+                <button onclick="window.location.href='pay.html'" style="padding:12px 32px; cursor:pointer; font-size:1.1rem; font-weight:bold; font-family:inherit; background:#fff; border:2px solid #000; color:#000;">Subscribe / Login</button>
                 <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">${message}</p>
             `;
             document.body.appendChild(overlay);
