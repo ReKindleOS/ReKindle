@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>KindleChat</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -218,6 +219,26 @@
             border-bottom: 1px solid #eee;
             cursor: pointer;
             display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .room-avatar {
+            width: 32px;
+            height: 32px;
+            border: 1px solid black;
+            background: white;
+            margin-right: 8px;
+            flex-shrink: 0;
+            image-rendering: pixelated;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .room-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
             flex-direction: column;
             align-items: flex-start;
         }
@@ -261,11 +282,12 @@
         .del-room-btn {
             font-weight: bold;
             color: #999;
-            padding: 5px 10px;
+            padding: 5px 2px 5px 10px;
             cursor: pointer;
             font-family: sans-serif;
             font-size: 1.2rem;
             line-height: 0.8;
+            margin-left: auto;
         }
 
         .del-room-btn:hover {
@@ -422,6 +444,15 @@
             flex-wrap: wrap;
         }
 
+        .reaction-bar.other-bar {
+            margin-left: 42px;
+            /* align with bubble past avatar */
+        }
+
+        .reaction-bar.self-bar {
+            margin-right: 42px;
+        }
+
         .reaction-bar>*+* {
             margin-left: 5px;
         }
@@ -505,6 +536,43 @@
         .del-btn:hover {
             opacity: 1.0;
             background: #ffe6e6;
+        }
+
+        /* AVATAR & MSG-ROW */
+        .msg-row {
+            display: flex;
+            align-items: flex-end;
+            margin-bottom: 2px;
+        }
+
+        .msg.self .msg-row {
+            flex-direction: row-reverse;
+        }
+
+        .msg-avatar {
+            width: 32px;
+            height: 32px;
+            border: 2px solid black;
+            background: white;
+            margin-right: 8px;
+            flex-shrink: 0;
+            image-rendering: pixelated;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: crisp-edges;
+            cursor: pointer;
+        }
+
+        .msg.self .msg-avatar {
+            margin-right: 0;
+            margin-left: 8px;
+        }
+
+        .author-name-field {
+            cursor: pointer;
+        }
+
+        .author-name-field:hover {
+            text-decoration: underline;
         }
 
 
@@ -783,7 +851,11 @@
             z-index: 10;
             display: none;
             flex-direction: row;
-            gap: 5px;
+            /* gap: 5px; REMOVED KINDLE */
+        }
+
+        #reaction-selection-modal>*+* {
+            margin-left: 5px;
         }
 
         .reaction-option {
@@ -948,6 +1020,10 @@
 
         .modal-btns>*+* {
             margin-left: 10px;
+        }
+
+        .msg-row>div>*+* {
+            margin-left: 5px;
         }
 
         .modal-btn {
@@ -1244,6 +1320,7 @@
         var oldestGeneralTimestamp = null; // For RTDB pagination
         var isLoadingMore = false; // For pagination
         var supporterUsers = {}; // Store supporter usernames as object for ES5 compatibility
+        var usernameToProfile = {}; // Cache: username -> { uid, avatarSeed, customAvatar }
         var userRooms = [];
         var userRooms = [];
         var userRooms = [];
@@ -1334,6 +1411,9 @@
 
                     // Run cleanup in background (non-blocking)
                     cleanupEmptyChats();
+
+                    // Build username cache for avatars
+                    buildUsernameCache();
 
                     // Wait for supporters to load BEFORE loading messages to avoid race condition on Pro styling
                     fetchSupporters().then(function () {
@@ -1860,10 +1940,28 @@
 
             var timeStr = formatChatTime(room.lastMessageAt);
 
-            div.innerHTML = '<div class="room-top"><span>' + room.name + '</span>' + deleteHtml + '</div>' +
-                '<div class="room-time">' + timeStr + '</div>';
+            // Avatar for DM rooms
+            var avatarHtml = '';
+            var roomAvatarId = '';
+            if (room.id !== 'general') {
+                roomAvatarId = 'room-avatar-' + room.id.replace(/[^a-zA-Z0-9]/g, '_');
+                avatarHtml = '<canvas id="' + roomAvatarId + '" class="room-avatar" width="32" height="32"></canvas>';
+            }
+
+            div.innerHTML = avatarHtml +
+                '<div class="room-content">' +
+                '<div class="room-top"><span>' + room.name + '</span>' + deleteHtml + '</div>' +
+                '<div class="room-time">' + timeStr + '</div>' +
+                '</div>';
             div.onclick = function () { switchRoom(room.id, room.name); };
             listEl.appendChild(div);
+
+            // Draw avatar after DOM insertion
+            if (roomAvatarId && room.name) {
+                setTimeout(function () {
+                    resolveAvatar(room.name, roomAvatarId);
+                }, 0);
+            }
         }
 
         function switchRoom(id, name) {
@@ -2293,6 +2391,97 @@
             return replacedText;
         }
 
+        // --- DRAW AVATAR (Ported from Neighbourhood/Topics) ---
+        function drawAvatar(canvasId, seed) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+
+            if (Array.isArray(seed)) {
+                var gridSize = Math.sqrt(seed.length);
+                var pixelSize = canvas.width / gridSize;
+                for (var i = 0; i < seed.length; i++) {
+                    if (seed[i] === 1) {
+                        var x = i % gridSize;
+                        var y = Math.floor(i / gridSize);
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+                return;
+            }
+
+            var hash = 0;
+            var str = String(seed);
+            for (var i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            var gridSize = 16;
+            var pixelSize = canvas.width / gridSize;
+            for (var x = 0; x < 8; x++) {
+                for (var y = 0; y < gridSize; y++) {
+                    var bitIndex = (x * gridSize + y) % 32;
+                    var secondary = ((hash >> 3) ^ (hash << 7)) + (y * 17);
+                    var val = ((hash >> bitIndex) ^ (secondary >> (bitIndex % 16))) & 1;
+                    var distFromCenter = Math.abs(y - 8) + Math.abs(x - 4);
+                    var fillChance = distFromCenter < 6 ? val : (val && ((hash >> (x + y)) & 3) === 0);
+                    if (fillChance) {
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                        ctx.fillRect((gridSize - 1 - x) * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        // --- USERNAME → PROFILE CACHE ---
+        function buildUsernameCache() {
+            rtdb.ref('users_public').once('value').then(function (snap) {
+                var all = snap.val() || {};
+                usernameToProfile = {};
+                for (var uid in all) {
+                    var u = all[uid];
+                    var name = '';
+                    if (u.email) {
+                        name = u.email.split('@')[0];
+                    } else if (u.displayName && u.displayName.indexOf('@') !== -1) {
+                        name = u.displayName.split('@')[0];
+                    } else {
+                        name = u.displayName || uid.split('@')[0];
+                    }
+                    if (name) {
+                        usernameToProfile[name] = {
+                            uid: uid,
+                            avatarSeed: u.customAvatar || u.avatarSeed || uid
+                        };
+                    }
+                }
+            })['catch'](function (err) {
+                console.warn('Could not build username cache:', err);
+            });
+        }
+
+        function resolveAvatar(username, canvasId) {
+            var profile = usernameToProfile[username];
+            if (profile) {
+                drawAvatar(canvasId, profile.avatarSeed);
+            } else {
+                // Fallback: draw from username as seed
+                drawAvatar(canvasId, username);
+            }
+        }
+
+        function openUserProfile(username) {
+            if (!username) return;
+            var profile = usernameToProfile[username];
+            if (profile && profile.uid) {
+                window.open('neighbourhood.html?uid=' + profile.uid + '&from=kindlechat', 'ReKindle_Neighbourhood');
+            } else {
+                showModal("This user does not have a profile.");
+            }
+        }
+
         function renderMessage(msg, msgId, prepend) {
             var history = document.getElementById('chat-history');
             var div = document.createElement('div');
@@ -2308,18 +2497,20 @@
             div.dataset.msgId = msgId;
             div.dataset.user = msg.user;
 
-            var nameHtml = isSelf ? '<span>' + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span style="font-weight:bold;">' + msg.user + '</span>';
+            var safeUser = escapeHtml(msg.user || '');
+            var avatarId = 'avatar-' + (msgId || Math.random().toString(36).substr(2, 9));
+            var nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')" style="font-weight:bold;">' + safeUser + '</span>';
 
             // Developer Badge in Name
             var isDev = (msg.user === 'ukiyo' || msg.user === 'ukiyo@rekindle.ink');
             if (isDev) {
                 var devBadge = '<span class="dev-tag">DEV</span>';
-                nameHtml = isSelf ? '<span>' + devBadge + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span>' + devBadge + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
+                nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + '<span style="font-weight:bold;">' + safeUser + '</span></span>';
             } else if (supporterUsers[msg.user] || msg.isPro) {
                 // Supporter Crown (SVG for Kindle compatibility)
                 var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
                 var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
-                nameHtml = isSelf ? '<span>' + crown + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span>' + crown + '<span style="font-weight:bold;">' + msg.user + '</span></span>';
+                nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + crown + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + crown + '<span style="font-weight:bold;">' + safeUser + '</span></span>';
             }
 
             // ADMIN DELETE BUTTON - REMOVED (Handled in adminControlsHtml below)
@@ -2501,10 +2692,13 @@
             var transBtnHtml = (isSpecialMessage || msg.is_pixel_art) ? '' : toggleBtnHtml;
 
             div.innerHTML = '<div class="msg-meta">' + nameHtml + '<span>' + timeStr + '</span>' + transBtnHtml + '</div>' +
-                '<div style="display:flex; align-items:center; gap: 5px; min-width: 0;">' +
+                '<div class="msg-row">' +
+                '<canvas id="' + avatarId + '" class="msg-avatar" width="32" height="32" onclick="openUserProfile(\'' + safeUser + '\')"></canvas>' +
+                '<div style="display:flex; align-items:center; min-width: 0;">' +
                 (isSelf ? reactButton + saveButton + adminControlsHtml : '') +
                 bubbleContent +
                 (isSelf ? '' : reactButton + saveButton + adminControlsHtml) +
+                '</div>' +
                 '</div>';
 
             if (msg.reactions && Object.keys(msg.reactions).length > 0) {
@@ -2560,6 +2754,11 @@
             } else {
                 history.appendChild(div);
             }
+
+            // Resolve avatar after DOM insertion
+            setTimeout(function () {
+                resolveAvatar(msg.user, avatarId);
+            }, 0);
 
             if (msg.is_flipnote && msg.flipnote_data) {
                 setTimeout(function () { playFlipnote(msgId); }, 200);
