@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Life Calendar</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 95%;
+            max-width: 800px;
+            /* Wider window as requested */
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            background: black;
+            color: white;
+        }
+
+        .content {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+            padding: 20px;
+        }
+
+        .header-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-block {
+            text-align: left;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        /* Calendar Grid */
+        .calendar-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            border-top: 2px solid black;
+            padding-top: 10px;
+        }
+
+        .axis-header {
+            display: flex;
+            margin-bottom: 5px;
+            padding-left: 35px;
+            /* Match label width */
+        }
+
+        .axis-label-x {
+            flex: 1;
+            text-align: center;
+            font-size: 0.6rem;
+            color: #666;
+            font-family: monospace;
+        }
+
+        .year-row {
+            display: flex;
+            height: 8px;
+            margin-bottom: 2px;
+        }
+
+        /* 5-Year Grouping Gap */
+        .year-row.group-bottom {
+            margin-bottom: 10px;
+        }
+
+        .year-label {
+            width: 30px;
+            margin-right: 5px;
+            font-size: 0.6rem;
+            color: #000;
+            text-align: right;
+            line-height: 8px;
+            flex-shrink: 0;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .weeks-container {
+            flex-grow: 1;
+            display: flex;
+            /* gap: 1px; REMOVED for specific margin control */
+        }
+
+        .week-box {
+            flex: 1;
+            background: white;
+            border: 1px solid #ddd;
+            margin-right: 1px;
+            /* Replaces gap */
+            /* box-sizing is global border-box */
+        }
+
+        /* 4-Week Grouping Gap */
+        /* Standard margin is 1px. We want 4px EXTRA space, so 5px total. */
+        .week-box:nth-child(4n) {
+            margin-right: 5px;
+        }
+
+        .week-box:last-child {
+            margin-right: 0;
+        }
+
+        .week-box.lived {
+            background: black;
+            border-color: black;
+        }
+
+        .week-box.current {
+            background: transparent;
+            border: 2px solid black;
+            z-index: 10;
+            transform: scale(1.5);
+        }
+
+        .input-field {
+            user-select: text;
+            -webkit-user-select: text;
+            background: white;
+            color: black;
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 5000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 6px 6px 0 black;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 2px solid black;
+            font-family: inherit;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+
+        .sys-btn:active {
+            box-shadow: none;
+            transform: translate(3px, 3px);
+            background: black;
+            color: white;
+        }
+
+        #loading-overlay {
+            display: flex;
+        }
+
+        @media (max-width: 600px) {
+            .life-grid {
+                gap: 1px;
+            }
+
+            .week-box {
+                border-width: 0.5px;
+            }
+        }
+    </style>
+
+    <!-- FIREBASE (WITH RTDB) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <script src="time.js"></script>
+    <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text">Life Calendar</span>
+        </div>
+
+        <div class="content">
+            <div class="header-summary">
+                <div class="stat-block">
+                    <div class="stat-label">Lived</div>
+                    <div class="stat-value" id="weeks-lived-display">0</div>
+                    <div style="font-size:0.7rem; color:#666;">weeks</div>
+                </div>
+
+                <div
+                    style="text-align:center; flex-grow:1; display:flex; flex-direction:column; justify-content:center;">
+                    <div style="font-weight:bold; font-size:1.1rem;">MEMENTO MORI</div>
+                    <div style="font-style:italic; font-size:0.8rem; color:#666;">Let us live, since we must die.</div>
+                </div>
+
+                <div class="stat-block" style="text-align:right;">
+                    <div class="stat-label">Remaining</div>
+                    <div class="stat-value" id="weeks-remaining-display">0</div>
+                    <div style="font-size:0.7rem; color:#666;">weeks (est. 90y)</div>
+                </div>
+            </div>
+
+            <div id="calendar-wrapper" class="calendar-wrapper"></div>
+        </div>
+    </div>
+
+    <!-- BIRTHDAY MODAL -->
+    <div id="birthday-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Enter Your Birthday</h3>
+            <p style="font-size:0.9rem; color:#666; margin-bottom:15px;">To visualize your life in weeks.</p>
+            <input type="text" id="input-birthday" class="input-field" placeholder="DD/MM/YYYY" maxlength="10">
+            <div id="date-error" style="color:red; font-size:0.8rem; height:1.2em; margin-bottom:5px;"></div>
+            <button class="sys-btn" onclick="saveBirthday()">Start</button>
+        </div>
+    </div>
+
+    <!-- LOADING OVERLAY -->
+    <div id="loading-overlay" class="modal-overlay">
+        <div style="font-weight:bold; font-size:1.2rem;">Loading...</div>
+    </div>
+
+    <script>
+        // CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+
+        let currentUser = null;
+        const LIFE_YEARS = 90; // Extended to 90 to be optimistic/standard full grid
+
+        // Init Standard Features
+        if (window.rekindleApplyTheme) window.rekindleApplyTheme();
+        if (window.rekindleApplyScale) window.rekindleApplyScale();
+        if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                loadUserData();
+            } else {
+                window.location.href = 'index?login=true';
+            }
+        });
+
+        function loadUserData() {
+            db.ref('users_public/' + currentUser.uid).once('value').then(snapshot => {
+                const data = snapshot.val();
+                document.getElementById('loading-overlay').style.display = 'none';
+
+                let validParams = false;
+                if (data && data.birthday) {
+                    if (renderLife(data.birthday)) {
+                        validParams = true;
+                    }
+                }
+
+                if (!validParams) {
+                    document.getElementById('birthday-modal').style.display = 'flex';
+                }
+            }).catch(e => {
+                console.error(e);
+                document.getElementById('loading-overlay').innerHTML = "Error loading profile.";
+            });
+        }
+
+        function saveBirthday() {
+            const input = document.getElementById('input-birthday');
+            const dateStr = input.value.trim();
+            const errorEl = document.getElementById('date-error');
+
+            errorEl.innerText = "";
+
+            const bday = parseDate(dateStr);
+            if (!bday) {
+                errorEl.innerText = "Invalid format. Use DD/MM/YYYY";
+                return;
+            }
+
+            document.getElementById('birthday-modal').style.display = 'none';
+            document.getElementById('loading-overlay').style.display = 'flex';
+
+            db.ref('users_public/' + currentUser.uid).update({
+                birthday: dateStr
+            }).then(() => {
+                renderLife(dateStr);
+                document.getElementById('loading-overlay').style.display = 'none';
+            }).catch(e => {
+                alert("Error saving: " + e.message);
+                document.getElementById('loading-overlay').style.display = 'none';
+                document.getElementById('birthday-modal').style.display = 'flex';
+            });
+        }
+
+        function parseDate(dateStr) {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                let d = parseInt(parts[0], 10);
+                let m = parseInt(parts[1], 10);
+                let y = parseInt(parts[2], 10);
+                if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+                if (m < 1 || m > 12) return null;
+                if (d < 1 || d > 31) return null;
+                if (y < 1900 || y > 2100) return null;
+                return new Date(y, m - 1, d);
+            }
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return new Date(dateStr);
+            }
+            return null;
+        }
+
+        function renderLife(dateStr) {
+            const birthDate = parseDate(dateStr);
+            if (!birthDate) return false;
+
+            const today = new Date();
+            const oneWeek = 1000 * 60 * 60 * 24 * 7;
+            const diffTime = Math.abs(today - birthDate);
+            const weeksLivedTotal = Math.floor(diffTime / oneWeek);
+            const weeksTotalLife = LIFE_YEARS * 52;
+            const weeksRemaining = weeksTotalLife - weeksLivedTotal;
+
+            document.getElementById('weeks-lived-display').innerText = weeksLivedTotal.toLocaleString();
+            document.getElementById('weeks-remaining-display').innerText = Math.max(0, weeksRemaining).toLocaleString();
+
+            const container = document.getElementById('calendar-wrapper');
+            container.innerHTML = '';
+
+            const fragment = document.createDocumentFragment();
+
+            // X-AXIS LABELS (Week #) - Every 4 weeks
+            const xAxis = document.createElement('div');
+            xAxis.className = 'axis-header';
+
+            // We have 52 weeks. 52/4 = 13 labels.
+            // But we display label FOR THE GROUP maybe?
+            // Let's drop explicit labels 4, 8, 12... 
+            // Better visual: [1] ... [52]
+
+            // Actually, let's create spacers relative to the flex weight.
+            // 52 slots + 12 gaps of roughly 4px space. 
+            // It's tricky to align perfectly with flex gap logic unless we mimic structure.
+
+            // Strategy: Just create 52 dummy boxes with text for 1, 10, 20...52?
+            // User requested "Show both axis labelled".
+            // Let's create a label row that mimics the row structure exactly but with text.
+
+            const xLabelRow = document.createElement('div');
+            xLabelRow.style.display = 'flex';
+            xLabelRow.style.paddingLeft = '35px'; // Offset for Y labels
+            xLabelRow.style.marginBottom = '5px';
+            // xLabelRow.style.gap = '1px'; // REMOVED
+
+            for (let w = 1; w <= 52; w++) {
+                const xLab = document.createElement('div');
+                xLab.style.flex = '1';
+                xLab.style.textAlign = 'center';
+                xLab.style.fontSize = '0.5rem';
+                xLab.style.color = '#666';
+                xLab.style.marginRight = '1px'; // Standard gap
+
+                // Show label every 4 weeks?
+                if (w % 4 === 0 || w === 1 || w === 52) {
+                    xLab.innerText = w;
+                } else {
+                    xLab.innerText = '';
+                }
+
+                if (w % 4 === 0 && w !== 52) xLab.style.marginRight = '5px'; // 1px + 4px extra
+                if (w === 52) xLab.style.marginRight = '0';
+
+                xLabelRow.appendChild(xLab);
+            }
+            fragment.appendChild(xLabelRow);
+
+
+            // ROWS
+            for (let y = 0; y < LIFE_YEARS; y++) {
+                const yearRow = document.createElement('div');
+                yearRow.className = 'year-row';
+                if ((y + 1) % 5 === 0) yearRow.classList.add('group-bottom');
+
+                // Year Label
+                const label = document.createElement('div');
+                label.className = 'year-label';
+                if (y % 5 === 0) {
+                    label.innerText = (y);
+                }
+                yearRow.appendChild(label);
+
+                // Weeks Container
+                const weeksDiv = document.createElement('div');
+                weeksDiv.className = 'weeks-container';
+
+                for (let w = 0; w < 52; w++) {
+                    const weekBox = document.createElement('div');
+                    weekBox.className = 'week-box';
+
+                    const weekIndexGlobal = (y * 52) + w;
+
+                    if (weekIndexGlobal < weeksLivedTotal) {
+                        weekBox.classList.add('lived');
+                    } else if (weekIndexGlobal === weeksLivedTotal) {
+                        weekBox.classList.add('current');
+                    }
+
+                    weeksDiv.appendChild(weekBox);
+                }
+                yearRow.appendChild(weeksDiv);
+                fragment.appendChild(yearRow);
+            }
+
+            container.appendChild(fragment);
+            return true;
+        }
+
+    </script>
+</body>
+
+</html>
