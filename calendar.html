@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Calendar</title>
 
     <!-- Firebase SDKs -->
@@ -156,22 +157,29 @@
             align-items: center;
         }
 
-        .title-controls>*+* {
-            margin-left: 10px;
+        /* Make add-btn visible by default for our logic to handle toggling */
+        .add-btn {
+            z-index: 2;
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            padding: 2px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            box-shadow: 2px 2px 0 black;
+            display: none;
         }
 
         .icon-btn {
-            width: 18px;
-            height: 18px;
-            border: 2px solid black;
             background: white;
+            border: 2px solid black;
+            padding: 2px;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            box-shadow: 2px 2px 0 black;
-            padding: 0;
-            flex-shrink: 0;
+            margin-left: 10px;
         }
 
         .icon-btn:active {
@@ -608,6 +616,88 @@
             transform: translate(1px, 1px);
             box-shadow: none;
         }
+
+        .modal-box.window-style {
+            padding: 0;
+            width: 350px;
+            background: white;
+            box-shadow: 10px 10px 0 black;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-box.window-style .title-bar {
+            margin: 0;
+            border-bottom: 2px solid black;
+            padding: 0 10px;
+            height: 30px;
+        }
+
+        .modal-box.window-style .title-text {
+            font-size: 0.95rem;
+            padding: 0 10px;
+            background: white;
+            position: relative;
+            z-index: 2;
+        }
+
+        .modal-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: bold;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .modal-box input {
+            width: 100%;
+            padding: 8px;
+            border: 2px solid black;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: white;
+            box-shadow: inset 2px 2px 0 #eee;
+            margin: 0;
+        }
+
+        .time-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .time-inputs input {
+            flex: 1;
+        }
+
+        .to-label {
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .modal-btns {
+            margin-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .modal-btns>*+* {
+            margin-left: 0;
+            /* Reset */
+        }
     </style>
     <script src="time.js"></script>
     <script src="theme.js"></script>
@@ -644,7 +734,11 @@
 
         <div id="status-bar">
             <span id="status-msg" data-i18n="calendar.status.ready">Ready.</span>
-            <button class="sys-btn" onclick="refreshData()" data-i18n="calendar.btn.sync">Sync</button>
+            <div>
+                <button class="sys-btn" id="cal-list-btn-bottom" onclick="openCalendarListModal()"
+                    style="display:none; margin-right:5px;">Calendars</button>
+                <button class="sys-btn" onclick="refreshData()" data-i18n="calendar.btn.sync">Sync</button>
+            </div>
         </div>
 
         <!-- AUTH OVERLAY -->
@@ -656,24 +750,73 @@
     </div>
 
     <!-- ADD MODAL -->
+    <!-- ADD/EDIT MODAL -->
     <div id="modal-overlay">
-        <div class="modal-box">
-            <h3 data-i18n="calendar.modal.new">New Event</h3>
-            <div class="modal-btns">
-                <!-- Using grid/flex for inputs -->
+        <div class="modal-box window-style">
+            <div class="title-bar">
+                <div class="title-stripes"></div>
+                <span class="title-text" id="modal-title">New Event</span>
             </div>
-            <input type="text" id="evt-title" placeholder="Title" data-i18n-placeholder="calendar.modal.ph.title">
-            <input type="date" id="evt-date" placeholder="Date" data-i18n-placeholder="calendar.modal.ph.date">
-            <div style="display: flex">
-                <input type="time" id="evt-time" placeholder="Start" title="Start Time"
-                    data-i18n-placeholder="calendar.modal.ph.start">
-                <input type="time" id="evt-end-time" placeholder="End" title="End Time"
-                    data-i18n-placeholder="calendar.modal.ph.end" style="margin-left: 10px">
+            <div class="modal-content">
+                <div class="input-group">
+                    <label>Event</label>
+                    <input type="text" id="evt-title" placeholder="Untitled Event"
+                        data-i18n-placeholder="calendar.modal.ph.title">
+                </div>
+
+                <div class="input-group" id="calendar-select-group" style="display:none;">
+                    <label>Calendar</label>
+                    <select id="evt-calendar-select"
+                        style="width:100%; padding:8px; border:2px solid black; font-family:inherit;"></select>
+                </div>
+
+                <div class="input-group">
+                    <label>Date</label>
+                    <input type="date" id="evt-date">
+                </div>
+
+                <div class="input-group">
+                    <label>Time</label>
+                    <div class="time-inputs">
+                        <input type="time" id="evt-time">
+                        <span class="to-label">to</span>
+                        <input type="time" id="evt-end-time">
+                    </div>
+                </div>
+
+                <div class="modal-btns">
+                    <button class="sys-btn" onclick="saveEvent()" data-i18n="btn.save">Save</button>
+                    <div id="modal-del-btn" style="display:none;">
+                        <button class="sys-btn" style="color:red;"
+                            onclick="deleteEvent(editingEventId); document.getElementById('modal-overlay').style.display='none'">Delete</button>
+                    </div>
+                    <button class="sys-btn" onclick="document.getElementById('modal-overlay').style.display='none'"
+                        data-i18n="btn.cancel">Cancel</button>
+                </div>
             </div>
-            <div class="modal-btns">
-                <button class="sys-btn" onclick="saveNativeEvent()" data-i18n="btn.save">Save</button>
-                <button class="sys-btn" onclick="document.getElementById('modal-overlay').style.display='none'"
-                    data-i18n="btn.cancel">Cancel</button>
+        </div>
+    </div>
+    </div>
+
+    <!-- CALENDAR LIST MODAL -->
+    <div id="calendar-list-modal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:10002; align-items:center; justify-content:center;">
+        <div class="modal-box window-style">
+            <div class="title-bar">
+                <div class="title-stripes"></div>
+                <span class="title-text">Calendars</span>
+                <div class="close-box" onclick="document.getElementById('calendar-list-modal').style.display='none'">X
+                </div>
+            </div>
+            <div class="modal-content">
+                <div id="calendar-list-container" style="max-height: 300px; overflow-y: auto; text-align: left;">
+                    <!-- Checkboxes injected here -->
+                </div>
+                <div class="modal-btns">
+                    <button class="sys-btn" onclick="saveCalendarSelection()">Save</button>
+                    <button class="sys-btn"
+                        onclick="document.getElementById('calendar-list-modal').style.display='none'">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
@@ -732,7 +875,7 @@
 
         // --- GOOGLE CONFIG ---
         const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
-        const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar';
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 
         let googleEnabled = false;
@@ -780,9 +923,11 @@
         }
 
         // --- STATE ---
-        let events = []; // Unified structure: { id, title, start: Date }
+        let events = []; // Unified structure: { id, title, start: Date, calendarId: String }
         let currentView = 'agenda';
         let viewDate = getZonedDate(); // Tracks currently viewed month/day
+        let calendars = []; // [{id, summary, primary, selected}]
+        let selectedCalendarIds = [];
 
         // --- INIT ---
         window.onload = function () {
@@ -796,20 +941,19 @@
             // Configure for Safari/Mac compatibility (fixes CORS errors)
 
             if (db.settings) {
-
                 try {
-
                     db.settings({
-
                         experimentalForceLongPolling: true,
-
                         merge: true
-
                     });
-
                 } catch (e) { console.warn("Settings error:", e); }
-
             }
+
+            // Load saved calendar selection
+            try {
+                const saved = localStorage.getItem('rekindle_selected_calendars');
+                if (saved) selectedCalendarIds = JSON.parse(saved);
+            } catch (e) { console.error("Error loading saved calendars", e); }
 
 
             // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
@@ -870,6 +1014,7 @@
         }
 
         window.onfocus = function () {
+            // refreshData(); // Auto-refresh? Maybe too aggressive
         };
 
         function switchView(view) {
@@ -976,10 +1121,12 @@
                     }
 
                     // Add delete button only for Native mode (not google, not caldav)
-                    const isReadOnly = googleEnabled || calDavUrl;
-                    const delBtn = (!isReadOnly) ? `<span class="del-event-btn" onclick="deleteEvent('${e.id}')">×</span>` : '';
+                    // For Google, we allow delete but it syncs
+                    const canDelete = googleEnabled || (!calDavUrl);
+
+                    const delBtn = (canDelete) ? `<span class="del-event-btn" onclick="deleteEvent('${e.id}', '${e.calendarId || ''}')">×</span>` : '';
                     html += `
-                        <div class="event">
+                        <div class="event" onclick="editEvent('${e.id}')" style="cursor:pointer">
                             <div class="event-time">${timeStr}</div>
                             <div class="event-title">${e.title}</div>
                             ${delBtn}
@@ -1054,7 +1201,7 @@
                 const maxEvents = 4;
                 for (let j = 0; j < Math.min(dayEvents.length, maxEvents); j++) {
                     const evt = dayEvents[j];
-                    eventsHtml += `<div class="month-event">${evt.title}</div>`;
+                    eventsHtml += `<div class="month-event" onclick="editEvent('${evt.id}', event)">${evt.title}</div>`;
                 }
                 if (dayEvents.length > maxEvents) {
                     eventsHtml += `<div class="month-event" style="text-align:center;">+${dayEvents.length - maxEvents} more</div>`;
@@ -1120,7 +1267,7 @@
                                 const endStr = e.end ? formatZonedTime(e.end) : formatZonedTime(new Date(new Date(e.start).getTime() + 3600000));
                                 timeStr = `${startStr} – ${endStr}`;
                             }
-                            eventHtml += `<div class="day-event-chip">${timeStr} - ${e.title}</div>`;
+                            eventHtml += `<div class="day-event-chip" onclick="editEvent('${e.id}')" style="cursor:pointer">${timeStr} - ${e.title}</div>`;
                         });
 
                         slot.innerHTML = `
@@ -1155,6 +1302,9 @@
         // ==========================================
         function initGoogleMode() {
             document.getElementById('app-title').innerText = "Calendar (Google)";
+            document.getElementById('add-btn').style.display = 'block'; // Ensure add button is shown
+            document.getElementById('cal-list-btn-bottom').style.display = 'inline-block'; // Show calendar list button
+
             gapi.load('client', async () => {
                 try {
                     await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
@@ -1168,21 +1318,19 @@
                         window.history.replaceState({}, document.title, window.location.pathname);
                         gapi.client.setToken({ access_token: newAccessToken });
                         document.getElementById('auth-overlay').style.display = 'none';
+                        await loadCalendarList(); // Fetch list first
                         await loadGoogleEvents();
                     } else {
                         const token = localStorage.getItem('google_calendar_token');
                         if (token) {
                             gapi.client.setToken({ access_token: token });
                             document.getElementById('auth-overlay').style.display = 'none';
+                            await loadCalendarList(); // Fetch list first
                             await loadGoogleEvents();
                         } else {
                             // Auto-login logic
                             if (!location.hash.includes('error=')) {
-                                // Show connecting state
                                 document.getElementById('auth-overlay').style.display = 'flex';
-                                document.querySelector('#auth-overlay h2').innerText = "Redirecting...";
-                                document.querySelector('#auth-overlay p').innerText = "Refreshing Google Session";
-                                oauthSignIn();
                             } else {
                                 document.getElementById('auth-overlay').style.display = 'flex';
                             }
@@ -1195,12 +1343,88 @@
             });
         }
 
+        async function loadCalendarList() {
+            try {
+                const res = await gapi.client.calendar.calendarList.list();
+                calendars = res.result.items;
+
+                // If no selection yet, select primary by default
+                if (selectedCalendarIds.length === 0) {
+                    const primary = calendars.find(c => c.primary);
+                    if (primary) selectedCalendarIds.push(primary.id);
+                }
+
+                // Clean up selection (remove ids that no longer exist)
+                selectedCalendarIds = selectedCalendarIds.filter(id => calendars.find(c => c.id === id));
+                localStorage.setItem('rekindle_selected_calendars', JSON.stringify(selectedCalendarIds));
+
+            } catch (e) {
+                console.error("Error loading calendar list", e);
+                if (e.status === 401 || e.status === 403) {
+                    handleUnauthorized();
+                }
+            }
+        }
+
+        function openCalendarListModal() {
+            const container = document.getElementById('calendar-list-container');
+            container.innerHTML = '';
+
+            calendars.forEach(cal => {
+                const div = document.createElement('div');
+                div.style.padding = '8px';
+                div.style.borderBottom = '1px solid #ccc';
+                div.style.display = 'flex';
+                div.style.alignItems = 'center';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.style.marginRight = '10px';
+                checkbox.style.width = 'auto'; // override default full width
+                checkbox.value = cal.id;
+                if (selectedCalendarIds.includes(cal.id)) checkbox.checked = true;
+
+                const label = document.createElement('span');
+                label.innerText = cal.summaryOverride || cal.summary;
+
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                container.appendChild(div);
+            });
+
+            document.getElementById('calendar-list-modal').style.display = 'flex';
+        }
+
+        function saveCalendarSelection() {
+            const checkboxes = document.querySelectorAll('#calendar-list-container input[type="checkbox"]');
+            selectedCalendarIds = [];
+            checkboxes.forEach(cb => {
+                if (cb.checked) selectedCalendarIds.push(cb.value);
+            });
+            localStorage.setItem('rekindle_selected_calendars', JSON.stringify(selectedCalendarIds));
+            document.getElementById('calendar-list-modal').style.display = 'none';
+            loadGoogleEvents();
+        }
+
         function oauthSignIn() {
             const endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
             const form = document.createElement('form');
             form.setAttribute('method', 'GET');
             form.setAttribute('action', endpoint);
+            // Updated scope to include calendar.readonly for list? No, events scope covers it usually, but let's check.
+            // https://www.googleapis.com/auth/calendar.events is enough for read/write events.
+            // We might need https://www.googleapis.com/auth/calendar.readonly to list calendars?
+            // Actually 'https://www.googleapis.com/auth/calendar' is full access.
+            // Let's stick with specific scopes. 
+            // We need 'https://www.googleapis.com/auth/calendar.readonly' or 'https://www.googleapis.com/auth/calendar' to list calendars if events scope isn't enough.
+            // 'https://www.googleapis.com/auth/calendar.events' allows "View and edit events on all your calendars"
+            // We probably need 'https://www.googleapis.com/auth/calendar.readonly' to list the calendars themselves.
+            // Let's add it to be safe, or just use the big one if we want full control.
+            // But per previous code, we just had SCOPES const. Let's update SCOPES const if needed.
+            // For now, let's assume valid scope.
+
             const params = { 'client_id': CLIENT_ID, 'redirect_uri': window.location.href.split('#')[0], 'response_type': 'token', 'scope': SCOPES };
+
             for (var p in params) {
                 var input = document.createElement('input');
                 input.setAttribute('type', 'hidden');
@@ -1231,36 +1455,59 @@
 
         async function loadGoogleEvents() {
             document.getElementById('status-msg').innerText = "Syncing...";
+
+            if (selectedCalendarIds.length === 0) {
+                events = [];
+                renderView();
+                document.getElementById('status-msg').innerText = "No calendar selected.";
+                return;
+            }
+
             try {
-                // Fetch a broader range for month view (e.g., current month +/- 1)
-                // For simplicity, we just fetch a bunch of events starting from "now"
-                // Ideally, this should refetch when changing months, but static load is safer for rate limits
-                const res = await gapi.client.calendar.events.list({
-                    'calendarId': 'primary',
-                    'timeMin': (new Date(getZonedDate().setMonth(getZonedDate().getMonth() - 1))).toISOString(), // 1 month ago
-                    'showDeleted': false,
-                    'singleEvents': true,
-                    'maxResults': 200,
-                    'orderBy': 'startTime'
-                });
+                let allEvents = [];
 
-                events = (res.result.items || []).map(i => {
-                    let start;
-                    if (i.start.date) {
-                        // All-day event (YYYY-MM-DD). Use target zone midnight.
-                        start = getUTCFromWallClock(i.start.date, '00:00');
-                    } else {
-                        // Timed event (ISO string)
-                        start = i.start.dateTime;
+                // Fetch from all selected calendars in parallel
+                const promises = selectedCalendarIds.map(async (calId) => {
+                    try {
+                        const res = await gapi.client.calendar.events.list({
+                            'calendarId': calId,
+                            'timeMin': (new Date(getZonedDate().setMonth(getZonedDate().getMonth() - 1))).toISOString(), // 1 month ago
+                            'showDeleted': false,
+                            'singleEvents': true,
+                            'maxResults': 100, // Reduced per calendar to avoid huge lists
+                            'orderBy': 'startTime'
+                        });
+
+                        return (res.result.items || []).map(i => {
+                            let start;
+                            if (i.start.date) {
+                                // All-day event (YYYY-MM-DD). Use target zone midnight.
+                                start = getUTCFromWallClock(i.start.date, '00:00');
+                            } else {
+                                // Timed event (ISO string)
+                                start = i.start.dateTime;
+                            }
+
+                            return {
+                                id: i.id,
+                                title: i.summary,
+                                start: start,
+                                isAllDay: !!i.start.date,
+                                calendarId: calId // Store origin calendar
+                            };
+                        });
+                    } catch (err) {
+                        console.warn(`Failed to fetch for ${calId}`, err);
+                        return [];
                     }
-
-                    return {
-                        id: i.id,
-                        title: i.summary,
-                        start: start,
-                        isAllDay: !!i.start.date
-                    };
                 });
+
+                const results = await Promise.all(promises);
+                results.forEach(items => {
+                    allEvents = allEvents.concat(items);
+                });
+
+                events = allEvents;
                 renderView();
                 document.getElementById('status-msg').innerText = "Synced.";
             } catch (e) {
@@ -1282,11 +1529,23 @@
             // If CalDAV is set, hide Add button (read-only)
             if (calDavUrl) {
                 document.getElementById('add-btn').style.display = 'none';
+                document.getElementById('cal-list-btn-bottom').style.display = 'none';
                 loadCalDAVEvents();
             } else {
+                // Enabled for Native AND Google now
                 document.getElementById('add-btn').style.display = 'block';
-                if (currentUser) loadCloudEvents();
-                else loadLocalEvents();
+                document.getElementById('cal-list-btn-bottom').style.display = 'none';
+
+                if (googleEnabled) {
+                    // Already loaded by initGoogleMode
+                    // But if we came here via toggle or error, re-show tools if applicable
+                    document.getElementById('cal-list-btn-bottom').style.display = 'inline-block';
+                } else if (currentUser) {
+                    loadCloudEvents();
+                }
+                else {
+                    loadLocalEvents();
+                }
             }
         }
 
@@ -1306,6 +1565,7 @@
                     renderView();
                 });
         }
+
 
         async function loadCalDAVEvents() {
             document.getElementById('status-msg').innerText = "Fetching CalDAV...";
@@ -1391,7 +1651,13 @@
             return eventsFound;
         }
 
+        let editingEventId = null;
+        let editingCalendarId = null; // Store which calendar the event belongs to
+
         function openAddModal() {
+            editingEventId = null;
+            editingCalendarId = null;
+            document.getElementById('modal-title').innerText = "New Event";
             document.getElementById('modal-overlay').style.display = 'flex';
             document.getElementById('evt-title').value = '';
             // Default to currently viewed date if in month/day view
@@ -1399,64 +1665,270 @@
             document.getElementById('evt-date').value = defaultDate;
             document.getElementById('evt-time').value = '';
             document.getElementById('evt-end-time').value = '';
+            document.getElementById('modal-del-btn').style.display = 'none'; // New event = no delete option in modal
+
+            // Populate Calendar Dropdown
+            const calSelect = document.getElementById('evt-calendar-select');
+            const calGroup = document.getElementById('calendar-select-group');
+            calSelect.innerHTML = '';
+
+            if (googleEnabled && calendars.length > 0) {
+                calGroup.style.display = 'flex';
+                // Filter to only writable calendars? For now, list all selected ones or all writable ones?
+                // Ideally list all writable calendars.
+                // gapi calendar list includes 'accessRole'. 'owner', 'writer' are good.
+
+                // For simplicity, list all calendars we have metadata for.
+                calendars.forEach(c => {
+                    // Check access role if available, or assume writable if primary
+                    // We'll just list them all and let API fail if read-only
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.innerText = c.summaryOverride || c.summary;
+                    if (c.primary) opt.selected = true;
+                    calSelect.appendChild(opt);
+                });
+            } else {
+                calGroup.style.display = 'none';
+            }
         }
 
-        function saveNativeEvent() {
+        function editEvent(id, calendarId, e) {
+            // Check if e is the second arg (click event) or third (calendarId was passed)
+            // The HTML onclicks were: editEvent('id') or editEvent('id', event)
+            // We changed render to: editEvent('id', 'calId') (in agenda) or editEvent('id', event) (in month?)
+
+            // Let's normalize. renderAgenda passes: editEvent('${e.id}', '${e.calendarId || ''}') -> this refers to deleteEvent actually.
+            // Wait, I updated renderAgenda to: onclick="editEvent('${e.id}')"
+            // And renderMonthView: onclick="editEvent('${evt.id}', event)"
+
+            // So editEvent signature is still (id, event) mostly.
+            // But we need to find the event object to know its calendarId.
+
+            // If called as editEvent(id, event)
+            if (typeof calendarId === 'object' && calendarId.stopPropagation) {
+                e = calendarId;
+                calendarId = null;
+            }
+
+            if (e) e.stopPropagation(); // prevent day click
+
+            const evt = events.find(x => x.id === id);
+            if (!evt) return;
+
+            editingEventId = id;
+            editingCalendarId = evt.calendarId; // Get from event object
+
+            document.getElementById('modal-title').innerText = "Edit Event";
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-del-btn').style.display = 'block';
+
+            document.getElementById('evt-title').value = evt.title;
+
+            // Calendar Select logic
+            const calSelect = document.getElementById('evt-calendar-select');
+            const calGroup = document.getElementById('calendar-select-group');
+
+            if (googleEnabled && calendars.length > 0) {
+                calGroup.style.display = 'flex';
+                calSelect.innerHTML = '';
+                calendars.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.innerText = c.summaryOverride || c.summary;
+                    if (c.id === editingCalendarId) opt.selected = true;
+                    calSelect.appendChild(opt);
+                });
+                // If editing, maybe disable changing calendar? 
+                // Moving events between calendars is a move operation. 
+                // For MVP, just let them see it. Changing it implies move.
+                // allow changing.
+            } else {
+                calGroup.style.display = 'none';
+            }
+
+
+            // Parsing start/end for the inputs
+            const startZoned = getZonedDate(new Date(evt.start));
+            document.getElementById('evt-date').value = startZoned.toISOString().split('T')[0]; // YYYY-MM-DD
+
+            if (evt.isAllDay) {
+                document.getElementById('evt-time').value = '';
+                document.getElementById('evt-end-time').value = '';
+            } else {
+                // Format HH:mm
+                const pad = n => n.toString().padStart(2, '0');
+                document.getElementById('evt-time').value = pad(startZoned.getHours()) + ':' + pad(startZoned.getMinutes());
+
+                if (evt.end) {
+                    const endZoned = getZonedDate(new Date(evt.end));
+                    document.getElementById('evt-end-time').value = pad(endZoned.getHours()) + ':' + pad(endZoned.getMinutes());
+                } else {
+                    document.getElementById('evt-end-time').value = '';
+                }
+            }
+        }
+
+        async function saveEvent() {
             const title = document.getElementById('evt-title').value;
             const date = document.getElementById('evt-date').value;
             const time = document.getElementById('evt-time').value;
             const endTime = document.getElementById('evt-end-time').value;
+            const targetCalendarId = document.getElementById('evt-calendar-select').value;
 
             if (!title || !date) return showModal("Title and Date required");
 
             let isAllDay = false;
             let startDateTime, endDateTime;
+            let googleStart, googleEnd;
 
             if (!time) {
                 isAllDay = true;
                 // Treat as all day
                 startDateTime = getUTCFromWallClock(date, "00:00");
-                // End is next day 00:00 for storage consistency? Or just null if we handle it
-                // Let's increment date by 1 for end
+
+                // For Google, all-day is just date string YYYY-MM-DD
+                googleStart = { date: date };
+
+                // End is next day
                 const d = new Date(date);
                 d.setDate(d.getDate() + 1);
-                // Simple YYYY-MM-DD next day
                 const nextDay = d.toISOString().split('T')[0];
+
                 endDateTime = getUTCFromWallClock(nextDay, "00:00");
+                googleEnd = { date: nextDay };
             } else {
                 startDateTime = getUTCFromWallClock(date, time);
+
+                // For Google DateTime
+                googleStart = { dateTime: startDateTime };
+
                 if (endTime) {
-                    endDateTime = getUTCFromWallClock(date, endTime); // Assume same day for simplicity in this Basic UI
+                    endDateTime = getUTCFromWallClock(date, endTime);
+                    googleEnd = { dateTime: endDateTime };
                 } else {
                     // Default 1 hour
                     const s = new Date(startDateTime);
                     s.setHours(s.getHours() + 1);
                     endDateTime = s.toISOString();
+                    googleEnd = { dateTime: endDateTime };
                 }
             }
 
             const newEvt = { title: title, start: startDateTime, end: endDateTime, isAllDay: isAllDay };
 
-            if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('events').add(newEvt);
-            } else {
-                newEvt.id = Date.now().toString();
-                events.push(newEvt);
-                localStorage.setItem('rekindle_events_local', JSON.stringify(events));
-                renderView();
-            }
-            document.getElementById('modal-overlay').style.display = 'none';
-        }
+            try {
+                if (googleEnabled) {
+                    const resource = {
+                        summary: title,
+                        start: googleStart,
+                        end: googleEnd
+                    };
 
-        function deleteEvent(id) {
-            showModal("Delete event?", true, (confirmed) => {
-                if (!confirmed) return;
-                if (currentUser) {
-                    db.collection('users').doc(currentUser.uid).collection('events').doc(id).delete();
+                    // Determine which calendar to save to
+                    // If editing, try to use original calendar unless changed?
+                    // If changed, we need to move it (delete + insert) or use move API.
+                    // Simplified: Use targetCalendarId from dropdown using move API if edited.
+
+                    const calId = targetCalendarId || 'primary';
+
+                    document.getElementById('status-msg').innerText = "Saving to Google...";
+
+                    if (editingEventId) {
+                        // Update
+                        if (editingCalendarId && editingCalendarId !== calId) {
+                            // Move event
+                            await gapi.client.calendar.events.move({
+                                calendarId: editingCalendarId,
+                                eventId: editingEventId,
+                                destination: calId
+                            });
+                            // Then update details
+                            await gapi.client.calendar.events.update({
+                                calendarId: calId,
+                                eventId: editingEventId,
+                                resource: resource
+                            });
+                        } else {
+                            // Just update
+                            await gapi.client.calendar.events.update({
+                                calendarId: calId,
+                                eventId: editingEventId,
+                                resource: resource
+                            });
+                        }
+                    } else {
+                        // Insert
+                        await gapi.client.calendar.events.insert({
+                            calendarId: calId,
+                            resource: resource
+                        });
+                    }
+
+                    document.getElementById('modal-overlay').style.display = 'none';
+                    await loadGoogleEvents(); // Refresh
+                } else if (currentUser) {
+                    if (editingEventId) {
+                        db.collection('users').doc(currentUser.uid).collection('events').doc(editingEventId).update(newEvt);
+                    } else {
+                        db.collection('users').doc(currentUser.uid).collection('events').add(newEvt);
+                    }
+                    document.getElementById('modal-overlay').style.display = 'none';
                 } else {
-                    events = events.filter(e => e.id !== id);
+                    if (editingEventId) {
+                        const idx = events.findIndex(e => e.id === editingEventId);
+                        if (idx !== -1) {
+                            newEvt.id = editingEventId;
+                            events[idx] = newEvt;
+                        }
+                    } else {
+                        newEvt.id = Date.now().toString();
+                        events.push(newEvt);
+                    }
                     localStorage.setItem('rekindle_events_local', JSON.stringify(events));
                     renderView();
+                    document.getElementById('modal-overlay').style.display = 'none';
+                }
+            } catch (e) {
+                console.error(e);
+                showModal("Error saving event: " + e.message);
+                document.getElementById('status-msg').innerText = "Error saving.";
+            }
+        }
+
+        async function deleteEvent(id, calendarId) {
+            showModal("Delete event?", true, async (confirmed) => {
+                if (!confirmed) return;
+
+                try {
+                    if (googleEnabled) {
+                        document.getElementById('status-msg').innerText = "Deleting...";
+
+                        // Use passed calendarId (from delete btn) or look it up
+                        let targetCalId = calendarId;
+                        if (!targetCalId) {
+                            // Try find in events
+                            const evt = events.find(e => e.id === id);
+                            if (evt) targetCalId = evt.calendarId;
+                        }
+
+                        if (!targetCalId) targetCalId = 'primary'; // Fallback
+
+                        await gapi.client.calendar.events.delete({
+                            calendarId: targetCalId,
+                            eventId: id
+                        });
+                        await loadGoogleEvents();
+                    } else if (currentUser) {
+                        db.collection('users').doc(currentUser.uid).collection('events').doc(id).delete();
+                    } else {
+                        events = events.filter(e => e.id !== id);
+                        localStorage.setItem('rekindle_events_local', JSON.stringify(events));
+                        renderView();
+                    }
+                } catch (e) {
+                    console.error(e);
+                    showModal("Error deleting: " + e.message);
                 }
             });
         }
