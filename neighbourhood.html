@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Neighbourhood</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -92,6 +93,32 @@
         }
 
         .close-box:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            background: black;
+            color: white;
+        }
+
+        .back-box {
+            position: absolute;
+            left: 35px;
+            width: auto;
+            padding: 0 5px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .back-box:active {
             box-shadow: none;
             transform: translate(1px, 1px);
             background: black;
@@ -599,6 +626,7 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div id="back-box" class="back-box" onclick="goBack()">Back</div>
             <span class="title-text" data-i18n="neighbourhood.title">Neighbourhood <small
                     style="font-size: 0.6em; opacity: 0.7;" data-i18n="neighbourhood.beta"> (BETA)</small></span>
             <div id="admin-toggle-container" style="display:none; position: absolute; right: 10px; z-index: 5;">
@@ -1110,7 +1138,18 @@
                 fetchSupporters().then(() => {
                     renderSuggestedInterests();
                     initAdminTools(user);
-                    loadPosts();
+
+                    // DEEP LINK CHECK
+                    const params = new URLSearchParams(window.location.search);
+                    const uid = params.get('uid');
+                    if (uid) {
+                        // Switch to 'Find' tab which contains the view profile logic
+                        // We actually need to load the user profile into the view
+                        switchTab('list');
+                        loadOtherUserProfile(uid);
+                    } else {
+                        loadPosts();
+                    }
                 });
                 loadMyProfile();
             } else {
@@ -1372,6 +1411,32 @@
                 });
         }
 
+        function loadOtherUserProfile(uid) {
+            // If it's me, just switch to profile tab
+            if (currentUser && uid === currentUser.uid) {
+                switchTab('profile');
+                return;
+            }
+
+            db.ref('users_public/' + uid).once('value').then(snap => {
+                const user = snap.val();
+                if (!user) {
+                    showAlertModal("User not found.");
+                    switchTab('posts');
+                    return;
+                }
+                // Manually activate profile tab UI but populate with other user
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+                document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+                document.getElementById('view-profile').classList.add('active');
+
+                // Render
+                user.uid = uid; // Ensure uid is present
+                renderProfileView(user, false); // false = not me
+            });
+        }
+
         // KINDLE NAME HELPER
         function getKindleName(user) {
             if (!user) return 'Anonymous';
@@ -1602,7 +1667,7 @@
             topicsSection.style.display = 'none'; // Hide until loaded
 
             topicsSection.innerHTML = `<div class="header-sep" data-i18n="neighbourhood.header.fav_topics">Favorite Topics</div>
-                                       <div id="profile-view-topics-list" style="display:flex; flex-wrap:wrap; gap:10px;"></div>`;
+                                       <div id="profile-view-topics-list" style="display:flex; flex-wrap:wrap;"></div>`;
 
             // Insert after interests
             interestsContainer.parentNode.insertBefore(topicsSection, interestsContainer.nextSibling);
@@ -1627,13 +1692,15 @@
                         item.className = 'topic-pill'; // We need to style this or reuse social-pill
                         item.style.display = 'flex';
                         item.style.alignItems = 'center';
-                        item.style.gap = '5px';
+                        // item.style.gap = '5px'; REMOVED KINDLE
                         item.style.border = '1px solid black';
                         item.style.padding = '4px 8px';
                         item.style.borderRadius = '15px';
                         item.style.cursor = 'pointer';
                         item.style.backgroundColor = 'white';
                         item.style.fontSize = '0.85rem';
+                        item.style.marginRight = '10px';
+                        item.style.marginBottom = '10px';
 
                         // Icon
                         let iconSvg = ''; // Default?
@@ -1652,6 +1719,7 @@
                         // Extract SVG content and size it down
                         // Using a small div wrapper
                         const iconDiv = document.createElement('div');
+                        iconDiv.style.marginRight = '5px';
                         iconDiv.style.width = '14px';
                         iconDiv.style.height = '14px';
                         iconDiv.innerHTML = iconSvg;
@@ -1686,8 +1754,8 @@
             pill.className = 'interest-pill';
             pill.style.display = 'flex';
             pill.style.alignItems = 'center';
-            pill.style.gap = '5px';
-            pill.innerHTML = `<span>Loading...</span> <span>${escapeHtml(tag)}</span>`;
+            // pill.style.gap = '5px'; REMOVED KINDLE
+            pill.innerHTML = `<span>Loading...</span> <span style="margin-left:5px;">${escapeHtml(tag)}</span>`;
 
             // Fetch icon
             try {
@@ -1699,7 +1767,7 @@
                     const svgRes = await fetch(iconUrl);
                     const svgText = await svgRes.text();
 
-                    pill.innerHTML = `<div style="width:16px; height:16px; display:flex;">${svgText}</div><div>${escapeHtml(tag)}</div>`;
+                    pill.innerHTML = `<div style="width:16px; height:16px; display:flex; margin-right:5px;">${svgText}</div><div>${escapeHtml(tag)}</div>`;
                     const svg = pill.querySelector('svg');
                     if (svg) {
                         svg.style.width = '100%';
@@ -1708,11 +1776,11 @@
                     }
                 } else {
                     // No icon found
-                    pill.innerHTML = `<span>•</span> <span>${escapeHtml(tag)}</span>`;
+                    pill.innerHTML = `<span>•</span> <span style="margin-left:5px;">${escapeHtml(tag)}</span>`;
                 }
             } catch (e) {
                 console.error("Icon fetch failed", e);
-                pill.innerHTML = `<span>•</span> <span>${escapeHtml(tag)}</span>`;
+                pill.innerHTML = `<span>•</span> <span style="margin-left:5px;">${escapeHtml(tag)}</span>`;
             }
             container.appendChild(pill);
         }
@@ -2682,8 +2750,8 @@
             let adminControls = '';
             if (isAdminMode) {
                 adminControls = `
-                <div style="position:absolute; top:5px; right:5px; display:flex; gap:5px; z-index:10;">
-                    <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem;" onclick="editPost('${post.id}')">Edit</button>
+                <div style="position:absolute; top:5px; right:5px; display:flex; z-index:10;">
+                    <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; margin-right:5px;" onclick="editPost('${post.id}')">Edit</button>
                     <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; background:black; color:white;" onclick="deletePost('${post.id}')">Del</button>
                 </div>
                 `;
@@ -2710,9 +2778,9 @@
                     <canvas id="${avatarId}" class="avatar-canvas" width="48" height="48" style="width:48px; height:48px; border:2px solid black; image-rendering:pixelated; flex-shrink:0; cursor:pointer; margin-right:10px;"></canvas>
                     <div style="flex:1; min-width:0;">
                          <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                            <div style="display:flex; align-items:center; gap:4px; cursor:pointer;" onclick="openUserProfile('${post.uid}')">
-                                ${nameBadge}
-                                <strong style="font-size:0.95rem;">${escapeHtml(dName)}</strong>
+                            <div style="display:flex; align-items:center; cursor:pointer;" onclick="openUserProfile('${post.uid}')">
+                                ${nameBadge ? `<span style="margin-right:4px; display:flex; align-items:center;">${nameBadge}</span>` : ''}
+                                <strong style="font-size:0.95rem; margin-right:4px;">${escapeHtml(dName)}</strong>
                                 ${handleHtml}
                             </div>
                             <small style="color:#666; font-size:0.75rem; margin-right:${isAdminMode ? '70px' : '0'};">${timeStr}</small>
@@ -3014,6 +3082,24 @@
             const modal = document.getElementById('alert-modal');
             if (modal) modal.style.display = 'none';
         }
+        function goBack() {
+            var params = new URLSearchParams(window.location.search);
+            var from = params.get('from');
+            if (from === 'kindlechat') {
+                window.location.href = 'kindlechat.html';
+            } else {
+                window.location.href = 'topics.html';
+            }
+        }
+
+        // Init Check for Back Button
+        (function () {
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('from') === 'topics' || params.get('from') === 'kindlechat') {
+                var btn = document.getElementById('back-box');
+                if (btn) btn.style.display = 'flex';
+            }
+        })();
     </script>
     <!-- PUBLIC PROFILE MODAL -->
     <div id="public-profile-modal" class="modal-overlay"
