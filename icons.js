@@ -54,7 +54,6 @@ const APPS = [
         id: 'scores',
         name: 'Scores',
         cat: 'essentials',
-        beta: true,
         icon: '<path d="M8 8 H24 L21 18 H11 Z" fill="none" stroke="black" stroke-width="2"/><path d="M16 18 V24 M12 24 H20" stroke="black" stroke-width="2"/><path d="M8 10 C4 10 4 15 8 15" fill="none" stroke="black" stroke-width="2"/><path d="M24 10 C28 10 28 15 24 15" fill="none" stroke="black" stroke-width="2"/>'
     },
 
@@ -223,7 +222,6 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 6,
-        newBadge: true,
         desc: 'Post & make connections',
         icon: '<g transform="translate(0, 3)"><rect x="16" y="3" width="2" height="9" fill="black"/><path d="M12 3 L2 12 H5 V22 H19 V12 H22 L12 3 Z" fill="white" stroke="black" stroke-width="2"/><path d="M2 22 H22" stroke="black" stroke-width="2"/></g>'
     },
@@ -233,7 +231,6 @@ const APPS = [
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 5,
-        newBadge: true,
         desc: 'Discuss anything!',
         icon: '<g transform="translate(0, 3)"><path d="M3 3 h18 a2 2 0 0 1 2 2 v6 a2 2 0 0 1 -2 2 h-6 l-3 3 l-3 -3 h-6 a2 2 0 0 1 -2 -2 v-6 a2 2 0 0 1 2 -2 z" fill="white" stroke="black" stroke-width="2"/><circle cx="5" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M2 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="19" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M16 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="20" r="3" fill="white" stroke="black" stroke-width="2"/><path d="M9 25 q3 -4 6 0" fill="white" stroke="black" stroke-width="2"/></g>'
     },
@@ -265,7 +262,6 @@ const APPS = [
         id: 'interactive',
         name: 'Interactive Reader',
         cat: 'lifestyle',
-        beta: true,
         desc: 'Choose Your Own Adventure',
         icon: '<path d="M6 4 h18 v24 h-18 z" fill="none" stroke="black" stroke-width="2"/><line x1="6" y1="4" x2="4" y2="6"/><line x1="4" y1="6" x2="4" y2="28"/><line x1="4" y1="28" x2="6" y2="26"/><path d="M10 16 L21 16 M18 13 L21 16 L18 19" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 8 M14 9 L18 8 L17 11" stroke="black" stroke-width="1.5" fill="none"/><path d="M10 16 Q13 16 18 24 M14 23 L18 24 L17 21" stroke="black" stroke-width="1.5" fill="none"/>'
     },
@@ -295,6 +291,14 @@ const APPS = [
         name: 'Habit Tracker',
         cat: 'lifestyle',
         icon: '<rect x="4" y="12" width="10" height="8"/><rect x="18" y="12" width="10" height="8"/><line x1="14" y1="16" x2="18" y2="16"/>'
+    },
+    {
+        id: 'life',
+        name: 'Life Calendar',
+        cat: 'lifestyle',
+        newBadge: true,
+        icon: '<g><circle cx="6" cy="6" r="3" fill="black"/><circle cx="16" cy="6" r="3" fill="black"/><circle cx="26" cy="6" r="3" fill="black"/><circle cx="6" cy="16" r="3" fill="black"/><circle cx="16" cy="16" r="3" fill="black"/><circle cx="26" cy="16" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="6" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="16" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="26" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/></g>',
+        desc: 'Memento Mori.'
     },
     {
         id: 'history',
@@ -343,7 +347,6 @@ const APPS = [
         featured: true,
         filled: true,
         featuredOrder: 2,
-        newBadge: true,
         desc: 'Stacks on, Stacks off',
         icon: '<rect x="6" y="5" width="20" height="4" fill="black"/><rect x="6" y="11" width="20" height="4" fill="black"/><path d="M6 17 h20 v11 l-10 -6 l-10 6 z" fill="black"/>'
     },
@@ -393,7 +396,6 @@ const APPS = [
         id: 'chords',
         name: 'Chords',
         cat: 'lifestyle',
-        beta: true,
         desc: 'Search and save guitar tabs.',
         icon: '<path d="M10 22 V 6 L 26 2 V 18 M 10 6 L 26 2" fill="none" stroke="black" stroke-width="2"/><ellipse cx="7" cy="22" rx="3.5" ry="2.5" fill="black" transform="rotate(-30, 7, 22)"/><ellipse cx="23" cy="18" rx="3.5" ry="2.5" fill="black" transform="rotate(-30, 23, 18)"/>'
     },
@@ -546,7 +548,6 @@ const APPS = [
         id: 'dino',
         name: 'Dino',
         cat: 'games',
-        newBadge: true,
         filled: true,
         icon: '<path d="M24 2h16v1h-16zM24 3h16v1h-16zM22 4h20v1h-20zM22 5h4v1h-4zM28 5h14v1h-14zM22 6h4v1h-4zM28 6h14v1h-14zM22 7h20v1h-20zM22 8h20v1h-20zM22 9h20v1h-20zM22 10h20v1h-20zM22 11h20v1h-20zM22 12h20v1h-20zM22 13h10v1h-10zM22 14h10v1h-10zM22 15h16v1h-16zM22 16h16v1h-16zM2 17h2v1h-2zM20 17h10v1h-10zM2 18h2v1h-2zM20 18h10v1h-10zM2 19h2v1h-2zM17 19h13v1h-13zM2 20h2v1h-2zM17 20h13v1h-13zM2 21h4v1h-4zM14 21h20v1h-20zM2 22h4v1h-4zM14 22h20v1h-20zM2 23h6v1h-6zM12 23h18v1h-18zM32 23h2v1h-2zM2 24h6v1h-6zM12 24h18v1h-18zM32 24h2v1h-2zM2 25h28v1h-28zM2 26h28v1h-28zM2 27h28v1h-28zM2 28h28v1h-28zM4 29h26v1h-26zM4 30h24v1h-24zM6 31h22v1h-22zM6 32h22v1h-22zM8 33h18v1h-18zM8 34h18v1h-18zM10 35h14v1h-14zM10 36h14v1h-14zM12 37h6v1h-6zM20 37h4v1h-4zM12 38h6v1h-6zM20 38h4v1h-4zM12 39h4v1h-4zM22 39h2v1h-2zM12 40h4v1h-4zM22 40h2v1h-2zM12 41h2v1h-2zM22 41h2v1h-2zM12 42h2v1h-2zM22 42h2v1h-2zM12 43h4v1h-4zM22 43h4v1h-4zM12 44h4v1h-4zM22 44h4v1h-4z" fill="black" shape-rendering="crispEdges"/>',
         viewBox: '0 0 44 47'
@@ -580,7 +581,6 @@ const APPS = [
         id: 'blockblast',
         name: 'Block Blast',
         cat: 'games',
-        newBadge: true,
         icon: '<rect x="12" y="4" width="8" height="8" stroke="black" fill="none" stroke-width="2"/><rect x="4" y="12" width="8" height="8" stroke="black" fill="none" stroke-width="2"/><rect x="20" y="12" width="8" height="8" fill="black"/><rect x="12" y="20" width="8" height="8" fill="black"/>'
     },
     /*     {
@@ -606,7 +606,6 @@ const APPS = [
         id: 'pet',
         name: 'Pet',
         cat: 'games',
-        beta: true,
         filled: true,
         icon: '<g transform="translate(2.27, 2.27) scale(2)" shape-rendering="crispEdges"><g fill="black"><rect x="12.75" y="11.76" width="0.98" height="0.98"/><rect x="12.75" y="10.78" width="0.98" height="0.98"/><rect x="11.77" y="12.74" width="0.98" height="0.98"/><rect x="10.79" y="12.74" width="0.98" height="0.98"/><rect x="8.83" y="11.76" width="0.98" height="0.98"/><rect x="9.81" y="11.76" width="0.98" height="0.98"/><rect x="7.85" y="12.74" width="0.98" height="0.98"/><rect x="5.88" y="12.74" width="0.98" height="0.98"/><rect x="6.86" y="12.74" width="0.99" height="0.98"/><rect x="4.9" y="11.76" width="0.98" height="0.98"/><rect x="5.88" y="11.76" width="0.98" height="0.98"/><rect x="5.88" y="10.78" width="0.98" height="0.98"/><rect x="6.86" y="10.78" width="0.99" height="0.98"/><rect x="7.85" y="9.8" width="0.98" height="0.98"/><rect x="6.86" y="9.8" width="0.99" height="0.98"/><rect x="8.83" y="8.82" width="0.98" height="0.98"/><rect x="9.81" y="8.82" width="0.98" height="0.98"/><rect x="10.79" y="7.84" width="0.98" height="0.98"/><rect x="11.77" y="6.86" width="0.98" height="0.98"/><rect x="11.77" y="5.88" width="0.98" height="0.98"/><rect x="11.77" y="4.9" width="0.98" height="0.98"/><rect x="11.77" y="3.92" width="0.98" height="0.98"/><rect x="11.77" y="2.94" width="0.98" height="0.98"/><rect x="10.79" y="1.96" width="0.98" height="0.98"/><rect x="9.81" y="0.98" width="0.98" height="0.98"/><rect x="8.83" y="1.96" width="0.98" height="0.98"/><rect x="4.9" y="1.96" width="0.98" height="0.98"/><rect x="7.85" width="0.98" height="0.98"/><rect x="8.83" width="0.98" height="0.98"/><rect x="5.88" width="0.98" height="0.98"/><rect x="4.9" width="0.98" height="0.98"/><rect x="6.86" width="0.99" height="0.98"/><rect x="3.92" y="0.98" width="0.98" height="0.98"/><rect x="7.85" y="8.82" width="0.98" height="0.98"/><rect x="5.88" y="8.82" width="0.98" height="0.98"/><rect x="4.9" y="8.82" width="0.98" height="0.98"/><rect x="6.86" y="8.82" width="0.99" height="0.98"/><rect x="3.92" y="7.84" width="0.98" height="0.98"/><rect x="2.94" y="6.86" width="0.98" height="0.98"/><rect x="2.94" y="5.88" width="0.98" height="0.98"/><rect x="1.96" y="5.88" width="0.98" height="0.98"/><rect x="0.98" y="5.88" width="0.98" height="0.98"/><rect x="1.96" y="1.96" width="0.98" height="0.98"/><rect x="2.94" y="1.96" width="0.98" height="0.98"/><rect x="0.98" y="1.96" width="0.98" height="0.98"/><rect y="2.94" width="0.98" height="0.98"/><rect x="1.96" y="3.92" width="0.98" height="0.98"/><rect x="2.94" y="3.92" width="0.98" height="0.98"/><rect x="0.98" y="3.92" width="0.98" height="0.98"/><rect y="4.9" width="0.98" height="0.98"/></g><polygon points="2.94 5.88 3.92 5.88 3.92 7.84 4.9 7.84 4.9 8.82 10.79 8.82 10.79 7.84 11.77 7.84 11.77 2.94 10.79 2.94 10.79 1.96 9.81 1.96 9.81 2.94 8.83 2.94 8.83 1.96 9.81 1.96 9.81 0.98 8.83 0.98 7.85 0.98 6.86 0.98 5.88 0.98 4.9 0.98 4.9 1.96 5.88 1.96 5.88 2.94 4.9 2.94 4.9 1.96 3.92 1.96 3.92 2.94 2.94 2.94 1.96 2.94 0.98 2.94 0.98 3.92 1.96 3.92 2.94 3.92 3.92 3.92 3.92 4.9 2.94 4.9 1.96 4.9 0.98 4.9 0.98 5.88 1.96 5.88 2.94 5.88" fill="white"/></g>',
         viewBox: '0 0 32 32'
@@ -615,7 +614,6 @@ const APPS = [
         id: 'mario',
         name: 'Mario',
         cat: 'games',
-        beta: true,
         filled: false,
         icon: '<svg viewBox="0 200 600 550"><path d="M263 207v16h-36v65h-36v32H12v65h35v33h36v32h36v65h-18l-18 1v64H65l-18 1v64H30c-17 0-17 0-18 2v62h107v-31h72v-33h72v-32h72v32h72v-32h-18l-17-1-1-16v-16h-72l-72 1v32h-36v32h-36l-35 1-1 16v16H47v-33h36v-65h36v-65h36v-65h-36v-32H83v-16l-1-17H48v-32h180v-65h36v-65h72v64l18 1h18v65h181v32h-36v33h-36v32h-36v65h36v65h36v65h36v16l-1 16-35 1h-36v-16l-1-17h-35l-36 1v31l36 1h36v31h54l53-1 1-29-1-32c0-2 0-2-17-2h-18v-32l-1-32-17-1h-18v-32l-1-32-17-1h-18v-65h36v-32h35l1-17v-16h35l1-32v-32l-91-1h-90v-32h-36v-65h-36v-32h-72v16z" fill="black"/><path d="m228 386-1 49v47l18 1h18v-98h-17l-18 1zm108 0-1 49v47l18 1h18v-98h-17l-18 1z" fill="black"/></svg>'
     },
@@ -671,7 +669,6 @@ const APPS = [
         id: 'doom',
         name: 'DOOM',
         cat: 'games',
-        beta: true,
         desc: 'Rip and Tear',
         // Official Doom logo vector from user provided file (Doom_–_Game’s_logo.svg)
         // Original viewBox: 0 0 1680 869. Scaled down to fit ~30px width.
