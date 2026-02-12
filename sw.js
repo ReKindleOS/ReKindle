@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rekindle-cache-v8'; // Bumped version to force update
+const CACHE_NAME = 'rekindle-cache-v14'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -7,7 +7,9 @@ const ASSETS_TO_CACHE = [
     './logo.svg',
     './discord.svg',
     './donate.svg',
-    './manifest.json'
+    './manifest.json',
+    './fonts/OpenDyslexic-Regular.woff2',
+    './fonts/OpenDyslexic-Bold.woff2'
 ];
 
 // Install Event: Cache core assets
