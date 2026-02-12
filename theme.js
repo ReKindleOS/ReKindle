@@ -193,6 +193,7 @@
         applyRotation();
         applyViewport();
         injectEInkStyles();
+        applyFont();
     }
 
     // Run as soon as possible
@@ -208,6 +209,7 @@
     applyRotation();
     applyViewport();
     injectEInkStyles();
+    applyFont();
 
     // --- VIEWPORT ---
     function applyViewport() {
@@ -346,6 +348,82 @@
 
 
 
+    // --- FONT LOGIC ---
+    var FONT_KEY = 'rekindle_font_opendyslexic'; // 'true', 'false'
+
+    function applyFont() {
+        var enabled = localStorage.getItem(FONT_KEY) === 'true';
+        var doc = document.documentElement;
+
+        if (enabled) {
+            doc.setAttribute('data-font', 'opendyslexic');
+            injectFontStyle();
+        } else {
+            doc.removeAttribute('data-font');
+            removeFontStyle();
+        }
+    }
+
+    function injectFontStyle() {
+        var style = document.getElementById('rekindle-font-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'rekindle-font-style';
+            style.textContent =
+                '@font-face {\n' +
+                '    font-family: "OpenDyslexic";\n' +
+                '    src: url("/fonts/OpenDyslexic-Regular.woff2") format("woff2");\n' +
+                '    font-weight: normal;\n' +
+                '    font-style: normal;\n' +
+                '    size-adjust: 90%;\n' +
+                '}\n' +
+                '@font-face {\n' +
+                '    font-family: "OpenDyslexic";\n' +
+                '    src: url("/fonts/OpenDyslexic-Bold.woff2") format("woff2");\n' +
+                '    font-weight: bold;\n' +
+                '    font-style: normal;\n' +
+                '    size-adjust: 90%;\n' +
+                '}\n' +
+                ':root[data-font="opendyslexic"] body,\n' +
+                ':root[data-font="opendyslexic"] button,\n' +
+                ':root[data-font="opendyslexic"] input,\n' +
+                ':root[data-font="opendyslexic"] textarea,\n' +
+                ':root[data-font="opendyslexic"] select,\n' +
+                ':root[data-font="opendyslexic"] .nav-item,\n' +
+                ':root[data-font="opendyslexic"] .window,\n' +
+                ':root[data-font="opendyslexic"] .title-text,\n' +
+                ':root[data-font="opendyslexic"] .dashboard,\n' +
+                ':root[data-font="opendyslexic"] .sidebar,\n' +
+                ':root[data-font="opendyslexic"] .system-header,\n' +
+                ':root[data-font="opendyslexic"] .app-icon,\n' +
+                ':root[data-font="opendyslexic"] .app-label,\n' +
+                ':root[data-font="opendyslexic"] h1,\n' +
+                ':root[data-font="opendyslexic"] h2,\n' +
+                ':root[data-font="opendyslexic"] h3,\n' +
+                ':root[data-font="opendyslexic"] p,\n' +
+                ':root[data-font="opendyslexic"] span,\n' +
+                ':root[data-font="opendyslexic"] div,\n' +
+                ':root[data-font="opendyslexic"] a,\n' +
+                ':root[data-font="opendyslexic"] * {\n' +
+                '    font-family: "OpenDyslexic", sans-serif !important;\n' +
+                '}\n';
+            document.head.appendChild(style);
+        }
+    }
+
+    function removeFontStyle() {
+        var style = document.getElementById('rekindle-font-style');
+        if (style) style.remove();
+    }
+
+    function applyFontHelper() {
+        applyFont();
+    }
+    window.rekindleApplyFont = applyFont;
+
+    // Run Immediately (Global Scope) like applyTheme
+    applyFont();
+
     // Export for Apps to call
     window.rekindleApplyTheme = applyTheme;
     window.rekindleGetDisplayMode = getDisplayMode;
@@ -356,6 +434,7 @@
     window.rekindleConvertTemperatureContext = convertTemperatureContext;
     window.rekindleApplyRotation = applyRotation;
     window.rekindleInjectEInkStyles = injectEInkStyles;
+    window.rekindleApplyFont = applyFont;
 
     // --- WALLPAPER LOGIC ---
     function applyWallpaper() {
