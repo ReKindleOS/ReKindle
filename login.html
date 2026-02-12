@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Debug+</title>
+    <!-- Legacy Firebase Compat Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 10px;
+            word-wrap: break-word;
+            background: #fff;
+            color: #000;
+            font-size: 14px;
+        }
+
+        h1 {
+            font-size: 1.2em;
+            margin: 0 0 10px 0;
+        }
+
+        input {
+            display: block;
+            margin-bottom: 10px;
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #000;
+            box-sizing: border-box;
+            border-radius: 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-right: 10px;
+            border: 1px solid #000;
+            background: #ddd;
+            cursor: pointer;
+            border-radius: 0;
+            margin-bottom: 5px;
+        }
+
+        #log {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            min-height: 200px;
+        }
+
+        .log-line {
+            border-bottom: 1px solid #e0e0e0;
+            padding: 2px 0;
+        }
+
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+
+        .info {
+            color: blue;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .warn {
+            color: orange;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Login Debugger +</h1>
+    <div id="auth-state">Auth State: Loading...</div>
+    <div id="network-state">Net State: Checking...</div>
+    <br>
+
+    <label>Email / Username:</label>
+    <input type="text" id="email" autocapitalize="none" autocorrect="off">
+
+    <label>Password:</label>
+    <input type="password" id="password">
+
+    <div style="margin-top:10px;">
+        <button onclick="doLogin()">Login</button>
+        <button onclick="doLogout()">Logout</button>
+        <button onclick="runDiagnostics()">Run Diagnostics</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // --- CUSTOM LOGGER ---
+        var logElem = document.getElementById('log');
+        function log(msg, type) {
+            var div = document.createElement('div');
+            div.className = 'log-line ' + (type || '');
+            var time = new Date().toLocaleTimeString();
+            div.innerText = '[' + time + '] ' + msg;
+            logElem.insertBefore(div, logElem.firstChild);
+            if (type === 'error' && console.error) console.error(msg);
+            else if (console.log) console.log(msg);
+        }
+
+        function clearLog() {
+            logElem.innerHTML = '';
+            log("Log cleared.");
+        }
+
+        window.onerror = function (msg, url, line) {
+            log("GLOBAL ERROR: " + msg + " (" + url + ":" + line + ")", "error");
+            return false;
+        };
+
+        log("Logging started.");
+        log("UA: " + navigator.userAgent);
+        log("Screen: " + window.innerWidth + "x" + window.innerHeight);
+
+        // --- FIREBASE CONFIG ---
+        var firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        var auth;
+
+        // --- INITIALIZATION ---
+        try {
+            if (typeof firebase !== 'undefined') {
+                log("Initializing Firebase...", "info");
+                // Enable verbose logging if available
+                if (firebase.setLogLevel) {
+                    firebase.setLogLevel('debug');
+                    log("Firebase LogLevel set to DEBUG", "info");
+                }
+
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                log("Firebase initialized successfully.", "success");
+
+                // Auth State Listener
+                auth.onAuthStateChanged(function (user) {
+                    if (user) {
+                        document.getElementById('auth-state').innerText = "Auth State: SIGNED IN (" + user.email + ")";
+                        log("User signed in: " + user.uid, "success");
+                        user.getIdTokenResult().then(function (t) {
+                            log("Token Expiration: " + t.expirationTime, "info");
+                            log("Auth Time: " + t.authTime, "info");
+                        }).catch(function (e) {
+                            log("Token details fetch failed: " + e.message, "warn");
+                        });
+                    } else {
+                        document.getElementById('auth-state').innerText = "Auth State: SIGNED OUT";
+                        log("User signed out.", "info");
+                    }
+                });
+            } else {
+                log("CRITICAL: Firebase SDK not found on window object.", "error");
+            }
+        } catch (e) {
+            log("Init Exception: " + e.message, "error");
+        }
+
+        // --- DIAGNOSTICS ---
+        function runDiagnostics() {
+            log("--- RUNNING DIAGNOSTICS ---", "info");
+
+            // 1. Time Check
+            var now = new Date();
+            log("System Time: " + now.toString(), "info");
+            log("Timezone Offset: " + now.getTimezoneOffset(), "info");
+
+            // 2. Network Check
+            var onLine = navigator.onLine;
+            log("Navigator.onLine: " + onLine, onLine ? "success" : "warn");
+
+            // 3. Storage Check
+            try {
+                localStorage.setItem('test_key', 'test_val');
+                var val = localStorage.getItem('test_key');
+                localStorage.removeItem('test_key');
+                if (val === 'test_val') log("LocalStorage: OK", "success");
+                else log("LocalStorage: FAILED (Read mismatch)", "error");
+            } catch (e) {
+                log("LocalStorage: BLOCKED/ERROR (" + e.message + ")", "error");
+            }
+
+            try {
+                sessionStorage.setItem('test_key', 'test_val');
+                sessionStorage.removeItem('test_key');
+                log("SessionStorage: OK", "success");
+            } catch (e) {
+                log("SessionStorage: BLOCKED/ERROR (" + e.message + ")", "warn");
+            }
+
+            // 4. Cookie Check
+            log("Cookies Enabled: " + navigator.cookieEnabled, navigator.cookieEnabled ? "success" : "warn");
+
+            // 5. IndexedDB Check (Firebase uses this)
+            var idb = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+            log("IndexedDB Available: " + (!!idb), idb ? "success" : "error");
+
+            // 6. Connectivity Ping
+            log("Pinging Firebase...", "info");
+            var img = new Image();
+            img.onload = function () { log("Connectivity Ping: SUCCESS", "success"); };
+            img.onerror = function () { log("Connectivity Ping: FAILED (Check Network/CORS?)", "error"); };
+            // Use a small generic image or a firebase storage URL
+            img.src = "https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js?t=" + Date.now();
+        }
+
+        // --- ACTIONS ---
+        function doLogin() {
+            var emailVal = document.getElementById('email').value.trim();
+            var passVal = document.getElementById('password').value;
+
+            if (!emailVal || !passVal) {
+                log("Please enter email and password.", "error");
+                return;
+            }
+
+            if (emailVal.indexOf('@') === -1) {
+                emailVal += "@rekindle.ink";
+            }
+
+            log("Attempting sign in for: " + emailVal + "...", "info");
+
+            if (!auth) {
+                log("Auth object missing. Cannot login.", "error");
+                return;
+            }
+
+            // Force Persistence to LOCAL to see if that's the issue
+            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+                .then(function () {
+                    log("Persistence set to LOCAL. Proceeding...", "info");
+                    return auth.signInWithEmailAndPassword(emailVal, passVal);
+                })
+                .then(function (userCredential) {
+                    log("Sign In PROMISE RESOLVED.", "success");
+                    log("User: " + userCredential.user.email, "success");
+                })
+                .catch(function (error) {
+                    log("Sign In ERROR: " + error.code + " - " + error.message, "error");
+                    if (error.code === 'auth/network-request-failed') {
+                        log("Wait! Network request failed. Check system clock and SSL certificates.", "warn");
+                    }
+                });
+        }
+
+        function doLogout() {
+            if (auth) {
+                log("Signing out...", "info");
+                auth.signOut().then(function () {
+                    log("Sign out promise resolved.", "success");
+                }).catch(function (e) {
+                    log("Sign out error: " + e.message, "error");
+                });
+            }
+        }
+
+        // Auto-run basic diagnostics on load
+        setTimeout(runDiagnostics, 1000);
+
+    </script>
+</body>
+
+</html>
