@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Pixel</title>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
@@ -796,28 +797,32 @@
             databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com/"
         };
 
+        let isManifestLoaded = false;
+
+
+        // --- GLOBAL UTILS ---
+        function showModal(msg, isConfirm = false, callback = null) {
+            const overlay = document.getElementById('modal-overlay');
+            const messageEl = document.getElementById('modal-message');
+            const btnsEl = document.getElementById('modal-btns');
+            messageEl.textContent = msg;
+            if (isConfirm) {
+                const cancelTxt = window.t ? window.t('pixel.btn.cancel') : "Cancel";
+                const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
+                btnsEl.innerHTML = `<button class="modal-btn" id="modal-cancel">${cancelTxt}</button><button class="modal-btn" id="modal-ok">${okTxt}</button>`;
+                document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
+                document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
+            } else {
+                const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
+                btnsEl.innerHTML = `<button class="modal-btn" onclick="hideModal()">${okTxt}</button>`;
+            }
+            overlay.style.display = 'flex';
+        }
+        function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 
         // --- INIT ---
         window.onload = () => {
-            // --- CONFIGURATION ---
-            function showModal(msg, isConfirm = false, callback = null) {
-                const overlay = document.getElementById('modal-overlay');
-                const messageEl = document.getElementById('modal-message');
-                const btnsEl = document.getElementById('modal-btns');
-                messageEl.textContent = msg;
-                if (isConfirm) {
-                    const cancelTxt = window.t ? window.t('pixel.btn.cancel') : "Cancel";
-                    const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
-                    btnsEl.innerHTML = `<button class="modal-btn" id="modal-cancel">${cancelTxt}</button><button class="modal-btn" id="modal-ok">${okTxt}</button>`;
-                    document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
-                    document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
-                } else {
-                    const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
-                    btnsEl.innerHTML = `<button class="modal-btn" onclick="hideModal()">${okTxt}</button>`;
-                }
-                overlay.style.display = 'flex';
-            }
-            function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
 
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
 
@@ -1046,6 +1051,7 @@
                     console.error("Cloud manifest others load failed", e);
                 }
             }
+            isManifestLoaded = true;
         }
 
         async function saveManifest() {
@@ -1106,18 +1112,21 @@
 
         async function loadDrawingData(id) {
             const key = `pixel_drawing_${id}`;
-            let data = null;
+            let data = localStorage.getItem(key);
+            if (data) return JSON.parse(data);
 
             if (currentUser) {
                 try {
                     const doc = await db.collection('users').doc(currentUser.uid).collection('pixel_drawings').doc(id).get();
-                    if (doc.exists) data = doc.data().grid;
+                    if (doc.exists) {
+                        data = doc.data().grid;
+                        localStorage.setItem(key, data);
+                        return JSON.parse(data);
+                    }
                 } catch (e) { console.error(e); }
             }
 
-            if (!data) data = localStorage.getItem(key);
-
-            return data ? JSON.parse(data) : null;
+            return null;
         }
 
         async function saveDrawingData(id, gridData) {
@@ -1268,6 +1277,10 @@
 
         // --- EDITOR ACTIONS ---
         function createNew(size) {
+            if (!isManifestLoaded) {
+                showModal(window.t ? window.t('pixel.status.loading') : "Please wait, loading...");
+                return;
+            }
             gridSize = size;
             isReadOnly = false; // Ensure we are NOT in read-only mode for new drawings
 
