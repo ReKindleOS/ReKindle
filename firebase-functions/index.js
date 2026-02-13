@@ -262,6 +262,15 @@ exports.fetchEmailBody = onCall(callOptions, async (request) => {
 
             const parsed = await simpleParser(message.source);
 
+            // html cleaning logic
+            let cleanedHtml = parsed.html;
+            if (cleanedHtml) {
+                // 1. Remove empty paragraphs/divs frequently used as spacers
+                cleanedHtml = cleanedHtml.replace(/<(p|div)[^>]*>(\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, '');
+                // 2. Collapse multiple breaks into single break
+                cleanedHtml = cleanedHtml.replace(/(<br\s*\/?>\s*)+/gi, '<br>');
+            }
+
             return {
                 success: true,
                 email: {
@@ -270,7 +279,7 @@ exports.fetchEmailBody = onCall(callOptions, async (request) => {
                     to: parsed.to,
                     date: parsed.date ? parsed.date.toISOString() : null,
                     text: parsed.text,
-                    html: parsed.html,
+                    html: cleanedHtml,
                     attachments: [] // Attachments can be large, handle separately if needed
                 }
             };
