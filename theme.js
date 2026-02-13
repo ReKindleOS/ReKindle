@@ -148,14 +148,18 @@
 
         if (rotation === '90') {
             css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
-                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; ' +
-                'transform: rotate(90deg); transform-origin: top left; left: 100vw; }';
+                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; padding: 5px !important; box-sizing: border-box !important; ' +
+                'transform: rotate(90deg); transform-origin: top left; left: 100vw; } ' +
+                '.window, .dashboard { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
+                '.window.fullscreen { width: 100% !important; height: 100% !important; top: 0 !important; left: 0 !important; transform: none !important; }';
         } else if (rotation === '180') {
             css = 'body { transform: rotate(180deg); transform-origin: center center; }';
         } else if (rotation === '270') {
             css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
-                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; ' +
-                'transform: rotate(270deg); transform-origin: top left; top: 100vh; }';
+                'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; padding: 5px !important; box-sizing: border-box !important; ' +
+                'transform: rotate(270deg); transform-origin: top left; top: 100vh; } ' +
+                '.window, .dashboard { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
+                '.window.fullscreen { width: 100% !important; height: 100% !important; top: 0 !important; left: 0 !important; transform: none !important; }';
         }
 
         style.textContent = css;
