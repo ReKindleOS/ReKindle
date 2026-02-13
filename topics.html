@@ -452,6 +452,7 @@
             word-wrap: break-word;
             overflow-wrap: break-word;
             max-width: 100%;
+            white-space: pre-wrap;
         }
 
         .msg-row {
@@ -700,9 +701,13 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" data-i18n="topics.title">Topics</span>
-            <button id="mod-toggle" class="sys-btn"
-                style="display:none; position:absolute; right:10px; z-index:5; padding:2px 8px; font-size:0.7rem;"
-                onclick="toggleModMode()">Mod Mode: OFF</button>
+            <div style="position:absolute; right:10px; z-index:5; display:flex;">
+                <button class="sys-btn" onclick="openRulesModal()"
+                    style="padding:2px 8px; font-size:0.7rem; margin-right:5px;"
+                    data-i18n="topics.btn.rules">Rules</button>
+                <button class="sys-btn" onclick="openSettingsModal()" style="padding:2px 8px; font-size:0.7rem;"
+                    data-i18n="settings.title">Settings</button>
+            </div>
         </div>
 
         <div id="app-layout">
@@ -796,7 +801,79 @@
             </div>
         </div>
     </div>
+    </div>
 
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal-overlay" class="modal-overlay"
+        style="display:none; z-index:10000; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div class="modal-box"
+            style="padding:0; overflow:hidden; width:300px; background:white; border:2px solid black; box-shadow:4px 4px 0 rgba(0,0,0,0.2);">
+            <div class="title-bar" style="border-bottom:2px solid black;">
+                <div class="title-stripes"></div>
+                <div class="close-box" onclick="closeSettingsModal()">X</div>
+                <span class="title-text" data-i18n="settings.title">Settings</span>
+            </div>
+            <div style="padding:20px;">
+                <label style="display:flex; align-items:center; cursor:pointer; margin-bottom:10px;">
+                    <input type="checkbox" id="setting-enter-to-send-topics"
+                        style="width:20px; height:20px; margin-right:10px;">
+                    <span data-i18n="topics.settings.enter_send">Press Enter to Send</span>
+                </label>
+                <div style="margin-left:34px; font-size:0.8rem; color:#666; margin-bottom:15px;">
+                    Check to send with Enter.</div>
+
+                <div id="mod-toggle-container"
+                    style="display:none; margin-top:15px; border-top:1px solid #ccc; padding-top:15px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:bold;">Moderator Mode</span>
+                        <button id="mod-toggle-btn" class="sys-btn" onclick="toggleModMode()">OFF</button>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px; display:flex; justify-content:center;">
+                    <button class="sys-btn" onclick="saveTopicsSettings()">Save & Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RULES MODAL -->
+    <div id="rules-modal-overlay" class="modal-overlay"
+        style="display:none; z-index:10000; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div class="modal-box"
+            style="padding:0; overflow:hidden; width:300px; background:white; border:2px solid black; box-shadow:4px 4px 0 rgba(0,0,0,0.2);">
+            <div class="title-bar" style="border-bottom:2px solid black;">
+                <div class="title-stripes"></div>
+                <div class="close-box" onclick="closeRulesModal()">X</div>
+                <span class="title-text" data-i18n="rules.title">Rules</span>
+            </div>
+            <div style="padding:20px; max-height: 400px; overflow-y: auto;">
+                <ul style="padding-left: 20px; margin: 0; font-size: 0.9rem;">
+                    <li style="margin-bottom: 10px;"><b data-i18n="topics.rules.1.title">Search First:</b> <span
+                            data-i18n="topics.rules.1.text">Duplicate topics will be removed. Please check
+                            before posting.</span></li>
+                    <li style="margin-bottom: 10px;"><b data-i18n="topics.rules.2.title">Real Discussions Only:</b>
+                        <span data-i18n="topics.rules.2.text">Topics must be for conversation. Spam
+                            threads are not allowed.</span>
+                    </li>
+                    <li style="margin-bottom: 10px;"><b data-i18n="topics.rules.3.title">Respect the Vibe:</b> <span
+                            data-i18n="topics.rules.3.text">Don't be annoying.</span></li>
+                    <li style="margin-bottom: 10px;"><b data-i18n="topics.rules.4.title">No Self-Promo:</b> <span
+                            data-i18n="topics.rules.4.text">Do not advertise your own links, servers, or
+                            projects.</span></li>
+                    <li style="margin-bottom: 10px;"><b data-i18n="topics.rules.5.title">Topic Limit:</b> <span
+                            data-i18n="topics.rules.5.text">You are limited to 3 topics. Make them
+                            count!</span></li>
+                </ul>
+                <div style="margin-top:20px; display:flex; justify-content:center;">
+                    <button id="btn-close-rules" class="sys-btn" onclick="closeRulesModal()"
+                        data-i18n="common.close">Close</button>
+                    <button id="btn-accept-rules" class="sys-btn" onclick="acceptRules()" style="display:none;"
+                        data-i18n="rules.btn.accept">I Accept</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- LOGIN OVERLAY -->
     <div id="login-overlay" style="display: none;">
         <h2 data-i18n="suggestions.msg.login_required">Please Log In</h2>
@@ -924,6 +1001,8 @@
         var allTopicsCache = [];
         var commentsListener = null;
         var isModMode = false;
+        var RULES_VERSION = 1; // Current Rules Version
+        var currentUserRulesVersion = 0;
 
         // AUTH
         var topicsLoaded = false;
@@ -931,6 +1010,11 @@
             if (user) {
                 currentUser = user;
                 document.getElementById('login-overlay').style.display = 'none';
+
+                // Check Rules Acceptance
+                db.ref('users_private/' + user.uid + '/accepted_rules/topics').on('value', function (snap) {
+                    currentUserRulesVersion = snap.val() || 0;
+                });
 
                 fetchSupporters().then(function () {
                     if (topicsLoaded) return;
@@ -1005,6 +1089,43 @@
             document.getElementById('tab-' + tab).classList.add('active');
             renderSidebar();
         }
+        function openRulesModal(mode) {
+            // mode: 'view' (default) or 'accept'
+            var closeBtn = document.getElementById('btn-close-rules');
+            var acceptBtn = document.getElementById('btn-accept-rules');
+            var closeBox = document.querySelector('#rules-modal-overlay .close-box');
+
+            if (mode === 'accept') {
+                closeBtn.style.display = 'none';
+                acceptBtn.style.display = 'block';
+                closeBox.style.display = 'none'; // Force acceptance
+            } else {
+                closeBtn.style.display = 'block';
+                acceptBtn.style.display = 'none';
+                closeBox.style.display = 'flex';
+            }
+            document.getElementById('rules-modal-overlay').style.display = 'flex';
+        }
+
+        function closeRulesModal() {
+            document.getElementById('rules-modal-overlay').style.display = 'none';
+        }
+
+        function acceptRules() {
+            if (!currentUser) return;
+            db.ref('users_private/' + currentUser.uid + '/accepted_rules/topics').set(RULES_VERSION).then(function () {
+                closeRulesModal();
+            });
+        }
+
+        function checkRules(callback) {
+            if (currentUserRulesVersion >= RULES_VERSION) {
+                callback();
+            } else {
+                openRulesModal('accept');
+            }
+        }
+
         function loadFavorites() {
             if (!currentUser) return Promise.resolve();
             return db.ref('users_private/' + currentUser.uid + '/favorites').once('value')
@@ -1329,28 +1450,54 @@
         }
 
         function handleKey(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                postComment();
+            var enterToSend = localStorage.getItem('rekindle_enter_to_send_topics') === 'true'; // Default false
+
+            if (enterToSend) {
+                // Enter sends, Ctrl+Enter adds new line
+                if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                    e.preventDefault();
+                    postComment();
+                } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    // Start new line
+                    var textarea = e.target;
+                    var start = textarea.selectionStart;
+                    var end = textarea.selectionEnd;
+                    textarea.value = textarea.value.substring(0, start) + "\n" + textarea.value.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 1;
+                }
+            } else {
+                // Default behavior: Enter for new line, Ctrl+Enter to send
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    postComment();
+                }
             }
         }
 
         function postComment() {
-            var input = document.getElementById('msg-input');
-            var text = input.value.trim();
-            if (!text || !currentTopicId) return;
+            checkRules(function () {
+                var input = document.getElementById('msg-input');
+                var text = input.value.trim();
 
-            var comment = {
-                body: text,
-                authorName: currentUserName,
-                authorId: currentUser.uid,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            };
+                // Limit max 1 blank line between text (max 2 consecutive newlines)
+                if (text) {
+                    text = text.replace(/(\n\s*){3,}/g, '\n\n').trim();
+                }
 
-            db.ref('topic_comments/' + currentTopicId).push(comment).then(function () {
-                input.value = '';
-                db.ref('topics/' + currentTopicId + '/commentCount').transaction(function (cnt) { return (cnt || 0) + 1; });
-                db.ref('topics/' + currentTopicId + '/lastActive').set(firebase.database.ServerValue.TIMESTAMP);
+                if (!text || !currentTopicId) return;
+
+                var comment = {
+                    body: text,
+                    authorName: currentUserName,
+                    authorId: currentUser.uid,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+
+                db.ref('topic_comments/' + currentTopicId).push(comment).then(function () {
+                    input.value = '';
+                    db.ref('topics/' + currentTopicId + '/commentCount').transaction(function (cnt) { return (cnt || 0) + 1; });
+                    db.ref('topics/' + currentTopicId + '/lastActive').set(firebase.database.ServerValue.TIMESTAMP);
+                });
             });
         }
 
@@ -1525,59 +1672,61 @@
                 return;
             }
 
-            if (editingTopicId) {
-                // UPDATING EXISTING
-                db.ref('topics/' + editingTopicId).update({
-                    title: title,
-                    subheading: subheading,
-                    icon: selectedIconSvg
-                }).then(function () {
-                    closeCreateModal();
-                });
-            } else {
-                // CREATING NEW
-                var isAdmin = currentUser.email === 'ukiyo@rekindle.ink';
-                if (isAdmin) {
-                    executeCreation();
-                } else {
-                    // Check limit
-                    var submitBtn = document.getElementById('btn-submit-topic');
-                    submitBtn.disabled = true;
-                    submitBtn.innerText = "Checking...";
-
-                    db.ref('topics').orderByChild('authorId').equalTo(currentUser.uid).once('value').then(function (snap) {
-                        var count = snap.numChildren();
-                        if (count >= 3) {
-                            showAlertModal("You are allowed a maximum of 3 topics. Please edit your existing topics or contact an admin.");
-                            submitBtn.disabled = false;
-                            submitBtn.innerText = "Create";
-                            return;
-                        }
-                        executeCreation();
-                    }).catch(function (err) {
-                        console.error("Limit check error:", err);
-                        submitBtn.disabled = false;
-                        submitBtn.innerText = "Create";
-                    });
-                }
-
-                function executeCreation() {
-                    var newTopicRef = db.ref('topics').push();
-                    newTopicRef.set({
+            checkRules(function () {
+                if (editingTopicId) {
+                    // UPDATING EXISTING
+                    db.ref('topics/' + editingTopicId).update({
                         title: title,
                         subheading: subheading,
-                        body: "",
-                        icon: selectedIconSvg,
-                        authorName: currentUserName,
-                        authorId: currentUser.uid,
-                        timestamp: firebase.database.ServerValue.TIMESTAMP,
-                        lastActive: firebase.database.ServerValue.TIMESTAMP,
-                        commentCount: 0
+                        icon: selectedIconSvg
                     }).then(function () {
                         closeCreateModal();
-                        selectTopic(newTopicRef.key);
                     });
+                } else {
+                    // CREATING NEW
+                    var isAdmin = currentUser.email === 'ukiyo@rekindle.ink';
+                    if (isAdmin) {
+                        executeCreation();
+                    } else {
+                        // Check limit
+                        var submitBtn = document.getElementById('btn-submit-topic');
+                        submitBtn.disabled = true;
+                        submitBtn.innerText = "Checking...";
+
+                        db.ref('topics').orderByChild('authorId').equalTo(currentUser.uid).once('value').then(function (snap) {
+                            var count = snap.numChildren();
+                            if (count >= 3) {
+                                showAlertModal("You are allowed a maximum of 3 topics. Please edit your existing topics or contact an admin.");
+                                submitBtn.disabled = false;
+                                submitBtn.innerText = "Create";
+                                return;
+                            }
+                            executeCreation();
+                        }).catch(function (err) {
+                            console.error("Limit check error:", err);
+                            submitBtn.disabled = false;
+                            submitBtn.innerText = "Create";
+                        });
+                    }
                 }
+            });
+
+            function executeCreation() {
+                var newTopicRef = db.ref('topics').push();
+                newTopicRef.set({
+                    title: title,
+                    subheading: subheading,
+                    body: "",
+                    icon: selectedIconSvg,
+                    authorName: currentUserName,
+                    authorId: currentUser.uid,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    lastActive: firebase.database.ServerValue.TIMESTAMP,
+                    commentCount: 0
+                }).then(function () {
+                    closeCreateModal();
+                    selectTopic(newTopicRef.key);
+                });
             }
         }
 
@@ -1812,6 +1961,61 @@
             if (m) m.style.display = 'none';
             _confirmCallback = null;
         }
+        // --- SETTINGS LOGIC ---
+        function openSettingsModal() {
+            document.getElementById('settings-modal-overlay').style.display = 'flex';
+
+            // Load Settings
+            var enterToSend = localStorage.getItem('rekindle_enter_to_send_topics') === 'true';
+            document.getElementById('setting-enter-to-send-topics').checked = enterToSend;
+
+            // Admin Logic
+            if (currentUser && currentUser.uid && isAdmin(currentUser.uid)) {
+                document.getElementById('mod-toggle-container').style.display = 'block';
+                updateModBtnText();
+            }
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal-overlay').style.display = 'none';
+        }
+
+        function saveTopicsSettings() {
+            var enterToSend = document.getElementById('setting-enter-to-send-topics').checked;
+            localStorage.setItem('rekindle_enter_to_send_topics', enterToSend);
+            closeSettingsModal();
+        }
+
+        function isAdmin(uid) {
+            // Simple check based on hardcoded admins or current user session logic (reusing existing check)
+            // Note: This matches the check used in other parts of the app for UI visibility
+            return (uid === '7gZonEwRE1RCA7yZqW2xxf53o6C2' || currentUser.email === ADMIN_EMAIL);
+        }
+
+        function updateModBtnText() {
+            var btn = document.getElementById('mod-toggle-btn');
+            btn.innerText = isModMode ? "ON" : "OFF";
+            btn.style.background = isModMode ? "#000" : "#fff";
+            btn.style.color = isModMode ? "#fff" : "#000";
+        }
+
+        // Hook into existing toggleModMode to update UI inside modal
+        var originalToggleModMode = window.toggleModMode;
+        window.toggleModMode = function () {
+            // Call original logic which toggles isModMode boolean
+            // We can't easily call original if it was defined anonymously or relies on closure, 
+            // but looking at previous code, it just toggles a var and refreshes.
+            // Redefining it completely is safer to ensure it works with our new button.
+
+            isModMode = !isModMode;
+            updateModBtnText();
+
+            // Refresh list to show/hide hearts/trash
+            if (currentTopicId) {
+                loadMessages(currentTopicId);
+            }
+        };
+
     </script>
     <!-- REKINDLE MODALS -->
     <div id="alert-modal" class="modal-overlay"
