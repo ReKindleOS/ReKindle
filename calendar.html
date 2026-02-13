@@ -699,9 +699,11 @@
             /* Reset */
         }
     </style>
+    <link rel="stylesheet" href="css/custom-select.css">
     <script src="time.js"></script>
     <script src="theme.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/custom-select.js"></script>
 </head>
 
 <body>
@@ -959,9 +961,27 @@
             // Note: Persistence disabled due to IndexedDB hangs on some browsers (Safari)
 
             // db.enablePersistence({ synchronizeTabs: true }) ...
-            auth.onAuthStateChanged(user => {
+            auth.onAuthStateChanged(async user => {
                 if (user) {
                     currentUser = user;
+
+                    // Sync settings from Firestore
+                    try {
+                        const doc = await db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').get();
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.google_calendar_ids) {
+                                selectedCalendarIds = data.google_calendar_ids;
+                                localStorage.setItem('rekindle_selected_calendars', JSON.stringify(selectedCalendarIds));
+                            }
+                            if (data.google_calendar !== undefined) {
+                                localStorage.setItem('rekindle_google_calendar_enabled', data.google_calendar);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error syncing settings:", e);
+                    }
+
                     checkSyncSettings();
                 } else {
                     document.getElementById('status-msg').innerText = "Guest Mode";
@@ -1402,6 +1422,14 @@
                 if (cb.checked) selectedCalendarIds.push(cb.value);
             });
             localStorage.setItem('rekindle_selected_calendars', JSON.stringify(selectedCalendarIds));
+
+            // Save to Firestore
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('integrations').set({
+                    google_calendar_ids: selectedCalendarIds
+                }, { merge: true }).catch(e => console.error("Error saving calendar selection:", e));
+            }
+
             document.getElementById('calendar-list-modal').style.display = 'none';
             loadGoogleEvents();
         }

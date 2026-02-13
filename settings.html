@@ -489,7 +489,10 @@
             transform: translate(1px, 1px);
             box-shadow: none;
         }
+
+        /* Custom Select CSS moved to css/custom-select.css */
     </style>
+    <link rel="stylesheet" href="css/custom-select.css">
 </head>
 
 <body>
@@ -563,33 +566,6 @@
 
             <div class="setting-row">
                 <div class="setting-text">
-                    <strong><span data-i18n="settings.screen_rotation">Screen Rotation</span> <span
-                            class="beta-badge">BETA</span></strong>
-                    <div class="setting-desc" data-i18n="settings.desc.screen_rotation">Rotate the display for landscape
-                        mode.</div>
-                </div>
-                <select id="rotation-select" onchange="saveRotation()">
-                    <option value="0" data-i18n="settings.rotation.0">Portrait (0°)</option>
-                    <option value="90" data-i18n="settings.rotation.90">Landscape (90°)</option>
-                    <option value="180" data-i18n="settings.rotation.180">Portrait (180°)</option>
-                    <option value="270" data-i18n="settings.rotation.270">Landscape (270°)</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-text">
-                    <strong data-i18n="settings.display_mode">Display Mode</strong>
-                    <div class="setting-desc" data-i18n="settings.desc.display_mode">Reduce ghosting on eInk screens.
-                    </div>
-                </div>
-                <select id="display-mode-select" onchange="saveDisplayMode()">
-                    <option value="eink">eInk (Anti-Ghosting)</option>
-                    <option value="led">LED (No Flashes)</option>
-                </select>
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-text">
                     <strong data-i18n="settings.auto_scaling">Auto Scaling</strong>
                     <div class="setting-desc" data-i18n="settings.desc.auto_scaling">Automatically fit content to small
                         screens.</div>
@@ -608,6 +584,37 @@
                     <button class="scale-btn" onclick="saveManualScale('0.75')" data-scale="0.75">75%</button>
                     <button class="scale-btn" onclick="saveManualScale('1.0')" data-scale="1.0">100%</button>
                 </div>
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong data-i18n="settings.display_mode">Display Mode</strong>
+                    <div class="setting-desc" data-i18n="settings.desc.display_mode">Reduce ghosting on eInk screens.
+                    </div>
+                </div>
+                <select id="display-mode-select" onchange="saveDisplayMode()">
+                    <option value="led">LED (No Flashes)</option>
+                    <option value="eink">eInk (Anti-Ghosting)</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-text">
+                    <strong><span data-i18n="settings.screen_rotation">Screen Rotation</span> <span
+                            class="beta-badge">BETA</span></strong>
+                    <div class="setting-desc" data-i18n="settings.desc.screen_rotation">Rotate the display for landscape
+                        mode.</div>
+                </div>
+                <select id="rotation-select" onchange="saveRotation()">
+                    <option value="0" data-i18n="settings.rotation.0">Portrait (0°)</option>
+                    <option value="90" data-i18n="settings.rotation.90">Landscape (90°)</option>
+                    <option value="180" data-i18n="settings.rotation.180">Portrait (180°)</option>
+                    <option value="270" data-i18n="settings.rotation.270">Landscape (270°)</option>
+                </select>
+            </div>
+            <div style="font-size: 0.75rem; color: #555; margin-bottom: 10px; padding: 0 10px; font-style: italic;">
+                <span data-i18n="settings.rotation.warning">This feature breaks some apps and should only be used as a
+                    last resort if your device doesn't allow native rotation.</span>
             </div>
 
             <h2 data-i18n="section.accessibility">Accessibility</h2>
@@ -778,6 +785,7 @@
 
     <script src="theme.js?v=14"></script> <!-- Inject Theme Script -->
     <script src="js/i18n.js"></script>
+    <script src="js/custom-select.js"></script>
 
     <!-- Hidden Canvas for generating Pattern (32x32px) -->
     <canvas id="tile-gen" width="32" height="32" style="display:none;"></canvas>
@@ -1516,6 +1524,8 @@
         function saveDisplayMode() {
             const val = document.getElementById('display-mode-select').value;
             localStorage.setItem('rekindle_display_mode', val);
+            if (window.rekindleInjectEInkStyles) window.rekindleInjectEInkStyles();
+
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ displayMode: val }, { merge: true });
                 triggerSettingsSyncSignal();
@@ -1702,6 +1712,13 @@
             const theme = localStorage.getItem('rekindle_theme_mode') || 'light';
             document.getElementById('theme-select').value = theme;
 
+            // Load Display Mode
+            const displayMode = localStorage.getItem('rekindle_display_mode') || 'led';
+            const displayModeSelect = document.getElementById('display-mode-select');
+            if (displayModeSelect) {
+                displayModeSelect.value = displayMode;
+            }
+
             // Load Location
             updateLocationDisplay();
 
@@ -1885,6 +1902,12 @@
                         localStorage.setItem('rekindle_default_fullscreen', data.defaultFullscreen);
                         document.getElementById('toggle-fullscreen').checked = data.defaultFullscreen;
                     }
+
+                    if (data.displayMode) {
+                        localStorage.setItem('rekindle_display_mode', data.displayMode);
+                        document.getElementById('display-mode-select').value = data.displayMode;
+                        if (window.rekindleInjectEInkStyles) window.rekindleInjectEInkStyles();
+                    }
                 }
             });
 
@@ -1897,7 +1920,7 @@
                     if (data.provider) localStorage.setItem('chat_ai_provider', data.provider);
                     if (data.model) localStorage.setItem('chat_ai_model', data.model);
                     if (data.openaiKey) localStorage.setItem('chat_openai_key', data.openaiKey);
-                    loadAiSettings(); // Refresh UI
+                    // loadAiSettings(); // Refresh UI - Removed as function is missing
                 }
             });
 

@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Mail</title>
 
     <style>
@@ -582,6 +583,7 @@
             background: #f0f0f0;
         }
     </style>
+    <link rel="stylesheet" href="css/custom-select.css">
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -589,7 +591,9 @@
     <script src="time.js"></script>
     <script src="theme.js"></script>
     <script src="pro-gate.js"></script>
+    <script src="pro-gate.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/custom-select.js"></script>
     <style>
         .login-input {
             width: 100%;
@@ -1142,7 +1146,7 @@
                         // Use special use name if available, else path/name
                         let name = f.name || f.path;
                         if (f.specialUse && f.specialUse !== '\\Noselect') {
-                            name = f.specialUse.replace('\\', '') + " (" + name + ")";
+                            name = f.specialUse.replace('\\', '');
                         }
                         opt.innerText = name;
                         select.appendChild(opt);
@@ -1320,6 +1324,7 @@
                 if (result.data.success) {
                     const fullEmail = result.data.email;
 
+                    // Reduce padding on container
                     detailsPane.innerHTML = `
                         <div class="email-header">
                             <h2 class="email-title">${escapeHtml(fullEmail.subject || '(No Subject)')}</h2>
@@ -1335,7 +1340,7 @@
                                 <button class="toolbar-btn" onclick="deleteEmail()">Delete</button>
                             </div>
                         </div>
-                        <div id="email-body-host" class="email-body" style="border-top:1px solid #ccc; padding-top:20px;"></div>
+                        <div id="email-body-host" class="email-body" style="border-top:1px solid #ccc; padding-top:10px;"></div>
                     `;
 
                     // Shadow DOM isolation for email body
@@ -1343,16 +1348,102 @@
                     if (host) {
                         try {
                             const shadow = host.attachShadow({ mode: 'open' });
+
                             // Inject basic styles for the shadow content
                             const style = `
                                 <style>
-                                    :host { display: block; font-family: sans-serif; }
-                                    img { max-width: 100%; height: auto; }
-                                    a { color: blue; }
-                                    blockquote { margin-left: 10px; border-left: 2px solid #ccc; padding-left: 10px; }
+                                    /* GLOBAL RESET */
+                                    :host { 
+                                        display: block; 
+                                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                                        font-size: 14px; 
+                                        line-height: normal;
+                                        color: #000; 
+                                        background: #fff;
+                                        overflow-wrap: break-word;
+                                        word-wrap: break-word;
+                                    }
+
+                                    /* Reset all margins/padding/heights first */
+                                    * { margin: 0; padding: 0; box-sizing: border-box; max-width: 100%; min-height: 0; }
+
+                                    /* Force block elements to not have explicit height */
+                                    html, body, div, p, span, h1, h2, h3, h4, h5, h6 { 
+                                        height: auto !important; 
+                                        min-height: 0 !important;
+                                    }
+
+                                    /* Re-apply minimal spacing */
+                                    p, ul, ol, dl, blockquote, pre { margin-bottom: 0.8em; }
+                                    ul, ol { margin-left: 1.5em; }
+                                    li { margin-bottom: 0.2em; }
+                                    
+                                    /* Headers */
+                                    h1, h2, h3, h4, h5, h6 { font-weight: bold; margin-bottom: 0.4em; line-height: 1.2; }
+                                    h1 { font-size: 1.5em; } h2 { font-size: 1.3em; } h3 { font-size: 1.1em; }
+
+                                    /* Images */
+                                    img { height: auto !important; display: block; vertical-align: bottom; }
+                                    
+                                    /* Hide typical spacer images */
+                                    img[src*="spacer"], img[src*="blank"], img[width="1"] {
+                                        display: none !important;
+                                        height: 0 !important;
+                                        width: 0 !important;
+                                    }
+
+                                    /* Links */
+                                    a { color: #0000EE; text-decoration: underline; word-break: break-all; cursor: pointer; }
+
+                                    /* Tables - Aggressive Reset */
+                                    table, tbody, thead, tfoot, tr, td, th { 
+                                        border-collapse: collapse !important; 
+                                        border-spacing: 0 !important; 
+                                        width: 100% !important; 
+                                        margin: 0 !important;
+                                        padding: 0 !important;
+                                        height: auto !important;
+                                        min-height: 0 !important;
+                                        line-height: inherit !important;
+                                    }
+                                    td, th { padding: 2px !important; vertical-align: top; }
+                                    
+                                    /* Hack for Outlook/Gmail spacers */
+                                    div[style*="min-height"], div[style*="height"] { height: auto !important; min-height: 0 !important; }
+
+                                    /* HIDDEN ELEMENTS */
+                                    div:empty, p:empty, span:empty, h1:empty, h2:empty, h3:empty { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+                                    br[clear], br[style*="display:none"] { display: none !important; }
+                                    
+                                    /* Collapse stacked BRs (redundant with JS cleaning but good backup) */
+                                    br + br { display: none; }
+
+                                    /* Quote styling */
+                                    blockquote { 
+                                        border-left: 2px solid #ccc; 
+                                        padding-left: 10px; 
+                                        color: #555; 
+                                        margin-left: 5px; 
+                                    }
                                 </style>
                             `;
+
                             shadow.innerHTML = style + (fullEmail.html || fullEmail.text.replace(/\n/g, '<br>'));
+
+                            // Intercept links to open in Browser app
+                            try {
+                                shadow.querySelectorAll('a').forEach(link => {
+                                    link.addEventListener('click', (e) => {
+                                        const href = link.getAttribute('href');
+                                        if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('javascript:')) {
+                                            e.preventDefault();
+                                            window.location.href = 'browser.html?url=' + encodeURIComponent(href);
+                                        }
+                                    });
+                                });
+                            } catch (e) {
+                                console.warn("Error attaching link listeners", e);
+                            }
                         } catch (e) {
                             console.error("Shadow DOM error", e);
                             host.innerHTML = "Error rendering email body.";
@@ -1360,12 +1451,12 @@
                     }
 
                 } else {
-                    detailsPane.innerHTML = `<div style="padding:20px; color:red;">Error loading body: ${result.data.error}</div>`;
+                    detailsPane.innerHTML = `< div style = "padding:20px; color:red;" > Error loading body: ${result.data.error}</div > `;
                 }
 
             } catch (e) {
                 console.error("Body error", e);
-                detailsPane.innerHTML = `<div style="padding:20px; color:red;">Error: ${e.message}</div>`;
+                detailsPane.innerHTML = `< div style = "padding:20px; color:red;" > Error: ${e.message}</div >`;
             }
         }
 
