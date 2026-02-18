@@ -1,7 +1,11 @@
-<!DOCTYPE html><html lang="en"><head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Stocks</title>
 
     <!-- Firebase SDKs -->
@@ -146,9 +150,10 @@
             display: flex;
             background: #eee;
         }
-        .toolbar > * + * {
+
+        .toolbar>*+* {
             margin-left: 10px;
-}
+        }
 
         input[type="text"] {
             flex-grow: 1;
@@ -275,9 +280,9 @@
             display: flex;
         }
 
-        .stock-change > * + * {
+        .stock-change>*+* {
             margin-left: 5px;
-}
+        }
 
         .up {
             color: black;
@@ -341,9 +346,9 @@
             margin-top: 15px;
         }
 
-        .modal-buttons > * + * {
+        .modal-buttons>*+* {
             margin-left: 10px;
-}
+        }
     </style>
     <script src="theme.js"></script>
     <script src="js/i18n.js"></script>
@@ -362,7 +367,8 @@
         <!-- MAIN VIEW -->
         <div class="window-content" id="main-view">
             <div class="toolbar">
-                <input type="text" id="symbol-input" placeholder="SYMBOL" data-i18n-placeholder="stocks.ph.symbol" onkeypress="handleEnter(event)">
+                <input type="text" id="symbol-input" placeholder="SYMBOL" data-i18n-placeholder="stocks.ph.symbol"
+                    onkeypress="handleEnter(event)">
                 <button class="sys-btn" onclick="addSymbol()" data-i18n="stocks.btn.add">Add</button>
                 <button class="sys-btn" onclick="refreshData()">↻</button>
             </div>
@@ -388,7 +394,8 @@
         <div id="delete-modal" class="modal-overlay">
             <div class="modal-box">
                 <h3 data-i18n="stocks.modal.delete.title">Remove Stock?</h3>
-                <p><span data-i18n="stocks.modal.delete.desc">Remove ... from watchlist?</span> <span id="delete-symbol-text" style="font-weight:bold;"></span>?</p>
+                <p><span data-i18n="stocks.modal.delete.desc">Remove ... from watchlist?</span> <span
+                        id="delete-symbol-text" style="font-weight:bold;"></span>?</p>
                 <div class="modal-buttons">
                     <button class="sys-btn" onclick="confirmDelete()" data-i18n="stocks.btn.remove">Remove</button>
                     <button class="sys-btn" onclick="closeModal()" data-i18n="stocks.btn.cancel">Cancel</button>
@@ -645,13 +652,47 @@
                 else if (currentRange === '5d') interval = '60m'; // ~35 points
                 else if (currentRange === '1mo') interval = '1d'; // ~22 points
 
-                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${currentRange}`;
-                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
+                const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${currentRange}`;
 
-                const res = await fetch(proxyUrl);
-                if (!res.ok) throw new Error("Network response was not ok");
+                // Priority 1: Internal Cloudflare Function (No CORS, Server-side proxy)
+                // We use a relative path so it works on the deployed site
+                const internalApiUrl = `/api/price?symbol=${symbol}&interval=${interval}&range=${currentRange}`;
 
-                const json = await res.json();
+                // Proxy Fallback Strategy
+                const proxies = [
+                    (url) => internalApiUrl, // Try our own backend first!
+                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                    (url) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`
+                ];
+
+                let json = null;
+
+                for (const proxy of proxies) {
+                    try {
+                        const res = await fetch(proxy(yahooUrl));
+                        if (!res.ok) throw new Error("Status " + res.status);
+
+                        // Try to parse JSON immediately to catch proxy error pages served as 200
+                        const text = await res.text();
+                        try {
+                            json = JSON.parse(text);
+                            // Validate structure
+                            if (!json.chart || !json.chart.result || !json.chart.result[0]) {
+                                throw new Error("Invalid data structure");
+                            }
+                            break; // Success
+                        } catch (parseError) {
+                            console.warn("Proxy returned invalid JSON", parseError);
+                            // Continue to next proxy
+                        }
+                    } catch (e) {
+                        console.warn("Proxy failed", e);
+                    }
+                }
+
+                if (!json) throw new Error("All proxies failed");
 
                 const result = json.chart.result[0];
                 const meta = result.meta;
@@ -673,9 +714,74 @@
                 };
 
             } catch (e) {
+                // Crypto Fallback (CoinCap)
+                if (symbol.includes('-USD')) {
+                    console.log("Attempting CoinCap fallback for", symbol);
+                    try {
+                        return await fetchCoinCapData(symbol, currentRange);
+                    } catch (e2) {
+                        console.warn("CoinCap fallback failed", e2);
+                    }
+                }
+
                 console.error("Fetch failed for " + symbol, e);
                 throw e;
             }
+        }
+
+        async function fetchCoinCapData(symbol, range) {
+            // Map common Yahoo symbols to CoinCap IDs
+            const map = {
+                'BTC-USD': 'bitcoin',
+                'ETH-USD': 'ethereum',
+                'DOGE-USD': 'dogecoin',
+                'LTC-USD': 'litecoin',
+                'XRP-USD': 'xrp',
+                'ADA-USD': 'cardano',
+                'SOL-USD': 'solana',
+                'DOT-USD': 'polkadot'
+            };
+
+            const id = map[symbol];
+            if (!id) throw new Error("Unknown crypto");
+
+            // 1. Get current price
+            const res = await fetch(`https://api.coincap.io/v2/assets/${id}`);
+            const json = await res.json();
+            const price = parseFloat(json.data.priceUsd);
+            const changePercent = parseFloat(json.data.changePercent24Hr);
+
+            // Calculate change value approx
+            const prevPrice = price / (1 + (changePercent / 100));
+            const change = price - prevPrice;
+
+            // 2. Get History (CoinCap matches Yahoo range roughly)
+            // d1 -> interval=m15
+            // d5 -> interval=h1
+            // 1mo -> interval=d1
+
+            let interval = 'h1';
+            let start = Date.now() - (5 * 24 * 60 * 60 * 1000); // 5d default
+
+            if (range === '1d') {
+                interval = 'm15';
+                start = Date.now() - (24 * 60 * 60 * 1000);
+            } else if (range === '1mo') {
+                interval = 'd1';
+                start = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            }
+
+            const histRes = await fetch(`https://api.coincap.io/v2/assets/${id}/history?interval=${interval}&start=${start}&end=${Date.now()}`);
+            const histJson = await histRes.json();
+
+            const history = histJson.data.map(d => parseFloat(d.priceUsd));
+
+            return {
+                price: price,
+                change: change,
+                percent: changePercent,
+                history: history
+            };
         }
 
         function getDemoData(symbol) {
@@ -764,7 +870,10 @@
 
 
     </script>
-    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"></script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
+        data-utcoffset="11"></script>
 
 
-</body></html>
+</body>
+
+</html>
