@@ -374,14 +374,14 @@
 
         /* SUGGESTIONS */
         .category-grid {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            /* Two equal columns */
+            gap: 10px;
             margin-bottom: 20px;
         }
 
-        .category-grid>*+* {
-            margin-left: 10px;
-        }
+        /* Removed .category-grid > * + * margins as grid gap handles it */
 
         .cat-btn {
             flex: 1;
@@ -1053,24 +1053,21 @@
 
             try {
                 let blob = null;
-                // Proxy Strategy
-                try {
-                    const proxyUrl = "https://corsproxy.io/?" + encodeURIComponent(url);
-                    const res = await fetch(proxyUrl);
-                    if (!res.ok) throw new Error("Status " + res.status);
-                    blob = await res.blob();
-                } catch (e1) {
-                    console.log("Primary proxy failed, attempting backup...");
+                const proxies = [
+                    (u) => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+                    (u) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+                    (u) => "https://thingproxy.freeboard.io/fetch/" + encodeURIComponent(u)
+                ];
+
+                for (const proxy of proxies) {
                     try {
-                        const backupUrl = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url);
-                        const res2 = await fetch(backupUrl);
-                        if (!res2.ok) throw new Error("Fetch failed");
-                        blob = await res2.blob();
-                    } catch (e2) {
-                        const finalUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-                        const res3 = await fetch(finalUrl);
-                        if (!res3.ok) throw new Error("Final Fetch failed");
-                        blob = await res3.blob();
+                        const res = await fetch(proxy(url));
+                        if (res.ok) {
+                            blob = await res.blob();
+                            if (blob.size > 0) break; // Success
+                        }
+                    } catch (e) {
+                        console.warn("Proxy failed, trying next...", e);
                     }
                 }
 
@@ -1206,9 +1203,8 @@
 
         const fetchViaProxy = async (targetUrl) => {
             const proxies = [
-                (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-                (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+                (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
             ];
 
             let lastError = null;
