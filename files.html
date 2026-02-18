@@ -570,6 +570,28 @@
     <input type="file" id="file-upload" style="display:none" accept=".doc,.docx" onchange="handleFileUpload(this)">
     </div>
 
+    <!-- Preview Modal -->
+    <div class="modal-overlay" id="preview-modal">
+        <div class="modal-box"
+            style="width: 500px; max-width: 90%; max-height: 90%; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span id="preview-filename"
+                    style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                <div class="close-box" onclick="closePreviewModal()" style="position: static; margin-left: 10px;">X
+                </div>
+            </div>
+            <div
+                style="flex-grow: 1; overflow: auto; display: flex; align-items: center; justify-content: center; background: #eee; border: 1px solid black; min-height: 200px;">
+                <img id="preview-image" src="" alt="Preview" style="max-width: 100%; max-height: 100%; display: none;">
+                <div id="preview-loading" style="display: none;">Loading...</div>
+            </div>
+            <div class="modal-actions" style="margin-top: 15px;">
+                <button class="btn" onclick="closePreviewModal()">Close</button>
+                <button class="btn" id="preview-download-btn">Download</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- Firebase Config & Init ---
         const firebaseConfig = {
@@ -789,9 +811,60 @@
             document.getElementById('delete-modal').classList.add('active');
         }
 
+        function closePreviewModal() {
+            const modal = document.getElementById('preview-modal');
+            const img = document.getElementById('preview-image');
+            modal.classList.remove('active');
+            img.removeAttribute('src');
+            img.style.display = 'none';
+        }
+
         async function openFile(file) {
-            // Check for doc/docx
             const name = file.name.toLowerCase();
+
+            // Check for images (PNG, SVG, JPG, GIF, WEBP)
+            const isImage = /\.(png|svg|jpg|jpeg|gif|webp)$/i.test(name);
+
+            if (isImage) {
+                // Show preview modal
+                const modal = document.getElementById('preview-modal');
+                const img = document.getElementById('preview-image');
+                const title = document.getElementById('preview-filename');
+                const downloadBtn = document.getElementById('preview-download-btn');
+                const loading = document.getElementById('preview-loading');
+
+                title.textContent = file.name;
+                img.style.display = 'none';
+                loading.textContent = "Loading...";
+                loading.style.display = 'block';
+                modal.classList.add('active');
+
+                // Get URL
+                try {
+                    const ref = firebase.storage().ref(file.fullPath);
+                    const url = await ref.getDownloadURL();
+
+                    img.onload = () => {
+                        loading.style.display = 'none';
+                        img.style.display = 'block';
+                    };
+                    img.onerror = () => {
+                        if (!img.getAttribute('src')) return;
+                        loading.textContent = "Error loading image";
+                    }
+
+                    img.src = url;
+
+                    // Setup download button in preview
+                    downloadBtn.onclick = (e) => downloadFile(e, file.fullPath);
+
+                } catch (e) {
+                    console.error("Error loading image:", e);
+                    loading.textContent = "Error loading image: " + e.message;
+                }
+                return;
+            }
+
             if (name.endsWith('.doc') || name.endsWith('.docx')) {
                 // Open in Docs app
                 // Pass path to enable saving back
