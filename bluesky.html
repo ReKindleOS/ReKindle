@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Bluesky</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
+        /* 
+           COMPATIBILITY: Chromium 75 / E-ink
+           - No transitions/animations
+           - No gap in flexbox
+           - Pixelated rendering
+        */
+        *,
+        *::before,
+        *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .content-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: white;
+            position: relative;
+        }
+
+        /* LOGIN VIEW */
+        #login-view {
+            display: none;
+            /* Hidden by default */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 5000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .login-card {
+            border: 2px solid black;
+            padding: 30px;
+            max-width: 320px;
+            width: 100%;
+            background: #fafafa;
+            box-shadow: 4px 4px 0 #ccc;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid black;
+            font-family: inherit;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-size: 1rem;
+            margin-top: 10px;
+            font-family: inherit;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+        /* FEED VIEW */
+        #feed-view {
+            display: none;
+            /* Hidden by default */
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .toolbar {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #eee;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .feed-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .post {
+            padding: 15px;
+            border-bottom: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .post:last-child {
+            border-bottom: none;
+        }
+
+        .post-header {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border: 2px solid black;
+            border-radius: 50%;
+            /* Optional */
+            margin-right: 10px;
+            background: #ccc;
+            flex-shrink: 0;
+            object-fit: cover;
+        }
+
+        .user-meta {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .display-name {
+            font-weight: bold;
+            font-size: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .handle {
+            font-size: 0.8rem;
+            color: #555;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .post-content {
+            font-size: 1rem;
+            line-height: 1.4;
+            word-wrap: break-word;
+            margin-bottom: 8px;
+        }
+
+        .post-image {
+            margin-top: 10px;
+            max-width: 100%;
+            border: 2px solid black;
+            display: block;
+        }
+
+        .post-footer {
+            font-size: 0.8rem;
+            color: #555;
+            display: flex;
+            /* gap replacement */
+        }
+
+        .post-footer>span {
+            margin-right: 15px;
+        }
+
+        .loading {
+            padding: 20px;
+            text-align: center;
+            font-style: italic;
+        }
+
+        .error-msg {
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        .error-msg {
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        /* ACTIONS */
+        .action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            color: #555;
+        }
+
+        .action-btn:hover {
+            color: black;
+            text-decoration: underline;
+        }
+
+        .action-btn.active {
+            color: red;
+            font-weight: bold;
+        }
+
+        .action-btn.reposted {
+            color: green;
+            font-weight: bold;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* BOTTOM NAV */
+        .bottom-nav {
+            height: 50px;
+            border-top: 2px solid black;
+            display: flex;
+            background: white;
+            justify-content: space-around;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .nav-item {
+            flex-grow: 1;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-right: 1px solid #ccc;
+        }
+
+        .nav-item:last-child {
+            border-right: none;
+        }
+
+        .nav-item:active,
+        .nav-item.active {
+            background: #eee;
+            box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .nav-icon {
+            font-size: 1.5rem;
+        }
+    </style>
+    <!-- Firebase for Pro Gate -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <script src="theme.js"></script>
+    <script src="pro-gate.js"></script>
+    <script src="js/i18n.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text">Bluesky</span>
+            <div style="position: absolute; right: 10px; z-index: 2; display: flex; align-items: center;">
+                <button id="title-logout-btn" onclick="app.logout()"
+                    style="display:none; margin-right: 8px; font-size: 0.8rem; padding: 2px 6px; border: 2px solid black; background: white; cursor: pointer; box-shadow: 2px 2px 0 black; font-weight:bold; font-family:inherit;">Logout</button>
+                <button onclick="app.toggleFullScreen()"
+                    style="width: 18px; height: 18px; border: 2px solid black; background: white; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 2px 2px 0 black; padding: 0;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"></path>
+                    </svg>
+                </button>
+            </div>
+            <button onclick="app.openCompose()"
+                style="position: absolute; left: 40px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 0.8rem; padding: 2px 6px; border: 2px solid black; background: white; cursor: pointer; box-shadow: 2px 2px 0 black; font-weight:bold; font-family:inherit;">New
+                Post</button>
+        </div>
+
+        <div class="content-area">
+
+            <!-- LOGIN SCREEN -->
+            <div id="login-view" style="display:none;">
+                <div class="login-card">
+                    <h2 style="margin-top:0;">Bluesky Login</h2>
+                    <p style="font-size:0.8rem; margin-bottom:15px;">Use an App Password for security.</p>
+
+                    <input type="text" id="handle" class="login-input" placeholder="Handle (e.g. user.bsky.social)">
+                    <input type="password" id="app-password" class="login-input" placeholder="App Password">
+
+                    <button class="sys-btn" onclick="app.login()">Log In</button>
+                    <div id="login-error" class="error-msg"></div>
+                </div>
+            </div>
+
+            <!-- FEED SCREEN -->
+            <div id="feed-view">
+                <div id="feed-container" class="feed-container"></div>
+            </div>
+
+            <!-- PROFILE VIEW -->
+            <div id="profile-view" style="display:none; flex-direction:column; height:100%;">
+                <div class="toolbar">
+                    <button class="sys-btn" onclick="app.showFeed()"
+                        style="margin-top:0; font-size: 0.8rem; padding: 4px 10px;">&lt; Back</button>
+                    <span id="profile-header-handle"
+                        style="font-weight:bold; font-size:0.9rem; margin-left:10px;"></span>
+                </div>
+                <div id="profile-container" class="feed-container">
+                    <!-- Profile Info Header will go here -->
+                </div>
+            </div>
+
+            <!-- COMPOSE MODAL -->
+            <div id="compose-modal" class="modal-overlay" style="display:none;">
+                <div class="modal-box" style="padding:0; overflow:hidden;">
+                    <div class="title-bar">
+                        <div class="title-stripes"></div>
+                        <div class="close-box" onclick="app.closeCompose()">X</div>
+                        <span class="title-text">New Post</span>
+                    </div>
+                    <div style="padding:10px; display:flex; flex-direction:column;">
+                        <textarea id="compose-text"
+                            style="width:100%; height:100px; border:2px solid black; padding:5px; font-family:inherit; resize:none; margin-bottom:10px;"
+                            placeholder="What's up?"></textarea>
+                        <div style="display:flex; justify-content:flex-end;">
+                            <button class="sys-btn" onclick="app.sendPost()">Post</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHAT VIEW -->
+            <div id="chat-view" style="display:none; flex-direction:column; height:100%;">
+                <div class="toolbar">
+                    <span style="font-weight:bold; font-size:1.1rem;">Messages</span>
+                </div>
+                <div id="chat-container" class="feed-container">
+                    <div class="loading">Coming soon...</div>
+                </div>
+            </div>
+
+            <!-- NOTIFICATIONS VIEW -->
+            <div id="notifs-view" style="display:none; flex-direction:column; height:100%;">
+                <div class="toolbar">
+                    <span style="font-weight:bold; font-size:1.1rem;">Notifications</span>
+                </div>
+                <div id="notifs-container" class="feed-container">
+                    <div class="loading">Loading notifications...</div>
+                </div>
+            </div>
+
+            <!-- DISCOVER VIEW -->
+            <div id="discover-view" style="display:none; flex-direction:column; height:100%;">
+                <div class="toolbar">
+                    <span style="font-weight:bold; font-size:1.1rem;">Discover</span>
+                </div>
+                <div id="discover-container" class="feed-container">
+                    <div style="padding:10px;">
+                        <input type="text" id="search-input" class="login-input" placeholder="Search users or posts..."
+                            style="margin:0;">
+                        <button class="sys-btn" onclick="app.performSearch()" style="width:100%;">Search</button>
+                    </div>
+                    <div id="search-results"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- BOTTOM NAVIGATION -->
+        <div id="bottom-nav" class="bottom-nav" style="display:none;">
+            <div class="nav-item active" onclick="app.switchTab('feed-view', this)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </div>
+            <div class="nav-item" onclick="app.switchTab('discover-view', this)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </div>
+            <div class="nav-item" onclick="app.switchTab('chat-view', this)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+            </div>
+            <div class="nav-item" onclick="app.switchTab('notifs-view', this)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+            </div>
+            <div class="nav-item" onclick="app.switchTab('profile-view', this); app.loadMyProfile();">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Init Pro Gate
+        window.onload = () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleApplyScale) window.rekindleApplyScale();
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
+
+            if (window.rekindleProGate) {
+                window.rekindleProGate.check(isPro => {
+                    if (isPro) {
+                        app.init();
+                    }
+                });
+            } else {
+                app.init();
+            }
+        };
+
+        const app = {
+            session: null,
+            baseParams: {
+                service: 'https://bsky.social'
+            },
+
+            async init() {
+                // Check for saved session
+                try {
+                    // Priority 1: Check LocalStorage for full session
+                    const saved = localStorage.getItem('bsky_session');
+                    if (saved) {
+                        this.session = JSON.parse(saved);
+                        this.showFeed();
+                        return;
+                    }
+
+                    // Priority 2: Check LocalStorage for encrypted credentials
+                    const user = localStorage.getItem('rekindle_bsky_user');
+                    const encryptedPass = localStorage.getItem('rekindle_bsky_pass');
+                    const uid = localStorage.getItem('rekindle_bsky_uid');
+
+                    if (user && encryptedPass && uid) {
+                        const pass = await this.decryptPassword(encryptedPass, uid);
+                        if (pass) {
+                            console.log("Auto-logging in with local credentials...");
+                            await this.performLogin(user, pass);
+                            return;
+                        }
+                    }
+
+                    // Priority 3: Check Firebase for cloud credentials
+                    if (firebase.auth().currentUser) {
+                        const uid = firebase.auth().currentUser.uid;
+                        const db = firebase.firestore();
+                        const doc = await db.collection('users').doc(uid).collection('pro_data').doc('bluesky').get();
+
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.user && data.pass) {
+                                const pass = await this.decryptPassword(data.pass, uid);
+                                if (pass) {
+                                    console.log("Auto-logging in with cloud credentials...");
+                                    await this.performLogin(data.user, pass);
+                                    // Sync to local
+                                    const encryptedLocal = await this.encryptPassword(pass, uid);
+                                    if (encryptedLocal) {
+                                        localStorage.setItem('rekindle_bsky_user', data.user);
+                                        localStorage.setItem('rekindle_bsky_pass', encryptedLocal);
+                                        localStorage.setItem('rekindle_bsky_uid', uid);
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                } catch (e) {
+                    console.error("Session load error", e);
+                }
+
+                // If we reach here, no valid session was found/restored.
+                // Show the login modal (with app shell background).
+                this.logout();
+            },
+
+            async request(method, path, body = null, auth = false) {
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+
+                if (auth && this.session && this.session.accessJwt) {
+                    headers['Authorization'] = 'Bearer ' + this.session.accessJwt;
+                }
+
+                const options = {
+                    method: method,
+                    headers: headers
+                };
+
+                // Chat API override
+                let serviceUrl = this.baseParams.service;
+                if (path.startsWith('chat.bsky')) {
+                    serviceUrl = 'https://api.bsky.chat'; // Hardcoded for now, ideal to fetch from DID doc
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                // Append query params for GET if needed (naive implementation)
+                // Append query params for GET if needed (naive implementation)
+                let url = serviceUrl + '/xrpc/' + path;
+
+                // For GET requests with query params passed in body object (as per convenient client abstraction)
+                // We'll manually construct query string if method is GET
+                if (method === 'GET' && body) {
+                    const params = new URLSearchParams(body).toString();
+                    url += '?' + params;
+                    delete options.body;
+                }
+
+                const res = await fetch(url, options);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.message || data.error || 'Request failed');
+                }
+
+                return data;
+            },
+
+            async login() {
+                const handle = document.getElementById('handle').value.trim();
+                const password = document.getElementById('app-password').value.trim();
+
+                if (!handle || !password) {
+                    document.getElementById('login-error').textContent = "Please enter handle and password.";
+                    return;
+                }
+
+                await this.performLogin(handle, password);
+            },
+
+            async performLogin(handle, password) {
+                const errorEl = document.getElementById('login-error');
+
+                // Normalize handle if just username
+                let fullHandle = handle;
+                if (!fullHandle.includes('.')) {
+                    fullHandle += '.bsky.social';
+                }
+
+                errorEl.textContent = "";
+                const btn = document.querySelector('#login-view .sys-btn');
+                const origText = btn.textContent;
+                btn.textContent = "Logging in...";
+                btn.disabled = true;
+
+                try {
+                    const data = await this.request('POST', 'com.atproto.server.createSession', {
+                        identifier: fullHandle,
+                        password: password
+                    });
+
+                    this.session = data;
+                    localStorage.setItem('bsky_session', JSON.stringify(data));
+
+                    // ENCRYPTION & STORAGE
+                    const authUser = firebase.auth().currentUser;
+                    if (authUser) {
+                        const uid = authUser.uid;
+                        const encryptedPass = await this.encryptPassword(password, uid);
+
+                        if (encryptedPass) {
+                            // Local Save
+                            localStorage.setItem('rekindle_bsky_user', fullHandle);
+                            localStorage.setItem('rekindle_bsky_pass', encryptedPass);
+                            localStorage.setItem('rekindle_bsky_uid', uid);
+
+                            // Cloud Save
+                            const db = firebase.firestore();
+                            await db.collection('users').doc(uid).collection('pro_data').doc('bluesky').set({
+                                user: fullHandle,
+                                pass: encryptedPass,
+                                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                        }
+                    }
+
+                    this.showFeed();
+
+                } catch (e) {
+                    errorEl.textContent = "Login failed: " + e.message;
+                    // Clear invalid session data if needed
+                    if (e.message.indexOf('Authentication') !== -1) {
+                        this.logout();
+                    }
+                } finally {
+                    btn.textContent = origText;
+                    btn.disabled = false;
+                }
+            },
+
+            logout() {
+                this.session = null;
+                localStorage.removeItem('bsky_session');
+                // Optional: Clear encrypted credentials too?
+                // localStorage.removeItem('rekindle_bsky_user');
+                // localStorage.removeItem('rekindle_bsky_pass');
+
+                document.getElementById('title-logout-btn').style.display = 'none';
+
+                // Show app shell behind modal
+                document.getElementById('feed-view').style.display = 'flex';
+                document.getElementById('bottom-nav').style.display = 'flex';
+
+                document.getElementById('login-view').style.display = 'flex';
+                document.getElementById('handle').value = '';
+                document.getElementById('app-password').value = '';
+            },
+
+            toggleFullScreen() {
+                document.querySelector('.window').classList.toggle('fullscreen');
+            },
+
+            // --- ENCRYPTION HELPERS (from mail.html) ---
+            async encryptPassword(password, uid) {
+                try {
+                    const encoder = new TextEncoder();
+                    const keyMaterial = await crypto.subtle.importKey(
+                        'raw', encoder.encode(uid),
+                        { name: 'PBKDF2' }, false, ['deriveKey']
+                    );
+                    const key = await crypto.subtle.deriveKey(
+                        { name: 'PBKDF2', salt: encoder.encode('rekindle-mail-salt'), iterations: 100000, hash: 'SHA-256' },
+                        keyMaterial,
+                        { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+                    );
+                    const iv = crypto.getRandomValues(new Uint8Array(12));
+                    const encrypted = await crypto.subtle.encrypt(
+                        { name: 'AES-GCM', iv },
+                        key,
+                        encoder.encode(password)
+                    );
+                    return btoa(String.fromCharCode(...iv) + String.fromCharCode(...new Uint8Array(encrypted)));
+                } catch (e) {
+                    console.error("Encryption failed:", e);
+                    return null;
+                }
+            },
+
+            async decryptPassword(encryptedStr, uid) {
+                try {
+                    const encoder = new TextEncoder();
+                    const data = Uint8Array.from(atob(encryptedStr), c => c.charCodeAt(0));
+                    const iv = data.slice(0, 12);
+                    const encrypted = data.slice(12);
+                    const keyMaterial = await crypto.subtle.importKey(
+                        'raw', encoder.encode(uid),
+                        { name: 'PBKDF2' }, false, ['deriveKey']
+                    );
+                    const key = await crypto.subtle.deriveKey(
+                        { name: 'PBKDF2', salt: encoder.encode('rekindle-mail-salt'), iterations: 100000, hash: 'SHA-256' },
+                        keyMaterial,
+                        { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+                    );
+                    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted);
+                    return new TextDecoder().decode(decrypted);
+                } catch (e) {
+                    console.error("Decryption failed:", e);
+                    return null;
+                }
+            },
+
+            showFeed() {
+                document.getElementById('login-view').style.display = 'none';
+                document.getElementById('feed-view').style.display = 'flex';
+                document.getElementById('bottom-nav').style.display = 'flex';
+                document.getElementById('title-logout-btn').style.display = 'block';
+                // document.getElementById('current-user-display').textContent = '@' + this.session.handle;
+
+                document.getElementById('profile-view').style.display = 'none';
+                this.loadTimeline();
+            },
+
+            async showProfile(handle) {
+                document.getElementById('feed-view').style.display = 'none';
+                document.getElementById('profile-view').style.display = 'flex';
+                document.getElementById('profile-header-handle').textContent = handle;
+
+                const container = document.getElementById('profile-container');
+                container.innerHTML = '<div class="loading">Loading profile...</div>';
+
+                await this.loadProfileHeader(handle);
+                await this.loadAuthorFeed(handle);
+            },
+
+            async loadProfileHeader(handle) {
+                try {
+                    const data = await this.request('GET', 'app.bsky.actor.getProfile', { actor: handle }, true);
+                    const container = document.getElementById('profile-container');
+                    // Prepend header
+                    const headerHtml = `
+                        <div style="padding:15px; border-bottom:2px solid black; background:#fafafa;">
+                            <div style="display:flex; align-items:center; margin-bottom:10px;">
+                                <img src="${data.avatar || ''}" style="width:60px; height:60px; border:2px solid black; border-radius:50%; margin-right:15px; background:#ccc;">
+                                <div>
+                                    <div style="font-weight:bold; font-size:1.2rem;">${this.escapeHtml(data.displayName || handle)}</div>
+                                    <div style="color:#555;">@${this.escapeHtml(data.handle)}</div>
+                                </div>
+                            </div>
+                            <div style="margin-bottom:10px;">${this.linkify(this.escapeHtml(data.description || ''))}</div>
+                            <div style="display:flex; font-size:0.9rem; font-weight:bold; margin-top:5px;">
+                                <span style="margin-right:15px; cursor:pointer; text-decoration:underline;" onclick="app.showMessage('Followers view coming soon.')">${data.followersCount} Followers</span>
+                                <span style="cursor:pointer; text-decoration:underline;" onclick="app.loadFollows('${handle}')">${data.followsCount} Following</span>
+                            </div>
+                        </div>
+                        <div id="author-feed"></div>
+                    `;
+                    container.innerHTML = headerHtml;
+                } catch (e) {
+                    console.error(e);
+                }
+            },
+
+            async loadAuthorFeed(handle) {
+                const container = document.getElementById('author-feed');
+                if (!container) return; // Should exist after header load
+                container.innerHTML = '<div class="loading">Loading posts...</div>';
+
+                try {
+                    const data = await this.request('GET', 'app.bsky.feed.getAuthorFeed', { actor: handle, limit: 20 }, true);
+                    container.innerHTML = '';
+                    if (!data.feed || data.feed.length === 0) {
+                        container.innerHTML = '<div class="loading">No posts.</div>';
+                        return;
+                    }
+                    data.feed.forEach(item => this.renderPost(item, container));
+                } catch (e) {
+                    container.innerHTML = '<div class="error-msg">Failed to load feed.</div>';
+                }
+            },
+
+            switchTab(viewId, navItem) {
+                // Hide all views
+                ['feed-view', 'discover-view', 'chat-view', 'notifs-view', 'profile-view'].forEach(id => {
+                    document.getElementById(id).style.display = 'none';
+                });
+
+                // Show selected view
+                document.getElementById(viewId).style.display = 'flex';
+
+                // Update nav state
+                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+                navItem.classList.add('active');
+
+                // Load content if first access or refresh needed
+                if (viewId === 'notifs-view') this.loadNotifications();
+                if (viewId === 'chat-view') this.loadChat();
+                if (viewId === 'discover-view') this.loadDiscover();
+            },
+
+            async loadDiscover() {
+                const container = document.getElementById('search-results');
+                // Only load if empty (or maybe we want a way to refresh? for now just init)
+                if (container.innerHTML.trim() !== '') return;
+
+                container.innerHTML = '<div class="loading">Loading Discover feed...</div>';
+                try {
+                    // "What's Hot" / Discover Feed
+                    const feedUri = 'at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot';
+                    const data = await this.request('GET', 'app.bsky.feed.getFeed', { feed: feedUri, limit: 20 }, true);
+
+                    container.innerHTML = '<div></div>'; // Clear loading
+
+                    if (!data.feed || data.feed.length === 0) {
+                        container.innerHTML = '<div class="loading">Nothing specific to show.</div>';
+                        return;
+                    }
+                    data.feed.forEach(item => this.renderPost(item, container));
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = '<div class="error-msg">Failed to load Discover feed.</div>';
+                }
+            },
+
+            async loadNotifications() {
+                const container = document.getElementById('notifs-container');
+                container.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+                try {
+                    // Fix: Pass query params in object, request helper handles it
+                    const data = await this.request('GET', 'app.bsky.notification.listNotifications', { limit: 20 }, true);
+                    container.innerHTML = '';
+
+                    if (!data.notifications || data.notifications.length === 0) {
+                        container.innerHTML = '<div class="loading">No notifications.</div>';
+                        return;
+                    }
+
+                    data.notifications.forEach(notif => {
+                        const el = document.createElement('div');
+                        el.className = 'post';
+                        el.style.backgroundColor = notif.isRead ? 'white' : '#f0f8ff';
+
+                        const author = notif.author;
+                        const reason = notif.reason;
+                        let content = '';
+
+                        if (reason === 'like') content = `liked your post`;
+                        else if (reason === 'repost') content = `reposted your post`;
+                        else if (reason === 'follow') content = `followed you`;
+                        else if (reason === 'reply') content = `replied to you`;
+                        else if (reason === 'quote') content = `quoted you`;
+                        else content = reason;
+
+                        el.innerHTML = `
+                            <div style="display:flex; align-items:center;">
+                                <img src="${this.escapeHtml(author.avatar || '')}" class="avatar" style="width:30px; height:30px;">
+                                <div>
+                                    <b>${this.escapeHtml(author.displayName || author.handle)}</b> ${content}
+                                </div>
+                            </div>
+                        `;
+                        container.appendChild(el);
+                    });
+
+                    // Mark as read - Update seenAt to NOW
+                    try {
+                        await this.request('POST', 'app.bsky.notification.updateSeen', { seenAt: new Date().toISOString() }, true);
+                    } catch (err) {
+                        console.error("Failed to mark notifications as seen", err);
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = '<div class="error-msg">Failed to load notifications.</div>';
+                }
+            },
+
+            async performSearch() {
+                const query = document.getElementById('search-input').value.trim();
+                if (!query) return;
+
+                const container = document.getElementById('search-results');
+                container.innerHTML = '<div class="loading">Searching...</div>';
+
+                try {
+                    // Search Actors
+                    const actors = await this.request('GET', 'app.bsky.actor.searchActors', { q: query, limit: 5 }, true);
+
+                    // Search Posts
+                    const posts = await this.request('GET', 'app.bsky.feed.searchPosts', { q: query, limit: 10 }, true);
+
+                    let html = '<div style="font-weight:bold; margin:10px 0;">Users</div>';
+                    if (actors.actors && actors.actors.length > 0) {
+                        actors.actors.forEach(actor => {
+                            html += `
+                                <div class="post" onclick="app.showProfile('${actor.handle}');" style="cursor:pointer;">
+                                    <div style="display:flex; align-items:center;">
+                                        <img src="${actor.avatar || ''}" class="avatar">
+                                        <div>
+                                            <div style="font-weight:bold;">${this.escapeHtml(actor.displayName || actor.handle)}</div>
+                                            <div style="color:#555;">@${this.escapeHtml(actor.handle)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                             `;
+                        });
+                    } else {
+                        html += '<div style="padding:10px;">No users found.</div>';
+                    }
+
+                    html += '<div style="font-weight:bold; margin:10px 0; border-top:2px solid black; padding-top:10px;">Posts</div>';
+
+                    container.innerHTML = html;
+
+                    if (posts.posts && posts.posts.length > 0) {
+                        posts.posts.forEach(post => {
+                            // Search posts returns 'post' view directly, renderPost expects { post: ... }
+                            this.renderPost({ post: post }, container);
+                        });
+                    } else {
+                        const div = document.createElement('div');
+                        div.style.padding = '10px';
+                        div.innerText = 'No posts found.';
+                        container.appendChild(div);
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = '<div class="error-msg">Search failed.</div>';
+                }
+            },
+
+            async loadChat() {
+                const container = document.getElementById('chat-container');
+                container.innerHTML = '<div class="loading">Loading messages...</div>';
+
+                try {
+                    const data = await this.request('GET', 'chat.bsky.convo.listConvos', { limit: 20 }, true);
+                    container.innerHTML = '';
+
+                    if (!data.convos || data.convos.length === 0) {
+                        container.innerHTML = '<div class="loading">No conversations.</div>';
+                        return;
+                    }
+
+                    data.convos.forEach(convo => {
+                        const el = document.createElement('div');
+                        el.className = 'post';
+                        // Simple display of last message
+                        const members = convo.members.filter(m => m.did !== this.session.did);
+                        const other = members[0]; // simplistic
+
+                        el.innerHTML = `
+                            <div style="display:flex; align-items:center;">
+                                <img src="${other.avatar || ''}" class="avatar" style="width:40px; height:40px;">
+                                <div style="flex-grow:1; overflow:hidden;">
+                                    <div style="font-weight:bold;">${this.escapeHtml(other.displayName || other.handle)}</div>
+                                    <div style="color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${this.escapeHtml((convo.lastMessage && convo.lastMessage.text) ? convo.lastMessage.text : '...')}</div>
+                                </div>
+                                <div style="font-size:0.8rem; color:#888;">${new Date(convo.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+                        `;
+                        // TODO: Click to open conversation view (out of scope for now, just listing)
+                        container.appendChild(el);
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = '<div class="error-msg">Failed to load messages.</div>';
+                }
+            },
+
+            // Profile Enhancements
+            async loadFollows(handle) {
+                const container = document.getElementById('profile-container');
+                container.innerHTML = '<div class="loading">Loading following...</div>';
+                try {
+                    const data = await this.request('GET', 'app.bsky.graph.getFollows', { actor: handle, limit: 50 }, true);
+                    container.innerHTML = `<div class="toolbar"><button class="sys-btn" onclick="app.showProfile('${handle}')">Back</button><span style="margin-left:10px; font-weight:bold;">Following</span></div>`;
+
+                    if (data.follows) {
+                        data.follows.forEach(actor => {
+                            const el = document.createElement('div');
+                            el.className = 'post';
+                            el.onclick = () => this.showProfile(actor.handle);
+                            el.style.cursor = 'pointer';
+                            el.innerHTML = `
+                                <div style="display:flex; align-items:center;">
+                                    <img src="${actor.avatar || ''}" class="avatar">
+                                    <div>
+                                        <b>${this.escapeHtml(actor.displayName || actor.handle)}</b><br>
+                                        <span style="color:#555;">@${this.escapeHtml(actor.handle)}</span>
+                                    </div>
+                                </div>
+                             `;
+                            container.appendChild(el);
+                        });
+                    }
+                } catch (e) { container.innerHTML = '<div class="error-msg">Error loading follows</div>'; }
+            },
+
+            async loadLikes(handle) {
+                const container = document.getElementById('profile-container');
+                container.innerHTML = '<div class="loading">Loading likes...</div>';
+
+                try {
+                    // 1. Get Like Records
+                    const records = await this.request('GET', 'com.atproto.repo.listRecords', {
+                        repo: handle,
+                        collection: 'app.bsky.feed.like',
+                        limit: 25
+                    });
+
+                    if (!records.records || records.records.length === 0) {
+                        container.innerHTML = `<div class="toolbar"><button class="sys-btn" onclick="app.showProfile('${handle}')">Back</button><span style="margin-left:10px; font-weight:bold;">Likes</span></div><div class="loading">No likes found.</div>`;
+                        return;
+                    }
+
+                    // 2. Extract Post URIs
+                    const uris = records.records.map(r => r.value.subject.uri);
+
+                    // 3. Get Posts
+                    // chunk into 25 if needed, but here limit is 25 match
+                    const postsData = await this.request('GET', 'app.bsky.feed.getPosts', { uris: uris }, true);
+
+                    container.innerHTML = `<div class="toolbar"><button class="sys-btn" onclick="app.showProfile('${handle}')">Back</button><span style="margin-left:10px; font-weight:bold;">Likes</span></div>`;
+
+                    if (postsData.posts) {
+                        postsData.posts.forEach(post => {
+                            // Render like a normal feed item, wrapper needed?
+                            // renderPost appends to container. We can wrap it in a div if needed but renderPost is fine.
+                            this.renderPost({ post: post }, container);
+                        });
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = '<div class="error-msg">Error loading likes.</div>';
+                }
+            },
+
+            async loadTimeline() {
+                const container = document.getElementById('feed-container');
+                container.innerHTML = '<div class="loading">Loading timeline...</div>';
+
+                try {
+                    const data = await this.request('GET', 'app.bsky.feed.getTimeline', {
+                        limit: 30
+                    }, true);
+
+                    container.innerHTML = '';
+
+                    if (!data.feed || data.feed.length === 0) {
+                        container.innerHTML = '<div class="loading">No posts found.</div>';
+                        return;
+                    }
+
+                    data.feed.forEach(item => this.renderPost(item, container));
+
+                } catch (e) {
+                    console.error("Feed load error", e);
+                    container.innerHTML = `<div class="loading" style="color:red;">Error loading feed<br>${e.message}</div>`;
+                    if (e.message.includes("Authentication Required")) {
+                        this.logout();
+                    }
+                }
+            },
+
+            renderPost(item, container) {
+                const post = item.post;
+
+                const el = document.createElement('div');
+                el.className = 'post';
+
+                // Author info
+                const author = post.author;
+                const displayName = author.displayName || author.handle;
+                const avatar = author.avatar || '';
+
+                // Post Text
+                const record = post.record;
+                const text = record.text || '';
+
+                // Images
+                let imagesHtml = '';
+                if (post.embed && post.embed.images) {
+                    post.embed.images.forEach(img => {
+                        imagesHtml += `<img src="${img.thumb}" class="post-image" alt="${img.alt || 'Post image'}">`;
+                    });
+                }
+
+                // Basic Stats
+                const replyCount = post.replyCount || 0;
+                const repostCount = post.repostCount || 0;
+                const likeCount = post.likeCount || 0;
+
+                // Time
+                const time = new Date(record.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                // Viewer state
+                const viewer = post.viewer || {};
+                const likeUri = viewer.like;
+                const repostUri = viewer.repost;
+                const idBase = 'post-' + post.cid.replace(/[^\w-]/g, '');
+
+                el.innerHTML = `
+                    <div class="post-header">
+                        ${avatar ? `<img src="${avatar}" class="avatar" onclick="app.showProfile('${author.handle}')" style="cursor:pointer;">` : `<div class="avatar" style="background:#000;" onclick="app.showProfile('${author.handle}')"></div>`}
+                        <div class="user-meta">
+                            <span class="display-name" onclick="app.showProfile('${author.handle}')" style="cursor:pointer; text-decoration:underline;">${this.escapeHtml(displayName)}</span>
+                            <span class="handle" onclick="app.showProfile('${author.handle}')" style="cursor:pointer;">@${this.escapeHtml(author.handle)}</span>
+                        </div>
+                    </div>
+                    <div class="post-content">
+                        ${this.linkify(this.escapeHtml(text))}
+                        ${imagesHtml}
+                    </div>
+                    <div class="post-footer">
+                        <button class="action-btn" onclick='app.openReply(${JSON.stringify(post).replace(/'/g, "&#39;")})'>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> ${replyCount}
+                        </button>
+                        <button id="rp-${idBase}" class="action-btn ${repostUri ? 'reposted' : ''}" 
+                            onclick="app.toggleRepost('${post.uri}', '${post.cid}', ${repostUri ? "'" + repostUri + "'" : 'null'}, 'rp-${idBase}')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg> ${repostCount}
+                        </button>
+                        <button id="lk-${idBase}" class="action-btn ${likeUri ? 'active' : ''}" 
+                            onclick="app.toggleLike('${post.uri}', '${post.cid}', ${likeUri ? "'" + likeUri + "'" : 'null'}, 'lk-${idBase}')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="${likeUri ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg> ${likeCount}
+                        </button>
+                        <span style="margin-left: auto;">${time}</span>
+                    </div>
+                `;
+                container.appendChild(el);
+            },
+
+            escapeHtml(text) {
+                if (!text) return '';
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            },
+
+            linkify(text) {
+                // Simple linkification for URLs
+                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                return text.replace(urlRegex, function (url) {
+                    return `<a href="${url}" target="_blank" style="color:blue; text-decoration:underline;">${url}</a>`;
+                });
+            },
+
+            // --- INTERACTIONS ---
+
+            async toggleLike(uri, cid, likeUri, elementId) {
+                const btn = document.getElementById(elementId);
+                // Optimistic UI
+                if (likeUri) {
+                    // Unlike
+                    btn.className = 'action-btn';
+                    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg> ` + (parseInt(btn.innerText) - 1); // naive count update
+                    btn.onclick = () => this.toggleLike(uri, cid, null, elementId);
+
+                    try {
+                        await this.request('POST', 'com.atproto.repo.deleteRecord', {
+                            collection: 'app.bsky.feed.like',
+                            repo: this.session.did,
+                            rkey: likeUri.split('/').pop()
+                        }, true);
+                    } catch (e) {
+                        console.error('Unlike failed', e);
+                        // Revert
+                        btn.className = 'action-btn active';
+                        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg> ` + (parseInt(btn.innerText) + 1);
+                    }
+                } else {
+                    // Like
+                    btn.className = 'action-btn active';
+                    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg> ` + (parseInt(btn.innerText) + 1);
+
+                    try {
+                        const res = await this.request('POST', 'com.atproto.repo.createRecord', {
+                            collection: 'app.bsky.feed.like',
+                            repo: this.session.did,
+                            record: {
+                                subject: { uri, cid },
+                                createdAt: new Date().toISOString()
+                            }
+                        }, true);
+                        // Update handler with new URI
+                        btn.onclick = () => this.toggleLike(uri, cid, res.uri, elementId);
+                    } catch (e) {
+                        console.error('Like failed', e);
+                        btn.className = 'action-btn'; // Revert
+                        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg> ` + (parseInt(btn.innerText) - 1);
+                    }
+                }
+            },
+
+            async toggleRepost(uri, cid, repostUri, elementId) {
+                const btn = document.getElementById(elementId);
+                if (repostUri) {
+                    // Remove Repost
+                    btn.className = 'action-btn';
+                    btn.onclick = () => this.toggleRepost(uri, cid, null, elementId);
+                    try {
+                        await this.request('POST', 'com.atproto.repo.deleteRecord', {
+                            collection: 'app.bsky.feed.repost',
+                            repo: this.session.did,
+                            rkey: repostUri.split('/').pop()
+                        }, true);
+                    } catch (e) { console.error(e); }
+                } else {
+                    // Repost
+                    btn.className = 'action-btn reposted';
+                    try {
+                        const res = await this.request('POST', 'com.atproto.repo.createRecord', {
+                            collection: 'app.bsky.feed.repost',
+                            repo: this.session.did,
+                            record: {
+                                subject: { uri, cid },
+                                createdAt: new Date().toISOString()
+                            }
+                        }, true);
+                        btn.onclick = () => this.toggleRepost(uri, cid, res.uri, elementId);
+                    } catch (e) { console.error(e); btn.className = 'action-btn'; }
+                }
+            },
+
+            replyData: null,
+
+            openCompose(replyToPost = null) {
+                if (replyToPost) {
+                    // Determine root and parent
+                    const root = (replyToPost.record.reply && replyToPost.record.reply.root) ? replyToPost.record.reply.root : { uri: replyToPost.uri, cid: replyToPost.cid };
+                    const parent = { uri: replyToPost.uri, cid: replyToPost.cid };
+
+                    this.replyData = {
+                        root: root,
+                        parent: parent
+                    };
+                    const author = replyToPost.author.displayName || replyToPost.author.handle;
+                    document.getElementById('compose-title').innerText = 'Reply to ' + author;
+                } else {
+                    this.replyData = null;
+                    document.getElementById('compose-title').innerText = 'New Post';
+                }
+
+                document.getElementById('compose-text').value = '';
+                document.getElementById('compose-modal').style.display = 'flex';
+                document.getElementById('compose-text').focus();
+            },
+
+            openReply(post) {
+                this.openCompose(post);
+            },
+
+            closeCompose() {
+                document.getElementById('compose-modal').style.display = 'none';
+                this.replyData = null;
+            },
+
+            loadMyProfile() {
+                this.showProfile(this.session.handle);
+            },
+
+            async sendPost() {
+                const text = document.getElementById('compose-text').value;
+                if (!text.trim()) return;
+
+                const btn = document.querySelector('#compose-modal .sys-btn');
+                const orig = btn.innerText;
+                btn.innerText = "Sending...";
+                btn.disabled = true;
+
+                try {
+                    const record = {
+                        text: text,
+                        createdAt: new Date().toISOString()
+                    };
+
+                    if (this.replyData) {
+                        record.reply = this.replyData;
+                    }
+
+                    await this.request('POST', 'com.atproto.repo.createRecord', {
+                        collection: 'app.bsky.feed.post',
+                        repo: this.session.did,
+                        record: record
+                    }, true);
+
+                    this.closeCompose();
+                    this.showMessage("Posted!");
+                } catch (e) {
+                    this.showMessage("Failed: " + e.message);
+                } finally {
+                    btn.innerText = orig;
+                    btn.disabled = false;
+                }
+            },
+
+            showMessage(msg) {
+                // Reuse compose modal logic or create a simple one
+                // Let's create a dedicated message modal dynamically or reuse a hidden one
+                let modal = document.getElementById('msg-modal');
+                if (!modal) {
+                    modal = document.createElement('div');
+                    modal.id = 'msg-modal';
+                    modal.className = 'modal-overlay';
+                    modal.style.display = 'none';
+                    modal.innerHTML = `
+                        <div class="modal-box">
+                            <div class="modal-header">
+                                <span>Message</span>
+                                <span style="cursor:pointer;" onclick="document.getElementById('msg-modal').style.display='none'">X</span>
+                            </div>
+                            <div id="msg-text" style="margin-bottom:15px;"></div>
+                            <div style="display:flex; justify-content:flex-end;">
+                                <button class="sys-btn" onclick="document.getElementById('msg-modal').style.display='none'">OK</button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                }
+                document.getElementById('msg-text').innerText = msg;
+                modal.style.display = 'flex';
+            }
+        };
+    </script>
+</body>
+
+</html>

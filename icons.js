@@ -209,6 +209,15 @@ const APPS = [
 
     // --- LIFESTYLE ---
     {
+        id: 'bluesky',
+        name: 'Bluesky',
+        cat: 'lifestyle',
+        newBadge: true,
+        plus: true,
+        desc: 'Social social.',
+        icon: '<path d="M16 8 C16 8 20 4 26 6 C28 8 26 14 24 16 C28 18 30 24 26 28 C20 30 16 26 16 26 C16 26 12 30 6 28 C2 24 4 18 8 16 C6 14 4 8 6 6 C12 4 16 8 16 8 Z" fill="white" stroke="black" stroke-width="2"/><path d="M16 8 L16 26" stroke="black" stroke-width="2"/>'
+    },
+    {
         id: 'language',
         name: 'Languages',
         cat: 'lifestyle',
@@ -233,6 +242,16 @@ const APPS = [
         featuredOrder: 5,
         desc: 'Discuss anything!',
         icon: '<g transform="translate(0, 3)"><path d="M3 3 h18 a2 2 0 0 1 2 2 v6 a2 2 0 0 1 -2 2 h-6 l-3 3 l-3 -3 h-6 a2 2 0 0 1 -2 -2 v-6 a2 2 0 0 1 2 -2 z" fill="white" stroke="black" stroke-width="2"/><circle cx="5" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M2 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="19" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M16 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="20" r="3" fill="white" stroke="black" stroke-width="2"/><path d="M9 25 q3 -4 6 0" fill="white" stroke="black" stroke-width="2"/></g>'
+    },
+    {
+        id: 'mastodon',
+        name: 'Mastodon',
+        cat: 'lifestyle',
+        newBadge: true,
+        plus: true,
+        filled: true,
+        desc: 'Decentralized social.',
+        icon: '<path d="M21.3,4.5c-2.2-1.1-4.7-1.1-6.9-0.2c-0.6-0.3-1.3-0.4-1.9-0.4c-0.7,0-1.4,0.1-2,0.4C8.2,3.4,5.7,3.5,3.5,4.5C1.3,5.6,0,8.5,0,8.5v11c0,3,2.2,5.5,5,5.5h3v-7c0-1.1,0.9-2,2-2s2,0.9,2,2v6h1v-6c0-1.1,0.9-2,2-2s2,0.9,2,2v7h3c2.8,0,5-2.5,5-5.5v-11C25,8.5,23.6,5.6,21.3,4.5z" fill="black"/>'
     },
     {
         id: 'libby',
