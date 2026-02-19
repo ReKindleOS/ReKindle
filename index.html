@@ -164,7 +164,7 @@
             text-transform: uppercase;
             font-size: 0.9rem;
             background: white;
-            box-shadow: 2px 2px 0 #ccc;
+            box-shadow: 2px 2px 0 black;
             margin-bottom: 10px;
         }
 
@@ -230,7 +230,7 @@
             margin-bottom: 20px;
             border: 2px solid black;
             padding: 15px;
-            box-shadow: 4px 4px 0 #ccc;
+            box-shadow: 4px 4px 0 black;
         }
 
         #favorites-section {
@@ -248,6 +248,42 @@
             position: relative;
             padding: 12px 5px 0 5px;
             border-radius: 4px;
+        }
+
+        .pro-locked {
+            position: relative;
+        }
+
+        .pro-locked .icon-img-wrap,
+        .pro-locked .featured-icon {
+            position: relative;
+            display: block;
+            width: 42px;
+            height: 42px;
+        }
+
+        .pro-locked .featured-icon {
+            width: 40px;
+            height: 40px;
+        }
+
+        .pro-locked .icon-img-wrap::after,
+        .pro-locked .featured-icon::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(45deg, white 25%, transparent 25%),
+                linear-gradient(-45deg, white 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, white 75%),
+                linear-gradient(-45deg, transparent 75%, white 75%);
+            background-size: 3px 3px;
+            background-position: 0 0, 0 1.5px, 1.5px -1.5px, -1.5px 0px;
+            pointer-events: none;
+            z-index: 4;
         }
 
         .app-icon:active {
@@ -276,7 +312,7 @@
         .featured-box-container {
             border: 2px solid black;
             background: #fdfdfd;
-            box-shadow: 4px 4px 0 #ccc;
+            box-shadow: 4px 4px 0 black;
             padding: 15px;
             margin-bottom: 25px;
         }
@@ -301,7 +337,7 @@
             color: black;
             position: relative;
             cursor: pointer;
-            box-shadow: 2px 2px 0 #ddd;
+            box-shadow: 2px 2px 0 black;
         }
 
         .featured-card:active {
@@ -380,10 +416,10 @@
 
         .plus-label {
             position: absolute;
-            top: -4px;
-            right: -8px;
-            background: black;
-            color: white;
+            top: 6px;
+            right: 2px;
+            background: white;
+            color: black;
             font-size: 0.8rem;
             width: 16px;
             height: 16px;
@@ -391,7 +427,7 @@
             align-items: center;
             justify-content: center;
             border-radius: 50%;
-            border: 1px solid white;
+            border: 2px solid black;
             font-weight: bold;
             z-index: 5;
             box-shadow: 1px 1px 0 black;
@@ -638,8 +674,13 @@
 
             <div class="view-header">
                 <span id="category-title" data-i18n="home.header.all">All Applications</span>
-                <button class="sys-btn" id="edit-done-btn" onclick="toggleEditMode()"
-                    style="box-shadow: 2px 2px 0 black;" data-i18n="home.btn.edit">Edit</button>
+                <div style="display:flex; align-items:center;">
+                    <button class="sys-btn" id="reset-btn" onclick="openResetModal()"
+                        style="box-shadow: 2px 2px 0 black; display:none; margin-right:10px; font-size:0.8rem;"
+                        data-i18n="home.btn.reset">Reset</button>
+                    <button class="sys-btn" id="edit-done-btn" onclick="toggleEditMode()"
+                        style="box-shadow: 2px 2px 0 black;" data-i18n="home.btn.edit">Edit</button>
+                </div>
             </div>
 
             <div class="grid-container" id="app-grid"></div>
@@ -726,6 +767,17 @@
                 </h2>
                 <p id="generic-msg" style="font-size:1.1rem; line-height:1.5; margin: 20px 0;"></p>
                 <button class="sys-btn" onclick="closeModal('generic-modal')">OK</button>
+            </div>
+        </div>
+
+        <div id="reset-modal" class="modal-overlay" style="z-index: 2000;">
+            <div class="modal-box">
+                <h3>Reset Preferences?</h3>
+                <p style="margin-bottom:20px;">This will clear all your favorites and unhide all hidden apps.</p>
+                <div style="display: flex; justify-content: center">
+                    <button class="sys-btn" onclick="confirmReset()">Yes</button>
+                    <button class="sys-btn" onclick="closeModal('reset-modal')" style="margin-left: 10px">No</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1076,19 +1128,35 @@
         function toggleEditMode() {
             isEditMode = !isEditMode;
             const btn = document.getElementById('edit-done-btn');
+            const resetBtn = document.getElementById('reset-btn');
             if (isEditMode) {
                 btn.innerText = "Done";
+                if (resetBtn) resetBtn.style.display = 'block';
                 document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
                 document.querySelectorAll('.hide-toggle').forEach(t => t.classList.add('show-toggle'));
                 document.querySelectorAll('.beta-label, .new-label').forEach(l => l.style.display = 'none');
             } else {
                 btn.innerText = "Edit";
+                if (resetBtn) resetBtn.style.display = 'none';
                 document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.remove('show-toggle'));
                 document.querySelectorAll('.hide-toggle').forEach(t => t.classList.remove('show-toggle'));
                 document.querySelectorAll('.beta-label, .new-label').forEach(l => l.style.display = 'block');
             }
             renderAppGrid(currentFilter);
             renderFavoriteSection();
+        }
+
+        function openResetModal() {
+            document.getElementById('reset-modal').style.display = 'flex';
+        }
+
+        function confirmReset() {
+            favoriteApps = [];
+            hiddenApps = [];
+            saveFavorites();
+            renderFavoriteSection();
+            renderAppGrid(currentFilter);
+            closeModal('reset-modal');
         }
 
         function createAppElement(app) {
@@ -1104,7 +1172,7 @@
                     showGenericModal(app.name + " Unavailable", app.disabledMessage || "This service is currently unavailable.");
                 };
                 a.href = "javascript:void(0)";
-                a.style.opacity = "0.6";
+                a.classList.add('pro-locked');
             } else if (app.plus && !isPro) {
                 // OPTIMIZATION: Removed 'gap:10px' from inline style (Flex Gap not supported in Chrome 75)
                 a.onclick = (e) => {
@@ -1121,7 +1189,7 @@
                     document.getElementById('generic-modal').style.display = 'flex';
                 };
                 a.href = "javascript:void(0)";
-                a.style.opacity = "0.6";
+                a.classList.add('pro-locked');
             }
 
             const isFav = favoriteApps.includes(app.id);
@@ -1152,7 +1220,7 @@
             const viewBox = app.viewBox || "0 0 32 32";
             const svgClass = app.filled ? 'icon-img' : 'icon-img outlined-icon';
 
-            a.innerHTML = `<svg class="${svgClass}" viewBox="${viewBox}">${app.icon}</svg><span class="icon-label" data-i18n="app.${app.id}.name">${app.name}</span>${extraHtml}`;
+            a.innerHTML = `<span class="icon-img-wrap"><svg class="${svgClass}" viewBox="${viewBox}">${app.icon}</svg></span><span class="icon-label" data-i18n="app.${app.id}.name">${app.name}</span>${extraHtml}`;
             return a;
         }
 
@@ -1167,6 +1235,7 @@
 
         function filterApps(category, btnElement) {
             updateNavVisibility();
+            if (isEditMode) toggleEditMode();
             if (gamesDisabled && (category === 'games' || category === 'two_player')) { category = 'all'; btnElement = document.getElementById('nav-all'); }
             currentFilter = category;
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -1216,7 +1285,7 @@
                         document.getElementById('generic-modal').style.display = 'flex';
                     };
                     a.href = "javascript:void(0)";
-                    a.style.opacity = "0.6";
+                    a.classList.add('pro-locked');
                 }
                 a.innerHTML = `<div class="featured-icon"><svg viewBox="0 0 32 32" style="width:100%;height:100%;">${app.icon}</svg></div><div class="featured-info"><span class="featured-title" data-i18n="app.${app.id}.name">${app.name}</span><span class="featured-sub" data-i18n="app.${app.id}.desc">${subheading}</span></div>${badgeHtml}`;
                 fragment.appendChild(a);
