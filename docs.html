@@ -326,6 +326,11 @@
             fill: white !important;
         }
 
+        /* Hide CKEditor Powered By Logo */
+        .ck.ck-powered-by {
+            display: none !important;
+        }
+
         /* MODAL */
         .modal-overlay {
             position: fixed;
@@ -449,6 +454,35 @@
         </div>
     </div>
 
+    <!-- Startup Modal -->
+    <div class="modal-overlay" id="startup-modal">
+        <div class="modal-box" style=" max-width: 300px;">
+            <p style="font-weight:bold; margin-bottom:15px;" data-i18n="docs.modal.startup.title">Docs</p>
+            <p style="margin-bottom:15px;" data-i18n="docs.modal.startup.msg">What would you like to do?</p>
+            <div style="display:flex; flex-direction:column; align-items:center;">
+                <button class="sys-btn" style="width: 100%; justify-content:center; margin-bottom:10px;"
+                    onclick="createNewDoc()" data-i18n="docs.btn.new">Create New Document</button>
+                <button class="sys-btn" style="width: 100%; justify-content:center;"
+                    onclick="window.location.href='files.html?selectDoc=true'" data-i18n="docs.btn.open_files">Open from
+                    Files</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save As Modal -->
+    <div class="modal-overlay" id="save-as-modal">
+        <div class="modal-box" style=" max-width: 300px;">
+            <p style="font-weight:bold; margin-bottom:15px;" data-i18n="docs.modal.save_as">Enter filename:</p>
+            <input type="text" id="save-filename-input" value="document.docx"
+                style="width: 100%; margin-bottom: 15px; padding: 5px; box-sizing: border-box; border: 2px solid black; font-family: inherit; font-size: 1rem;">
+            <div style="display:flex; justify-content:center;">
+                <button class="sys-btn" onclick="submitSaveAs()" data-i18n="docs.modal.btn.save">Save</button>
+                <button class="sys-btn" onclick="cancelSaveAs()" data-i18n="docs.modal.btn.cancel"
+                    style="margin-left:10px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // GLOBALS
         let currentFileArrayBuffer = null;
@@ -517,10 +551,15 @@
             } else if (fileUrl) {
                 loadFromUrl(decodeURIComponent(fileUrl));
             } else {
-                // No document specified — redirect to Files app
-                window.location.href = 'files.html?selectDoc=true';
+                // Show startup modal instead of redirecting
+                document.getElementById('startup-modal').classList.add('active');
             }
         };
+
+        function createNewDoc() {
+            document.getElementById('startup-modal').classList.remove('active');
+            initEditor('');
+        }
 
         // --- FILE LOADING ---
         async function loadFromPath(path) {
@@ -801,6 +840,10 @@
             }
         }
 
+        let pendingSaveBlob = null;
+        let pendingSaveResolve = null;
+        let pendingSaveReject = null;
+
         // Modify saveDocument to return promise
         function saveDocument() {
             showLoading("Generating file...");
@@ -810,15 +853,16 @@
                 if (currentPath && currentUser) {
                     return saveToFirebase(blob, currentPath);
                 } else if (currentUser) {
-                    const name = prompt("Enter filename:", "document.docx");
-                    if (name) {
-                        filename = name.endsWith('.docx') ? name : name + '.docx';
-                        const newPath = `users/${currentUser.uid}/files/${filename}`;
-                        return saveToFirebase(blob, newPath);
-                    } else {
-                        hideLoading();
-                        return Promise.reject("Cancelled");
-                    }
+                    hideLoading(); // Hide loading indicator while modal is open
+                    pendingSaveBlob = blob;
+                    return new Promise((resolve, reject) => {
+                        pendingSaveResolve = resolve;
+                        pendingSaveReject = reject;
+                        const input = document.getElementById('save-filename-input');
+                        input.value = "document.docx";
+                        document.getElementById('save-as-modal').classList.add('active');
+                        input.focus();
+                    });
                 } else {
                     saveAs(blob, filename);
                     isDirty = false;
@@ -833,6 +877,38 @@
                 hideLoading();
                 throw err;
             });
+        }
+
+        function submitSaveAs() {
+            document.getElementById('save-as-modal').classList.remove('active');
+            const name = document.getElementById('save-filename-input').value.trim();
+            if (name && pendingSaveBlob && pendingSaveResolve) {
+                const filename = name.endsWith('.docx') ? name : name + '.docx';
+                const newPath = `users/${currentUser.uid}/files/${filename}`;
+                saveToFirebase(pendingSaveBlob, newPath)
+                    .then(pendingSaveResolve)
+                    .catch(pendingSaveReject)
+                    .finally(() => {
+                        pendingSaveBlob = null;
+                        pendingSaveResolve = null;
+                        pendingSaveReject = null;
+                    });
+            } else if (pendingSaveReject) {
+                pendingSaveReject("Cancelled");
+                pendingSaveBlob = null;
+                pendingSaveResolve = null;
+                pendingSaveReject = null;
+            }
+        }
+
+        function cancelSaveAs() {
+            document.getElementById('save-as-modal').classList.remove('active');
+            if (pendingSaveReject) {
+                pendingSaveReject("Cancelled");
+            }
+            pendingSaveBlob = null;
+            pendingSaveResolve = null;
+            pendingSaveReject = null;
         }
 
     </script>
