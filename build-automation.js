@@ -146,10 +146,8 @@ async function downloadAndTranspileLib(url, baseDir, customFilename = null, tran
     const filename = customFilename || path.basename(url).split('?')[0];
     const destPath = path.join(libDir, filename);
 
-    // Forces check/compile every time since we need to guarantee transpilation
-    // Or check if it exists but maybe we want to be safe for this fix.
-    // For efficiency, we can check existence, but let's assume if it exists it might be bad version from previous run.
-    if (!fs.existsSync(destPath) || true) {
+    // For efficiency, we check existence so we don't redownload/retranspile for every page.
+    if (!fs.existsSync(destPath)) {
         try {
             console.log(`    Downloading & Transpiling ${filename}...`);
             execSync(`curl -L "${url}" -o "${destPath}"`, { stdio: 'ignore' });
@@ -1103,8 +1101,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             finalHtml = finalHtml.replace(featuredTargetOriginal, featuredInjection.replace('a.className="featured-card";', "a.className = 'featured-card';"));
         }
 
-        return await minifyHtmlContent(finalHtml);
-
 
         // 8. APP-SPECIFIC FIXES (Legacy)
         // A. Home Screen: Fix Grid Layout
@@ -1501,7 +1497,7 @@ async function run() {
 
     // 4. Process Lite JS Files (External Scripts)
     console.log("🛠️  Transpiling JS Files...");
-    const jsFiles = glob.sync(`${LITE_DIR}/**/*.js`);
+    const jsFiles = glob.sync(`${LITE_DIR}/**/*.js`).filter(f => !f.includes('/libs/'));
     for (const file of jsFiles) {
         // Skip already minified files or libraries if we want (optional)
         // But to be safe, we transpile everything except obvious libraries if needed
@@ -1531,7 +1527,7 @@ async function run() {
     }
 
     // 7. Process Legacy JS (External)
-    const legJsFiles = glob.sync(`${LEGACY_DIR}/**/*.js`);
+    const legJsFiles = glob.sync(`${LEGACY_DIR}/**/*.js`).filter(f => !f.includes('/libs/'));
     for (const file of legJsFiles) {
         const code = await fs.readFile(file, 'utf8');
         const processed = await transpileLegacyJs(code);
