@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Dots & Boxes 2P</title>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            /* Player 2 Stripe */
+            /* Using a repeating linear gradient for striped boxes and lines */
+            --player2-pattern: repeating-linear-gradient(45deg, #000, #000 4px, transparent 4px, transparent 8px);
+        }
+
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+            max-height: 95vh;
+            width: 95%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* CONTENT AREA */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* STATUS BAR */
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            background: #eee;
+            font-family: "Courier New", monospace;
+            display: flex;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        .score-block {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .score-indicator {
+            width: 16px;
+            height: 16px;
+            border: 2px solid black;
+            margin-right: 8px;
+            display: inline-block;
+        }
+
+        .score-indicator.p1 {
+            background-color: black;
+        }
+
+        .score-indicator.p2 {
+            background-image: var(--player2-pattern);
+        }
+
+        #turn-indicator {
+            flex-grow: 1;
+        }
+
+        /* --- THE BOARD --- */
+        /*
+          A 5x5 dots grid = 9x9 CSS Grid
+          Rows 0, 2, 4, 6, 8 (Even) are Dot / H-Line / Dot / H-Line...
+          Rows 1, 3, 5, 7 (Odd) are V-Line / Box / V-Line / Box...
+        */
+        #board {
+            display: grid;
+            grid-template-columns: 8px 1fr 8px 1fr 8px 1fr 8px 1fr 8px;
+            grid-template-rows: 8px 1fr 8px 1fr 8px 1fr 8px 1fr 8px;
+            gap: 0;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 20px;
+            aspect-ratio: 1/1;
+            /* Modern CSS, fallback below */
+        }
+
+        /* Dot */
+        .dot {
+            background-color: black;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Lines */
+        .line {
+            background-color: transparent;
+            cursor: pointer;
+            z-index: 5;
+        }
+
+        .line.h {
+            /* Hover area expansion using pseudo element since dots are tiny */
+            position: relative;
+        }
+
+        .line.h::after {
+            content: '';
+            position: absolute;
+            top: -10px;
+            bottom: -10px;
+            left: 0;
+            right: 0;
+        }
+
+        .line.v {
+            position: relative;
+        }
+
+        .line.v::after {
+            content: '';
+            position: absolute;
+            left: -10px;
+            right: -10px;
+            top: 0;
+            bottom: 0;
+        }
+
+        /* Hover indicator for lines */
+        .line:not(.claimed):hover {
+            background-color: #ddd;
+        }
+
+        /* Claimed Lines */
+        .line.claimed.p1 {
+            background-color: black;
+        }
+
+        .line.claimed.p2 {
+            background-image: var(--player2-pattern);
+        }
+
+        /* Boxes */
+        .box {
+            background-color: transparent;
+            z-index: 1;
+        }
+
+        .box.claimed.p1 {
+            background-color: black;
+        }
+
+        .box.claimed.p2 {
+            background-image: var(--player2-pattern);
+        }
+
+        /* CONTROLS */
+        .controls {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        .controls>*+* {
+            margin-left: 10px;
+            /* Instead of flex gap! */
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 8px 15px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+    </style>
+    <script src="js/i18n.js"></script>
+    <script src="theme.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'" data-i18n="battleship.btn.close">X</div>
+            <span class="title-text" data-i18n="2pdotsandboxes.title">Dots & Boxes 2P</span>
+        </div>
+
+        <div class="window-content">
+            <div id="status-bar">
+                <div class="score-block">
+                    <div class="score-indicator p1"></div><span id="score-p1">0</span>
+                </div>
+                <div id="turn-indicator" data-i18n="2pdotsandboxes.turn.p1">Player 1</div>
+                <div class="score-block"><span id="score-p2">0</span>
+                    <div class="score-indicator p2" style="margin-right:0; margin-left:8px;"></div>
+                </div>
+            </div>
+
+            <div id="board">
+                <!-- Generated by JS -->
+            </div>
+
+            <div class="controls">
+                <button class="sys-btn" onclick="initGame()" data-i18n="tictactoe.btn.reset">New Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME CONSTANTS ---
+        const GRID_SIZE = 5; // 5x5 dots = 4x4 boxes
+
+        // --- GAME STATE ---
+        let currentPlayer = 1; // 1 (Solid) or 2 (Striped)
+        let scores = { 1: 0, 2: 0 };
+
+        // Data structures
+        // H-lines [r][c], r is 0..3 (GRID_SIZE-1), c is 0..3 (GRID_SIZE-2) <-- Wait, No!
+        // For a 5x5 dot grid:
+        // Horizontal lines: 5 rows (0..4), 4 per row (0..3) -> 20 lines
+        // Vertical lines: 4 rows (0..3) of spaces between dots, 5 cols (0..4) -> 20 lines
+        // Boxes: 4 rows (0..3), 4 cols (0..3) -> 16 boxes
+        let hLines = [];
+        let vLines = [];
+        let boxes = [];
+        let gameActive = true;
+
+        window.onload = function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            initGame();
+
+            // Fix height for older browsers without aspect-ratio
+            window.addEventListener('resize', resizeBoard);
+        };
+
+        function resizeBoard() {
+            const board = document.getElementById('board');
+            if (board) {
+                board.style.height = board.offsetWidth + 'px';
+            }
+        }
+
+        function initGame() {
+            currentPlayer = 1;
+            scores = { 1: 0, 2: 0 };
+            gameActive = true;
+
+            hLines = [];
+            for (let r = 0; r < GRID_SIZE; r++) {
+                hLines[r] = [];
+                for (let c = 0; c < GRID_SIZE - 1; c++) {
+                    hLines[r][c] = 0; // 0 = empty, 1 = p1, 2 = p2
+                }
+            }
+
+            vLines = [];
+            for (let r = 0; r < GRID_SIZE - 1; r++) {
+                vLines[r] = [];
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    vLines[r][c] = 0;
+                }
+            }
+
+            boxes = [];
+            for (let r = 0; r < GRID_SIZE - 1; r++) {
+                boxes[r] = [];
+                for (let c = 0; c < GRID_SIZE - 1; c++) {
+                    boxes[r][c] = 0;
+                }
+            }
+
+            renderBoard();
+            updateStatus();
+            setTimeout(resizeBoard, 50);
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+
+            // CSS Grid Rows/Cols mapping:
+            // Math for indices mapping 5x5 dots to 9x9 CSS Grid
+            for (let cssRow = 0; cssRow < (GRID_SIZE * 2) - 1; cssRow++) {
+                for (let cssCol = 0; cssCol < (GRID_SIZE * 2) - 1; cssCol++) {
+
+                    const el = document.createElement('div');
+
+                    if (cssRow % 2 === 0 && cssCol % 2 === 0) {
+                        // Dot
+                        el.className = 'dot';
+                    }
+                    else if (cssRow % 2 === 0 && cssCol % 2 !== 0) {
+                        // Horizontal Line
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'line h';
+                        if (hLines[r][c] !== 0) {
+                            el.classList.add('claimed');
+                            el.classList.add(hLines[r][c] === 1 ? 'p1' : 'p2');
+                        } else {
+                            el.onclick = function () { handleLineClick('h', r, c); };
+                        }
+                    }
+                    else if (cssRow % 2 !== 0 && cssCol % 2 === 0) {
+                        // Vertical Line
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'line v';
+                        if (vLines[r][c] !== 0) {
+                            el.classList.add('claimed');
+                            el.classList.add(vLines[r][c] === 1 ? 'p1' : 'p2');
+                        } else {
+                            el.onclick = function () { handleLineClick('v', r, c); };
+                        }
+                    }
+                    else {
+                        // Box
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'box';
+                        if (boxes[r][c] !== 0) {
+                            el.classList.add('claimed');
+                            el.classList.add(boxes[r][c] === 1 ? 'p1' : 'p2');
+                        }
+                    }
+
+                    // Grid coordinates
+                    el.style.gridRow = cssRow + 1;
+                    el.style.gridColumn = cssCol + 1;
+
+                    boardEl.appendChild(el);
+                }
+            }
+        }
+
+        function handleLineClick(type, r, c) {
+            if (!gameActive) return;
+
+            // Mark line
+            if (type === 'h') {
+                if (hLines[r][c] !== 0) return;
+                hLines[r][c] = currentPlayer;
+            } else {
+                if (vLines[r][c] !== 0) return;
+                vLines[r][c] = currentPlayer;
+            }
+
+            // Check for completed boxes
+            let boxesCompleted = 0;
+
+            if (type === 'h') {
+                // Check box above
+                if (r > 0 && isBoxComplete(r - 1, c)) {
+                    boxes[r - 1][c] = currentPlayer;
+                    boxesCompleted++;
+                }
+                // Check box below
+                if (r < GRID_SIZE - 1 && isBoxComplete(r, c)) {
+                    boxes[r][c] = currentPlayer;
+                    boxesCompleted++;
+                }
+            } else {
+                // type === 'v'
+                // Check box to the left
+                if (c > 0 && isBoxComplete(r, c - 1)) {
+                    boxes[r][c - 1] = currentPlayer;
+                    boxesCompleted++;
+                }
+                // Check box to the right
+                if (c < GRID_SIZE - 1 && isBoxComplete(r, c)) {
+                    boxes[r][c] = currentPlayer;
+                    boxesCompleted++;
+                }
+            }
+
+            if (boxesCompleted > 0) {
+                scores[currentPlayer] += boxesCompleted;
+                checkGameOver();
+            } else {
+                // Switch turns
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+            }
+
+            // Render update
+            // (Could optimize by just updating the specific DOM nodes, 
+            // but for a small grid innerHTML replacement is fast enough and simple)
+            renderBoard();
+            updateStatus();
+        }
+
+        function isBoxComplete(r, c) {
+            // A box [r][c] uses:
+            // Top: hLines[r][c]
+            // Bottom: hLines[r+1][c]
+            // Left: vLines[r][c]
+            // Right: vLines[r][c+1]
+            return hLines[r][c] !== 0 &&
+                hLines[r + 1][c] !== 0 &&
+                vLines[r][c] !== 0 &&
+                vLines[r][c + 1] !== 0;
+        }
+
+        function checkGameOver() {
+            let totalBoxes = (GRID_SIZE - 1) * (GRID_SIZE - 1);
+            if (scores[1] + scores[2] === totalBoxes) {
+                gameActive = false;
+                flashScreen();
+            }
+        }
+
+        function updateStatus() {
+            document.getElementById('score-p1').innerText = scores[1];
+            document.getElementById('score-p2').innerText = scores[2];
+
+            const turnEl = document.getElementById('turn-indicator');
+            if (gameActive) {
+                turnEl.innerText = window.t ? window.t('2pdotsandboxes.turn.p' + currentPlayer) : `Player ${currentPlayer}'s Turn`;
+                // Add an explicit indicator if you want, but text is fine.
+            } else {
+                let msg = "";
+                if (scores[1] > scores[2]) msg = window.t ? window.t('2pdotsandboxes.win.p1') : "Player 1 Wins!";
+                else if (scores[2] > scores[1]) msg = window.t ? window.t('2pdotsandboxes.win.p2') : "Player 2 Wins!";
+                else msg = window.t ? window.t('2pdotsandboxes.draw') : "It's a Draw!";
+                turnEl.innerText = msg;
+            }
+        }
+
+        function flashScreen() {
+            const content = document.querySelector('.window-content');
+            content.style.filter = "invert(1)";
+            setTimeout(function () {
+                content.style.filter = "invert(0)";
+            }, 300);
+        }
+
+    </script>
+</body>
+
+</html>
