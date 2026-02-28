@@ -380,7 +380,7 @@
     <!-- CKEditor 5 Decoupled (Editor) -->
     <script src="https://cdn.ckeditor.com/ckeditor5/41.0.0/decoupled-document/ckeditor.js"></script>
     <!-- Mammoth.js (DOCX -> HTML conversion) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js"></script>
     <!-- docx library (HTML -> DOCX export) -->
     <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
     <!-- FileSaver.js -->
@@ -613,9 +613,43 @@
         function openInEditor(arrayBuffer) {
             showLoading("Converting for Editor...");
 
-            mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
+            // Extract indentations and format them with static classes
+            const dynamicStyles = [];
+            const transformDocument = mammoth.transforms.paragraph(function (p) {
+                if (p.indent) {
+                    const start = parseInt(p.indent.start) || 0;
+                    const end = parseInt(p.indent.end) || 0;
+
+                    if (start >= 720 && end >= 720) {
+                        p.styleId = "Blockquote";
+                        p.styleName = "Blockquote";
+                    }
+                    else if (start > 0) {
+                        const px = Math.round(start / 15);
+                        p.styleId = `Indent${px}`;
+                        p.styleName = `Indent${px}`;
+                    }
+                }
+                return p;
+            });
+
+            // Generate map for varying twip margins (up to 8 levels of 40px indents)
+            const styleMap = ["p[style-name='Blockquote'] => blockquote:fresh"];
+            for (let i = 1; i <= 8; i++) {
+                const px = i * 40;
+                styleMap.push(`p[style-name='Indent${px}'] => p.indent-${px}:fresh`);
+            }
+
+            const options = {
+                transformDocument: transformDocument,
+                styleMap: styleMap
+            };
+
+            mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options)
                 .then(function (result) {
-                    const html = result.value;
+                    let html = result.value;
+                    // Post-process the generated classes back into inline styles for CKEditor
+                    html = html.replace(/class=['"]?indent-(\d+)['"]?/g, 'style="margin-left:$1px;"');
                     initEditor(html);
                 })
                 .catch(function (err) {
@@ -694,6 +728,21 @@
             }
 
             const docxDoc = new Document({
+                numbering: {
+                    config: [
+                        {
+                            reference: 'ordered',
+                            levels: [
+                                {
+                                    level: 0,
+                                    format: 'decimal',
+                                    text: '%1.',
+                                    alignment: 'start',
+                                }
+                            ]
+                        }
+                    ]
+                },
                 sections: [{
                     children: children
                 }]
@@ -723,25 +772,104 @@
                     });
                 }
 
-                if (tagName === 'p' || tagName === 'div') {
+                if (tagName === 'blockquote') {
+                    const children = Array.from(node.childNodes);
+                    const paragraphs = [];
+                    children.forEach(child => {
+                        if (child.nodeType === Node.ELEMENT_NODE && (child.tagName.toLowerCase() === 'p' || child.tagName.toLowerCase() === 'div')) {
+                            const childRuns = parseInlineChildren(child, docx);
+                            paragraphs.push(new Paragraph({
+                                children: childRuns,
+                                indent: { left: 720, right: 720 }
+                            }));
+                        } else if (child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== '') {
+                            paragraphs.push(new Paragraph({
+                                children: [new docx.TextRun(child.textContent)],
+                                indent: { left: 720, right: 720 }
+                            }));
+                        } else if (child.nodeType === Node.ELEMENT_NODE) {
+                            // Any other inline element
+                            const childRuns = parseInlineChildren({ childNodes: [child], nodeType: Node.ELEMENT_NODE }, docx);
+                            if (childRuns.length > 0) {
+                                paragraphs.push(new Paragraph({
+                                    children: childRuns,
+                                    indent: { left: 720, right: 720 }
+                                }));
+                            }
+                        }
+                    });
+
+                    if (paragraphs.length > 0) return paragraphs;
+
+                    // Fallback
                     const runs = parseInlineChildren(node, docx);
                     return new Paragraph({
-                        children: runs
+                        children: runs,
+                        indent: { left: 720, right: 720 }
                     });
+                }
+
+                if (tagName === 'p' || tagName === 'div') {
+                    const runs = parseInlineChildren(node, docx);
+                    const pOpts = { children: runs };
+
+                    if (node.style && node.style.marginLeft) {
+                        const marginPx = parseInt(node.style.marginLeft) || 0;
+                        if (marginPx > 0) {
+                            // roughly 15 twips per px
+                            pOpts.indent = { left: marginPx * 15 };
+                        }
+                    }
+
+                    return new Paragraph(pOpts);
                 }
 
                 if (tagName === 'ul' || tagName === 'ol') {
                     const listItems = [];
+                    const isOrdered = tagName === 'ol';
                     Array.from(node.children).forEach(li => {
                         if (li.tagName.toLowerCase() === 'li') {
                             const runs = parseInlineChildren(li, docx);
-                            listItems.push(new Paragraph({
-                                children: runs,
-                                bullet: { level: 0 }
-                            }));
+                            const pOpts = { children: runs };
+                            if (isOrdered) {
+                                pOpts.numbering = { reference: 'ordered', level: 0 };
+                            } else {
+                                pOpts.bullet = { level: 0 };
+                            }
+                            listItems.push(new Paragraph(pOpts));
                         }
                     });
                     return listItems;
+                }
+
+                if (tagName === 'table' || (tagName === 'figure' && node.classList.contains('table'))) {
+                    // CKEditor often wraps <table> in <figure class="table">
+                    const tableNode = tagName === 'table' ? node : node.querySelector('table');
+                    if (!tableNode) return null;
+
+                    const rows = [];
+                    const trs = tableNode.querySelectorAll('tr');
+
+                    trs.forEach(tr => {
+                        const cells = [];
+                        const tds = tr.querySelectorAll('td, th');
+
+                        tds.forEach(td => {
+                            const cellRuns = parseInlineChildren(td, docx);
+                            cells.push(new docx.TableCell({
+                                children: [new docx.Paragraph({ children: cellRuns })]
+                            }));
+                        });
+
+                        if (cells.length > 0) {
+                            rows.push(new docx.TableRow({ children: cells }));
+                        }
+                    });
+
+                    if (rows.length > 0) {
+                        return new docx.Table({ rows: rows });
+                    }
+                    return null;
                 }
 
                 const runs = parseInlineChildren(node, docx);
