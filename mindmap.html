@@ -13,7 +13,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="js/i18n.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-    <script src="pro-gate.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -215,7 +214,7 @@
             align-items: center;
         }
 
-        .toolbar-left,
+        .toolbar-left>*+*,
         .toolbar-right>*+* {
             margin-left: 10px;
         }
@@ -430,7 +429,8 @@
                 <button class="sys-btn" id="edit-btn" onclick="toggleEditMode()"
                     data-i18n="mindmap.btn.edit">Edit</button>
                 <button class="sys-btn" onclick="resetView()" data-i18n="mindmap.btn.center">Center</button>
-                <button class="sys-btn" onclick="checkProAndOpenExport()" data-i18n="mindmap.btn.export">Export</button>
+                <button class="sys-btn" id="export-btn" onclick="checkProAndOpenExport()"
+                    data-i18n="mindmap.btn.export">Export</button>
             </div>
         </div>
 
@@ -593,7 +593,6 @@
         window.onload = () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
-            if (window.rekindleProGate) window.rekindleProGate.check();
 
             const urlParams = new URLSearchParams(window.location.search);
             mindmapId = urlParams.get('id');
@@ -609,6 +608,24 @@
                 } else {
                     statusBar.innerText = window.t('mindmap.status.guest', "Guest Mode (Local)");
                 }
+
+                // Custom pro check to avoid auto-paywall from pro-gate.js
+                isCurrentUserPro().then(isPro => {
+                    const exportBtn = document.getElementById('export-btn');
+                    if (!isPro) {
+                        if (exportBtn) {
+                            exportBtn.style.color = '#888';
+                            exportBtn.style.borderColor = '#888';
+                            exportBtn.style.boxShadow = '2px 2px 0 #888';
+                        }
+                    } else {
+                        if (exportBtn) {
+                            exportBtn.style.color = '';
+                            exportBtn.style.borderColor = '';
+                            exportBtn.style.boxShadow = '';
+                        }
+                    }
+                });
 
                 if (mindmapId) {
                     loadData();
@@ -725,15 +742,56 @@
 
         // --- Export Features ---
 
-        function checkProAndOpenExport() {
-            if (window.rekindleProGate && window.rekindleProGate.isPro()) {
+        // --- Pro Status Check (Custom for Mindmap to avoid auto paywall) ---
+        async function isCurrentUserPro() {
+            if (!currentUser) return false;
+            try {
+                const doc = await db.collection('users').doc(currentUser.uid).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    const now = Date.now();
+                    let expires = 0;
+                    if (data.proExpiresAt) {
+                        expires = typeof data.proExpiresAt.toMillis === 'function' ? data.proExpiresAt.toMillis() : new Date(data.proExpiresAt).getTime();
+                    }
+                    return expires > now;
+                }
+            } catch (e) {
+                console.error("Pro check failed", e);
+            }
+            return false;
+        }
+
+        async function checkProAndOpenExport() {
+            const isPro = await isCurrentUserPro();
+            if (isPro) {
                 const titleEl = document.getElementById('mindmap-title');
                 const currentTitle = titleEl.innerText !== window.t('mindmap.node.untitled', 'Untitled') ? titleEl.innerText : 'mindmap';
                 document.getElementById('export-filename').value = currentTitle.replace(/[^a-zA-Z0-9-_ ]/g, ''); // Simple sanitize
                 document.getElementById('export-status').innerText = "";
                 document.getElementById('export-modal').style.display = 'flex';
             } else {
-                window.rekindleProGate.showPaywall('Export is a Pro feature.');
+                showMindmapPaywall();
+            }
+        }
+
+        function showMindmapPaywall() {
+            let overlay = document.getElementById('paywall-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'paywall-overlay';
+                overlay.style.cssText = 'display:flex; position:fixed; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:9000; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;';
+                overlay.innerHTML = `
+                    <h2 style="margin-top:0;">ReKindle+</h2>
+                    <p>Support ReKindle development and get<br>access to exclusive apps.</p>
+                    <button onclick="window.location.href='pay.html'" style="padding:12px 32px; cursor:pointer; font-size:1.1rem; font-weight:bold; font-family:inherit; background:#fff; border:2px solid #000; color:#000;">Subscribe / Login</button>
+                    <p style="font-size:0.8rem; margin-top:20px; color:#666;" id="paywall-status">Mindmap export is available for ReKindle+ users.</p>
+                    <button onclick="document.getElementById('paywall-overlay').style.display='none'" style="margin-top: 20px; padding:8px 16px; cursor:pointer; font-size:0.9rem; background:#fff; border:1px solid #ccc; color:#666;">Close</button>
+                 `;
+                document.body.appendChild(overlay);
+            } else {
+                overlay.style.display = 'flex';
+                document.getElementById('paywall-status').innerText = 'Mindmap export is available for ReKindle+ users.';
             }
         }
 
