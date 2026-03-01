@@ -144,14 +144,14 @@ const APPS = [
         cat: 'tools',
         icon: '<path d="M6 4h16l6 6v18h-22z"/><polyline points="22 4 22 10 28 10"/>'
     },
-    /*     {
-            id: 'journal',
-            name: 'Journal',
-            cat: 'lifestyle',
-            newBadge: true,
-            desc: 'Write or draw your thoughts.',
-            icon: '<rect x="8" y="4" width="16" height="24" rx="1" stroke="black" stroke-width="2" fill="none"/><line x1="13" y1="4" x2="13" y2="28" stroke="black" stroke-width="2"/><path d="M18 4 v8 l3 -2 l3 2 v-8" fill="black"/>'
-        }, */
+    {
+        id: 'journal',
+        name: 'Journal',
+        cat: 'lifestyle',
+        newBadge: true,
+        desc: 'Write or draw your thoughts.',
+        icon: '<rect x="8" y="4" width="16" height="24" rx="1" stroke="black" stroke-width="2" fill="none"/><line x1="13" y1="4" x2="13" y2="28" stroke="black" stroke-width="2"/><path d="M18 4 v8 l3 -2 l3 2 v-8" fill="black"/>'
+    },
     {
         id: 'tasks',
         name: 'Tasks',
