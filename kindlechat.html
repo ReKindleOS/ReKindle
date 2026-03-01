@@ -1431,7 +1431,7 @@
 
         var userLang = resolveUserLanguage();
         var settings = {
-            showTranslations: userLang === 'en', // Default to true only for English
+            showTranslations: true, // Default to true for all users to see translations
             showAdminTools: false
         };
 
@@ -2792,8 +2792,34 @@
 
                 // SERVER-SIDE TRANSLATION DISPLAY
                 var toggleBtnHtml = '';
-                if (settings.showTranslations && msg.translation) {
-                    textToDisplay = linkify(escapeHtml(msg.translation));
+
+                var hasTranslation = false;
+                var translationText = "";
+                var originalTextLowercase = (messageText || "").toLowerCase().trim();
+
+                if (msg.translation) {
+                    if (typeof msg.translation === 'string') {
+                        // Legacy string format
+                        if (originalTextLowercase !== msg.translation.toLowerCase().trim()) {
+                            hasTranslation = true;
+                            translationText = msg.translation;
+                        }
+                    } else if (typeof msg.translation === 'object') {
+                        // New map format
+                        var langToTry = (typeof userLang !== 'undefined') ? userLang : 'en';
+                        if (msg.translation[langToTry] && msg.translation[langToTry].toLowerCase().trim() !== originalTextLowercase) {
+                            hasTranslation = true;
+                            translationText = msg.translation[langToTry];
+                        } else if (langToTry !== 'en' && msg.translation['en'] && msg.translation['en'].toLowerCase().trim() !== originalTextLowercase) {
+                            // Fallback to English if user language translation is missing or identical, but English translation is different
+                            hasTranslation = true;
+                            translationText = msg.translation['en'];
+                        }
+                    }
+                }
+
+                if (settings.showTranslations && hasTranslation) {
+                    textToDisplay = linkify(escapeHtml(translationText));
                     // Tagify translation too? Maybe not purely necessary but consistent. Let's tagify it.
                     textToDisplay = tagify(textToDisplay, msgId);
 
@@ -2805,7 +2831,7 @@
                     // It should also do tagify.
 
                     // Store escaped original text
-                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="translated" data-original="' + escapeHtml(messageText) + '" data-translated="' + escapeHtml(msg.translation) + '">' + textToDisplay + '</div>';
+                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="translated" data-original="' + escapeHtml(messageText) + '" data-translated="' + escapeHtml(translationText) + '">' + textToDisplay + '</div>';
                 } else {
                     bubbleContent = '<div class="msg-bubble">' + tagify(linkify(textToDisplay), msgId) + '</div>';
                 }
@@ -3038,6 +3064,18 @@
                     var parsed = JSON.parse(saved);
                     settings.showTranslations = parsed.showTranslations !== undefined ? parsed.showTranslations : settings.showTranslations;
                     settings.showAdminTools = parsed.showAdminTools !== undefined ? parsed.showAdminTools : false;
+                } catch (e) { }
+            }
+
+            // Force translation setting ON once for all users due to multilang update
+            if (!localStorage.getItem('rekindle_translation_forced_v1')) {
+                settings.showTranslations = true;
+                localStorage.setItem('rekindle_translation_forced_v1', 'true');
+                try {
+                    var currentSettings = saved ? JSON.parse(saved) : {};
+                    currentSettings.showTranslations = true;
+                    if (currentSettings.showAdminTools === undefined) currentSettings.showAdminTools = settings.showAdminTools;
+                    localStorage.setItem('kindlechat_settings', JSON.stringify(currentSettings));
                 } catch (e) { }
             }
         }

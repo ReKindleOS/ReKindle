@@ -9,7 +9,7 @@
  * 4. Writes final record (original + translation) to Firebase RTDB
  */
 
-const FIREBASE_URL = "https://rekindle-dd1fa-default-rtdb.firebaseio.com/kindlechat/messages.json";
+// FIREBASE_URL removed, we use dynamic base URL
 
 // EMBEDDED EMOJI DATABASE (From emojis.js)
 const ASCII_EMOJIS = {
@@ -122,7 +122,7 @@ function isAsciiEmoji(text) {
     return false;
 }
 
-async function translateWithGoogle(text) {
+async function translateWithGoogle(text, targetLang = 'en') {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
         return { text: null, error: "Skipped: Emoji or Empty" };
     }
@@ -135,7 +135,7 @@ async function translateWithGoogle(text) {
     });
 
     try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(maskedText)}`;
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
 
         const response = await fetch(url);
 
@@ -159,9 +159,8 @@ async function translateWithGoogle(text) {
         });
 
         // 3. Validation
-        // Don't translate if detected language is already English (or close enough)
-        if (detectedLang === 'en') {
-            return { text: null, error: "Skipped: Detected language is English" };
+        if (detectedLang === targetLang) {
+            return { text: null, error: `Skipped: Detected language is same as target (${targetLang})` };
         }
 
         if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
@@ -171,9 +170,31 @@ async function translateWithGoogle(text) {
         return { text: null, error: "Suppressed: Identical translation" };
 
     } catch (err) {
-        console.error("Translation failed:", err);
+        console.error(`Translation to ${targetLang} failed:`, err);
         return { text: null, error: `Failed: ${err.message}` };
     }
+}
+
+async function translateToAllLanguages(text) {
+    if (!text || text.trim().length === 0 || isAsciiEmoji(text)) return null;
+
+    // Supported languages in ReKindle based on user settings
+    const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
+    const translations = {};
+
+    // Process in parallel to save time
+    const promises = targetLangs.map(async (lang) => {
+        const result = await translateWithGoogle(text, lang);
+        if (result.text) {
+            translations[lang] = result.text;
+        }
+    });
+
+    await Promise.allSettled(promises);
+
+    // If no unique translations generated, return null
+    if (Object.keys(translations).length === 0) return null;
+    return translations;
 }
 
 
@@ -218,16 +239,21 @@ async function handleRequest(request) {
 
     try {
         const payload = await request.json();
-        const { user, text, msgId, reprocess } = payload;
+        const { user, uid, text, msgId, reprocess, app } = payload;
 
         console.log("Worker received payload:", JSON.stringify(payload));
 
+        let baseFirebaseUrl = "https://rekindle-dd1fa-default-rtdb.firebaseio.com/kindlechat/messages";
+        if (app === 'neighbourhood') {
+            baseFirebaseUrl = "https://rekindle-dd1fa-default-rtdb.firebaseio.com/neighbourhood_posts";
+        }
+
         if (reprocess && msgId) {
             // REPROCESS LOGIC
-            let { text: translatedText, error: translationError } = await translateWithGoogle(text);
+            let translatedText = await translateToAllLanguages(text);
 
             // Update specific message
-            let updateUrl = FIREBASE_URL.replace(".json", `/${msgId}.json`);
+            let updateUrl = `${baseFirebaseUrl}/${msgId}.json`;
             if (token) updateUrl += `?auth=${token}`;
 
             const firebaseResp = await fetch(updateUrl, {
@@ -247,28 +273,32 @@ async function handleRequest(request) {
             return new Response(JSON.stringify({
                 success: true,
                 msgId,
-                translation: translatedText,
-                translationError
+                translation: translatedText
             }), { status: 200, headers });
         }
 
         // NORMAL SEND LOGIC
-        if (!user || (!text && text !== "")) {
-            return new Response(JSON.stringify({ error: "Missing user or text" }), { status: 400, headers });
+        if ((!user && !uid) || (!text && text !== "")) {
+            return new Response(JSON.stringify({ error: "Missing user/uid or text" }), { status: 400, headers });
         }
 
         // SKIP EMOJIS AND TRANSLATE
-        let { text: translatedText, error: translationError } = await translateWithGoogle(text);
+        let translatedText = await translateToAllLanguages(text);
 
         const dbPayload = {
-            user: user,
             text: text,
             timestamp: { ".sv": "timestamp" },
-            ...(translatedText && { translation: translatedText }),
-            ...(payload.isPro && { isPro: true })
+            ...(translatedText && { translation: translatedText })
         };
 
-        let postUrl = FIREBASE_URL;
+        if (app === 'neighbourhood') {
+            dbPayload.uid = uid;
+        } else {
+            dbPayload.user = user;
+            if (payload.isPro) dbPayload.isPro = true;
+        }
+
+        let postUrl = `${baseFirebaseUrl}.json`;
         if (token) postUrl += `?auth=${token}`;
 
         const firebaseResp = await fetch(postUrl, {
@@ -286,8 +316,7 @@ async function handleRequest(request) {
         return new Response(JSON.stringify({
             success: true,
             id: firebaseData.name,
-            translation: translatedText,
-            translationError
+            translation: translatedText
         }), { status: 200, headers });
 
     } catch (err) {
