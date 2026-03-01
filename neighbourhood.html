@@ -1052,6 +1052,42 @@
         let currentUser = null;
         let isPlus = false;
         let myProfile = {};
+
+        var TRANSLATION_WORKER_URL = "https://rekindle-translate.timjarnott.workers.dev";
+        function resolveUserLanguage() {
+            var lang = localStorage.getItem('rekindle_language') || 'auto';
+            if (lang === 'auto') {
+                try {
+                    var manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                    if (manualLoc && manualLoc.country_code) {
+                        var cc = manualLoc.country_code.toUpperCase();
+                        var esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
+                        var ptCountries = ['PT', 'BR'];
+                        var plCountries = ['PL'];
+                        var deCountries = ['DE', 'AT', 'CH', 'LI'];
+                        var itCountries = ['IT', 'SM', 'VA'];
+                        var frCountries = ['FR', 'BE', 'CA', 'CH', 'LU', 'MC', 'SN'];
+                        var ruCountries = ['RU', 'BY', 'KZ', 'KG'];
+                        var zhCountries = ['CN', 'TW', 'HK', 'SG'];
+                        var viCountries = ['VN'];
+
+                        if (esCountries.indexOf(cc) !== -1) return 'es';
+                        if (ptCountries.indexOf(cc) !== -1) return 'pt';
+                        if (plCountries.indexOf(cc) !== -1) return 'pl';
+                        if (deCountries.indexOf(cc) !== -1) return 'de';
+                        if (itCountries.indexOf(cc) !== -1) return 'it';
+                        if (zhCountries.indexOf(cc) !== -1) return 'zh';
+                        if (viCountries.indexOf(cc) !== -1) return 'vi';
+                        if (frCountries.indexOf(cc) !== -1) return 'fr';
+                        if (ruCountries.indexOf(cc) !== -1) return 'ru';
+                    }
+                } catch (e) { }
+                return (navigator.language ? navigator.language.split('-')[0] : 'en');
+            }
+            return lang;
+        }
+        var userLang = resolveUserLanguage();
+
         let currentDrawMode = 1;
         let isDrawing = false;
         let tempPixelData = new Array(64).fill(0);
@@ -2752,12 +2788,49 @@
                 adminControls = `
                 <div style="position:absolute; top:5px; right:5px; display:flex; z-index:10;">
                     <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; margin-right:5px;" onclick="editPost('${post.id}')">Edit</button>
+                    <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; margin-right:5px; color:blue;" onclick="reprocessPost('${post.id}', '${escapeHtml(post.text).replace(/'/g, "\\'")}')" title="Reprocess Translation">Rp</button>
                     <button class="sys-btn" style="padding:2px 5px; font-size:0.7rem; background:black; color:white;" onclick="deletePost('${post.id}')">Del</button>
                 </div>
                 `;
             }
 
             let displayText = post.text;
+            let isTranslatedDisplay = false;
+            let toggleBtnHtml = '';
+
+            // Translation Logic
+            var hasTranslation = false;
+            var translationText = "";
+            var originalTextLowercase = (post.text || "").toLowerCase().trim();
+
+            if (post.translation) {
+                if (typeof post.translation === 'string') {
+                    // Legacy string format
+                    if (originalTextLowercase !== post.translation.toLowerCase().trim()) {
+                        hasTranslation = true;
+                        translationText = post.translation;
+                    }
+                } else if (typeof post.translation === 'object') {
+                    // New map format
+                    var langToTry = (typeof userLang !== 'undefined') ? userLang : 'en';
+                    if (post.translation[langToTry] && post.translation[langToTry].toLowerCase().trim() !== originalTextLowercase) {
+                        hasTranslation = true;
+                        translationText = post.translation[langToTry];
+                    } else if (langToTry !== 'en' && post.translation['en'] && post.translation['en'].toLowerCase().trim() !== originalTextLowercase) {
+                        // Fallback to English if user language translation is missing or identical, but English translation is different
+                        hasTranslation = true;
+                        translationText = post.translation['en'];
+                    }
+                }
+            }
+
+            if (hasTranslation) {
+                displayText = translationText;
+                isTranslatedDisplay = true;
+                const trLabel = window.t ? window.t('kindlechat.msg.show_original', 'Show Original') : 'Show Original';
+                toggleBtnHtml = `<div style="margin-top: 5px;"><span id="toggle-${post.id}" onclick="toggleTranslation('${post.id}')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${trLabel}</span></div>`;
+            }
+
             const filterEnabled = localStorage.getItem('rekindle_profanity_filter') !== 'false';
             if (filterEnabled && window.filterBadWords) {
                 displayText = window.filterBadWords(displayText);
@@ -2783,9 +2856,10 @@
                                 <strong style="font-size:0.95rem; margin-right:4px;">${escapeHtml(dName)}</strong>
                                 ${handleHtml}
                             </div>
-                            <small style="color:#666; font-size:0.75rem; margin-right:${isAdminMode ? '70px' : '0'};">${timeStr}</small>
+                            <small style="color:#666; font-size:0.75rem; margin-right:${isAdminMode ? '100px' : '0'};">${timeStr}</small>
                          </div>
-                         <div style="white-space:pre-wrap; font-size:0.9rem; line-height:1.4; margin-top:5px;">${escapeHtml(displayText)}</div>
+                         <div id="post-text-${post.id}" data-state="${isTranslatedDisplay ? 'translated' : 'original'}" data-original="${escapeHtml(post.text)}" data-translated="${escapeHtml(translationText || '')}" style="white-space:pre-wrap; font-size:0.9rem; line-height:1.4; margin-top:5px; ${isTranslatedDisplay ? 'font-style:italic;' : ''}">${escapeHtml(displayText)}</div>
+                         ${toggleBtnHtml}
                     </div>
                 </div>
                 <!-- COMMENTS SECTION -->
@@ -3025,20 +3099,124 @@
             const btn = document.querySelector('button[onclick="submitPost()"]');
             if (btn) btn.disabled = true;
 
-            db.ref('neighbourhood_posts').push({
-                uid: currentUser.uid,
-                text: text,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            }).then(() => {
-                input.value = '';
-                if (btn) btn.disabled = false;
-            }).catch(err => {
-                showAlertModal("Error posting: " + err.message);
-                if (btn) btn.disabled = false;
+            const isPro = currentUser.kindlePlus || supporterUsers[currentUser.email] || supporterUsers[currentUser.displayName] || false;
+
+            if (typeof TRANSLATION_WORKER_URL !== 'undefined' && TRANSLATION_WORKER_URL) {
+                currentUser.getIdToken().then(function (token) {
+                    fetch(TRANSLATION_WORKER_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        },
+                        body: JSON.stringify({
+                            uid: currentUser.uid,
+                            text: text,
+                            isPro: isPro,
+                            app: 'neighbourhood'
+                        })
+                    })
+                        .then(function (res) {
+                            return res.json();
+                        })
+                        .then(function (data) {
+                            if (data.error) throw new Error(data.error);
+                            input.value = '';
+                            if (btn) btn.disabled = false;
+                        })
+                        .catch(function (err) {
+                            showAlertModal("Error posting: " + err.message);
+                            if (btn) btn.disabled = false;
+                        });
+                });
+            } else {
+                db.ref('neighbourhood_posts').push({
+                    uid: currentUser.uid,
+                    text: text,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                }).then(() => {
+                    input.value = '';
+                    if (btn) btn.disabled = false;
+                }).catch(err => {
+                    showAlertModal("Error posting: " + err.message);
+                    if (btn) btn.disabled = false;
+                });
+            }
+        }
+
+        // --- ADMIN ACTIONS & TRANSLATION ---
+        function toggleTranslation(postId) {
+            const textDiv = document.getElementById('post-text-' + postId);
+            const toggleBtn = document.getElementById('toggle-' + postId);
+            if (!textDiv || !toggleBtn) return;
+
+            const currentState = textDiv.getAttribute('data-state');
+            const originalText = textDiv.getAttribute('data-original');
+            const translatedText = textDiv.getAttribute('data-translated');
+
+            const filterEnabled = localStorage.getItem('rekindle_profanity_filter') !== 'false';
+            let newText = '';
+
+            if (currentState === 'translated') {
+                // Switch to Original
+                newText = originalText;
+                if (filterEnabled && window.filterBadWords) newText = window.filterBadWords(newText);
+                textDiv.innerHTML = escapeHtml(newText);
+                textDiv.setAttribute('data-state', 'original');
+                textDiv.style.fontStyle = 'normal';
+                toggleBtn.textContent = window.t ? window.t('kindlechat.msg.show_translated', 'Show Translated') : "Show Translated";
+            } else {
+                // Switch back to Translated
+                newText = translatedText;
+                if (filterEnabled && window.filterBadWords) newText = window.filterBadWords(newText);
+                textDiv.innerHTML = escapeHtml(newText);
+                textDiv.setAttribute('data-state', 'translated');
+                textDiv.style.fontStyle = 'italic';
+                toggleBtn.textContent = window.t ? window.t('kindlechat.msg.show_original', 'Show Original') : "Show Original";
+            }
+        }
+
+        function reprocessPost(postId, text) {
+            if (!currentUser) return;
+            if (typeof TRANSLATION_WORKER_URL === 'undefined' || !TRANSLATION_WORKER_URL) {
+                showAlertModal("Translation worker not configured.");
+                return;
+            }
+
+            console.log("Reprocessing post:", postId);
+
+            currentUser.getIdToken().then(function (token) {
+                fetch(TRANSLATION_WORKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        uid: currentUser.uid,
+                        text: text,
+                        msgId: postId,
+                        app: 'neighbourhood',
+                        reprocess: true
+                    })
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            console.log("Reprocess success:", data);
+                            showAlertModal("Reprocess triggered. It should update shortly on refresh.");
+                        } else {
+                            console.error("Reprocess error:", data);
+                            showAlertModal("Reprocess failed: " + (data.error || "Unknown error"));
+                        }
+                    })
+                ['catch'](function (err) {
+                    console.error("Reprocess network error:", err);
+                    showAlertModal("Network error during reprocess.");
+                });
             });
         }
 
-        // --- ADMIN ACTIONS ---
         function deletePost(id) {
             showConfirmModal("Are you sure you want to delete this post?", () => {
                 db.ref('neighbourhood_posts/' + id).remove()
