@@ -942,6 +942,14 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             }
         });
 
+        // 1b. REMOVE COUNTER.DEV ANALYTICS (uses fetch, incompatible with Chrome 12)
+        $('script').each((i, el) => {
+            const src = $(el).attr('src') || '';
+            if (src.includes('counter.dev')) {
+                $(el).remove();
+            }
+        });
+
         // 2. LIBRARY REPLACEMENTS (Same as Lite)
         const LIBRARY_REPLACEMENTS = {
             'firebase': { check: src => src.includes('firebase') && (src.includes('.js') || src.includes('gstatic')), replace: src => ({ url: `https://www.gstatic.com/firebasejs/8.10.1/${src.split('/').pop().replace('-compat', '')}`, name: src.split('/').pop().replace('-compat', '') }) },
