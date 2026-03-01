@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Photo Frame</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
+    <script src="pro-gate.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            user-select: none;
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Compatibility: Disable Animations */
+        *,
+        *::before,
+        *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            max-width: 600px;
+            height: 90vh;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Content Area */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background: white;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin-top: 15px;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+        .sys-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .setting-group {
+            margin-bottom: 25px;
+            border: 2px solid black;
+            padding: 15px;
+            background: #fafafa;
+        }
+
+        .setting-header {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            border-bottom: 1px solid black;
+            padding-bottom: 5px;
+        }
+
+        select {
+            padding: 5px;
+            font-family: inherit;
+            font-size: 1rem;
+            border: 2px solid black;
+            background: white;
+        }
+
+        /* Slideshow Mode */
+        #slideshow-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000 !important;
+            z-index: 999999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #slideshow-container:-webkit-full-screen {
+            width: 100% !important;
+            height: 100% !important;
+            background-color: #000000 !important;
+        }
+
+        #slideshow-container::backdrop {
+            background-color: #000000 !important;
+        }
+
+        #slideshow-image {
+            max-width: 100%;
+            max-height: 100%;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        #slideshow-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10000;
+        }
+
+        #slideshow-close:active {
+            background: black;
+            color: white;
+        }
+
+        #upload-status {
+            margin-top: 10px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .storage-status {
+            font-size: 0.8rem;
+            margin-top: 5px;
+            color: #444;
+        }
+
+        #slideshow-container {
+            cursor: pointer;
+        }
+
+        #slideshow-image {
+            pointer-events: none;
+        }
+
+        .storage-info {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .storage-bar-container {
+            width: 150px;
+            height: 10px;
+            border: 2px solid black;
+            margin-top: 4px;
+            background: white;
+            position: relative;
+        }
+
+        .storage-bar-fill {
+            height: 100%;
+            background: black;
+            width: 0%;
+        }
+
+        .quota-text {
+            font-size: 0.7rem;
+            margin-top: 2px;
+        }
+
+        .photo-grid {
+            display: block;
+            margin-top: 15px;
+        }
+
+        .photo-item {
+            border: 2px solid black;
+            padding: 5px;
+            background: white;
+            display: inline-block;
+            width: 100px;
+            margin: 5px;
+            vertical-align: top;
+        }
+
+        .photo-thumbnail {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border: 1px solid black;
+            box-sizing: border-box;
+            background: #eee;
+        }
+
+        .photo-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+        }
+
+        .sys-btn-small {
+            background: white;
+            border: 2px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 1px 1px 0 black;
+            padding: 2px 6px;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn-small:active:not(:disabled) {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+            background: black;
+            color: white;
+        }
+
+        .sys-btn-small:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* ReKindle Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #fff;
+            border: 2px solid black;
+            border-radius: 13px;
+            cursor: pointer;
+            outline: none;
+            flex-shrink: 0;
+            margin: 0;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            background: black;
+            border-radius: 50%;
+        }
+
+        .toggle-switch:checked {
+            background: black;
+        }
+
+        .toggle-switch:checked::after {
+            transform: translateX(24px);
+            background: white;
+        }
+    </style>
+
+    <link rel="stylesheet" href="css/custom-select.css">
+    <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
+    <script src="js/custom-select.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <input type="file" id="file-upload" accept="image/jpeg, image/png, image/webp" multiple style="display:none"
+                onchange="handleUpload(event)">
+            <button class="sys-btn-small" onclick="document.getElementById('file-upload').click()"
+                style="position: absolute; left: 45px; top: 6px; z-index: 5;" data-i18n="photoframe.btn.upload">Upload
+                JPEGs</button>
+            <span class="title-text" style="left: 155px;" data-i18n="photoframe.title">Photo Frame</span>
+            <button class="sys-btn-small" id="start-btn" onclick="startSlideshow()"
+                style="position: absolute; right: 8px; top: 6px; z-index: 5;" data-i18n="photoframe.btn.start"
+                disabled>Start</button>
+        </div>
+
+        <div class="window-content">
+            <div class="setting-group" style="display: block;">
+                <div style="margin-bottom: 15px;">
+                    <div class="setting-header" data-i18n="photoframe.settings.playback_mode">Playback Mode</div>
+                    <select id="playback-mode" onchange="savePrefs()" style="width: 100%;">
+                        <option value="sequential" data-i18n="photoframe.mode.sequential">Sequential</option>
+                        <option value="shuffle" data-i18n="photoframe.mode.shuffle">Shuffle</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <div class="setting-header" data-i18n="photoframe.settings.layout">Image Layout</div>
+                    <select id="image-layout" onchange="savePrefs()" style="width: 100%;">
+                        <option value="contain" data-i18n="photoframe.layout.fit">Fit to Screen</option>
+                        <option value="cover" data-i18n="photoframe.layout.crop">Crop to Fill</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <div class="setting-header" data-i18n="photoframe.settings.interval">Slide Duration</div>
+                    <select id="slide-interval" onchange="savePrefs()" style="width: 100%;">
+                        <option value="10000" data-i18n="photoframe.time.10s">10 Seconds</option>
+                        <option value="30000" data-i18n="photoframe.time.30s">30 Seconds</option>
+                        <option value="60000" data-i18n="photoframe.time.1m" selected>1 Minute</option>
+                        <option value="300000" data-i18n="photoframe.time.5m">5 Minutes</option>
+                        <option value="1800000" data-i18n="photoframe.time.30m">30 Minutes</option>
+                        <option value="manual" data-i18n="photoframe.mode.manual">Tap to Advance</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="setting-group">
+                <div id="upload-status"></div>
+                <div class="storage-status"><span id="photo-count">0</span> photos loaded.</div>
+
+                <div class="storage-info">
+                    <span id="storage-text">Loading storage...</span>
+                    <div class="storage-bar-container">
+                        <div class="storage-bar-fill" id="storage-bar"></div>
+                    </div>
+                </div>
+
+                <div id="photo-preview-grid" class="photo-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slideshow Fullscreen Overlay -->
+    <div id="slideshow-container" onclick="nextSlide(event)">
+        <button id="slideshow-close" onclick="stopSlideshow(event)">Exit</button>
+        <img id="slideshow-image" src="" alt="Slideshow">
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+
+        let currentUser = null;
+        let photoData = []; // Array of { name, url }
+        let currentShuffledSequence = [];
+        let slideshowIntervalId = null;
+        let inactivityTimeoutId = null;
+        let currentIndex = 0;
+
+        window.onload = async () => {
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+            rekindleProGate.check(async (isPro) => {
+                if (!isPro) return;
+                currentUser = rekindleProGate.getUser();
+                if (currentUser) {
+                    loadPrefs();
+                    loadPhotos();
+                }
+            });
+        };
+
+        function savePrefs() {
+            const mode = document.getElementById('playback-mode').value;
+            const intv = document.getElementById('slide-interval').value;
+            const layout = document.getElementById('image-layout').value;
+            localStorage.setItem('rekindle_photoframe_mode', mode);
+            localStorage.setItem('rekindle_photoframe_interval', intv);
+            localStorage.setItem('rekindle_photoframe_layout', layout);
+        }
+
+        function loadPrefs() {
+            const mode = localStorage.getItem('rekindle_photoframe_mode') || 'sequential';
+            const intv = localStorage.getItem('rekindle_photoframe_interval') || '60000';
+            const layout = localStorage.getItem('rekindle_photoframe_layout') || 'contain';
+
+            const modeEl = document.getElementById('playback-mode');
+            const intvEl = document.getElementById('slide-interval');
+            const layoutEl = document.getElementById('image-layout');
+
+            if (modeEl) modeEl.value = mode;
+            if (intvEl) intvEl.value = intv;
+            if (layoutEl) layoutEl.value = layout;
+        }
+
+        const MAX_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
+        let totalUsage = 0;
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        async function loadPhotos() {
+            if (!currentUser) return;
+
+            const startBtn = document.getElementById('start-btn');
+            const statusEl = document.getElementById('upload-status');
+            const countEl = document.getElementById('photo-count');
+
+            try {
+                statusEl.innerText = window.t('photoframe.status.loading', "Loading photos...");
+                const listRef = firebase.storage().ref(`users/${currentUser.uid}/photos`);
+                const filesRef = firebase.storage().ref(`users/${currentUser.uid}/files`);
+
+                const res = await listRef.listAll();
+
+                let filesRes = { items: [] };
+                try {
+                    filesRes = await filesRef.listAll();
+                } catch (e) { /* Ignore if dir is missing */ }
+
+                totalUsage = 0;
+
+                // Get Metadata for Sizes
+                const photoMetaPromises = res.items.map(itemRef => {
+                    return itemRef.getMetadata();
+                });
+                const fileMetaPromises = filesRes.items.map(itemRef => itemRef.getMetadata());
+
+                const photoMetaList = await Promise.all(photoMetaPromises);
+                const fileMetaList = await Promise.all(fileMetaPromises);
+
+                photoMetaList.forEach(meta => { if (meta && meta.size) totalUsage += meta.size; });
+                fileMetaList.forEach(meta => { if (meta && meta.size) totalUsage += meta.size; });
+
+                updateStorageUI();
+
+                let tempPhotos = [];
+                let orderedNames = [];
+
+                for (let i = 0; i < res.items.length; i++) {
+                    const itemRef = res.items[i];
+                    if (itemRef.name === '_ORDER.json') {
+                        try {
+                            const url = await itemRef.getDownloadURL();
+                            const orderRes = await fetch(url);
+                            orderedNames = await orderRes.json();
+                        } catch (e) { console.warn("Order list fetch failed"); }
+                        continue;
+                    }
+                    try {
+                        const url = await itemRef.getDownloadURL();
+                        tempPhotos.push({ name: itemRef.name, url: url, size: photoMetaList[i].size });
+                    } catch (e) {
+                        console.error("Failed to get URL for", itemRef.name);
+                    }
+                }
+
+                photoData = [];
+                const orderMap = {};
+                orderedNames.forEach((n, i) => orderMap[n] = i);
+
+                // Add based on existing _ORDER.json
+                orderedNames.forEach(name => {
+                    const found = tempPhotos.find(p => p.name === name);
+                    if (found) photoData.push(found);
+                });
+
+                // append any newcomers
+                tempPhotos.forEach(p => {
+                    if (orderMap[p.name] === undefined) {
+                        photoData.push(p);
+                    }
+                });
+
+                if (countEl) countEl.innerText = photoData.length;
+                statusEl.innerText = "";
+
+                if (photoData.length > 0) {
+                    if (startBtn) startBtn.disabled = false;
+                } else {
+                    statusEl.innerText = window.t('photoframe.msg.empty', "No photos found. Upload some to begin.");
+                }
+
+                renderPreviews();
+                saveOrderFile();
+
+            } catch (error) {
+                console.error("Error loading photos:", error);
+                statusEl.innerText = "Error loading photos (Permissions or missing folder).";
+            }
+        }
+
+        function updateStorageUI() {
+            const percentage = Math.min(100, (totalUsage / MAX_STORAGE_BYTES) * 100);
+            const bar = document.getElementById('storage-bar');
+            const text = document.getElementById('storage-text');
+            if (bar) bar.style.width = `${percentage}%`;
+            if (text) text.textContent = `${formatSize(totalUsage)} / 100 MB used`;
+
+            if (bar) {
+                if (percentage > 90) {
+                    bar.style.backgroundColor = 'red';
+                } else {
+                    bar.style.backgroundColor = 'black';
+                }
+            }
+        }
+
+        async function saveOrderFile() {
+            if (!currentUser || photoData.length === 0) return;
+            const justNames = photoData.map(p => p.name);
+            const blob = new Blob([JSON.stringify(justNames)], { type: 'application/json' });
+            const storageRef = firebase.storage().ref(`users/${currentUser.uid}/photos/_ORDER.json`);
+            try {
+                await storageRef.put(blob);
+            } catch (err) { console.log("Failed to save order"); }
+        }
+
+        function renderPreviews() {
+            const grid = document.getElementById('photo-preview-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            photoData.forEach((p, index) => {
+                const item = document.createElement('div');
+                item.className = 'photo-item';
+
+                const img = document.createElement('img');
+                img.className = 'photo-thumbnail';
+                img.src = p.url;
+
+                const actions = document.createElement('div');
+                actions.className = 'photo-actions';
+
+                const upBtn = document.createElement('button');
+                upBtn.className = 'sys-btn-small';
+                upBtn.innerText = '<';
+                upBtn.onclick = () => movePhoto(index, -1);
+                if (index === 0) upBtn.disabled = true;
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'sys-btn-small';
+                delBtn.innerText = 'X';
+                delBtn.style.background = 'black';
+                delBtn.style.color = 'white';
+                delBtn.onclick = () => deletePhoto(index);
+
+                const dnBtn = document.createElement('button');
+                dnBtn.className = 'sys-btn-small';
+                dnBtn.innerText = '>';
+                dnBtn.onclick = () => movePhoto(index, 1);
+                if (index === photoData.length - 1) dnBtn.disabled = true;
+
+                actions.appendChild(upBtn);
+                actions.appendChild(delBtn);
+                actions.appendChild(dnBtn);
+
+                item.appendChild(img);
+                item.appendChild(actions);
+                grid.appendChild(item);
+            });
+        }
+
+        async function deletePhoto(index) {
+            const p = photoData[index];
+            if (!p || !currentUser) return;
+
+            document.getElementById('upload-status').innerText = window.t('photoframe.status.deleting', "Deleting...");
+            try {
+                if (p.url) {
+                    const storageRef = firebase.storage().ref(`users/${currentUser.uid}/photos/${p.name}`);
+                    await storageRef.delete();
+                }
+            } catch (e) { console.log(e); }
+
+            photoData.splice(index, 1);
+            saveOrderFile();
+            renderPreviews();
+            updateStorageUI();
+
+            const countEl = document.getElementById('photo-count');
+            if (countEl) countEl.innerText = photoData.length;
+
+            if (photoData.length === 0) {
+                const startBtn = document.getElementById('start-btn');
+                if (startBtn) startBtn.disabled = true;
+            }
+        }
+
+        function movePhoto(index, dir) {
+            if (index + dir < 0 || index + dir >= photoData.length) return;
+
+            const temp = photoData[index];
+            photoData[index] = photoData[index + dir];
+            photoData[index + dir] = temp;
+
+            renderPreviews();
+            saveOrderFile();
+        }
+
+        // --- Client Side Compression ---
+        async function compressImageForUpload(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SHORT_SIDE = 2048;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width < height) {
+                            if (width > MAX_SHORT_SIDE) {
+                                height *= MAX_SHORT_SIDE / width;
+                                width = MAX_SHORT_SIDE;
+                            }
+                        } else {
+                            if (height > MAX_SHORT_SIDE) {
+                                width *= MAX_SHORT_SIDE / height;
+                                height = MAX_SHORT_SIDE;
+                            }
+                        }
+
+                        width = Math.round(width);
+                        height = Math.round(height);
+
+                        canvas.width = width;
+                        canvas.height = height;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        canvas.toBlob((blob) => {
+                            // Manual RAM clearance for Kindle V8 memory leaks
+                            canvas.width = 1;
+                            canvas.height = 1;
+
+                            if (blob) resolve(blob);
+                            else reject(new Error("Compression failed"));
+                        }, 'image/jpeg', 0.3);
+                    };
+                    img.onerror = (e) => reject(e);
+                };
+                reader.onerror = (e) => reject(e);
+            });
+        }
+
+        async function handleUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0 || !currentUser) return;
+
+            const statusEl = document.getElementById('upload-status');
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                statusEl.innerText = window.t('photoframe.status.uploading', "Uploading...") + ` (${i + 1}/${files.length})`;
+
+                try {
+                    const regBlob = await compressImageForUpload(file);
+                    const ext = "jpg";
+                    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1000) + '.' + ext;
+
+                    const regRef = firebase.storage().ref(`users/${currentUser.uid}/photos/${uniqueName}`);
+                    await regRef.put(regBlob, { contentType: 'image/jpeg' });
+                    const regUrl = await regRef.getDownloadURL();
+
+                    photoData.push({ name: uniqueName, url: regUrl, size: regBlob.size });
+                    totalUsage += regBlob.size;
+                } catch (err) {
+                    console.error("Upload failed for file:", file.name, err);
+                }
+            }
+
+            statusEl.innerText = "Upload complete!";
+            setTimeout(() => { statusEl.innerText = ""; }, 3000);
+
+            updateStorageUI();
+            renderPreviews();
+            saveOrderFile();
+
+            const countEl = document.getElementById('photo-count');
+            if (countEl) countEl.innerText = photoData.length;
+            const startBtn = document.getElementById('start-btn');
+            if (photoData.length > 0 && startBtn) startBtn.disabled = false;
+
+            event.target.value = '';
+        }
+
+        // --- Slideshow Logic ---
+        function resetInactivityTimer() {
+            const btn = document.getElementById('slideshow-close');
+            if (btn) btn.style.display = 'block';
+
+            if (inactivityTimeoutId) clearTimeout(inactivityTimeoutId);
+            inactivityTimeoutId = setTimeout(() => {
+                if (btn) btn.style.display = 'none';
+            }, 10000);
+        }
+
+        function startSlideshow() {
+            if (photoData.length === 0) return;
+
+            const container = document.getElementById('slideshow-container');
+            container.style.display = 'flex';
+
+            if (container.requestFullscreen) {
+                container.requestFullscreen().catch(err => {
+                    console.warn("Fullscreen API not available or denied.", err);
+                });
+            }
+
+            resetInactivityTimer();
+
+            const modeMatch = document.getElementById('playback-mode');
+            const mode = modeMatch ? modeMatch.value : 'sequential';
+            const intvMatch = document.getElementById('slide-interval');
+            const intvVal = intvMatch ? intvMatch.value : '60000';
+            const isManual = intvVal === 'manual';
+            const intervalMs = isManual ? 60000 : parseInt(intvVal);
+
+            if (mode === 'shuffle') {
+                currentShuffledSequence = photoData.map((_, i) => i);
+                for (let i = currentShuffledSequence.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [currentShuffledSequence[i], currentShuffledSequence[j]] = [currentShuffledSequence[j], currentShuffledSequence[i]];
+                }
+            }
+
+            currentIndex = 0;
+            showImage(currentIndex, mode);
+
+            if (slideshowIntervalId) clearInterval(slideshowIntervalId);
+            if (!isManual) {
+                slideshowIntervalId = setInterval(() => nextSlide(), intervalMs);
+            }
+        }
+
+        function nextSlide(event) {
+            if (event) {
+                event.stopPropagation();
+                // If it's a manual tap, reset the inactivity timer so the exit button shows
+                resetInactivityTimer();
+            }
+            if (photoData.length === 0) return;
+
+            const modeMatch = document.getElementById('playback-mode');
+            const mode = modeMatch ? modeMatch.value : 'sequential';
+            const intvMatch = document.getElementById('slide-interval');
+            const intvVal = intvMatch ? intvMatch.value : '60000';
+            const isManual = intvVal === 'manual';
+            const intervalMs = isManual ? 60000 : parseInt(intvVal);
+
+            currentIndex++;
+            if (currentIndex >= photoData.length) {
+                currentIndex = 0;
+                // Reshuffle if we hit the end
+                if (mode === 'shuffle') {
+                    for (let i = currentShuffledSequence.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [currentShuffledSequence[i], currentShuffledSequence[j]] = [currentShuffledSequence[j], currentShuffledSequence[i]];
+                    }
+                }
+            }
+
+            showImage(currentIndex, mode);
+
+            if (event && !isManual) {
+                // If manual tap during a timed slideshow, reset the timer so it doesn't flip immediately
+                if (slideshowIntervalId) clearInterval(slideshowIntervalId);
+                slideshowIntervalId = setInterval(() => nextSlide(), intervalMs);
+            }
+        }
+
+        async function showImage(idx, mode) {
+            if (photoData.length === 0) return;
+            const index = (mode === 'shuffle') ? currentShuffledSequence[idx] : idx;
+            const imgEl = document.getElementById('slideshow-image');
+
+            const layoutMatch = document.getElementById('image-layout');
+            const layout = layoutMatch ? layoutMatch.value : 'contain';
+
+            if (photoData[index] && imgEl) {
+                const rawUrl = photoData[index].url;
+                const container = document.getElementById('slideshow-container');
+
+                // Hardware e-ink clear: flash white then black
+                imgEl.style.opacity = '0';
+                container.style.backgroundColor = 'white';
+
+                setTimeout(async () => {
+                    container.style.backgroundColor = 'black';
+
+                    setTimeout(async () => {
+                        imgEl.src = rawUrl;
+
+                        if (layout === 'cover') {
+                            imgEl.style.width = '100%';
+                            imgEl.style.height = '100%';
+                            imgEl.style.objectFit = 'cover';
+                        } else {
+                            imgEl.style.width = '';
+                            imgEl.style.height = '';
+                            imgEl.style.objectFit = 'contain';
+                        }
+                        imgEl.style.opacity = '1';
+
+                        // Preload the next 2 images
+                        for (let offset = 1; offset <= 2; offset++) {
+                            let nextIdx = idx + offset;
+                            if (nextIdx >= photoData.length) nextIdx = nextIdx % photoData.length;
+                            const preIndex = (mode === 'shuffle') ? currentShuffledSequence[nextIdx] : nextIdx;
+                            if (photoData[preIndex]) {
+                                const preloader = new Image();
+                                preloader.src = photoData[preIndex].url;
+                            }
+                        }
+
+                    }, 400); // 400ms black flash
+                }, 400); // 400ms white flash
+            }
+        }
+
+        function stopSlideshow(event) {
+            if (event) event.stopPropagation();
+
+            if (slideshowIntervalId) {
+                clearInterval(slideshowIntervalId);
+                slideshowIntervalId = null;
+            }
+
+            if (inactivityTimeoutId) {
+                clearTimeout(inactivityTimeoutId);
+                inactivityTimeoutId = null;
+            }
+
+            const container = document.getElementById('slideshow-container');
+            container.style.display = 'none';
+
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => console.warn(err));
+            }
+        }
+    </script>
+</body>
+
+</html>

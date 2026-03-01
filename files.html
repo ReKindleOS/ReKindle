@@ -672,21 +672,36 @@
             if (!currentUser) return;
 
             const listRef = firebase.storage().ref(`users/${currentUser.uid}/files`);
+            const photosRef = firebase.storage().ref(`users/${currentUser.uid}/photos`);
             const fileListEl = document.getElementById('file-list');
 
             try {
                 fileListEl.innerHTML = '<div class="empty-state">Loading...</div>';
-                const res = await listRef.listAll();
+                const fileRes = await listRef.listAll();
+
+                let photoRes = { items: [] };
+                try {
+                    photoRes = await photosRef.listAll();
+                } catch (e) { /* ignore if dir missing */ }
 
                 currentFiles = [];
                 totalUsage = 0;
 
-                const metaPromises = res.items.map(itemRef => itemRef.getMetadata());
-                const metadataList = await Promise.all(metaPromises);
+                const fileMetaPromises = fileRes.items.map(itemRef => itemRef.getMetadata());
+                const photoMetaPromises = photoRes.items.map(itemRef => {
+                    return itemRef.name !== '_ORDER.json' ? itemRef.getMetadata() : Promise.resolve({ size: 0 });
+                });
+
+                const metadataList = await Promise.all(fileMetaPromises);
+                const photoMetaList = await Promise.all(photoMetaPromises);
 
                 metadataList.forEach(meta => {
                     currentFiles.push(meta);
                     totalUsage += meta.size;
+                });
+
+                photoMetaList.forEach(meta => {
+                    if (meta && meta.size) totalUsage += meta.size;
                 });
 
                 updateStorageUI();
