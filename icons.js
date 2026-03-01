@@ -308,6 +308,14 @@ const APPS = [
         icon: '<rect x="8" y="4" width="18" height="24" rx="1" stroke="black" stroke-width="2" fill="none"/><line x1="12" y1="4" x2="12" y2="28" stroke="black" stroke-width="2"/><rect x="14" y="8" width="10" height="4" fill="black"/>'
     },
     {
+        id: 'manga',
+        name: 'Manga Reader',
+        cat: 'lifestyle',
+        desc: 'Read manga and webtoons.',
+        newBadge: true,
+        icon: '<path d="M6 4 h12 v24 h-12 z M18 4 l8 4 v20 l-8 -4 M18 4 v24" fill="none" stroke="black" stroke-width="2"/><line x1="8" y1="8" x2="16" y2="8" stroke="black" stroke-width="1.5"/><line x1="8" y1="12" x2="16" y2="12" stroke="black" stroke-width="1.5"/><line x1="8" y1="16" x2="14" y2="16" stroke="black" stroke-width="1.5"/>'
+    },
+    {
         id: 'cookbook',
         name: 'Cookbook',
         cat: 'lifestyle',
