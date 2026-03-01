@@ -26,7 +26,14 @@
 *   ❌ Nullish Coalescing (`??`) -> `val ?? default` will **CRASH** the app.
 *   ✅ `async`/`await`, `Promises`, `Arrow Functions` are **SAFE**.
 
-### 3. No Animations / Transitions
+### 3. Typography & Emojis
+1.  **System Fonts (`Arial`, `Verdana`, `Courier New`, `serif`, `sans-serif`) are required.**
+2.  Do not include web fonts (e.g., `@import url('https://fonts...')`); it delays render times drastically.
+3.  **NO EMOJIS**: The Kindle experimental browser does not support Unicode emojis. They will render as broken square boxes (`[]`).
+    - Use System 7 retro ASCII emoticons instead: `:)`, `:D`, `T_T`, `:|`, `:(`.
+    - Or use manually drawn SVGs if an icon is required.
+
+### 4. No Animations / Transitions
 **Constraint:** E-ink displays run at ~7-15fps. CSS animations cause severe ghosting and flashing.
 **Solution:** **Disable all animations.**
 ```css

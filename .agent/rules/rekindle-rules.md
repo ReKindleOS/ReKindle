@@ -65,6 +65,7 @@ Strict layering constants to prevent overlap issues.
 ### Assets & Icons
 -   **Icons**: SVG strings in `icons.js`. 32x32 grid. Stroke width 1.5 or 2.
 -   **Format**: WebP or SVG preferred.
+-   **Emojis**: Strictly forbidden. The Kindle does not support Unicode emojis and will display broken square boxes. Use retro ASCII emoticons (e.g., `:)`, `:D`, `T_T`) or SVGs.
 
 ## 🌍 Localization (i18n)
 
