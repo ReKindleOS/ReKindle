@@ -182,15 +182,15 @@ async function translateToAllLanguages(text) {
     const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
     const translations = {};
 
-    // Process in parallel to save time
-    const promises = targetLangs.map(async (lang) => {
+    // Process sequentially to avoid Google Translate 429 Too Many Requests
+    for (const lang of targetLangs) {
         const result = await translateWithGoogle(text, lang);
         if (result.text) {
             translations[lang] = result.text;
         }
-    });
-
-    await Promise.allSettled(promises);
+        // Brief pause to prevent rate limiting
+        await new Promise(r => setTimeout(r, 50));
+    }
 
     // If no unique translations generated, return null
     if (Object.keys(translations).length === 0) return null;
