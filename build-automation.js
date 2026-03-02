@@ -1478,21 +1478,21 @@ async function run() {
     console.log("🛠️  Minifying Main Version...");
 
     // Main HTML
-    const mainHtmlFiles = glob.sync(`${MAIN_DIR}/**/*.html`);
+    const mainHtmlFiles = glob.sync(`${MAIN_DIR}/**/*.html`, { nodir: true });
     for (const file of mainHtmlFiles) {
         const html = await fs.readFile(file, 'utf8');
         await fs.outputFile(file, await minifyHtmlContent(html));
     }
 
     // Main CSS
-    const mainCssFiles = glob.sync(`${MAIN_DIR}/**/*.css`);
+    const mainCssFiles = glob.sync(`${MAIN_DIR}/**/*.css`, { nodir: true });
     for (const file of mainCssFiles) {
         const css = await fs.readFile(file, 'utf8');
         await fs.outputFile(file, minifyCssString(css));
     }
 
     // Main JS (Safe Minify)
-    const mainJsFiles = glob.sync(`${MAIN_DIR}/**/*.js`);
+    const mainJsFiles = glob.sync(`${MAIN_DIR}/**/*.js`, { nodir: true });
     for (const file of mainJsFiles) {
         // Skip already minified files (optional, but good practice)
         if (file.includes('.min.js')) continue;
@@ -1504,7 +1504,7 @@ async function run() {
 
     // 3. Process Lite HTML Files
     console.log("🛠️  Transpiling Lite Version...");
-    const files = glob.sync(`${LITE_DIR}/**/*.html`);
+    const files = glob.sync(`${LITE_DIR}/**/*.html`, { nodir: true });
 
     for (const file of files) {
         const html = await fs.readFile(file, 'utf8');
@@ -1514,7 +1514,7 @@ async function run() {
 
     // 4. Process Lite JS Files (External Scripts)
     console.log("🛠️  Transpiling JS Files...");
-    const jsFiles = glob.sync(`${LITE_DIR}/**/*.js`).filter(f => !f.includes('/libs/'));
+    const jsFiles = glob.sync(`${LITE_DIR}/**/*.js`, { nodir: true }).filter(f => !f.includes('/libs/'));
     for (const file of jsFiles) {
         // Skip already minified files or libraries if we want (optional)
         // But to be safe, we transpile everything except obvious libraries if needed
@@ -1526,7 +1526,7 @@ async function run() {
 
     // 5. Process Lite CSS Files (External Styles)
     console.log("🛠️  Processing CSS Files...");
-    const cssFiles = glob.sync(`${LITE_DIR}/**/*.css`);
+    const cssFiles = glob.sync(`${LITE_DIR}/**/*.css`, { nodir: true });
     for (const file of cssFiles) {
         const css = await fs.readFile(file, 'utf8');
         const processed = await processCss(css);
@@ -1535,7 +1535,7 @@ async function run() {
 
     // 6. Process Legacy HTML Files
     console.log("🛠️  Transpiling Legacy Version...");
-    const legHtmlFiles = glob.sync(`${LEGACY_DIR}/**/*.html`);
+    const legHtmlFiles = glob.sync(`${LEGACY_DIR}/**/*.html`, { nodir: true });
     for (const file of legHtmlFiles) {
         if (file.includes('google')) continue; // Skip google verification file if any?
         const html = await fs.readFile(file, 'utf8');
@@ -1544,7 +1544,7 @@ async function run() {
     }
 
     // 7. Process Legacy JS (External)
-    const legJsFiles = glob.sync(`${LEGACY_DIR}/**/*.js`).filter(f => !f.includes('/libs/'));
+    const legJsFiles = glob.sync(`${LEGACY_DIR}/**/*.js`, { nodir: true }).filter(f => !f.includes('/libs/'));
     for (const file of legJsFiles) {
         const code = await fs.readFile(file, 'utf8');
         const processed = await transpileLegacyJs(code);
@@ -1552,7 +1552,7 @@ async function run() {
     }
 
     // 8. Process Legacy CSS
-    const legCssFiles = glob.sync(`${LEGACY_DIR}/**/*.css`);
+    const legCssFiles = glob.sync(`${LEGACY_DIR}/**/*.css`, { nodir: true });
     for (const file of legCssFiles) {
         const css = await fs.readFile(file, 'utf8');
         const processed = await processLegacyCss(css);
