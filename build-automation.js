@@ -1465,6 +1465,15 @@ async function run() {
         await fs.copy(srcPath, destLegacy);
     }
 
+    // --- CRITICAL FIX: Ensure Cloudflare Pages Functions are included ---
+    // The functions folder contains /api endpoint scripts. It MUST be copied 
+    // to the roots of each deploy map so Cloudflare picks it up.
+    if (await fs.pathExists(path.join(SOURCE_DIR, 'functions'))) {
+        await fs.copy(path.join(SOURCE_DIR, 'functions'), path.join(MAIN_DIR, 'functions'));
+        await fs.copy(path.join(SOURCE_DIR, 'functions'), path.join(LITE_DIR, 'functions'));
+        await fs.copy(path.join(SOURCE_DIR, 'functions'), path.join(LEGACY_DIR, 'functions'));
+    }
+
     // 2.5 Process Main Files (Minify Only)
     console.log("🛠️  Minifying Main Version...");
 

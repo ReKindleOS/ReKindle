@@ -10,13 +10,18 @@ export async function onRequest(context) {
     try {
         // Prepare request without browser-specific CORS triggering headers
         const headers = new Headers(request.headers);
-        headers.delete('Origin');
-        headers.delete('Referer');
 
-        // MangaDex specific: They might require a User-Agent
-        if (!headers.has('User-Agent')) {
-            headers.set('User-Agent', 'ReKindle-Manga-Proxy/1.0');
-        }
+        // Strip out headers that shouldn't be forwarded to avoid confusing the target server
+        const headersToDelete = [
+            'Origin', 'Referer', 'Host',
+            'CF-Connecting-IP', 'CF-IPCountry', 'CF-Ray', 'CF-Visitor',
+            'X-Forwarded-Proto', 'X-Forwarded-For', 'X-Real-IP'
+        ];
+        headersToDelete.forEach(h => headers.delete(h));
+
+        // Many APIs (MangaDex, Standard Ebooks) require a valid polite User-Agent
+        // or block generic browser ones coming from Cloudflare IPs.
+        headers.set('User-Agent', 'ReKindle-App/1.0 (https://github.com/cloud-nine-app/rekindle)');
 
         const res = await fetch(targetUrl, {
             method: request.method,

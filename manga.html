@@ -440,9 +440,43 @@
 
         async function loadLibrary() {
             try {
-                const saved = await localforage.getItem('manga_library');
-                if (saved) {
+                let saved = await localforage.getItem('manga_library');
+                if (saved && Array.isArray(saved)) {
+                    let needsMigration = false;
+
+                    saved = saved.map(item => {
+                        if (item.cover) {
+                            const oldProxies = [
+                                { match: 'api.allorigins.win/raw?url=', split: 'url=' },
+                                { match: 'api.codetabs.com/v1/proxy?quest=', split: 'quest=' },
+                                { match: 'thingproxy.freeboard.io/fetch/', split: 'fetch/' },
+                                { match: 'cors-anywhere.herokuapp.com/', split: 'herokuapp.com/' }
+                            ];
+
+                            for (let proxy of oldProxies) {
+                                if (item.cover.includes(proxy.match)) {
+                                    const rawUrl = item.cover.split(proxy.split)[1];
+                                    if (rawUrl) {
+                                        // The split string might already be encoded or not, 
+                                        // but safely re-wrapping it via our new proxy format.
+                                        // Note: split[1] leaves it encoded if it was encoded.
+                                        const cleanUrl = decodeURIComponent(rawUrl);
+                                        item.cover = `/api/proxy?url=${encodeURIComponent(cleanUrl)}`;
+                                        needsMigration = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        return item;
+                    });
+
                     library = saved;
+
+                    if (needsMigration) {
+                        await saveLibrary();
+                        console.log("Migrated legacy proxy URLs in library covers.");
+                    }
                 }
             } catch (e) {
                 console.error(e);
@@ -482,7 +516,7 @@
 
         async function fetchCORS(url) {
             const PROXIES = [
-                "/api/proxy?url=",
+                "/api/proxy?url="
             ];
 
             let lastError = null;
@@ -697,6 +731,8 @@
             currentReading = item;
             isReaderOpen = true;
             document.getElementById('reader-view').style.display = 'flex';
+            document.getElementById('view-library').style.display = 'none';
+            document.getElementById('view-store').style.display = 'none';
 
             // Show back button, update title, hide tabs
             document.getElementById('back-btn').style.display = 'block';
@@ -716,20 +752,43 @@
                     return;
                 }
 
-                const firstChapter = data.data[0];
-                await loadChapter(firstChapter.id);
+                // Find the first chapter that has internal pages, or just take the first chapter
+                // if it's an external link (like MangaPlus)
+                let targetChapter = data.data[0];
+                for (let ch of data.data) {
+                    if (ch.attributes && ch.attributes.pages > 0) {
+                        targetChapter = ch;
+                        break;
+                    }
+                }
+
+                await loadChapter(targetChapter);
 
             } catch (e) {
                 content.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + e.message + '</div>';
             }
         }
 
-        async function loadChapter(chapterId) {
+        async function loadChapter(chapterObj) {
             const content = document.getElementById('reader-content');
+
+            // Handle external chapters (e.g. Official MangaPlus releases like One Piece)
+            if (chapterObj.attributes && chapterObj.attributes.pages === 0 && chapterObj.attributes.externalUrl) {
+                content.innerHTML = `
+                    <div style="padding: 20px; text-align: center;">
+                        <p style="margin-bottom: 20px; font-weight: bold;">This chapter is officially hosted externally.</p>
+                        <a href="${chapterObj.attributes.externalUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: black; color: white; text-decoration: none; font-weight: bold; font-family: sans-serif; box-shadow: 2px 2px 0 #555;">
+                            Read on ${new URL(chapterObj.attributes.externalUrl).hostname}
+                        </a>
+                    </div>
+                `;
+                return;
+            }
+
             content.innerHTML = '<div style="padding: 20px;">Fetching pages...</div>';
 
             try {
-                const url = `${API_BASE}/at-home/server/${chapterId}`;
+                const url = `${API_BASE}/at-home/server/${chapterObj.id}`;
                 const res = await fetchCORS(url);
                 const data = await res.json();
 
@@ -783,6 +842,16 @@
             // Hide back button, show tabs
             document.getElementById('back-btn').style.display = 'none';
             document.querySelector('.tabs').style.display = 'flex';
+
+            // Restore active tab view
+            const activeTab = document.querySelector('.tab.active');
+            if (activeTab && activeTab.id === 'tab-library') {
+                document.getElementById('view-library').style.display = 'grid';
+            } else if (activeTab && activeTab.id === 'tab-store') {
+                document.getElementById('view-store').style.display = 'grid';
+            } else {
+                document.getElementById('view-library').style.display = 'grid'; // fallback
+            }
 
             // Restore title
             document.getElementById('app-title').innerText = 'Manga Reader';
