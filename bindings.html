@@ -2,9 +2,10 @@
 <html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Connections</title>
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -313,6 +314,10 @@
             <!-- Home Button -->
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" data-i18n="bindings.title">Connections</span>
+            <div class="new-game-btn" onclick="startNewGame()" data-i18n="bindings.btn.new_game"
+                style="position: absolute; right: 10px; z-index: 2; cursor: pointer; background: white; border: 2px solid black; padding: 2px 8px; font-weight: bold; font-size: 0.8rem; box-shadow: 2px 2px 0 black;"
+                onmousedown="this.style.boxShadow='none'; this.style.transform='translate(2px, 2px)';"
+                onmouseup="this.style.boxShadow='2px 2px 0 black'; this.style.transform='none';">NEW</div>
         </div>
 
         <div id="game-area">
@@ -347,35 +352,7 @@
 
     <script>
         // --- PUZZLE DATA ---
-        const PUZZLES = [
-            {
-                id: 1,
-                groups: [
-                    { title: "KINDS OF PAPER", items: ["PARCHMENT", "VELLUM", "CARDSTOCK", "MANILA"], level: 1 },
-                    { title: "BOOK PARTS", items: ["SPINE", "JACKET", "LEAF", "SIGNATURE"], level: 2 },
-                    { title: "WORDS STARTING WITH 'INK'", items: ["INKLING", "INKWELL", "INKBLOT", "INKJET"], level: 3 },
-                    { title: "___ BINDING", items: ["SPELL", "DOUBLE", "SPIRAL", "PERFECT"], level: 4 }
-                ]
-            },
-            {
-                id: 2,
-                groups: [
-                    { title: "E-READER BRANDS", items: ["KINDLE", "KOBO", "NOOK", "BOOX"], level: 1 },
-                    { title: "SYNONYMS FOR FIRE", items: ["FLAME", "BLAZE", "INFERNO", "KINDLING"], level: 2 },
-                    { title: "TYPES OF CLOUDS", items: ["CIRRUS", "CUMULUS", "STRATUS", "NIMBUS"], level: 3 },
-                    { title: "THINGS THAT ARE BLACK & WHITE", items: ["ZEBRA", "PANDA", "SKUNK", "NEWSPAPER"], level: 4 }
-                ]
-            },
-            {
-                id: 3,
-                groups: [
-                    { title: "WRITING INSTRUMENTS", items: ["PEN", "PENCIL", "QUILL", "STYLUS"], level: 1 },
-                    { title: "UNIT OF STORAGE", items: ["BIT", "BYTE", "MEGA", "TERA"], level: 2 },
-                    { title: "HOMOPHONES", items: ["WRITE", "RIGHT", "RITE", "WRIGHT"], level: 3 },
-                    { title: "___ PAD", items: ["LILY", "LAUNCH", "NOTE", "MOUSE"], level: 4 }
-                ]
-            }
-        ];
+        let PUZZLES = [];
 
         // --- STATE ---
         let currentPuzzle = null;
@@ -386,23 +363,68 @@
         let isGameOver = false;
 
         // --- INIT ---
-        window.onload = () => {
+        window.onload = async () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
-            loadDailyPuzzle();
+            await loadAllPuzzles();
+            loadRandomPuzzle();
             renderGame();
         };
 
+        async function loadAllPuzzles() {
+            try {
+                const response = await fetch('connections_prompts.jsonl');
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                PUZZLES = lines.filter(line => line.length > 0).map((line, index) => {
+                    const data = JSON.parse(line);
+                    return {
+                        id: index + 1,
+                        groups: data.solution.groups.map((g, i) => ({
+                            title: g.reason.toUpperCase(),
+                            items: g.words.map(w => w.toUpperCase()),
+                            level: i + 1
+                        }))
+                    };
+                });
+            } catch (e) {
+                console.error("Failed to load puzzles", e);
+                // Fallback to defaults
+                PUZZLES = [
+                    {
+                        id: 1,
+                        groups: [
+                            { title: "KINDS OF PAPER", items: ["PARCHMENT", "VELLUM", "CARDSTOCK", "MANILA"], level: 1 },
+                            { title: "BOOK PARTS", items: ["SPINE", "JACKET", "LEAF", "SIGNATURE"], level: 2 },
+                            { title: "WORDS STARTING WITH 'INK'", items: ["INKLING", "INKWELL", "INKBLOT", "INKJET"], level: 3 },
+                            { title: "___ BINDING", items: ["SPELL", "DOUBLE", "SPIRAL", "PERFECT"], level: 4 }
+                        ]
+                    },
+                    {
+                        id: 2,
+                        groups: [
+                            { title: "E-READER BRANDS", items: ["KINDLE", "KOBO", "NOOK", "BOOX"], level: 1 },
+                            { title: "SYNONYMS FOR FIRE", items: ["FLAME", "BLAZE", "INFERNO", "KINDLING"], level: 2 },
+                            { title: "TYPES OF CLOUDS", items: ["CIRRUS", "CUMULUS", "STRATUS", "NIMBUS"], level: 3 },
+                            { title: "THINGS THAT ARE BLACK & WHITE", items: ["ZEBRA", "PANDA", "SKUNK", "NEWSPAPER"], level: 4 }
+                        ]
+                    },
+                    {
+                        id: 3,
+                        groups: [
+                            { title: "WRITING INSTRUMENTS", items: ["PEN", "PENCIL", "QUILL", "STYLUS"], level: 1 },
+                            { title: "UNIT OF STORAGE", items: ["BIT", "BYTE", "MEGA", "TERA"], level: 2 },
+                            { title: "HOMOPHONES", items: ["WRITE", "RIGHT", "RITE", "WRIGHT"], level: 3 },
+                            { title: "___ PAD", items: ["LILY", "LAUNCH", "NOTE", "MOUSE"], level: 4 }
+                        ]
+                    }
+                ];
+            }
+        }
 
-        function loadDailyPuzzle() {
-            const now = window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const day = now.getDate();
-            const startOfYear = new Date(year, 0, 1);
-            const currentDay = new Date(year, month, day);
-            const dayOfYear = Math.round((currentDay - startOfYear) / (1000 * 60 * 60 * 24));
 
-            const puzzleData = PUZZLES[dayOfYear % PUZZLES.length];
+        function loadRandomPuzzle() {
+            const randomIndex = Math.floor(Math.random() * PUZZLES.length);
+            const puzzleData = PUZZLES[randomIndex];
 
             currentPuzzle = JSON.parse(JSON.stringify(puzzleData));
 
@@ -419,6 +441,13 @@
             solvedGroups = [];
             mistakesLeft = 4;
             isGameOver = false;
+        }
+
+        function startNewGame() {
+            loadRandomPuzzle();
+            document.getElementById('message-bar').innerText = window.t ? window.t('bindings.msg.instructions') : "Create four groups of four!";
+            document.getElementById('grid-area').style.display = '';
+            renderGame();
         }
 
         // --- RENDER ---
@@ -450,13 +479,14 @@
             document.getElementById('submit-btn').disabled = (selectedIndices.length !== 4 || isGameOver);
             renderMistakes();
 
-            if (solvedGroups.length === 4) {
+            if (solvedGroups.length === 4 && mistakesLeft > 0) {
                 const perfectTxt = window.t ? window.t('bindings.msg.perfect') : "Perfect! You bound them all.";
                 document.getElementById('message-bar').innerText = perfectTxt;
                 document.getElementById('grid-area').style.display = 'none';
             } else if (mistakesLeft === 0) {
                 const gameOverTxt = window.t ? window.t('bindings.msg.game_over') : "Out of mistakes. Next time!";
                 document.getElementById('message-bar').innerText = gameOverTxt;
+                document.getElementById('grid-area').style.display = 'none';
             }
         }
 
@@ -518,6 +548,7 @@
                 selectedIndices = [];
                 const correctTxt = window.t ? window.t('bindings.msg.correct') : "Correct!";
                 document.getElementById('message-bar').innerText = correctTxt;
+                shuffleArray(activeCards); // shuffle remaining cards automatically
             } else {
                 mistakesLeft--;
                 const incorrectTxt = window.t ? window.t('bindings.msg.incorrect') : "Incorrect...";
@@ -534,6 +565,14 @@
 
                 if (mistakesLeft === 0) {
                     isGameOver = true;
+                    // Auto-solve the remaining groups
+                    const solvedIndices = solvedGroups.map(g => currentPuzzle.groups.indexOf(g));
+                    currentPuzzle.groups.forEach((group, index) => {
+                        if (!solvedIndices.includes(index)) {
+                            solvedGroups.push(group);
+                        }
+                    });
+                    activeCards = []; // Clear the grid
                 }
             }
 
