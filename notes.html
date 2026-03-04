@@ -223,6 +223,18 @@
             box-shadow: none;
         }
 
+        .sort-select {
+            padding: 3px 5px;
+            font-weight: normal;
+            border-radius: 0;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="black" height="14" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 2px center;
+            padding-right: 20px;
+        }
+
         /* WINDOW CONTENT */
         .window-content {
             flex-grow: 1;
@@ -379,6 +391,12 @@
             <span class="title-text" data-i18n="notes.title">Notes</span>
 
             <div class="controls" id="list-controls">
+                <select id="sort-select" class="sys-btn sort-select" onchange="changeSortMode(event)" title="Sort Notes">
+                    <option value="updated_desc" data-i18n="notes.sort.newest">Newest</option>
+                    <option value="updated_asc" data-i18n="notes.sort.oldest">Oldest</option>
+                    <option value="alpha_asc" data-i18n="notes.sort.a_z">Title (A-Z)</option>
+                    <option value="alpha_desc" data-i18n="notes.sort.z_a">Title (Z-A)</option>
+                </select>
                 <button class="sys-btn" onclick="createNote()" data-i18n="notes.btn.new">+ New</button>
             </div>
             <div class="title-controls">
@@ -467,6 +485,7 @@
         let currentUser = null;
         let saveTimer = null;
         let unsubscribe = null; // To handle unsubscription
+        let currentSortMode = localStorage.getItem('rekindle_notes_sort') || 'updated_desc';
 
         // --- INIT ---
         window.onload = () => {
@@ -482,6 +501,10 @@
                 // Clean URL
                 window.history.replaceState({}, document.title, "notes.html");
             }
+
+            // Set initial sort mode in UI
+            const sortSelect = document.getElementById('sort-select');
+            if (sortSelect) sortSelect.value = currentSortMode;
 
             auth.onAuthStateChanged(user => {
                 if (user) {
@@ -527,8 +550,6 @@
                 const cached = localStorage.getItem(NOTES_CACHE_KEY);
                 if (cached) {
                     notes = JSON.parse(cached);
-                    // Sort descending by updated
-                    notes.sort((a, b) => b.updated - a.updated);
                     renderList();
                     console.log("Loaded " + notes.length + " notes from cache.");
                 }
@@ -617,6 +638,12 @@
 
         // --- UI LOGIC ---
 
+        function changeSortMode(e) {
+            currentSortMode = e.target.value;
+            localStorage.setItem('rekindle_notes_sort', currentSortMode);
+            renderList();
+        }
+
         function renderList() {
             const container = document.getElementById('list-view');
             container.innerHTML = '';
@@ -624,9 +651,22 @@
             if (notes.length === 0) {
                 container.innerHTML = `<div style="padding:40px; text-align:center; font-style:italic;">${window.t('notes.empty', 'No notes. Tap "+ New" to write.')}</div>`;
                 return;
-            }
-
-            notes.sort((a, b) => b.updated - a.updated);
+            }            notes.sort((a, b) => {
+                const titleA = (a.title || window.t('notes.label.untitled', 'Untitled')).toLowerCase();
+                const titleB = (b.title || window.t('notes.label.untitled', 'Untitled')).toLowerCase();
+                
+                switch (currentSortMode) {
+                    case 'updated_asc':
+                        return a.updated - b.updated;
+                    case 'alpha_asc':
+                        return titleA.localeCompare(titleB);
+                    case 'alpha_desc':
+                        return titleB.localeCompare(titleA);
+                    case 'updated_desc':
+                    default:
+                        return b.updated - a.updated;
+                }
+            });
 
             notes.forEach(note => {
                 const div = document.createElement('div');
