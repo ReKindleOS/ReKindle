@@ -309,7 +309,7 @@ const APPS = [
     },
     {
         id: 'manga',
-        name: 'Manga Reader',
+        name: 'Manga',
         cat: 'lifestyle',
         desc: 'Read manga and webtoons.',
         newBadge: true,

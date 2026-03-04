@@ -368,9 +368,34 @@
             flex-shrink: 0;
             font-family: sans-serif;
         }
+
+        /* Hide chapter select custom-select-container by default */
+        #chapter-select-wrapper {
+            display: none;
+            position: relative;
+            z-index: 100;
+        }
+
+        /* Ensure title bar is above reader-view (z-index: 10) so dropdown renders on top */
+        .title-bar {
+            overflow: visible;
+            z-index: 20;
+        }
+
+        /* Ensure the chapter custom-select options render above everything */
+        #chapter-select-wrapper .custom-select-container {
+            z-index: 9000;
+        }
+
+        #chapter-select-wrapper .custom-options {
+            z-index: 9999;
+            min-width: 160px;
+        }
     </style>
     <script src="theme.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/custom-select.js"></script>
+    <link rel="stylesheet" href="css/custom-select.css">
 </head>
 
 <body>
@@ -380,8 +405,12 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="location.href='index'">X</div>
             <div id="back-btn" onclick="closeReader()">Back</div>
-            <span class="title-text" id="app-title" data-i18n="manga.title">Manga Reader</span>
+            <span class="title-text" id="app-title" data-i18n="manga.title">Manga</span>
             <div class="title-controls">
+                <div id="chapter-select-wrapper" style="margin-right: 8px;">
+                    <select id="chapter-select" class="no-custom-select" onchange="loadChapter(parseInt(this.value))">
+                    </select>
+                </div>
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
                         stroke-linecap="square" stroke-linejoin="miter">
@@ -403,7 +432,57 @@
             <div id="view-library" class="grid"></div>
 
             <!-- STORE VIEW -->
-            <div id="view-store" class="grid" style="display: none;"></div>
+            <div id="view-store" style="display: none;">
+                <!-- Store Controls -->
+                <div id="store-controls"
+                    style="margin-bottom: 15px; display: grid; grid-template-columns: 1fr; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px;">
+                        <input type="text" id="store-search" placeholder="Search manga..."
+                            data-i18n-placeholder="manga.store.search" onkeydown="if(event.keyCode===13)doStoreSearch()"
+                            style="border: 2px solid black; padding: 6px 10px; font-family: inherit; font-size: 0.85rem; box-sizing: border-box; outline: none;">
+                        <button class="btn" onclick="doStoreSearch()" style="white-space: nowrap;">Search</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                        <select id="store-category" onchange="doStoreSearch()"
+                            style="border: 2px solid black; padding: 4px 6px; font-family: inherit; font-size: 0.8rem; background: white; outline: none;">
+                            <option value="">All Categories</option>
+                            <option value="391b0423-d847-456f-aff0-8b0cfc03066b">Action</option>
+                            <option value="87cc87cd-a395-47af-b27a-93258283bbc6">Adventure</option>
+                            <option value="4d32cc48-9f00-4cca-9b5a-a839f0764984">Comedy</option>
+                            <option value="b9af3a63-f058-46de-a9a0-e0c13906197a">Drama</option>
+                            <option value="cdc58593-87dd-415e-bbc0-2ec27bf404cc">Fantasy</option>
+                            <option value="cdad7e68-1419-41dd-bdce-27753074a640">Horror</option>
+                            <option value="a3c67850-4684-404e-9b7f-c69850ee5da6">Mystery</option>
+                            <option value="423e2eae-a7a2-4a8b-ac03-a8351462d71d">Romance</option>
+                            <option value="256c8bd9-4904-4f7b-a3a0-b7c22b1c7c99">Sci-Fi</option>
+                            <option value="e5301a23-ebd9-49dd-a0cb-2add944c7c9b">Slice of Life</option>
+                            <option value="69964a64-2f90-4d33-beeb-f3ed2875eb4c">Sports</option>
+                            <option value="f8f62932-27da-4fe4-8ee1-6779a8c5edba">Thriller</option>
+                        </select>
+                        <select id="store-language" onchange="doStoreSearch()"
+                            style="border: 2px solid black; padding: 4px 6px; font-family: inherit; font-size: 0.8rem; background: white; outline: none;">
+                            <option value="">Any Language</option>
+                            <option value="en" selected>English</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="zh">Chinese</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="pt-br">Portuguese</option>
+                        </select>
+                        <select id="store-sort" onchange="doStoreSearch()"
+                            style="border: 2px solid black; padding: 4px 6px; font-family: inherit; font-size: 0.8rem; background: white; outline: none;">
+                            <option value="rating">Top Rated</option>
+                            <option value="followedCount">Most Popular</option>
+                            <option value="latestUploadedChapter">Recently Updated</option>
+                            <option value="createdAt">Newest</option>
+                            <option value="title">Alphabetical</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="store-results" class="grid"></div>
+            </div>
 
             <!-- READER VIEW -->
             <div id="reader-view">
@@ -425,6 +504,13 @@
         let isLoadingStore = false;
         let currentReading = null;
         let currentPage = 0;
+        let currentChapterList = [];
+        let currentChapterIndex = 0;
+        let isLoadingNextChapter = false;
+        let storeSearchQuery = '';
+        let storeCategory = '';
+        let storeLanguage = 'en';
+        let storeSort = 'rating';
 
         window.onload = async () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
@@ -499,15 +585,28 @@
             document.getElementById('view-store').style.display = 'none';
 
             document.getElementById('tab-' + tab).classList.add('active');
-            document.getElementById('view-' + tab).style.display = 'grid';
+            if (tab === 'library') {
+                document.getElementById('view-library').style.display = 'grid';
+            } else {
+                document.getElementById('view-' + tab).style.display = 'block';
+            }
 
             if (tab === 'library') {
                 renderLibrary();
             } else if (tab === 'store') {
-                if (document.getElementById('view-store').innerHTML === '') {
+                if (document.getElementById('store-results').innerHTML === '') {
                     loadStore(0);
                 }
             }
+        }
+
+        function doStoreSearch() {
+            storeSearchQuery = document.getElementById('store-search').value.trim();
+            storeCategory = document.getElementById('store-category').value;
+            storeLanguage = document.getElementById('store-language').value;
+            storeSort = document.getElementById('store-sort').value;
+            currentStorePage = 0;
+            loadStore(0);
         }
 
         function showStatus(msg) {
@@ -539,12 +638,35 @@
             isLoadingStore = true;
             showStatus("Loading MangaDex Catalog...");
 
-            const container = document.getElementById('view-store');
+            var container = document.getElementById('store-results');
             if (offset === 0) container.innerHTML = '';
 
             try {
-                const url = `${API_BASE}/manga?limit=20&offset=${offset}&includes[]=cover_art&order[rating]=desc&order[followedCount]=desc`;
-                const res = await fetchCORS(url);
+                var apiUrl = API_BASE + '/manga?limit=20&offset=' + offset + '&includes[]=cover_art';
+
+                // Sort order
+                if (storeSort === 'title') {
+                    apiUrl += '&order[title]=asc';
+                } else {
+                    apiUrl += '&order[' + storeSort + ']=desc';
+                }
+
+                // Search
+                if (storeSearchQuery) {
+                    apiUrl += '&title=' + encodeURIComponent(storeSearchQuery);
+                }
+
+                // Category
+                if (storeCategory) {
+                    apiUrl += '&includedTags[]=' + storeCategory;
+                }
+
+                // Language
+                if (storeLanguage) {
+                    apiUrl += '&availableTranslatedLanguage[]=' + storeLanguage;
+                }
+
+                var res = await fetchCORS(apiUrl);
 
                 const data = await res.json();
 
@@ -654,10 +776,15 @@
                 const card = document.createElement('div');
                 card.className = 'card';
 
-                const savedPage = allProgress[item.id] || 0;
+                const savedProgress = allProgress[item.id] || { chapter: 0, page: 0, chapterNum: '' };
+                const savedPage = (typeof savedProgress === 'object') ? savedProgress.page : savedProgress;
+                const savedChapterNum = (typeof savedProgress === 'object') ? (savedProgress.chapterNum || '') : '';
+                const savedChapter = (typeof savedProgress === 'object') ? savedProgress.chapter : 0;
                 let progressText = '';
-                if (savedPage > 0) {
-                    progressText = '<div style="font-size:0.7rem; background:#000; color:#fff; padding:2px 6px; display:inline-block; margin-bottom:4px;">' + (window.t('manga.msg.page') || 'Page') + ' ' + (savedPage + 1) + '</div>';
+                if (savedPage > 0 || savedChapter > 0) {
+                    var chLabel = savedChapterNum ? ('Ch ' + savedChapterNum) : (savedChapter > 0 ? ('Ch ' + (savedChapter + 1)) : '');
+                    var label = chLabel ? (chLabel + ', P ' + (savedPage + 1)) : ((window.t('manga.msg.page') || 'Page') + ' ' + (savedPage + 1));
+                    progressText = '<div style="font-size:0.7rem; background:#000; color:#fff; padding:2px 6px; display:inline-block; margin-bottom:4px;">' + label + '</div>';
                 }
 
                 // X remove button at top-right
@@ -705,10 +832,10 @@
         }
 
         // --- READING PROGRESS ---
-        async function saveProgress(mangaId, page) {
+        async function saveProgress(mangaId, chapterIdx, pageIdx, chapterNum) {
             try {
                 const progress = await localforage.getItem('manga_progress') || {};
-                progress[mangaId] = page;
+                progress[mangaId] = { chapter: chapterIdx, page: pageIdx, chapterNum: chapterNum || '' };
                 await localforage.setItem('manga_progress', progress);
             } catch (e) {
                 console.error('Failed to save progress:', e);
@@ -718,9 +845,12 @@
         async function getProgress(mangaId) {
             try {
                 const progress = await localforage.getItem('manga_progress') || {};
-                return progress[mangaId] || 0;
+                const val = progress[mangaId];
+                if (!val) return { chapter: 0, page: 0 };
+                if (typeof val === 'number') return { chapter: 0, page: val };
+                return val;
             } catch (e) {
-                return 0;
+                return { chapter: 0, page: 0 };
             }
         }
 
@@ -729,6 +859,7 @@
 
         async function openReader(item) {
             currentReading = item;
+            currentReading.loadedOnce = false;
             isReaderOpen = true;
             document.getElementById('reader-view').style.display = 'flex';
             document.getElementById('view-library').style.display = 'none';
@@ -743,80 +874,187 @@
             content.innerHTML = '<div style="padding: 20px;">Fetching chapters...</div>';
 
             try {
-                const url = `${API_BASE}/manga/${item.id}/feed?translatedLanguage[]=en&order[chapter]=asc&limit=100`;
-                const res = await fetchCORS(url);
-                const data = await res.json();
+                // Paginate through all chapters (MangaDex returns max 100 per request)
+                var allChapters = [];
+                var fetchOffset = 0;
+                var hasMore = true;
+                while (hasMore) {
+                    var url = API_BASE + '/manga/' + item.id + '/feed?translatedLanguage[]=en&order[chapter]=asc&limit=100&offset=' + fetchOffset;
+                    var res = await fetchCORS(url);
+                    var data = await res.json();
+                    if (data.data && data.data.length > 0) {
+                        allChapters = allChapters.concat(data.data);
+                        fetchOffset += data.data.length;
+                        // Stop if we got fewer than 100 (last page) or hit the total
+                        if (data.data.length < 100 || (data.total && fetchOffset >= data.total)) {
+                            hasMore = false;
+                        }
+                        content.innerHTML = '<div style="padding: 20px;">Fetching chapters... (' + allChapters.length + ' found)</div>';
+                    } else {
+                        hasMore = false;
+                    }
+                }
 
-                if (data.data.length === 0) {
+                if (allChapters.length === 0) {
                     content.innerHTML = '<div style="padding: 20px;">No English chapters found.</div>';
                     return;
                 }
 
-                // Find the first chapter that has internal pages, or just take the first chapter
-                // if it's an external link (like MangaPlus)
-                let targetChapter = data.data[0];
-                for (let ch of data.data) {
-                    if (ch.attributes && ch.attributes.pages > 0) {
-                        targetChapter = ch;
-                        break;
-                    }
+                // Filter out chapters with 0 pages (unless they are external links)
+                var validChapters = allChapters.filter(function (ch) {
+                    return ch.attributes && ch.attributes.pages > 0;
+                });
+
+                // Deduplicate: keep only the first occurrence of each chapter number
+                var seenChapterNums = {};
+                validChapters = validChapters.filter(function (ch) {
+                    var chNum = ch.attributes.chapter;
+                    if (!chNum) return true; // Keep unnumbered chapters
+                    if (seenChapterNums[chNum]) return false;
+                    seenChapterNums[chNum] = true;
+                    return true;
+                });
+
+                // If no internal chapters, check if the first is external
+                if (validChapters.length === 0 && allChapters[0] && allChapters[0].attributes && allChapters[0].attributes.externalUrl) {
+                    currentChapterList = [allChapters[0]];
+                    currentChapterIndex = 0;
+                    await loadChapter(currentChapterIndex);
+                    return;
                 }
 
-                await loadChapter(targetChapter);
+                if (validChapters.length === 0) {
+                    content.innerHTML = '<div style="padding: 20px;">No readable chapters found.</div>';
+                    return;
+                }
+
+                // Initialize lazy loading state
+                currentChapterList = validChapters;
+
+                // Get saved progress to determine which chapter to open
+                var savedProgress = await getProgress(item.id);
+                currentChapterIndex = savedProgress.chapter;
+                if (currentChapterIndex >= validChapters.length) {
+                    currentChapterIndex = 0;
+                }
+
+                // Populate chapter dropdown
+                var chapterSelect = document.getElementById('chapter-select');
+                chapterSelect.innerHTML = '';
+                validChapters.forEach(function (ch, idx) {
+                    var opt = document.createElement('option');
+                    opt.value = idx;
+                    var chNum = ch.attributes.chapter ? ('Ch ' + ch.attributes.chapter) : '';
+                    var chTitle = ch.attributes.title || '';
+                    var displayTitle = chNum;
+                    if (chTitle) {
+                        displayTitle += displayTitle ? (': ' + chTitle) : chTitle;
+                    }
+                    if (!displayTitle) displayTitle = 'Part ' + (idx + 1);
+                    opt.innerText = displayTitle;
+                    chapterSelect.appendChild(opt);
+                });
+                chapterSelect.value = currentChapterIndex;
+
+                // Reinitialize custom-select for the chapter dropdown
+                // Remove stale custom-select container if it exists
+                var existingCustom = chapterSelect.parentNode.querySelector('.custom-select-container');
+                if (existingCustom) {
+                    existingCustom.remove();
+                }
+                delete chapterSelect.dataset.customSelectInitialized;
+                try {
+                    new CustomSelect(chapterSelect);
+                } catch (csErr) {
+                    // If CustomSelect fails, show native select instead
+                    console.warn('CustomSelect init failed, using native select:', csErr);
+                    chapterSelect.style.display = 'inline-block';
+                    chapterSelect.style.border = '2px solid black';
+                    chapterSelect.style.padding = '2px 4px';
+                    chapterSelect.style.fontSize = '11px';
+                    chapterSelect.style.fontFamily = 'inherit';
+                    chapterSelect.style.background = 'white';
+                    chapterSelect.style.boxShadow = '1px 1px 0 black';
+                    chapterSelect.style.maxWidth = '140px';
+                }
+
+                // Show the chapter dropdown wrapper
+                document.getElementById('chapter-select-wrapper').style.display = 'inline-block';
+
+                await loadChapter(currentChapterIndex);
 
             } catch (e) {
                 content.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + e.message + '</div>';
             }
         }
 
-        async function loadChapter(chapterObj) {
-            const content = document.getElementById('reader-content');
+        async function loadChapter(chapterIndex) {
+            if (chapterIndex < 0 || chapterIndex >= currentChapterList.length) return;
 
-            // Handle external chapters (e.g. Official MangaPlus releases like One Piece)
+            isLoadingNextChapter = true;
+            currentChapterIndex = chapterIndex;
+
+            // Sync dropdown
+            var chapterSelect = document.getElementById('chapter-select');
+            if (chapterSelect) {
+                chapterSelect.value = chapterIndex;
+            }
+
+            var chapterObj = currentChapterList[chapterIndex];
+            var content = document.getElementById('reader-content');
+
+            // Handle external chapters
             if (chapterObj.attributes && chapterObj.attributes.pages === 0 && chapterObj.attributes.externalUrl) {
-                content.innerHTML = `
-                    <div style="padding: 20px; text-align: center;">
-                        <p style="margin-bottom: 20px; font-weight: bold;">This chapter is officially hosted externally.</p>
-                        <a href="${chapterObj.attributes.externalUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: black; color: white; text-decoration: none; font-weight: bold; font-family: sans-serif; box-shadow: 2px 2px 0 #555;">
-                            Read on ${new URL(chapterObj.attributes.externalUrl).hostname}
-                        </a>
-                    </div>
-                `;
+                content.innerHTML =
+                    '<div style="padding: 20px; text-align: center;">' +
+                    '<p style="margin-bottom: 20px; font-weight: bold;">This chapter is officially hosted externally.</p>' +
+                    '<a href="' + chapterObj.attributes.externalUrl + '" target="_blank" style="display: inline-block; padding: 10px 20px; background: black; color: white; text-decoration: none; font-weight: bold; font-family: sans-serif; box-shadow: 2px 2px 0 #555;">' +
+                    'Read on external site</a></div>';
+                isLoadingNextChapter = false;
                 return;
             }
 
-            content.innerHTML = '<div style="padding: 20px;">Fetching pages...</div>';
+            var chNum = chapterObj.attributes.chapter ? ('Ch ' + chapterObj.attributes.chapter) : ('Part ' + (chapterIndex + 1));
+            content.innerHTML = '<div style="padding: 20px;">Fetching ' + chNum + ' (' + (chapterIndex + 1) + ' of ' + currentChapterList.length + ')...</div>';
 
             try {
-                const url = `${API_BASE}/at-home/server/${chapterObj.id}`;
-                const res = await fetchCORS(url);
-                const data = await res.json();
+                var url = API_BASE + '/at-home/server/' + chapterObj.id;
+                var res = await fetchCORS(url);
+                var data = await res.json();
 
-                const baseUrl = data.baseUrl;
-                const hash = data.chapter.hash;
-                const pages = data.chapter.data;
+                var baseUrl = data.baseUrl;
+                var hash = data.chapter.hash;
+                var pages = data.chapter.data;
 
                 if (!pages || pages.length === 0) {
-                    content.innerHTML = '<div style="padding: 20px;">No pages found.</div>';
+                    content.innerHTML = '<div style="padding: 20px;">No pages found in this chapter.</div>';
+                    isLoadingNextChapter = false;
                     return;
                 }
 
-                const imageUrls = pages.map(file => {
-                    const rawUrl = `${baseUrl}/data/${hash}/${file}`;
-                    return `/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+                var imageUrls = pages.map(function (file) {
+                    var rawUrl = baseUrl + '/data/' + hash + '/' + file;
+                    return '/api/proxy?url=' + encodeURIComponent(rawUrl);
                 });
 
                 currentReading.pages = imageUrls;
 
-                // Restore reading progress
-                currentPage = await getProgress(currentReading.id);
-                if (currentPage >= imageUrls.length) currentPage = 0;
+                // Restore progress on initial load, otherwise start at page 0
+                if (!currentReading.loadedOnce) {
+                    var savedProgress = await getProgress(currentReading.id);
+                    currentPage = savedProgress.page || 0;
+                    if (currentPage >= imageUrls.length) currentPage = 0;
+                    currentReading.loadedOnce = true;
+                } else {
+                    currentPage = 0;
+                }
 
                 updateMangaPage();
 
             } catch (e) {
                 content.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + e.message + '</div>';
             }
+            isLoadingNextChapter = false;
         }
 
         function toggleFullScreen() {
@@ -843,18 +1081,21 @@
             document.getElementById('back-btn').style.display = 'none';
             document.querySelector('.tabs').style.display = 'flex';
 
+            // Hide chapter dropdown
+            document.getElementById('chapter-select-wrapper').style.display = 'none';
+
             // Restore active tab view
-            const activeTab = document.querySelector('.tab.active');
+            var activeTab = document.querySelector('.tab.active');
             if (activeTab && activeTab.id === 'tab-library') {
                 document.getElementById('view-library').style.display = 'grid';
             } else if (activeTab && activeTab.id === 'tab-store') {
-                document.getElementById('view-store').style.display = 'grid';
+                document.getElementById('view-store').style.display = 'block';
             } else {
-                document.getElementById('view-library').style.display = 'grid'; // fallback
+                document.getElementById('view-library').style.display = 'grid';
             }
 
             // Restore title
-            document.getElementById('app-title').innerText = 'Manga Reader';
+            document.getElementById('app-title').innerText = 'Manga';
 
             // Reset status bar
             showStatus(window.t('manga.msg.ready') || 'Ready');
@@ -887,7 +1128,11 @@
             content.scrollTop = 0;
 
             // Save progress
-            saveProgress(currentReading.id, currentPage);
+            var chapterNum = '';
+            if (currentChapterList && currentChapterList[currentChapterIndex]) {
+                chapterNum = currentChapterList[currentChapterIndex].attributes.chapter || '';
+            }
+            saveProgress(currentReading.id, currentChapterIndex, currentPage, chapterNum);
         }
 
         function prevPage() {
@@ -895,6 +1140,8 @@
             if (currentReading && currentReading.pages && currentPage > 0) {
                 currentPage--;
                 updateMangaPage();
+            } else if (currentReading && currentPage === 0 && currentChapterIndex > 0 && !isLoadingNextChapter) {
+                loadChapter(currentChapterIndex - 1);
             }
         }
 
@@ -903,6 +1150,8 @@
             if (currentReading && currentReading.pages && currentPage < currentReading.pages.length - 1) {
                 currentPage++;
                 updateMangaPage();
+            } else if (currentReading && currentReading.pages && currentPage >= currentReading.pages.length - 1 && currentChapterIndex < currentChapterList.length - 1 && !isLoadingNextChapter) {
+                loadChapter(currentChapterIndex + 1);
             }
         }
     </script>
