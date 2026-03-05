@@ -13,7 +13,10 @@ const APPS = [
         id: 'calendar',
         name: 'Calendar',
         cat: 'essentials',
-        icon: '<rect x="4" y="8" width="24" height="22"/><rect x="4" y="8" width="24" height="6" fill="black" stroke="none"/><text x="16" y="26" font-size="14" text-anchor="middle" fill="black" stroke="none">25</text>'
+        get icon() {
+            const date = typeof window.rekindleGetZonedDate === 'function' ? window.rekindleGetZonedDate().getDate() : new Date().getDate();
+            return '<rect x="4" y="8" width="24" height="22"/><rect x="4" y="8" width="24" height="6" fill="black" stroke="none"/><text x="16" y="26" font-size="14" text-anchor="middle" fill="black" stroke="none">' + date + '</text>';
+        }
     },
     {
         id: 'contacts',
@@ -235,7 +238,7 @@ const APPS = [
     },
     {
         id: 'neighbourhood',
-        name: 'Neighbourhood (Beta)',
+        name: 'Neighbourhood',
         cat: 'lifestyle',
         featured: true,
         featuredOrder: 6,
