@@ -32,9 +32,11 @@
 
         var doc = document.documentElement;
         if (isDark) {
+            doc.style.colorScheme = 'dark';
             doc.setAttribute('data-theme', 'dark');
             injectDarkStyles();
         } else {
+            doc.style.colorScheme = 'light';
             doc.removeAttribute('data-theme');
             removeDarkStyles();
         }
