@@ -229,6 +229,27 @@
             font-family: "Courier New", monospace;
         }
 
+        .gov-alert {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            background: white;
+            color: black;
+            border: 2px solid black;
+            padding: 4px 10px;
+            display: none;
+            font-family: "Courier New", monospace;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .gov-alert:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
         .current-date {
             font-family: "Courier New", monospace;
             font-size: 0.9rem;
@@ -547,6 +568,40 @@
             /* Hidden initially */
         }
 
+        #alert-modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .alert-modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            text-align: left;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .alert-modal-content {
+            overflow-y: auto;
+            margin-bottom: 15px;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+            line-height: 1.3;
+        }
+
         /* SEARCH RESULTS */
         #search-results {
             max-height: 150px;
@@ -650,6 +705,7 @@
                         <div class="temp-big" id="current-temp">--</div>
                         <div class="condition-text" id="current-cond">...</div>
                         <div class="nowcast-alert" id="nowcast-alert"></div>
+                        <div class="gov-alert" id="gov-alert" onclick="openAlertModal()"></div>
                     </div>
                 </div>
 
@@ -668,6 +724,19 @@
             <!-- FORECAST -->
             <div class="section-title" data-i18n="weather.header.daily">5 Day Forecast</div>
             <div class="forecast-list" id="forecast-container"></div>
+        </div>
+    </div>
+
+    <!-- ALERT MODAL -->
+    <div id="alert-modal-overlay">
+        <div class="alert-modal-box">
+            <h3 id="alert-title"
+                style="margin-top: 0; text-transform: uppercase; border-bottom: 1px solid black; padding-bottom: 10px; margin-bottom: 15px; text-align: center;">
+                Alert</h3>
+            <div id="alert-content" class="alert-modal-content"></div>
+            <div class="modal-controls">
+                <button class="sys-btn" onclick="closeAlertModal()" data-i18n="weather.btn.close">Close</button>
+            </div>
         </div>
     </div>
 
@@ -736,6 +805,7 @@
         let searchTimeout = null;
         let auth, db, currentUser;
         let isFirebaseAvailable = false;
+        let currentAlertData = null;
 
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
@@ -1114,6 +1184,43 @@
             document.getElementById('modal-overlay').style.display = 'none';
         }
 
+        function fetchGovAlerts(lat, lon, countryCode) {
+            const alertBanner = document.getElementById('gov-alert');
+            alertBanner.style.display = 'none';
+            currentAlertData = null;
+
+            if (countryCode !== 'US') return;
+
+            const url = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;
+            fetch(url, {
+                headers: {
+                    'User-Agent': '(rekindle/1.0)'
+                }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.features && data.features.length > 0) {
+                        currentAlertData = data.features[0].properties;
+                        alertBanner.innerText = `⚠️ ${currentAlertData.event}`;
+                        alertBanner.style.display = 'inline-block';
+                    }
+                })
+                .catch(err => {
+                    console.error("Error fetching gov alerts:", err);
+                });
+        }
+
+        function openAlertModal() {
+            if (!currentAlertData) return;
+            document.getElementById('alert-title').innerText = currentAlertData.event || "Alert";
+            document.getElementById('alert-content').innerText = currentAlertData.description || currentAlertData.headline || "No details available.";
+            document.getElementById('alert-modal-overlay').style.display = 'flex';
+        }
+
+        function closeAlertModal() {
+            document.getElementById('alert-modal-overlay').style.display = 'none';
+        }
+
         // --- APP LOGIC ---
         async function fetchWeather() {
             const unit = getEffectiveUnit();
@@ -1149,6 +1256,9 @@
 
                 // 3. Render Forecast 
                 renderForecast(data.daily);
+
+                // 4. Fetch Gov Alerts (US only)
+                fetchGovAlerts(currentLoc.lat, currentLoc.long, currentLoc.country_code);
 
             } catch (e) {
                 document.getElementById('current-cond').innerText = window.t('weather.status.error', "Connection Error");
