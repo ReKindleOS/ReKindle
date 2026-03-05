@@ -584,6 +584,13 @@ const APPS = [
             icon: '<rect x="4" y="10" width="10" height="12" fill="white"/><text x="9" y="19" font-size="10" text-anchor="middle" stroke="none" fill="black" font-weight="bold">S</text><rect x="16" y="8" width="10" height="12" fill="black" stroke="none"/><text x="21" y="17" font-size="10" text-anchor="middle" stroke="none" fill="white" font-weight="bold">W</text>'
         }, */
     {
+        id: 'maze',
+        name: 'Maze',
+        cat: 'games',
+        newBadge: true,
+        icon: '<path d="M4 4 h24 v24 h-24 z" fill="none" stroke="black" stroke-width="2"/><line x1="12" y1="4" x2="12" y2="20" stroke="black" stroke-width="2"/><line x1="20" y1="12" x2="20" y2="28" stroke="black" stroke-width="2"/>'
+    },
+    {
         id: 'snake',
         name: 'Snake',
         cat: 'games',

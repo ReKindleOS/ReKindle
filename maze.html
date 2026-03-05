@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+
+    <title>Maze</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
+    <script src="theme.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        * {
+            transition: none !important;
+            animation: none !important;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Geneva", "Verdana", sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            touch-action: none;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: var(--border);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+            max-width: 600px;
+            height: fit-content;
+            max-height: 95vh;
+            position: relative;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: var(--border);
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TITLE BAR ACTIONS */
+        .title-actions {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+        }
+
+        .title-actions>button {
+            margin-left: 5px;
+            /* Margin-left instead of gap as per constraints */
+            cursor: pointer;
+            background: white;
+            border: var(--border);
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .title-actions>button:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        /* GAME CONTENT */
+        .window-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+        }
+
+        .canvas-container {
+            border: 4px solid black;
+            padding: 2px;
+            background: white;
+            box-shadow: inset 2px 2px 0px rgba(0, 0, 0, 0.1);
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            max-width: 100%;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            box-shadow: 8px 8px 0 black;
+            padding: 30px;
+            width: 80%;
+            max-width: 300px;
+            text-align: center;
+        }
+
+        .sys-btn {
+            background: white;
+            border: var(--border);
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin-top: 15px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+        /* Leaderboard List */
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+
+        .score-board {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <span class="title-text" data-i18n="maze.title">Maze</span>
+            <div class="title-actions">
+                <button onclick="openLeaderboard()" data-i18n="tetris.btn.leaderboard">Leaderboard</button>
+                <button onclick="initGame()" data-i18n="maze.btn.new">New</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <div class="score-board">
+                <span><span data-i18n="maze.label.completed">Completed</span>: <span id="score">0</span></span>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="gameCanvas" width="500" height="500"></canvas>
+            </div>
+        </div>
+
+        <div id="win-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 data-i18n="maze.msg.win" style="margin-top:0;">You Win!</h2>
+                <button class="sys-btn" onclick="initGame()" data-i18n="maze.btn.new">New Maze</button>
+            </div>
+        </div>
+
+        <div id="leaderboard-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 data-i18n="tetris.label.top_scores" style="margin-top:0; margin-bottom: 10px;">Top Scores</h3>
+                <div class="lb-list" id="lb-content" data-i18n="tetris.status.loading">
+                    Loading...
+                </div>
+                <button class="sys-btn" onclick="document.getElementById('leaderboard-modal').style.display='none'"
+                    data-i18n="tetris.btn.close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app();
+        }
+        const db = firebase.firestore();
+        if (db.settings) {
+            try {
+                db.settings({
+                    experimentalForceLongPolling: true,
+                    merge: true
+                });
+            } catch (e) { console.warn("Settings error:", e); }
+        }
+
+        const auth = firebase.auth();
+        let uid = null;
+        let username = "Guest";
+        let personalHighScore = 0;
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const CANVAS_SIZE = 500;
+        const GRID_SIZE = 25;
+        const COLS = CANVAS_SIZE / GRID_SIZE;
+        const ROWS = CANVAS_SIZE / GRID_SIZE;
+
+        let grid = [];
+        let path = [];
+        let isDrawing = false;
+        let isGameOver = false;
+
+        class Cell {
+            constructor(c, r) {
+                this.c = c;
+                this.r = r;
+                this.walls = { top: true, right: true, bottom: true, left: true };
+                this.visited = false;
+            }
+        }
+
+        window.addEventListener('pageshow', function (event) {
+            initializePage();
+        });
+
+        function initializePage() {
+            const onAuthReady = new Promise((resolve) => {
+                if (auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    if (auth.currentUser.email) {
+                        username = auth.currentUser.email.split('@')[0];
+                    }
+                    return resolve();
+                }
+                const unsubscribe = auth.onAuthStateChanged(user => {
+                    if (user) {
+                        uid = user.uid;
+                        if (user.email) {
+                            username = user.email.split('@')[0];
+                        }
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(() => {
+                loadPersonalHighScore().then(() => {
+                    initGame();
+                });
+            });
+        }
+
+        async function loadPersonalHighScore() {
+            const localHigh = localStorage.getItem('maze_high_score');
+            if (localHigh) personalHighScore = parseInt(localHigh);
+
+            if (uid) {
+                try {
+                    const doc = await db.collection('leaderboard_maze').doc(uid).get();
+                    if (doc.exists) {
+                        const cloudHigh = doc.data().score || 0;
+                        if (cloudHigh > personalHighScore) {
+                            personalHighScore = cloudHigh;
+                            localStorage.setItem('maze_high_score', cloudHigh);
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            document.getElementById('score').innerText = personalHighScore;
+        }
+
+        async function saveHighScore(newScore) {
+            if (newScore > personalHighScore) {
+                personalHighScore = newScore;
+                document.getElementById('score').innerText = personalHighScore;
+                localStorage.setItem('maze_high_score', personalHighScore);
+
+                if (uid) {
+                    db.collection('leaderboard_maze').doc(uid).set({
+                        username: username,
+                        score: newScore,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'flex';
+            const list = document.getElementById('lb-content');
+            list.innerText = window.t ? window.t('tetris.status.loading') : 'Loading...';
+            list.removeAttribute('data-i18n');
+
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    const snapshot = await db.collection('leaderboard_maze')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerText = window.t ? window.t('tetris.status.no_scores') : "No scores yet!";
+                        return;
+                    }
+                    let rank = 1;
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = `lb-row ${isMe ? 'me' : ''}`;
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = `${rank}. ${escapeHtml(data.username)}`;
+                        const scoreSpan = document.createElement('span');
+                        scoreSpan.textContent = data.score;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(scoreSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerText = window.t ? window.t('tetris.status.error_loading') : "Error loading scores.";
+                }
+            } else {
+                list.innerText = window.t ? window.t('tetris.status.login_required') : "Log in to see global scores.";
+            }
+        }
+
+        function initGame() {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            document.getElementById('win-modal').style.display = 'none';
+
+            // Brief delay to let the UI update (e.g., closing modal) before heavy generation
+            setTimeout(() => {
+                isGameOver = false;
+                path = [];
+                grid = [];
+
+                for (let r = 0; r < ROWS; r++) {
+                    grid[r] = [];
+                    for (let c = 0; c < COLS; c++) {
+                        grid[r][c] = new Cell(c, r);
+                    }
+                }
+
+                generateMaze(0, 0);
+
+                // Start path at 0, 0
+                path.push(grid[0][0]);
+
+                drawMaze();
+            }, 10);
+        }
+
+        function generateMaze(startC, startR) {
+            let stack = [];
+            let current = grid[startR][startC];
+            current.visited = true;
+
+            const getUnvisitedNeighbors = (cell) => {
+                let neighbors = [];
+                const { c, r } = cell;
+
+                if (r > 0 && !grid[r - 1][c].visited) neighbors.push({ cell: grid[r - 1][c], dir: 'top' });
+                if (c < COLS - 1 && !grid[r][c + 1].visited) neighbors.push({ cell: grid[r][c + 1], dir: 'right' });
+                if (r < ROWS - 1 && !grid[r + 1][c].visited) neighbors.push({ cell: grid[r + 1][c], dir: 'bottom' });
+                if (c > 0 && !grid[r][c - 1].visited) neighbors.push({ cell: grid[r][c - 1], dir: 'left' });
+
+                return neighbors;
+            };
+
+            const removeWalls = (a, b, dir) => {
+                if (dir === 'top') { a.walls.top = false; b.walls.bottom = false; }
+                else if (dir === 'right') { a.walls.right = false; b.walls.left = false; }
+                else if (dir === 'bottom') { a.walls.bottom = false; b.walls.top = false; }
+                else if (dir === 'left') { a.walls.left = false; b.walls.right = false; }
+            };
+
+            while (true) {
+                let neighbors = getUnvisitedNeighbors(current);
+                if (neighbors.length > 0) {
+                    let nextInfo = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    let next = nextInfo.cell;
+                    stack.push(current);
+                    removeWalls(current, next, nextInfo.dir);
+                    current = next;
+                    current.visited = true;
+                } else if (stack.length > 0) {
+                    current = stack.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function drawMaze() {
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            ctx.lineWidth = 2;
+            ctx.lineCap = "square";
+            ctx.strokeStyle = "black";
+
+            // Draw finish zone (bottom right)
+            ctx.fillStyle = "#ccc";
+            ctx.fillRect((COLS - 1) * GRID_SIZE, (ROWS - 1) * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+
+            // Draw player path
+            if (path.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(path[0].c * GRID_SIZE + GRID_SIZE / 2, path[0].r * GRID_SIZE + GRID_SIZE / 2);
+                for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].c * GRID_SIZE + GRID_SIZE / 2, path[i].r * GRID_SIZE + GRID_SIZE / 2);
+                }
+                ctx.strokeStyle = "black"; // Or an E-ink friendly dark tone
+                ctx.lineWidth = 6;
+                ctx.stroke();
+
+                // Draw solid square at current head
+                const head = path[path.length - 1];
+                ctx.fillStyle = "black";
+                ctx.fillRect(head.c * GRID_SIZE + 4, head.r * GRID_SIZE + 4, GRID_SIZE - 8, GRID_SIZE - 8);
+            }
+
+            // Draw walls
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "black";
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    let cell = grid[r][c];
+                    let x = c * GRID_SIZE;
+                    let y = r * GRID_SIZE;
+
+                    if (cell.walls.top) {
+                        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + GRID_SIZE, y); ctx.stroke();
+                    }
+                    if (cell.walls.right) {
+                        ctx.beginPath(); ctx.moveTo(x + GRID_SIZE, y); ctx.lineTo(x + GRID_SIZE, y + GRID_SIZE); ctx.stroke();
+                    }
+                    if (cell.walls.bottom) {
+                        ctx.beginPath(); ctx.moveTo(x, y + GRID_SIZE); ctx.lineTo(x + GRID_SIZE, y + GRID_SIZE); ctx.stroke();
+                    }
+                    if (cell.walls.left) {
+                        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + GRID_SIZE); ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function handlePointerEvent(e) {
+            if (isGameOver) return;
+            e.preventDefault();
+
+            let rect = canvas.getBoundingClientRect();
+
+            // Process coalesced events if available for smoother/faster tracking
+            let eventsToProcess = [e];
+            if (e.getCoalescedEvents) {
+                const coalesced = e.getCoalescedEvents();
+                if (coalesced.length > 0) {
+                    eventsToProcess = coalesced;
+                }
+            }
+
+            for (const event of eventsToProcess) {
+                // Handle touch or mouse for the specific event
+                let clientX = event.clientX;
+                let clientY = event.clientY;
+
+                if (event.touches && event.touches.length > 0) {
+                    clientX = event.touches[0].clientX;
+                    clientY = event.touches[0].clientY;
+                }
+
+                // Scale coordinates if canvas is resized
+                let scaleX = canvas.width / rect.width;
+                let scaleY = canvas.height / rect.height;
+
+                let x = (clientX - rect.left) * scaleX;
+                let y = (clientY - rect.top) * scaleY;
+
+                let c = Math.floor(x / GRID_SIZE);
+                let r = Math.floor(y / GRID_SIZE);
+
+                if (c >= 0 && c < COLS && r >= 0 && r < ROWS) {
+                    tryMove(grid[r][c]);
+                }
+            }
+        }
+
+        function areAdjacentAndNotBlocked(a, b) {
+            if (a.r === b.r && a.c === b.c - 1 && !a.walls.right) return true; // b is right
+            if (a.r === b.r && a.c === b.c + 1 && !a.walls.left) return true;  // b is left
+            if (a.c === b.c && a.r === b.r - 1 && !a.walls.bottom) return true; // b is below
+            if (a.c === b.c && a.r === b.r + 1 && !a.walls.top) return true; // b is above
+            return false;
+        }
+
+        function tryMove(targetCell) {
+            const head = path[path.length - 1];
+
+            // If same cell, do nothing
+            if (head === targetCell) return;
+
+            // If backtracking to previous cell (undo)
+            if (path.length >= 2 && path[path.length - 2] === targetCell) {
+                path.pop();
+                drawMaze();
+                return;
+            }
+
+            // Check if adjacent and not blocked by wall
+            if (areAdjacentAndNotBlocked(head, targetCell)) {
+                // Prevent loops: can't move into a cell already in path unless backtracking
+                if (path.indexOf(targetCell) === -1) {
+                    path.push(targetCell);
+                    drawMaze();
+
+                    // Check win
+                    if (targetCell.c === COLS - 1 && targetCell.r === ROWS - 1) {
+                        isGameOver = true;
+                        saveHighScore(personalHighScore + 1);
+                        setTimeout(() => {
+                            document.getElementById('win-modal').style.display = 'flex';
+                        }, 50);
+                    }
+                }
+            } else {
+                // Handle fast drags where pointer skips cells. 
+                // We'd need line rasterization to be perfect, but simple heuristic:
+                // find if there's a simple path from head to target that is unblocked.
+                // For simplicity on e-ink, we just require the user to drag roughly through cells.
+            }
+        }
+
+        // Attach Pointer Events (Modern standard, handles Mouse + Touch + Pen)
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!e.isPrimary) return;
+            isDrawing = true;
+            handlePointerEvent(e);
+        });
+        canvas.addEventListener('pointermove', (e) => {
+            if (isDrawing && e.isPrimary) handlePointerEvent(e);
+        });
+        canvas.addEventListener('pointerup', (e) => {
+            if (e.isPrimary) isDrawing = false;
+        });
+        canvas.addEventListener('pointerout', (e) => {
+            if (e.isPrimary) isDrawing = false;
+        });
+        canvas.addEventListener('pointercancel', (e) => {
+            if (e.isPrimary) isDrawing = false;
+        });
+    </script>
+
+</body>
+
+</html>
