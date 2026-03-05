@@ -690,6 +690,59 @@
         canvas.addEventListener('pointercancel', (e) => {
             if (e.isPrimary) isDrawing = false;
         });
+
+        // Keyboard controls tracking for continuous movement
+        const keys = {};
+        let moveInterval = null;
+
+        function processMovement() {
+            if (isGameOver || path.length === 0) return;
+            const head = path[path.length - 1];
+            let targetCell = null;
+
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) {
+                if (head.r > 0) targetCell = grid[head.r - 1][head.c];
+            } else if (keys['ArrowDown'] || keys['s'] || keys['S']) {
+                if (head.r < ROWS - 1) targetCell = grid[head.r + 1][head.c];
+            } else if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+                if (head.c > 0) targetCell = grid[head.r][head.c - 1];
+            } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+                if (head.c < COLS - 1) targetCell = grid[head.r][head.c + 1];
+            }
+
+            if (targetCell) {
+                tryMove(targetCell);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const validKeys = ['ArrowUp', 'w', 'W', 'ArrowDown', 's', 'S', 'ArrowLeft', 'a', 'A', 'ArrowRight', 'd', 'D'];
+            if (validKeys.includes(e.key)) {
+                e.preventDefault();
+                if (!keys[e.key]) {
+                    keys[e.key] = true;
+                    // Move immediately on first press
+                    processMovement();
+                    // Start fast interval to move repeatedly while held (10 frames per sec roughly)
+                    if (!moveInterval) {
+                        moveInterval = setInterval(processMovement, 100);
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = false;
+
+                // If no movement keys are held anymore, stop the interval
+                const anyKeyPressed = ['ArrowUp', 'w', 'W', 'ArrowDown', 's', 'S', 'ArrowLeft', 'a', 'A', 'ArrowRight', 'd', 'D'].some(k => keys[k]);
+                if (!anyKeyPressed) {
+                    clearInterval(moveInterval);
+                    moveInterval = null;
+                }
+            }
+        });
     </script>
 
 </body>
