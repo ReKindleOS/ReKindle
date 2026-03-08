@@ -2,7 +2,7 @@
 
 **Your E-Ink Device, Upgraded.**
 
-ReKindle is a free, web-based dashboard and operating system designed specifically for E-ink devices (Kindle Scribe, Paperwhite, Boox, etc.). It transforms your simple e-reader into a powerful productivity tool, gaming console, and news hub—all running directly in the browser.
+ReKindle is a web-based dashboard for E-ink devices (Kindle, Kobo, Boox, etc.). It transforms your e-reader into a powerful productivity tool, gaming device, news hub & more.
 
 ## Setup & Installation
 
