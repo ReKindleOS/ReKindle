@@ -11,9 +11,18 @@ service cloud.firestore {
              username.size() > 0 &&
              username.size() <= 100 &&
              !username.matches(".*[<>&'\"].*") &&
-             (isDeveloper() || !username.matches(".*[uU][kK][iI][yY][oO].*")) &&
-             (isDeveloper() || !username.matches(".*[rR][eE][kK][iI][nN][dD][lL][eE].*")) &&
-             !username.matches(".*[wW][aA][nN][tT][bB][aA][nN].*");
+             (isDeveloper() || (
+               !username.matches(".*[uU][kK][iI][yY][oO].*") &&
+               !username.matches(".*[rR][eE][kK][iI][nN][dD][lL][eE].*") &&
+               !username.matches(".*[wW][aA][nN][tT][bB][aA][nN].*") &&
+               !username.matches(".*[rR][oO][oO][tT].*") &&
+               !username.matches(".*[sS][yY][sS][tT][eE][mM].*") &&
+               !username.matches(".*[aA][dD][mM][iI][nN].*") &&
+               !username.matches(".*[aA][dD][mM][iI][nN][iI][sS][tT][rR][aA][tT][oO][rR].*") &&
+               !username.matches(".*[mM][oO][dD].*") &&
+               !username.matches(".*[mM][oO][dD][eE][rR][aA][tT][oO][rR].*") &&
+               !username.matches(".*[sS][uU][pP][pP][oO][rR][tT].*")
+             ));
     }
 
     function isValidText(text) {
@@ -217,7 +226,11 @@ service cloud.firestore {
         // Secure create: Validate username and message text for safety.
         // Note: For anonymous users, email might be null, so check before accessing.
         allow create: if request.auth != null &&
-                        (request.auth.token.email == null || request.resource.data.user == request.auth.token.email.split('@')[0]) &&
+                        (
+                          (request.auth.token.email == null && request.resource.data.user == request.auth.uid) ||
+                          (request.auth.token.email != null && request.resource.data.user == request.auth.token.email.split('@')[0])
+                        ) &&
+                        !request.resource.data.keys().hasAny(['isPro']) &&
                         isValidText(request.resource.data.text);
         allow update: if request.auth != null && 
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
@@ -391,6 +404,7 @@ service cloud.firestore {
     match /suggestions/{suggestionId} {
       allow read: if true;
       allow create: if request.auth != null &&
+                      request.resource.data.authorUid == request.auth.uid &&
                       isValidText(request.resource.data.title) &&
                       isValidText(request.resource.data.description) &&
                       (request.resource.data.category == null || isValidText(request.resource.data.category)) &&
@@ -414,7 +428,9 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if request.auth != null && isValidText(request.resource.data.text);
+        allow create: if request.auth != null && 
+                         request.resource.data.authorUid == request.auth.uid &&
+                         isValidText(request.resource.data.text);
         allow delete: if request.auth != null && (resource.data.authorUid == request.auth.uid || isDeveloper());
       }
     }
