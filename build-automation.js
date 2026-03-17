@@ -6,6 +6,7 @@ const glob = require('glob');
 const { execSync } = require('child_process');
 const postcss = require('postcss');
 const postcssPresetEnv = require('postcss-preset-env');
+const { minify: terserMinify } = require('terser');
 const generateSitemap = require('./scripts/generate-sitemap');
 
 // --- CONFIGURATION ---
@@ -77,18 +78,32 @@ async function minifyHtmlContent(html) {
 }
 
 async function safeMinifyJs(code) {
-    // Uses Babel to remove comments and minify safely without transpiling syntax (unless needed)
+    // Uses Terser to minify, mangle variable names, and strip console logs
     try {
-        const result = await babel.transformAsync(code, {
+        // First pass: Babel to strip comments
+        const babelResult = await babel.transformAsync(code, {
             comments: false,
             minified: true,
             compact: true,
             configFile: false,
             babelrc: false
         });
+        // Second pass: Terser for mangling & obfuscation
+        const result = await terserMinify(babelResult.code, {
+            mangle: {
+                toplevel: true,
+            },
+            compress: {
+                drop_console: true,
+                passes: 2,
+            },
+            format: {
+                comments: false,
+            },
+        });
         return result.code;
     } catch (e) {
-        console.error("    JS Minify Error:", e.message);
+        console.error("    JS Minify/Mangle Error:", e.message);
         return code; // Return original if fails
     }
 }
@@ -204,11 +219,23 @@ async function transpileJs(code) {
             comments: false,
             minified: true,
             compact: true,
-            // Enable common syntax plugins if not in preset (preset-env usually handles Syntax)
         });
-        return result.code;
+        // Terser pass for mangling & obfuscation
+        const tersed = await terserMinify(result.code, {
+            mangle: {
+                toplevel: true,
+            },
+            compress: {
+                drop_console: true,
+                passes: 2,
+            },
+            format: {
+                comments: false,
+            },
+        });
+        return tersed.code;
     } catch (err) {
-        console.error("    Babel Error:", err.message);
+        console.error("    Babel/Terser Error:", err.message);
         return code;
     }
 }
@@ -923,9 +950,22 @@ async function transpileLegacyJs(code) {
             minified: true,
             compact: true,
         });
-        return result.code;
+        // Terser pass for mangling & obfuscation
+        const tersed = await terserMinify(result.code, {
+            mangle: {
+                toplevel: true,
+            },
+            compress: {
+                drop_console: true,
+                passes: 2,
+            },
+            format: {
+                comments: false,
+            },
+        });
+        return tersed.code;
     } catch (err) {
-        console.error("    Legacy Babel Error:", err.message);
+        console.error("    Legacy Babel/Terser Error:", err.message);
         return code;
     }
 }
