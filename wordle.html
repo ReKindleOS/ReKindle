@@ -7,6 +7,11 @@
     <meta charset="UTF-8">
 
     <title>Wordle</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    
     <script src="time.js"></script>
     <script src="js/i18n.js"></script>
 
@@ -327,6 +332,68 @@
             width: 80%;
             max-width: 300px;
             text-align: center;
+            position: relative;
+        }
+
+        /* STATS MODAL STYLES */
+        .stats-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 5px;
+            width: 60px;
+        }
+        .stat-num {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .dist-container {
+            width: 100%;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .dist-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        .dist-label {
+            width: 15px;
+            text-align: right;
+            margin-right: 5px;
+        }
+        .dist-bar-container {
+            flex-grow: 1;
+            display: flex;
+            height: 20px;
+        }
+        .dist-bar {
+            background: #ccc;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 0 5px;
+            color: black;
+            min-width: 8%;
+            font-size: 0.8rem;
+            transition: none !important;
+        }
+        .dist-bar.active {
+            background: black;
+            color: white;
         }
 
         .modal-title {
@@ -375,9 +442,13 @@
             <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text" data-i18n="wordle.title">Wordle</span>
 
+            <!-- Stats Button -->
+            <div id="stats-btn" class="close-box"
+                style="left:auto; right:10px; width:auto; padding:0 5px;" onclick="showStatsModal()">Stats</div>
+
             <!-- New Game Button (Unlimited Mode) -->
             <div id="new-game-btn" class="close-box"
-                style="left:auto; right:10px; width:auto; padding:0 5px; display:none;" onclick="confirmNewGame()">New
+                style="left:35px; right:auto; width:auto; padding:0 5px; display:none;" onclick="confirmNewGame()">New
             </div>
         </div>
 
@@ -412,6 +483,47 @@
                 </div>
             </div>
         </div>
+
+        <!-- Stats Modal -->
+        <div id="stats-modal" class="modal-overlay">
+            <div class="modal-box" style="max-width: 350px;">
+                <div class="close-box" style="left: auto; right: 8px; top: 8px;" onclick="closeStatsModal()">X</div>
+                <div class="modal-title">STATISTICS</div>
+                
+                <div class="stats-container">
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-played">0</div>
+                        <div class="stat-label">Played</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-winpct">0</div>
+                        <div class="stat-label">Win %</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-streak">0</div>
+                        <div class="stat-label">Current<br>Streak</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="stat-maxstreak">0</div>
+                        <div class="stat-label">Max<br>Streak</div>
+                    </div>
+                </div>
+
+                <div class="modal-title">GUESS DISTRIBUTION</div>
+                <div class="dist-container">
+                    <div class="dist-row"><div class="dist-label">1</div><div class="dist-bar-container"><div id="dist-bar-1" class="dist-bar">0</div></div></div>
+                    <div class="dist-row"><div class="dist-label">2</div><div class="dist-bar-container"><div id="dist-bar-2" class="dist-bar">0</div></div></div>
+                    <div class="dist-row"><div class="dist-label">3</div><div class="dist-bar-container"><div id="dist-bar-3" class="dist-bar">0</div></div></div>
+                    <div class="dist-row"><div class="dist-label">4</div><div class="dist-bar-container"><div id="dist-bar-4" class="dist-bar">0</div></div></div>
+                    <div class="dist-row"><div class="dist-label">5</div><div class="dist-bar-container"><div id="dist-bar-5" class="dist-bar">0</div></div></div>
+                    <div class="dist-row"><div class="dist-label">6</div><div class="dist-bar-container"><div id="dist-bar-6" class="dist-bar">0</div></div></div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button onclick="closeStatsModal()">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -436,6 +548,14 @@
         // Mode: 'daily' or 'unlimited'
         let currentMode = 'daily';
 
+        const defaultStats = {
+            gamesPlayed: 0,
+            gamesWon: 0,
+            currentStreak: 0,
+            maxStreak: 0,
+            guesses: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+        };
+
         // State for each mode
         let state = {
             daily: {
@@ -451,6 +571,10 @@
                 gameOver: false,
                 targetWord: "",
                 streak: 0
+            },
+            stats: {
+                daily: JSON.parse(JSON.stringify(defaultStats)),
+                unlimited: JSON.parse(JSON.stringify(defaultStats))
             }
         };
 
@@ -461,22 +585,55 @@
         // --- CONSTANTS ---
         const LS_KEY = 'wordle_state_v2';
 
-        // --- LOAD STATE ---
-        const savedState = localStorage.getItem(LS_KEY);
-        if (savedState) {
-            try {
-                const parsed = JSON.parse(savedState);
-                if (parsed.daily && parsed.unlimited) {
-                    state = parsed;
-                }
-            } catch (e) {
-                console.error("Failed to load state", e);
-            }
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        } else {
+            firebase.app(); // if already initialized, use that one
         }
+        const db = firebase.firestore();
+        if (db.settings) {
+            try { db.settings({ experimentalForceLongPolling: true, merge: true }); } 
+            catch (e) { console.warn("Settings error:", e); }
+        }
+        const auth = firebase.auth();
+
+        // --- USER STATE ---
+        let uid = null;
+        let username = "Guest";
 
         // --- INIT ---
         window.onload = async () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+            // Handle Firebase Auth
+            const onAuthReady = new Promise((resolve) => {
+                if (auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email.split('@')[0];
+                    return resolve();
+                }
+                const unsubscribe = auth.onAuthStateChanged(user => {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email.split('@')[0];
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            await onAuthReady;
+            await loadState();
 
             // Start loading dictionary immediately
             loadDictionary();
@@ -487,8 +644,78 @@
             await initGame('daily');
         };
 
-        function saveState() {
+        // --- STATE MANAGEMENT ---
+        async function loadState() {
+            // Local load first
+            const savedState = localStorage.getItem(LS_KEY);
+            if (savedState) {
+                try {
+                    const parsed = JSON.parse(savedState);
+                    if (parsed.daily && parsed.unlimited) {
+                        state = parsed;
+                        if (!state.stats) {
+                            state.stats = {
+                                daily: JSON.parse(JSON.stringify(defaultStats)),
+                                unlimited: JSON.parse(JSON.stringify(defaultStats))
+                            };
+                            localStorage.setItem(LS_KEY, JSON.stringify(state));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load state locally", e);
+                }
+            }
+
+            // Sync down from firebase if logged in
+            if (uid) {
+                try {
+                    const doc = await db.collection('leaderboard_wordle').doc(uid).get();
+                    if (doc.exists) {
+                        const data = doc.data();
+                        
+                        // We primarily sync 'stats' for leaderboards.
+                        // Assuming daily is the "main" competitive stat.
+                        if (data.stats) {
+                            // Merge logic: Local takes priority for 'recent' games, but for stats,
+                            // we just take the max to be safe.
+                            if (data.stats.daily) {
+                                state.stats.daily.gamesPlayed = Math.max(state.stats.daily.gamesPlayed, data.stats.daily.gamesPlayed || 0);
+                                state.stats.daily.gamesWon = Math.max(state.stats.daily.gamesWon, data.stats.daily.gamesWon || 0);
+                                state.stats.daily.maxStreak = Math.max(state.stats.daily.maxStreak, data.stats.daily.maxStreak || 0);
+                            }
+                            if (data.stats.unlimited) {
+                                state.stats.unlimited.gamesPlayed = Math.max(state.stats.unlimited.gamesPlayed, data.stats.unlimited.gamesPlayed || 0);
+                                state.stats.unlimited.gamesWon = Math.max(state.stats.unlimited.gamesWon, data.stats.unlimited.gamesWon || 0);
+                                state.stats.unlimited.maxStreak = Math.max(state.stats.unlimited.maxStreak, data.stats.unlimited.maxStreak || 0);
+                            }
+                            localStorage.setItem(LS_KEY, JSON.stringify(state));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to sync from Firebase", e);
+                }
+            }
+        }
+
+        async function saveState() {
             localStorage.setItem(LS_KEY, JSON.stringify(state));
+            
+            // Sync to Firebase if logged in
+            if (uid) {
+                try {
+                    // For the global leaderboard, primary score metric will be 'games won in daily mode' + 'current daily streak' optionally
+                    let score = state.stats.daily.gamesWon || 0; 
+                    
+                    await db.collection('leaderboard_wordle').doc(uid).set({
+                        username: username,
+                        score: score, // primary leaderboard stat
+                        stats: state.stats, // full stats payload for restoring
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error("Failed to save state to Firebase", e);
+                }
+            }
         }
 
         async function loadDictionary() {
@@ -599,10 +826,13 @@
 
         function updateControls() {
             const btn = document.getElementById('new-game-btn');
+            const statsBtn = document.getElementById('stats-btn');
             if (currentMode === 'unlimited') {
                 btn.style.display = 'flex';
+                statsBtn.style.right = '10px';
             } else {
                 btn.style.display = 'none';
+                statsBtn.style.right = '10px';
             }
         }
 
@@ -942,19 +1172,23 @@
             // Win/Loss Check
             if (guessStr === activeState.targetWord) {
                 activeState.gameOver = true;
+                updateStats(true, activeState.guesses.length);
                 if (currentMode === 'unlimited') {
                     showMessage("Splendid! Click to play again.", 5000);
                     showPlayAgainButton();
                 } else {
                     showMessage(window.t ? window.t('wordle.msg.win') : "Splendid!");
                 }
+                setTimeout(() => showStatsModal(), 1500);
             } else if (activeState.guesses.length >= MAX_GUESSES) {
                 activeState.gameOver = true;
+                updateStats(false, activeState.guesses.length);
                 const message = window.t ? window.t('wordle.msg.lose').replace('${word}', activeState.targetWord) : "The word was " + activeState.targetWord;
                 showMessage(message, 5000);
                 if (currentMode === 'unlimited') {
                     showPlayAgainButton();
                 }
+                setTimeout(() => showStatsModal(), 1500);
             }
         }
 
@@ -992,6 +1226,61 @@
             if (confirmed) {
                 startNewUnlimitedGame();
             }
+        }
+
+        function updateStats(won, numGuesses) {
+            const s = state.stats[currentMode];
+            s.gamesPlayed++;
+            if (won) {
+                s.gamesWon++;
+                s.currentStreak++;
+                if (s.currentStreak > s.maxStreak) s.maxStreak = s.currentStreak;
+                if (numGuesses >= 1 && numGuesses <= 6) {
+                    s.guesses[numGuesses]++;
+                }
+            } else {
+                s.currentStreak = 0;
+            }
+            saveState();
+        }
+
+        function showStatsModal() {
+            const s = state.stats[currentMode];
+            const winPct = s.gamesPlayed > 0 ? Math.round((s.gamesWon / s.gamesPlayed) * 100) : 0;
+            
+            document.getElementById('stat-played').innerText = s.gamesPlayed;
+            document.getElementById('stat-winpct').innerText = winPct;
+            document.getElementById('stat-streak').innerText = s.currentStreak;
+            document.getElementById('stat-maxstreak').innerText = s.maxStreak;
+
+            let maxGuessDist = 0;
+            for (let i = 1; i <= 6; i++) {
+                if (s.guesses[i] > maxGuessDist) maxGuessDist = s.guesses[i];
+            }
+
+            for (let i = 1; i <= 6; i++) {
+                const count = s.guesses[i] || 0;
+                const bar = document.getElementById(`dist-bar-${i}`);
+                bar.innerText = count;
+                let widthPct = 8;
+                if (maxGuessDist > 0) {
+                    widthPct = Math.max(8, (count / maxGuessDist) * 100);
+                }
+                bar.style.width = widthPct + '%';
+                
+                const activeState = state[currentMode];
+                if (activeState.gameOver && count > 0 && activeState.guesses.length === i && activeState.guesses[activeState.guesses.length - 1] === activeState.targetWord) {
+                    bar.classList.add('active');
+                } else {
+                    bar.classList.remove('active');
+                }
+            }
+
+            document.getElementById('stats-modal').style.display = 'flex';
+        }
+
+        function closeStatsModal() {
+            document.getElementById('stats-modal').style.display = 'none';
         }
 
         function showMessage(msg, duration = 2000) {
