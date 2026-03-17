@@ -154,7 +154,7 @@
             overlay.remove();
         };
         document.getElementById('tz-warn-settings').onclick = function () {
-            window.location.href = 'settings';
+            window.location.href = 'settings?action=location';
         };
     }
 
