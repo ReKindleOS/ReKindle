@@ -1190,6 +1190,20 @@
 
             topicsToShow.forEach(function (t) {
                 var el = document.createElement('div');
+
+                // Auto-sync: If this is the currently viewed topic, keep lastReadCount up to date
+                // so switching away won't show false unread badges
+                if (t.id === currentTopicId && topicStatesLoaded) {
+                    var currentCount = t.commentCount || 0;
+                    if (!userTopicStates[t.id]) userTopicStates[t.id] = {};
+                    if ((userTopicStates[t.id].lastReadCount || 0) < currentCount) {
+                        userTopicStates[t.id].lastReadCount = currentCount;
+                        if (currentUser) {
+                            db.ref('users_private/' + currentUser.uid + '/topic_states/' + t.id + '/lastReadCount').set(currentCount);
+                        }
+                    }
+                }
+
                 var lastRead = (userTopicStates[t.id] && typeof userTopicStates[t.id].lastReadCount === 'number') ? userTopicStates[t.id].lastReadCount : 0;
                 var isUnread = topicStatesLoaded && (t.commentCount || 0) > lastRead;
                 // Don't mark as unread if it is the currently selected topic (it's being read now)
@@ -1367,6 +1381,35 @@
             });
         }
 
+        function formatTopicTime(date) {
+            if (!date || isNaN(date.getTime())) return "";
+            try {
+                var now = window.rekindleGetZonedDate(new Date());
+                var zonedDate = window.rekindleGetZonedDate(date);
+
+                var nowNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+                var zonedNoon = new Date(zonedDate.getFullYear(), zonedDate.getMonth(), zonedDate.getDate(), 12, 0, 0);
+                var diffDays = Math.round((nowNoon - zonedNoon) / (1000 * 60 * 60 * 24));
+
+                var timeStr = window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
+
+                if (diffDays === 0) {
+                    var todayLabel = window.t ? window.t('clocks.offset.today', 'Today') : 'Today';
+                    return todayLabel + ', ' + timeStr;
+                } else if (diffDays === 1) {
+                    var yesterdayLabel = window.t ? window.t('clocks.offset.yesterday', 'Yesterday') : 'Yesterday';
+                    return yesterdayLabel + ', ' + timeStr;
+                } else if (diffDays < 7 && diffDays > 0) {
+                    return window.rekindleFormatTime(date, { weekday: 'short' }) + ', ' + timeStr;
+                } else {
+                    return window.rekindleFormatTime(date, { month: 'short', day: 'numeric' }) + ', ' + timeStr;
+                }
+            } catch (e) {
+                console.error(e);
+                return window.rekindleFormatTime(date, { hour: 'numeric', minute: '2-digit', hour12: true });
+            }
+        }
+
         function appendMessage(msg) {
             var historyEl = document.getElementById('chat-history');
 
@@ -1375,7 +1418,7 @@
             msgEl.className = 'msg ' + (isSelf ? 'self' : 'other') + (msg.isOpening ? ' topic-start' : '');
 
             var dateObj = new Date(msg.timestamp);
-            var timeStr = window.rekindleFormatTime(dateObj, { hour: 'numeric', minute: 'numeric', hour12: true });
+            var timeStr = formatTopicTime(dateObj);
 
             // Format time header for hover or future use
             var dateHeader = window.rekindleFormatTime(dateObj, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -1495,10 +1538,22 @@
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 };
 
-                db.ref('topic_comments/' + currentTopicId).push(comment).then(function () {
+                var postingTopicId = currentTopicId;
+                db.ref('topic_comments/' + postingTopicId).push(comment).then(function () {
                     input.value = '';
-                    db.ref('topics/' + currentTopicId + '/commentCount').transaction(function (cnt) { return (cnt || 0) + 1; });
-                    db.ref('topics/' + currentTopicId + '/lastActive').set(firebase.database.ServerValue.TIMESTAMP);
+                    db.ref('topics/' + postingTopicId + '/commentCount').transaction(function (cnt) { return (cnt || 0) + 1; })
+                        .then(function (result) {
+                            // Update local read state so own comment doesn't show as unread
+                            if (result.committed && result.snapshot) {
+                                var newCount = result.snapshot.val() || 0;
+                                if (!userTopicStates[postingTopicId]) userTopicStates[postingTopicId] = {};
+                                userTopicStates[postingTopicId].lastReadCount = newCount;
+                                if (currentUser) {
+                                    db.ref('users_private/' + currentUser.uid + '/topic_states/' + postingTopicId + '/lastReadCount').set(newCount);
+                                }
+                            }
+                        });
+                    db.ref('topics/' + postingTopicId + '/lastActive').set(firebase.database.ServerValue.TIMESTAMP);
                 });
             });
         }
