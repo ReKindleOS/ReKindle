@@ -807,13 +807,13 @@
             const btnsEl = document.getElementById('modal-btns');
             messageEl.textContent = msg;
             if (isConfirm) {
-                const cancelTxt = window.t ? window.t('pixel.btn.cancel') : "Cancel";
-                const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
+                const cancelTxt = window.t('pixel.btn.cancel', "Cancel");
+                const okTxt = window.t('pixel.btn.ok', "OK");
                 btnsEl.innerHTML = `<button class="modal-btn" id="modal-cancel">${cancelTxt}</button><button class="modal-btn" id="modal-ok">${okTxt}</button>`;
                 document.getElementById('modal-cancel').onclick = () => { overlay.style.display = 'none'; if (callback) callback(false); };
                 document.getElementById('modal-ok').onclick = () => { overlay.style.display = 'none'; if (callback) callback(true); };
             } else {
-                const okTxt = window.t ? window.t('pixel.btn.ok') : "OK";
+                const okTxt = window.t('pixel.btn.ok', "OK");
                 btnsEl.innerHTML = `<button class="modal-btn" onclick="hideModal()">${okTxt}</button>`;
             }
             overlay.style.display = 'flex';
@@ -893,8 +893,8 @@
             if (urlParams.get('source') === 'kindlechat') {
                 const backBtn = document.getElementById('back-to-chat-btn');
                 if (backBtn) backBtn.style.display = 'flex';
-                // Trigger auto-new
-                if (typeof createNew === 'function') createNew(32);
+                // Defer auto-new until manifest is loaded (set flag, initApp handles it)
+                window._pixelAutoCreate = true;
             }
         };
 
@@ -934,7 +934,7 @@
         }
 
         async function postToPixelChat() {
-            if (!currentUser) return showModal(window.t ? window.t('pixel.status.login_to_post') : "You must be logged in to post.");
+            if (!currentUser) return showModal(window.t('pixel.status.login_to_post', "You must be logged in to post."));
 
             // Get data URL from the pixel canvas only (no grid)
             const dataUrl = canvas.toDataURL('image/png');
@@ -957,14 +957,14 @@
 
                 if (!canUserSend(history, currentUsername)) {
                     closeModal('post-confirm-modal');
-                    const slowDownMsg = window.t ? window.t('pixel.status.slow_down') : "To ensure a good experience for everyone, please slow down. You've been posting a lot recently.";
+                    const slowDownMsg = window.t('pixel.status.slow_down', "To ensure a good experience for everyone, please slow down. You've been posting a lot recently.");
                     showModal(slowDownMsg, false);
                     return;
                 }
 
                 await messagesRef.push({
                     user: currentUsername,
-                    text: window.t ? window.t('pixel.status.shared') : 'Shared a pixel art!',
+                    text: window.t('pixel.status.shared', 'Shared a pixel art!'),
                     pixel_art: dataUrl,
                     grid_data: JSON.stringify(grid), // Send Grid Data for others to save
                     is_pixel_art: true,
@@ -972,7 +972,7 @@
                 });
 
                 closeModal('post-confirm-modal');
-                showModal(window.t ? window.t('pixel.status.posted') : "Posted to KindleChat!", false, null);
+                showModal(window.t('pixel.status.posted', "Posted to KindleChat!"), false, null);
 
                 // Show success modal wrapper
                 const successModal = document.getElementById('success-modal');
@@ -980,7 +980,7 @@
 
             } catch (e) {
                 console.error("Error posting:", e);
-                const errMsg = (window.t ? window.t('pixel.status.error_posting') : "Error posting: ") + e.message;
+                const errMsg = window.t('pixel.status.error_posting', "Error posting: ") + e.message;
                 showModal(errMsg);
             }
         }
@@ -998,6 +998,12 @@
             await loadManifest();
             migrateLegacyData(); // One-off check
             renderGallery();
+
+            // Show new drawing modal if opened from KindleChat
+            if (window._pixelAutoCreate) {
+                window._pixelAutoCreate = false;
+                openModal('new-drawing-modal');
+            }
         }
 
         // --- MANIFEST & DATA ---
@@ -1083,7 +1089,7 @@
                     // If complex check needed, parse it.
                     // Let's just import it.
 
-                    const untitledTxt = window.t ? window.t('pixel.drawing.untitled_size') : `Untitled (${size}x${size})`;
+                    const untitledTxt = window.t('pixel.drawing.untitled_size', 'Untitled (' + size + 'x' + size + ')');
                     const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
                     const newEntry = {
                         id: id,
@@ -1206,7 +1212,7 @@
                     thumbHtml = `<div class="gallery-preview" style="background:#f0f0f0; display:flex; align-items:center; justify-content:center; color:#ccc;">?</div>`;
                 }
 
-                const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
+                const untitledText = window.t('pixel.drawing.untitled', "Untitled");
                 const title = item.title || untitledText;
 
                 // For 'Other', delete button behavior might be same (delete local copy)
@@ -1229,14 +1235,14 @@
             const item = manifest.find(m => m.id === id);
             if (!item) return;
             renameId = id;
-            const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
+            const untitledText = window.t('pixel.drawing.untitled', "Untitled");
             document.getElementById('rename-input').value = item.title || untitledText;
             document.getElementById('confirm-rename-btn').onclick = performRename;
             openModal('rename-modal');
         }
 
         function performRename() {
-            const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
+            const untitledText = window.t('pixel.drawing.untitled', "Untitled");
             const newTitle = document.getElementById('rename-input').value.trim() || untitledText;
             const item = manifest.find(m => m.id === renameId);
             if (item) {
@@ -1277,7 +1283,7 @@
         // --- EDITOR ACTIONS ---
         function createNew(size) {
             if (!isManifestLoaded) {
-                showModal(window.t ? window.t('pixel.status.loading') : "Please wait, loading...");
+                showModal(window.t('pixel.status.loading', "Please wait, loading..."));
                 return;
             }
             gridSize = size;
@@ -1303,7 +1309,7 @@
             // Set title input
             const titleInput = document.getElementById('drawing-title');
             if (titleInput) {
-                const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
+                const untitledText = window.t('pixel.drawing.untitled', "Untitled");
                 titleInput.value = untitledText;
                 titleInput.blur();
             }
@@ -1639,7 +1645,7 @@
                 const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
                 currentDrawingId = id;
 
-                const untitledText = window.t ? window.t('pixel.drawing.untitled') : "Untitled";
+                const untitledText = window.t('pixel.drawing.untitled', "Untitled");
                 const titleVal = untitledText; // Default title for new
 
                 // Add to manifest
