@@ -1004,21 +1004,48 @@
                 }
             }
 
-            // Sync down stats from firebase if logged in
+            // Sync down stats and progress from firebase if logged in
             if (currentUser) {
                 try {
                     const doc = await db.collection('leaderboard_spellingbee').doc(currentUser.uid).get();
                     if (doc.exists) {
                         const data = doc.data();
+                        let updatedLocal = false;
+
+                        const todayStr = (window.rekindleGetZonedDate ? window.rekindleGetZonedDate() : new Date()).toDateString();
+
+                        if (data.daily && data.daily.puzzle && data.savedDate === todayStr) {
+                            const localFoundLen = (state.daily.found || []).length;
+                            const remoteFoundLen = (data.daily.found || []).length;
+                            if (!state.daily.puzzle || (state.daily.puzzle.center === data.daily.puzzle.center && remoteFoundLen > localFoundLen)) {
+                                state.daily = data.daily;
+                                state.savedDate = data.savedDate;
+                                updatedLocal = true;
+                            }
+                        }
+
+                        if (data.unlimited && data.unlimited.puzzle) {
+                            const localFoundLen = (state.unlimited.found || []).length;
+                            const remoteFoundLen = (data.unlimited.found || []).length;
+                            if (!state.unlimited.puzzle || (state.unlimited.puzzle.center === data.unlimited.puzzle.center && remoteFoundLen > localFoundLen)) {
+                                state.unlimited = data.unlimited;
+                                updatedLocal = true;
+                            }
+                        }
+
                         if (data.stats) {
                             if (!state.stats) {
                                 state.stats = data.stats;
+                                updatedLocal = true;
                             } else {
-                                state.stats.gamesPlayed = Math.max(state.stats.gamesPlayed || 0, data.stats.gamesPlayed || 0);
-                                state.stats.geniuses = Math.max(state.stats.geniuses || 0, data.stats.geniuses || 0);
-                                state.stats.queenBees = Math.max(state.stats.queenBees || 0, data.stats.queenBees || 0);
-                                state.stats.wordsFound = Math.max(state.stats.wordsFound || 0, data.stats.wordsFound || 0);
+                                if ((data.stats.gamesPlayed || 0) > (state.stats.gamesPlayed || 0)) { state.stats.gamesPlayed = data.stats.gamesPlayed; updatedLocal = true; }
+                                if ((data.stats.geniuses || 0) > (state.stats.geniuses || 0)) { state.stats.geniuses = data.stats.geniuses; updatedLocal = true; }
+                                if ((data.stats.queenBees || 0) > (state.stats.queenBees || 0)) { state.stats.queenBees = data.stats.queenBees; updatedLocal = true; }
+                                if ((data.stats.wordsFound || 0) > (state.stats.wordsFound || 0)) { state.stats.wordsFound = data.stats.wordsFound; updatedLocal = true; }
                             }
+                        }
+
+                        if (updatedLocal) {
                             localStorage.setItem(LS_KEY, JSON.stringify(state));
                         }
                     }
@@ -1040,12 +1067,18 @@
                     let score = state.stats.wordsFound || 0; 
                     let username = currentUser.email ? currentUser.email.split('@')[0] : "Guest";
 
-                    await db.collection('leaderboard_spellingbee').doc(currentUser.uid).set({
+                    const saveData = {
                         username: username,
                         score: score,
                         stats: state.stats,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
+                    };
+                    
+                    if (state.daily) saveData.daily = state.daily;
+                    if (state.unlimited) saveData.unlimited = state.unlimited;
+                    if (state.savedDate) saveData.savedDate = state.savedDate;
+
+                    await db.collection('leaderboard_spellingbee').doc(currentUser.uid).set(saveData, { merge: true });
                 } catch (e) {
                     console.error("Failed to save state to Firebase", e);
                 }
