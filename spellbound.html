@@ -1065,7 +1065,13 @@
         function renderFoundWords() {
             const found = state[currentMode].found;
             const container = document.getElementById('found-words');
-            container.innerHTML = found.map(w => `<span class="found-word">${escapeHTML(w)}</span>`).join(" • ");
+            container.innerHTML = found.map(w => {
+                const uniqueChars = new Set(w.split(''));
+                if (uniqueChars.size === 7) {
+                    return `<span class="found-word" style="background: black; color: white; padding: 2px 6px; border-radius: 4px; border: 1px solid black;">${escapeHTML(w)}</span>`;
+                }
+                return `<span class="found-word">${escapeHTML(w)}</span>`;
+            }).join(" • ");
         }
 
         // --- ACTIONS ---
@@ -1105,6 +1111,10 @@
             if (!currentPuzzle) return;
             const word = input;
 
+            // Always clear input as soon as possible after enter
+            input = "";
+            updateInputDisplay();
+
             if (word.length < 4) {
                 showToast(window.t ? window.t('spellbound.toast.short') : "Too short");
                 return;
@@ -1117,8 +1127,6 @@
 
             if (found.includes(word)) {
                 showToast(window.t ? window.t('spellbound.toast.found') : "Already found");
-                input = "";
-                updateInputDisplay();
                 return;
             }
 
@@ -1127,7 +1135,11 @@
 
                 let points = word.length === 4 ? 1 : word.length;
                 const uniqueChars = new Set(word.split(''));
-                if (uniqueChars.size === 7) points += 7; // Pangram bonus
+                let isPangram = false;
+                if (uniqueChars.size === 7) {
+                    points += 7; // Pangram bonus
+                    isPangram = true;
+                }
 
                 state[currentMode].score += points;
 
@@ -1139,22 +1151,28 @@
                 const newRank = getRank(state[currentMode].score, state[currentMode].maxScore);
                 const oldRank = state[currentMode].rank || "Beginner";
                 
+                let toastMsg = "";
+                if (isPangram) {
+                    const pangramTxt = window.t ? window.t('spellbound.toast.pangram') : "Pangram! +${points}";
+                    toastMsg = pangramTxt.replace('${points}', points);
+                } else {
+                    const niceTxt = window.t ? window.t('spellbound.toast.nice') : "Nice! +${points}";
+                    toastMsg = niceTxt.replace('${points}', points);
+                }
+
                 if (newRank !== oldRank) {
                     state[currentMode].rank = newRank;
                     if (newRank === 'Genius') state.stats.geniuses = (state.stats.geniuses || 0) + 1;
                     if (newRank === 'Queen Bee') state.stats.queenBees = (state.stats.queenBees || 0) + 1;
-                    showToast("Rank up: " + newRank + "!");
+                    showToast(toastMsg + " • Rank up: " + newRank + "!");
                 } else {
-                    const niceTxt = window.t ? window.t('spellbound.toast.nice') : "Nice! +${points}";
-                    showToast(niceTxt.replace('${points}', points));
+                    showToast(toastMsg);
                 }
 
                 saveState();
 
                 updateScoreDisplay();
                 renderFoundWords();
-                input = "";
-                updateInputDisplay();
             } else {
                 showToast(window.t ? window.t('spellbound.toast.invalid') : "Not in word list");
             }
