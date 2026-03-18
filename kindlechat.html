@@ -996,6 +996,18 @@
             fill: black;
         }
 
+        .dev-badge {
+            background: #000;
+            color: #fff;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 0.6rem;
+            font-weight: bold;
+            margin-right: 5px;
+            vertical-align: middle;
+            border: 1px solid #fff;
+        }
+
 
         .modal-box {
             background: white;
@@ -2542,6 +2554,45 @@
             return replacedText;
         }
 
+        // Wrap known ASCII emojis in nowrap spans to prevent line-breaking
+        var _emojiNowrapCache = null;
+        function wrapAsciiEmojis(html) {
+            if (typeof ASCII_EMOJIS === 'undefined') return html;
+            // Build sorted list of escaped emoji strings (longest first to avoid partial matches)
+            if (!_emojiNowrapCache) {
+                var allEmojis = [];
+                for (var cat in ASCII_EMOJIS) {
+                    if (!ASCII_EMOJIS.hasOwnProperty(cat)) continue;
+                    // Include category key itself
+                    allEmojis.push(cat);
+                    var items = ASCII_EMOJIS[cat];
+                    for (var i = 0; i < items.length; i++) {
+                        allEmojis.push(items[i].art);
+                    }
+                }
+                // Deduplicate
+                var seen = {};
+                allEmojis = allEmojis.filter(function(e) {
+                    if (seen[e]) return false;
+                    seen[e] = true;
+                    return true;
+                });
+                // Sort longest first
+                allEmojis.sort(function(a, b) { return b.length - a.length; });
+                _emojiNowrapCache = allEmojis;
+            }
+            for (var j = 0; j < _emojiNowrapCache.length; j++) {
+                var emoji = _emojiNowrapCache[j];
+                // Escape for HTML-safe matching (the text is already HTML-escaped)
+                var escaped = escapeHtml(emoji);
+                if (html.indexOf(escaped) !== -1) {
+                    // Use split/join to replace all occurrences (no regex special char issues)
+                    html = html.split(escaped).join('<span style="white-space:nowrap">' + escaped + '</span>');
+                }
+            }
+            return html;
+        }
+
         // --- DRAW AVATAR (Ported from Neighbourhood/Topics) ---
         function drawAvatar(canvasId, seed) {
             var canvas = document.getElementById(canvasId);
@@ -2655,8 +2706,10 @@
             // Developer Badge in Name
             var isDev = (msg.user === 'ukiyo' || msg.user === 'ukiyo@rekindle.ink');
             if (isDev) {
-                var devBadge = '<span class="dev-tag">DEV</span>';
-                nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + '<span style="font-weight:bold;">' + safeUser + '</span></span>';
+                var devBadge = '<span class="dev-badge">DEV</span>';
+                var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="black" stroke-width="2" fill="black"/></svg>';
+                var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
+                nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + crown + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUser + '\')">' + devBadge + crown + '<span style="font-weight:bold;">Ukiyo</span></span>';
             } else if (supporterUsers[msg.user] || msg.isPro) {
                 // Supporter Crown (SVG for Kindle compatibility)
                 var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
@@ -2822,7 +2875,7 @@
                 }
 
                 if (settings.showTranslations && hasTranslation) {
-                    textToDisplay = linkify(escapeHtml(translationText));
+                    textToDisplay = wrapAsciiEmojis(linkify(escapeHtml(translationText)));
                     // Tagify translation too? Maybe not purely necessary but consistent. Let's tagify it.
                     textToDisplay = tagify(textToDisplay, msgId);
 
@@ -2836,7 +2889,7 @@
                     // Store escaped original text
                     bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="translated" data-original="' + escapeHtml(messageText) + '" data-translated="' + escapeHtml(translationText) + '">' + textToDisplay + '</div>';
                 } else {
-                    bubbleContent = '<div class="msg-bubble">' + tagify(linkify(textToDisplay), msgId) + '</div>';
+                    bubbleContent = '<div class="msg-bubble">' + tagify(linkify(wrapAsciiEmojis(textToDisplay)), msgId) + '</div>';
                 }
             }
 
