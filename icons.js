@@ -62,6 +62,13 @@ const APPS = [
 
     // --- TOOLS ---
     {
+        id: 'readlater',
+        name: 'Read Later',
+        cat: 'tools',
+        desc: 'Save links for later.',
+        icon: '<path d="M8 4 h16 v24 l-8 -6 l-8 6 z" fill="none" stroke="black" stroke-width="2"/>'
+    },
+    {
         id: 'decide',
         name: 'Decider',
         cat: 'tools',
