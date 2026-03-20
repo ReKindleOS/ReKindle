@@ -115,13 +115,18 @@
         document.documentElement.style.setProperty('--rekindle-scale', finalScale);
 
         style.textContent =
-            '.dashboard, .window { ' +
+            '.dashboard, .desktop-wrapper, .sys-menu-bar, .window { ' +
             'zoom: ' + finalScale + '; ' +
             '} ' +
             '@supports not (zoom: 1) { ' +
-            '.dashboard, .window { ' +
+            '.dashboard, .desktop-wrapper, .window { ' +
             'transform: scale(' + finalScale + '); ' +
             'transform-origin: top center; ' +
+            '} ' +
+            '.sys-menu-bar { ' +
+            'transform: scale(' + finalScale + '); ' +
+            'transform-origin: top left; ' +
+            'width: calc(100% / ' + finalScale + ') !important; ' +
             '} ' +
             '}';
     }
@@ -152,7 +157,7 @@
             css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
                 'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; padding: 5px !important; box-sizing: border-box !important; ' +
                 'transform: rotate(90deg); transform-origin: top left; left: 100vw; } ' +
-                '.window, .dashboard { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
+                '.window, .dashboard, .desktop-wrapper { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
                 '.window.fullscreen { width: 100% !important; height: 100% !important; top: 0 !important; left: 0 !important; transform: none !important; }';
         } else if (rotation === '180') {
             css = 'body { transform: rotate(180deg); transform-origin: center center; }';
@@ -160,7 +165,7 @@
             css = 'html { overflow: hidden !important; width: 100vw !important; height: 100vh !important; } ' +
                 'body { width: 100vh !important; height: 100vw !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; padding: 5px !important; box-sizing: border-box !important; ' +
                 'transform: rotate(270deg); transform-origin: top left; top: 100vh; } ' +
-                '.window, .dashboard { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
+                '.window, .dashboard, .desktop-wrapper { max-height: calc(100vw - 10px) !important; box-sizing: border-box !important; } ' +
                 '.window.fullscreen { width: 100% !important; height: 100% !important; top: 0 !important; left: 0 !important; transform: none !important; }';
         }
 
