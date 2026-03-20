@@ -726,7 +726,7 @@
                             Favs</div>
                     </div>
                     <button class="sys-btn" onclick="openTopicModal()" data-i18n="topics.btn.new">+ New</button>
-                    <!-- <button class="sys-btn">Search</button> -->
+                    <input type="text" id="topic-search" class="full-input" placeholder="Search topics..." data-i18n-placeholder="topics.ph.search" oninput="renderSidebar()" style="margin-bottom:0;">
                 </div>
                 <div id="topic-list">
                     <div style="text-align:center; padding:20px; color:#666;" data-i18n="topics.msg.loading">Loading...
@@ -1182,9 +1182,20 @@
             var listEl = document.getElementById('topic-list');
             listEl.innerHTML = '';
 
+            var searchEl = document.getElementById('topic-search');
+            var searchQuery = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
             var topicsToShow = allTopicsCache;
             if (currentTab === 'fav') {
                 topicsToShow = allTopicsCache.filter(function (t) { return userFavorites[t.id]; });
+            }
+
+            if (searchQuery) {
+                topicsToShow = topicsToShow.filter(function(t) {
+                    var titleMatch = t.title && t.title.toLowerCase().indexOf(searchQuery) !== -1;
+                    var subMatch = t.subheading && t.subheading.toLowerCase().indexOf(searchQuery) !== -1;
+                    return titleMatch || subMatch;
+                });
             }
 
             if (topicsToShow.length === 0) {
@@ -1733,44 +1744,66 @@
                 return;
             }
 
-            checkRules(function () {
-                if (editingTopicId) {
-                    // UPDATING EXISTING
-                    db.ref('topics/' + editingTopicId).update({
-                        title: title,
-                        subheading: subheading,
-                        icon: selectedIconSvg
-                    }).then(function () {
-                        closeCreateModal();
-                    });
-                } else {
-                    // CREATING NEW
-                    var isAdmin = currentUser.email === 'ukiyo@rekindle.ink';
-                    if (isAdmin) {
-                        executeCreation();
+            var doSubmit = function() {
+                checkRules(function () {
+                    if (editingTopicId) {
+                        // UPDATING EXISTING
+                        db.ref('topics/' + editingTopicId).update({
+                            title: title,
+                            subheading: subheading,
+                            icon: selectedIconSvg
+                        }).then(function () {
+                            closeCreateModal();
+                        });
                     } else {
-                        // Check limit
-                        var submitBtn = document.getElementById('btn-submit-topic');
-                        submitBtn.disabled = true;
-                        submitBtn.innerText = "Checking...";
+                        // CREATING NEW
+                        var isAdmin = currentUser.email === 'ukiyo@rekindle.ink';
+                        if (isAdmin) {
+                            executeCreation();
+                        } else {
+                            // Check limit
+                            var submitBtn = document.getElementById('btn-submit-topic');
+                            submitBtn.disabled = true;
+                            submitBtn.innerText = "Checking...";
 
-                        db.ref('topics').orderByChild('authorId').equalTo(currentUser.uid).once('value').then(function (snap) {
-                            var count = snap.numChildren();
-                            if (count >= 3) {
-                                showAlertModal("You are allowed a maximum of 3 topics. Please edit your existing topics or contact an admin.");
+                            db.ref('topics').orderByChild('authorId').equalTo(currentUser.uid).once('value').then(function (snap) {
+                                var count = snap.numChildren();
+                                if (count >= 3) {
+                                    showAlertModal("You are allowed a maximum of 3 topics. Please edit your existing topics or contact an admin.");
+                                    submitBtn.disabled = false;
+                                    submitBtn.innerText = "Create";
+                                    return;
+                                }
+                                executeCreation();
+                            }).catch(function (err) {
+                                console.error("Limit check error:", err);
                                 submitBtn.disabled = false;
                                 submitBtn.innerText = "Create";
-                                return;
-                            }
-                            executeCreation();
-                        }).catch(function (err) {
-                            console.error("Limit check error:", err);
-                            submitBtn.disabled = false;
-                            submitBtn.innerText = "Create";
-                        });
+                            });
+                        }
                     }
+                });
+            };
+
+            // Similar Check
+            if (!editingTopicId) {
+                var titleWords = title.toLowerCase().split(/\s+/).filter(function(w) { return w.length > 3; });
+                var similarTopics = [];
+                if (titleWords.length > 0) {
+                    similarTopics = allTopicsCache.filter(function(t) {
+                        var tTitle = t.title.toLowerCase();
+                        return titleWords.some(function(w) { return tTitle.indexOf(w) !== -1; });
+                    });
                 }
-            });
+                
+                if (similarTopics.length > 0) {
+                    var msg = "There are already similar topics (e.g. '" + similarTopics[0].title + "'). Are you sure you want to make a new one?";
+                    showConfirmModal(msg, doSubmit);
+                    return;
+                }
+            }
+
+            doSubmit();
 
             function executeCreation() {
                 var newTopicRef = db.ref('topics').push();
