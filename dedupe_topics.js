@@ -190,8 +190,14 @@ async function main() {
                 return (current || 0) + totalCommentsMoved;
             });
             
-            // Update lastActive
-            await rtdb.ref(`topics/${primary.id}/lastActive`).set(admin.database.ServerValue.TIMESTAMP);
+            // Update lastActive to the max of both topics to reflect true latest activity
+            const maxLastActive = Math.max(
+                primary.lastActive || primary.createdAt || 0,
+                duplicate.lastActive || duplicate.createdAt || 0
+            );
+            if (maxLastActive > 0) {
+                await rtdb.ref(`topics/${primary.id}/lastActive`).set(maxLastActive);
+            }
         }
         
         console.log("Done merging this pair.");
