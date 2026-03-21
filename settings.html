@@ -554,6 +554,17 @@
 
             <div class="setting-row">
                 <div class="setting-text">
+                    <strong data-i18n="settings.home_layout">Home Layout</strong>
+                    <div class="setting-desc" data-i18n="settings.desc.home_layout">Choose the classic or modern layout.</div>
+                </div>
+                <select id="layout-select" onchange="saveLayout()">
+                    <option value="new" data-i18n="settings.layout.new">Modern</option>
+                    <option value="old" data-i18n="settings.layout.old">Classic (Sidebar)</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-text">
                     <strong><span data-i18n="settings.theme">Theme</span> <span class="beta-badge">BETA</span></strong>
                     <div class="setting-desc" data-i18n="settings.desc.theme">Light, Dark, or Auto (Night).</div>
                 </div>
@@ -1448,6 +1459,16 @@
         }
 
         // --- THEME & LOCATION LOGIC ---
+        function saveLayout() {
+            const val = document.getElementById('layout-select').value;
+            localStorage.setItem('rekindle_layout', val);
+            
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ homeLayout: val }, { merge: true });
+                triggerSettingsSyncSignal();
+            }
+        }
+
         function saveTheme() {
             const val = document.getElementById('theme-select').value;
             localStorage.setItem('rekindle_theme_mode', val);
@@ -1639,6 +1660,16 @@
             // Call original
             if (originalOnLoad) originalOnLoad();
 
+            // Load Layout
+            const layout = localStorage.getItem('rekindle_layout') || 'new';
+            const layoutSelect = document.getElementById('layout-select');
+            if (layoutSelect) {
+                layoutSelect.value = layout;
+                const oc = layoutSelect.onchange; layoutSelect.onchange = null;
+                layoutSelect.dispatchEvent(new Event('change'));
+                layoutSelect.onchange = oc;
+            }
+
             // Load Theme
             const theme = localStorage.getItem('rekindle_theme_mode') || 'light';
             document.getElementById('theme-select').value = theme;
@@ -1794,6 +1825,15 @@
             db.collection('users').doc(currentUser.uid).collection('settings').doc('general').get().then(doc => {
                 if (doc.exists) {
                     const data = doc.data();
+
+                    if (data.homeLayout) {
+                        localStorage.setItem('rekindle_layout', data.homeLayout);
+                        const ls = document.getElementById('layout-select');
+                        ls.value = data.homeLayout;
+                        const oc = ls.onchange; ls.onchange = null;
+                        ls.dispatchEvent(new Event('change'));
+                        ls.onchange = oc;
+                    }
 
                     if (data.themeMode) {
                         localStorage.setItem('rekindle_theme_mode', data.themeMode);
