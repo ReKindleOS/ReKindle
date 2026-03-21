@@ -855,10 +855,32 @@
         const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
 
         let auth, db, rtdb;
+        let serverTimeOffset = 0;
+        function syncWithServer() {
+            try {
+                // Fetch current page headers only (HEAD request is fast)
+                fetch(window.location.href, { method: 'HEAD', cache: 'no-cache' })
+                    .then(response => {
+                        const dateHeader = response.headers.get('Date');
+                        if (dateHeader) {
+                            const serverTime = new Date(dateHeader).getTime();
+                            const localTime = Date.now();
+                            serverTimeOffset = serverTime - localTime;
+                            console.log("Time synced! Offset: " + serverTimeOffset + "ms");
+                            updateTopClock(); // Immediate update
+                        }
+                    })
+                    .catch(e => console.warn("Time sync failed, using system time.", e));
+            } catch (e) {
+                console.warn("Time sync error:", e);
+            }
+        }
+
         function updateTopClock() {
             const clockEl = document.getElementById('top-clock');
             if (clockEl) {
-                const now = new Date();
+                const nowMs = Date.now() + serverTimeOffset;
+                const now = (typeof rekindleGetZonedDate === 'function') ? rekindleGetZonedDate(new Date(nowMs)) : new Date(nowMs);
                 let h = now.getHours();
                 const m = now.getMinutes().toString().padStart(2, '0');
                 const ampm = h >= 12 ? 'PM' : 'AM';
@@ -869,6 +891,7 @@
         }
         setInterval(updateTopClock, 60000);
         updateTopClock();
+        syncWithServer();
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
