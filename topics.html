@@ -110,6 +110,22 @@
             box-shadow: 2px 2px 0 black;
         }
 
+        #online-count-display {
+            position: absolute;
+            left: 45px;
+            font-size: 0.75rem;
+            color: #666;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 1px solid black;
+            padding: 0px 5px;
+            box-shadow: 1px 1px 0 black;
+            z-index: 5;
+            height: 20px;
+        }
+
         .close-box:active {
             background: black;
             color: white;
@@ -705,6 +721,9 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div id="online-count-display" style="display:none;">
+                <span id="online-count-value">0</span>&nbsp;<span data-i18n="kindlechat.online">online</span>
+            </div>
             <span class="title-text" data-i18n="topics.title">Topics</span>
             <div style="position:absolute; right:10px; z-index:5; display:flex;">
                 <button class="sys-btn" onclick="openRulesModal()"
@@ -1009,10 +1028,33 @@
         var RULES_VERSION = 1; // Current Rules Version
         var currentUserRulesVersion = 0;
 
+        // --- PRESENCE LOGIC ---
+        function initPresence(uid) {
+            if (!uid) return;
+            var presenceRef = db.ref('kindlechat/presence/' + uid);
+            
+            // Set presence to true and remove on disconnect
+            presenceRef.set(true);
+            presenceRef.onDisconnect().remove();
+
+            // Listen for total online count
+            var countRef = db.ref('kindlechat/presence');
+            countRef.on('value', function(snapshot) {
+                var count = snapshot.numChildren();
+                var displayEl = document.getElementById('online-count-display');
+                var valueEl = document.getElementById('online-count-value');
+                if (displayEl && valueEl) {
+                    valueEl.innerText = count;
+                    displayEl.style.display = 'flex';
+                }
+            });
+        }
+
         // AUTH
         var topicsLoaded = false;
         auth.onAuthStateChanged(function (user) {
             if (user) {
+                initPresence(user.uid);
                 checkSocialTimeout(db, user.uid, function () {
                 currentUser = user;
                 document.getElementById('login-overlay').style.display = 'none';

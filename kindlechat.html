@@ -316,15 +316,28 @@
         /* ROOM HEADER */
         .room-header {
             border-bottom: 2px solid black;
-            padding: 8px;
+            padding: 8px 15px;
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
             background: #eee;
             font-size: 0.9rem;
             flex-shrink: 0;
             position: relative;
         }
+
+        #online-count-display {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 1px solid black;
+            padding: 1px 6px;
+            box-shadow: 1px 1px 0 black;
+        }
+
 
         #header-new-chat-btn {
             position: absolute;
@@ -1116,6 +1129,9 @@
                     <button id="header-new-chat-btn" class="sys-btn header-new-chat-btn"
                         onclick="openCreateModal()">+</button>
                     <span class="current-room" id="room-title">All of KindleChat</span>
+                    <div id="online-count-display" style="display:none;">
+                        <span id="online-count-value">0</span>&nbsp;<span data-i18n="kindlechat.online">online</span>
+                    </div>
                 </div>
 
                 <div id="chat-history">
@@ -1457,8 +1473,27 @@
         // --- Reaction Keys (use new SVG-based keys) ---
         var FONT_REACTIONS = ['rekindle', 'thumbsup', 'thumbsdown', 'heart', 'question', 'exclaim', 'laugh'];
 
-        // --- ASCII ART DATA ---
-        // Moved to emojis.js (ASCII_EMOJIS)
+        // --- PRESENCE LOGIC ---
+        function initPresence(uid) {
+            if (!uid) return;
+            var presenceRef = rtdb.ref('kindlechat/presence/' + uid);
+            
+            // Set presence to true and remove on disconnect
+            presenceRef.set(true);
+            presenceRef.onDisconnect().remove();
+
+            // Listen for total online count
+            var countRef = rtdb.ref('kindlechat/presence');
+            countRef.on('value', function(snapshot) {
+                var count = snapshot.numChildren();
+                var displayEl = document.getElementById('online-count-display');
+                var valueEl = document.getElementById('online-count-value');
+                if (displayEl && valueEl) {
+                    valueEl.innerText = count;
+                    displayEl.style.display = 'flex';
+                }
+            });
+        }
 
         // --- INIT ---
         window.onload = function () {
@@ -1508,6 +1543,7 @@
                     });
 
                     loadRooms();
+                    initPresence(user.uid);
 
                     // DEEP LINK: Open DM if requested
                     var params = new URLSearchParams(window.location.search);
