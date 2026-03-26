@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Uno</title>
+    <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="theme.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        * { transition: none !important; animation: none !important; }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-image: repeating-linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), repeating-linear-gradient(45deg, #e5e5e5 25%, white 25%, white 75%, #e5e5e5 75%, #e5e5e5);
+            background-position: 0 0, 2px 2px;
+            background-size: 4px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 800px;
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin: 10px;
+            font-size: 1rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+        .sys-btn:disabled {
+            color: #999;
+            border-color: #999;
+            box-shadow: 3px 3px 0 #999;
+        }
+
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            background: #eee;
+        }
+
+        /* CARDS */
+        .card {
+            width: 60px;
+            height: 90px;
+            border: 2px solid black;
+            border-radius: 5px;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 2rem;
+            margin: 5px;
+            box-shadow: 2px 2px 0 black;
+            background-color: white;
+            position: relative;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .card:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+        
+        .card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .card.red { background: repeating-linear-gradient(90deg, #000, #000 2px, #fff 2px, #fff 6px); }
+        .card.blue { background: repeating-linear-gradient(0deg, #000, #000 2px, #fff 2px, #fff 6px); }
+        .card.green { background: repeating-linear-gradient(45deg, #000, #000 2px, #fff 2px, #fff 6px); }
+        .card.yellow { background: repeating-linear-gradient(-45deg, #000, #000 2px, #fff 2px, #fff 6px); }
+        .card.wild { background: repeating-linear-gradient(45deg, #000, #000 2px, transparent 2px, transparent 6px), repeating-linear-gradient(-45deg, #000, #000 2px, #fff 2px, #fff 6px); background-color: white; }
+
+        .card-inner {
+            width: 80%;
+            height: 80%;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: black;
+            border: 2px solid black;
+            z-index: 1;
+        }
+
+        .card-small-top { position: absolute; top: 2px; left: 4px; font-size: 0.6rem; color: black; font-weight: bold; background: white; border: 1px solid black; padding: 0 2px; z-index: 2; border-radius: 2px;}
+        .card-small-bottom { position: absolute; bottom: 2px; right: 4px; font-size: 0.6rem; color: black; transform: rotate(180deg); font-weight: bold; background: white; border: 1px solid black; padding: 0 2px; z-index: 2; border-radius: 2px;}
+        
+        .card-inner-text {
+            color: black;
+            font-size: 1.5rem;
+            text-align: center;
+            line-height: 1;
+        }
+
+        .card-back {
+            background-color: black;
+            color: white;
+            font-style: italic;
+        }
+
+        .card-back .card-inner {
+            border: 2px solid white;
+            background: black;
+        }
+        
+        .card-back .card-inner-text {
+            color: white;
+        }
+
+        .hand-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            margin-top: 10px;
+            border-top: 2px solid black;
+            padding-top: 10px;
+        }
+
+        .board-center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+            width: 100%;
+            gap: 20px;
+        }
+        
+        .pile-label {
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        .opponents-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 10px;
+            border-bottom: 2px solid black;
+        }
+
+        .opponent {
+            border: 2px solid black;
+            padding: 5px 10px;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: bold;
+            background: #eee;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .opponent.active-turn {
+            background: black;
+            color: white;
+            border-width: 3px;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        /* Color Picker Modal */
+        .color-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 30px;
+            width: 80%;
+            max-width: 350px;
+            text-align: center;
+        }
+        
+        .player-list {
+            margin: 15px 0;
+            text-align: left;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            background: white;
+        }
+        .player-list div {
+            border-bottom: 1px solid #eee;
+            padding: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="goHome()">X</div>
+            <div class="title-text">Uno</div>
+        </div>
+
+        <div class="window-content" id="screen-menu">
+            <h1 style="font-size: 3rem; margin: 10px 0;">UNO</h1>
+            <p>Up to 10 players.</p>
+            <button class="sys-btn" onclick="hostGame()">Host Game</button>
+            <button class="sys-btn" onclick="goHome()">Back</button>
+        </div>
+        
+        <div class="window-content" id="screen-loading" style="display:none; justify-content:center;">
+            <h2>Loading...</h2>
+        </div>
+
+        <div class="window-content" id="screen-lobby" style="display:none;">
+            <h2>Lobby</h2>
+            <div style="font-size: 1.2rem; margin-bottom: 10px;" id="lobby-status">Waiting for players...</div>
+            <div class="player-list" id="lobby-players"></div>
+            
+            <div id="host-controls" style="display:none; flex-direction: column; align-items: center;">
+                <p style="font-size: 0.9rem; margin-bottom: 0;">Game starts automatically 30s after someone joins.</p>
+                <button class="sys-btn" id="btn-force-start" onclick="forceStartGame()">Force Start Now</button>
+            </div>
+            <button class="sys-btn" onclick="leaveMatch()">Leave Lobby</button>
+        </div>
+
+        <div class="window-content" id="screen-game" style="display:none; padding:10px;">
+            <div id="status-bar">Waiting...</div>
+            
+            <div class="opponents-container" id="opponents-ui">
+                <!-- opponents rendered here -->
+            </div>
+            
+            <div class="board-center">
+                <div>
+                    <div class="pile-label">Draw</div>
+                    <div class="card card-back" onclick="drawCard()">
+                        <div class="card-inner">
+                            <div class="card-inner-text">UNO</div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="pile-label" id="current-color-label">Discard</div>
+                    <div id="discard-pile">
+                        <!-- top discard card rendered here -->
+                    </div>
+                </div>
+            </div>
+            
+            <div style="text-align: left; width: 100%; font-weight: bold; margin-bottom: 5px;">Your Hand:</div>
+            <div class="hand-container" id="my-hand">
+                <!-- player hand rendered here -->
+            </div>
+        </div>
+        
+        <div id="color-modal" class="modal-overlay">
+            <div class="modal-box" style="padding: 0; display: flex; flex-direction: column;">
+                <div class="title-bar">
+                    <div class="title-stripes"></div>
+                    <div class="close-box" onclick="document.getElementById('color-modal').style.display='none'">X</div>
+                    <div class="title-text">Wildcard</div>
+                </div>
+                <div style="padding: 20px;">
+                    <h2 style="margin-top:0;">Select Pattern</h2>
+                    <div class="color-picker" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div class="card red" style="margin:auto" onclick="chooseColor('red')"><div class="card-inner"></div></div>
+                        <div class="card blue" style="margin:auto" onclick="chooseColor('blue')"><div class="card-inner"></div></div>
+                        <div class="card green" style="margin:auto" onclick="chooseColor('green')"><div class="card-inner"></div></div>
+                        <div class="card yellow" style="margin:auto" onclick="chooseColor('yellow')"><div class="card-inner"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="winner-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 id="winner-text">Game Over</h2>
+                <button class="sys-btn" onclick="leaveMatch()">Return to Menu</button>
+            </div>
+        </div>
+
+        <div id="custom-alert-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="custom-alert-title">Notice</h3>
+                <p id="custom-alert-msg" style="margin: 15px 0;"></p>
+                <button class="sys-btn" onclick="closeAlert()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        const auth = firebase.auth();
+        const rtdb = firebase.database();
+        
+        let currentUser = null;
+        let matchId = null;
+        let isHost = false;
+        let playerRef = null;
+        let matchRef = null;
+        let gameState = null;
+        let myTurn = false;
+        
+        let pendingPlayCard = null; // Store card played before color picked
+        
+        function goHome() {
+            window.location.href = 'index.html';
+        }
+
+        function showAlert(title, msg) {
+            const titleEl = document.getElementById('custom-alert-title');
+            const msgEl = document.getElementById('custom-alert-msg');
+            const modalEl = document.getElementById('custom-alert-modal');
+            if (titleEl) titleEl.innerText = title;
+            if (msgEl) msgEl.innerText = msg;
+            if (modalEl) modalEl.style.display = 'flex';
+        }
+
+        function closeAlert() {
+            const modalEl = document.getElementById('custom-alert-modal');
+            if (modalEl) modalEl.style.display = 'none';
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = {
+                    uid: user.uid,
+                    name: (user.email ? user.email.split('@')[0] : 'Player')
+                };
+                checkUrlForMatch();
+            } else {
+                showAlert("Sign In Required", "Please log in from the home screen first.");
+                setTimeout(goHome, 3000);
+            }
+        });
+        
+        function checkUrlForMatch() {
+            const params = new URLSearchParams(window.location.search);
+            const mId = params.get('matchId');
+            if (mId) {
+                joinMatch(mId);
+            } else {
+                showScreen('menu');
+            }
+        }
+        
+        function showScreen(screen) {
+            document.getElementById('screen-menu').style.display = 'none';
+            document.getElementById('screen-lobby').style.display = 'none';
+            document.getElementById('screen-loading').style.display = 'none';
+            document.getElementById('screen-game').style.display = 'none';
+            document.getElementById('screen-' + screen).style.display = 'flex';
+        }
+        
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        // ====== MATCHMAKING ======
+        
+        async function hostGame() {
+            showScreen('loading');
+            matchId = generateId();
+            isHost = true;
+            
+            const mmRef = rtdb.ref(`matchmaking/uno/${matchId}`);
+            await mmRef.set({
+                hostUid: currentUser.uid,
+                hostName: currentUser.name,
+                status: 'waiting',
+                playerCount: 1,
+                maxPlayers: 10,
+                createdAt: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            
+            matchRef = rtdb.ref(`games/uno/${matchId}`);
+            const initialGame = {
+                status: 'lobby',
+                host: currentUser.uid,
+                players: {},
+                countdown: 0
+            };
+            initialGame.players[currentUser.uid] = { name: currentUser.name, joinedAt: Date.now() };
+            
+            // Clean up lobby if host disconnects
+            mmRef.onDisconnect().remove();
+            matchRef.onDisconnect().remove();
+            
+            await matchRef.set(initialGame);
+            listenToMatch();
+            showScreen('lobby');
+            document.getElementById('host-controls').style.display = 'flex';
+        }
+        
+        async function joinMatch(mId) {
+            showScreen('loading');
+            matchId = mId;
+            isHost = false;
+            
+            matchRef = rtdb.ref(`games/uno/${matchId}`);
+            const snap = await matchRef.once('value');
+            if (!snap.exists()) {
+                showAlert("Not Found", "Game not found!");
+                goHome();
+                return;
+            }
+            
+            const state = snap.val();
+            if (state.status === 'playing' && !state.players[currentUser.uid]) {
+                showAlert("Error", "Game already started!");
+                goHome();
+                return;
+            }
+            
+            if (state.status === 'lobby' && Object.keys(state.players || {}).length >= 10 && !state.players[currentUser.uid]) {
+                showAlert("Lobby Full", "Lobby is full! Max 10 players.");
+                goHome();
+                return;
+            }
+            
+            // Add self to players
+            await matchRef.child('players').child(currentUser.uid).set({
+                name: currentUser.name,
+                joinedAt: Date.now()
+            });
+            
+            // Update matchmaking count
+            const mmRef = rtdb.ref(`matchmaking/uno/${matchId}`);
+            const mmSnap = await mmRef.once('value');
+            if (mmSnap.exists()) {
+                const count = Object.keys(state.players || {}).length + 1;
+                await mmRef.update({ playerCount: count });
+            }
+            
+            listenToMatch();
+            showScreen('lobby');
+        }
+        
+        function leaveMatch() {
+            if (matchRef && currentUser) {
+                // If host leaves in lobby, destroy game
+                if (isHost && gameState && gameState.status === 'lobby') {
+                    rtdb.ref(`matchmaking/uno/${matchId}`).remove();
+                    matchRef.remove();
+                } else {
+                    matchRef.child('players').child(currentUser.uid).remove();
+                }
+                
+                // Cancel any pending onDisconnect actions
+                rtdb.ref(`matchmaking/uno/${matchId}`).onDisconnect().cancel();
+                matchRef.onDisconnect().cancel();
+            }
+            window.location.href = 'index.html';
+        }
+        
+        let countdownTimer = null;
+        function updateLobbyUI() {
+            const players = Object.entries(gameState.players || {}).map(([uid, p]) => ({ uid, ...p })).sort((a,b) => a.joinedAt - b.joinedAt);
+            const listDiv = document.getElementById('lobby-players');
+            
+            listDiv.innerHTML = players.map(p => `
+                <div style="display:flex; align-items:center; gap:10px; font-weight:bold; font-size:1.1rem;">
+                    <canvas id="avatar-${p.uid}" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; image-rendering:pixelated;"></canvas>
+                    ${p.name}
+                </div>
+            `).join('');
+            
+            // Draw avatars
+            setTimeout(() => {
+                players.forEach(p => {
+                    const seed = p.uid; // Use UID as deterministic seed
+                    drawAvatar(`avatar-${p.uid}`, seed);
+                });
+            }, 0);
+            
+            const statusDiv = document.getElementById('lobby-status');
+            
+            if (gameState.countdown > 0) {
+                const secondsLeft = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                statusDiv.innerText = `Starting in ${secondsLeft}s...`;
+                if (!countdownTimer) {
+                    countdownTimer = setInterval(() => {
+                        const s = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                        document.getElementById('lobby-status').innerText = `Starting in ${s}s...`;
+                        if (s <= 0 && isHost) {
+                            clearInterval(countdownTimer);
+                            countdownTimer = null;
+                            startGame();
+                        }
+                    }, 1000);
+                }
+            } else {
+                statusDiv.innerText = `Waiting for players... (${players.length}/10)`;
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                
+                // Host logic to start countdown when players >= 2
+                if (isHost && players.length >= 2 && gameState.countdown === 0) {
+                    // Start 30s countdown
+                    matchRef.update({ countdown: Date.now() + 30000 });
+                }
+            }
+        }
+        
+        // --- DRAW AVATAR ---
+        function drawAvatar(canvasId, seed) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+
+            let hash = 0;
+            const str = String(seed);
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const gridSize = 16;
+            const pixelSize = canvas.width / gridSize;
+            for (let x = 0; x < 8; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const bitIndex = (x * gridSize + y) % 32;
+                    const secondary = ((hash >> 3) ^ (hash << 7)) + (y * 17);
+                    const val = ((hash >> bitIndex) ^ (secondary >> (bitIndex % 16))) & 1;
+                    const distFromCenter = Math.abs(y - 8) + Math.abs(x - 4);
+                    const fillChance = distFromCenter < 6 ? val : (val && ((hash >> (x + y)) & 3) === 0);
+                    if (fillChance) {
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                        ctx.fillRect((gridSize - 1 - x) * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+        
+        function forceStartGame() {
+            if (isHost && Object.keys(gameState.players || {}).length >= 2) {
+                if (countdownTimer) clearInterval(countdownTimer);
+                startGame();
+            } else {
+                showAlert("Host", "Need at least 2 players!");
+            }
+        }
+
+        function listenToMatch() {
+            matchRef.on('value', snap => {
+                const data = snap.val();
+                if (!data) {
+                    // Game deleted
+                    showAlert("Game Closed", "The match has been ended.");
+                    goHome();
+                    return;
+                }
+                gameState = data;
+                
+                if (gameState.status === 'lobby') {
+                    if (document.getElementById('screen-lobby').style.display === 'none') {
+                        showScreen('lobby');
+                    }
+                    updateLobbyUI();
+                } else if (gameState.status === 'playing') {
+                    if (document.getElementById('screen-game').style.display === 'none') {
+                        showScreen('game');
+                    }
+                    updateGameUI();
+                } else if (gameState.status === 'finished') {
+                    document.getElementById('winner-modal').style.display = 'flex';
+                    const winnerName = (gameState.players[gameState.winner] || {}).name || 'Someone';
+                    document.getElementById('winner-text').innerText = `${winnerName} Wins!`;
+                }
+            });
+        }
+        
+        // ====== GAME LOGIC ======
+        
+        function generateDeck() {
+            const colors = ['red', 'blue', 'green', 'yellow'];
+            const deck = [];
+            let rId = 0;
+            
+            for (let c of colors) {
+                deck.push({ id: rId++, color: c, type: '0' });
+                for(let i=1; i<=9; i++) {
+                    deck.push({ id: rId++, color: c, type: i.toString() });
+                    deck.push({ id: rId++, color: c, type: i.toString() });
+                }
+                deck.push({ id: rId++, color: c, type: 'Skip' }); deck.push({ id: rId++, color: c, type: 'Skip' });
+                deck.push({ id: rId++, color: c, type: 'Rev' }); deck.push({ id: rId++, color: c, type: 'Rev' });
+                deck.push({ id: rId++, color: c, type: '+2' }); deck.push({ id: rId++, color: c, type: '+2' });
+            }
+            for(let i=0; i<4; i++) {
+                deck.push({ id: rId++, color: 'wild', type: 'Wild' });
+                deck.push({ id: rId++, color: 'wild', type: '+4' });
+            }
+            
+            // Shuffle
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        async function startGame() {
+            if (!isHost) return;
+            
+            const deck = generateDeck();
+            const playerIds = Object.keys(gameState.players).sort((a,b) => gameState.players[a].joinedAt - gameState.players[b].joinedAt);
+            const hands = {};
+            
+            playerIds.forEach(uid => {
+                hands[uid] = deck.splice(0, 7);
+            });
+            
+            // First card
+            let firstCard = deck.pop();
+            while(firstCard.color === 'wild' || firstCard.type === 'Rev' || firstCard.type === 'Skip' || firstCard.type === '+2') {
+                deck.unshift(firstCard);
+                firstCard = deck.pop();
+            }
+            
+            await matchRef.update({
+                status: 'playing',
+                deck: deck,
+                discard: [firstCard],
+                hands: hands,
+                playerOrder: playerIds,
+                turnIndex: 0,
+                direction: 1,
+                currentColor: firstCard.color,
+                actionPending: false,
+                countdown: null
+            });
+            
+            rtdb.ref(`matchmaking/uno/${matchId}`).remove();
+            rtdb.ref(`matchmaking/uno/${matchId}`).onDisconnect().cancel();
+        }
+        
+        function renderCard(card, onClick) {
+            const isWild = card.color === 'wild';
+            const displayText = isWild && card.type === '+4' ? '+4' : card.type;
+            const clickAttr = onClick ? `onclick="${onClick}"` : '';
+            if (card === 'back') {
+                return `
+                    <div class="card card-back" ${clickAttr}>
+                        <div class="card-inner">
+                            <div class="card-inner-text">UNO</div>
+                        </div>
+                    </div>
+                `;
+            }
+            return `
+                <div class="card ${card.color || ''}" ${clickAttr}>
+                    <div class="card-small-top">${displayText}</div>
+                    <div class="card-inner">
+                        <div class="card-inner-text">
+                            ${displayText}
+                        </div>
+                    </div>
+                    <div class="card-small-bottom">${displayText}</div>
+                </div>
+            `;
+        }
+
+        function updateGameUI() {
+            const playerOrder = gameState.playerOrder || [];
+            const turnId = playerOrder[gameState.turnIndex];
+            myTurn = (turnId === currentUser.uid);
+            
+            // Status bar
+            const turnName = turnId === currentUser.uid ? "Your Turn!" : `${gameState.players[turnId].name}'s Turn`;
+            document.getElementById('status-bar').innerText = turnName;
+            document.getElementById('status-bar').style.background = myTurn ? '#000' : '#eee';
+            document.getElementById('status-bar').style.color = myTurn ? '#fff' : '#000';
+            
+            const discardPile = gameState.discard || [];
+            const topCard = discardPile[discardPile.length - 1];
+            
+            // Discard pile
+            document.getElementById('discard-pile').innerHTML = renderCard(topCard);
+            const patternNames = { red: 'Vertical', blue: 'Horizontal', green: 'Diag Up', yellow: 'Diag Down', wild: 'Wild' };
+            document.getElementById('current-color-label').innerText = `Discard (${patternNames[gameState.currentColor] || 'Any'})`;
+            document.getElementById('current-color-label').style.color = 'black';
+            
+            // My Hand
+            const myCards = (gameState.hands || {})[currentUser.uid] || [];
+            const handDiv = document.getElementById('my-hand');
+            handDiv.innerHTML = '';
+            
+            myCards.forEach((card, index) => {
+                const canPlay = myTurn && isPlayable(card, topCard, gameState.currentColor, gameState.actionPending);
+                const clickFn = canPlay ? `tryPlayCard(${index})` : '';
+                handDiv.innerHTML += renderCard(card, clickFn);
+                // Make unplayable cards translucent if it's my turn
+                if (myTurn && !canPlay) {
+                    handDiv.lastElementChild.classList.add('disabled');
+                }
+            });
+            
+            // Opponents
+            const oppDiv = document.getElementById('opponents-ui');
+            oppDiv.innerHTML = '';
+            playerOrder.forEach(uid => {
+                if (uid !== currentUser.uid) {
+                    const count = ((gameState.hands || {})[uid] || []).length;
+                    const isActive = (uid === turnId);
+                    oppDiv.innerHTML += `
+                        <div class="opponent ${isActive ? 'active-turn' : ''}">
+                            <div>${isActive ? '▶ ' : ''}${gameState.players[uid].name}</div>
+                            <div style="font-size:0.8rem; font-weight:normal;">${count} cards</div>
+                        </div>
+                    `;
+                }
+            });
+            
+            // Auto action processing for drawn cards (e.g., if someone played a +2 on me, I must draw it)
+            if (myTurn && gameState.actionPending) {
+                handlePendingAction(topCard);
+            }
+        }
+        
+        function isPlayable(card, topCard, currentColor, actionPending) {
+            if (actionPending) return false; // Must resolve action (drawing cards) before playing
+            if (card.color === 'wild') return true;
+            if (card.color === currentColor) return true;
+            if (card.type === topCard.type) return true;
+            return false;
+        }
+
+        async function drawCard() {
+            if (!myTurn || gameState.actionPending) return;
+            
+            let deck = gameState.deck || [];
+            if (deck.length === 0) {
+                // Reshuffle discard into deck
+                const discard = gameState.discard || [];
+                const top = discard.pop();
+                deck = discard.sort(() => Math.random() - 0.5);
+                gameState.discard = [top];
+            }
+            
+            if (deck.length > 0) {
+                const drawn = deck.pop();
+                const myCards = gameState.hands[currentUser.uid] || [];
+                myCards.push(drawn);
+                
+                const nextIdx = getNextTurnIndex(1);
+                
+                await matchRef.update({
+                    deck: deck,
+                    discard: gameState.discard,
+                    [`hands/${currentUser.uid}`]: myCards,
+                    turnIndex: nextIdx
+                });
+            }
+        }
+        
+        function tryPlayCard(index) {
+            if (!myTurn || gameState.actionPending) return;
+            const myCards = gameState.hands[currentUser.uid] || [];
+            const card = myCards[index];
+            
+            if (card.color === 'wild') {
+                pendingPlayCard = { index, card };
+                document.getElementById('color-modal').style.display = 'flex';
+                return;
+            }
+            
+            playCard(index, card, card.color);
+        }
+        
+        function chooseColor(color) {
+            document.getElementById('color-modal').style.display = 'none';
+            if (pendingPlayCard) {
+                playCard(pendingPlayCard.index, pendingPlayCard.card, color);
+                pendingPlayCard = null;
+            }
+        }
+        
+        async function playCard(index, card, chosenColor) {
+            const myCards = gameState.hands[currentUser.uid];
+            myCards.splice(index, 1);
+            
+            const discard = gameState.discard || [];
+            discard.push(card);
+            
+            let direction = gameState.direction;
+            let actionPending = false;
+            let nextIdx = getNextTurnIndex(1);
+            
+            if (card.type === 'Rev') {
+                direction *= -1;
+                // If only 2 players, reverse acts like skip
+                if (gameState.playerOrder.length === 2) {
+                    nextIdx = getNextTurnIndex(1, direction);
+                } else {
+                    nextIdx = getNextTurnIndex(1, direction);
+                }
+            } else if (card.type === 'Skip') {
+                nextIdx = getNextTurnIndex(2, direction);
+            } else if (card.type === '+2' || card.type === '+4') {
+                actionPending = true; // Next player must draw
+            }
+            
+            const updates = {
+                discard: discard,
+                [`hands/${currentUser.uid}`]: myCards,
+                direction: direction,
+                currentColor: chosenColor,
+                turnIndex: nextIdx,
+                actionPending: actionPending
+            };
+            
+            if (myCards.length === 0) {
+                updates.status = 'finished';
+                updates.winner = currentUser.uid;
+            }
+            
+            await matchRef.update(updates);
+        }
+        
+        function getNextTurnIndex(steps, dir = gameState.direction) {
+            const len = gameState.playerOrder.length;
+            let idx = gameState.turnIndex + (steps * dir);
+            while (idx < 0) idx += len;
+            return idx % len;
+        }
+
+        async function handlePendingAction(topCard) {
+            if (topCard.type === '+2' || topCard.type === '+4') {
+                const drawCount = topCard.type === '+4' ? 4 : 2;
+                
+                let deck = gameState.deck || [];
+                const discard = gameState.discard || [];
+                const myCards = gameState.hands[currentUser.uid] || [];
+                
+                for(let i=0; i<drawCount; i++) {
+                    if (deck.length === 0) {
+                        const top = discard.pop();
+                        deck = discard.sort(() => Math.random() - 0.5);
+                        discard.push(top);
+                    }
+                    if (deck.length > 0) {
+                        myCards.push(deck.pop());
+                    }
+                }
+                
+                const nextIdx = getNextTurnIndex(1);
+                await matchRef.update({
+                    deck: deck,
+                    discard: discard,
+                    [`hands/${currentUser.uid}`]: myCards,
+                    turnIndex: nextIdx,
+                    actionPending: false
+                });
+            }
+        }
+        
+        // Apply wallpaper when loaded
+        window.addEventListener('load', () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+        });
+    </script>
+</body>
+</html>

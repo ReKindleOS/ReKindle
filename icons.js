@@ -112,7 +112,6 @@ const APPS = [
         name: 'Files',
         plus: true,
         cat: 'tools',
-        newBadge: true,
         // Folder Icon
         icon: '<path d="M4 6 h8 l2 2 h14 v16 h-24 z" fill="white" stroke="black" stroke-width="2"/><line x1="4" y1="11" x2="28" y2="11" stroke="black" stroke-width="2"/>'
     },
@@ -121,7 +120,6 @@ const APPS = [
         name: 'Docs',
         plus: true,
         cat: 'tools',
-        newBadge: true,
         icon: '<path d="M6 4 h14 l6 6 v18 h-20 z" fill="white" stroke="black" stroke-width="2"/><polyline points="20 4 20 10 26 10" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="22" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="22" y2="18" stroke="black" stroke-width="2"/><line x1="10" y1="22" x2="18" y2="22" stroke="black" stroke-width="2"/>'
     },
     {
@@ -158,7 +156,6 @@ const APPS = [
         id: 'journal',
         name: 'Journal',
         cat: 'lifestyle',
-        newBadge: true,
         desc: 'Write or draw your thoughts.',
         icon: '<rect x="8" y="4" width="16" height="24" rx="1" stroke="black" stroke-width="2" fill="none"/><line x1="13" y1="4" x2="13" y2="28" stroke="black" stroke-width="2"/><path d="M18 4 v8 l3 -2 l3 2 v-8" fill="black"/>'
     },
@@ -230,7 +227,6 @@ const APPS = [
         id: 'bluesky',
         name: 'Bluesky',
         cat: 'lifestyle',
-        newBadge: true,
         plus: true,
         desc: 'Social social.',
         icon: '<path d="M16 8 C16 8 20 4 26 6 C28 8 26 14 24 16 C28 18 30 24 26 28 C20 30 16 26 16 26 C16 26 12 30 6 28 C2 24 4 18 8 16 C6 14 4 8 6 6 C12 4 16 8 16 8 Z" fill="white" stroke="black" stroke-width="2"/><path d="M16 8 L16 26" stroke="black" stroke-width="2"/>'
@@ -265,7 +261,6 @@ const APPS = [
         id: 'mastodon',
         name: 'Mastodon',
         cat: 'lifestyle',
-        newBadge: true,
         plus: true,
         filled: true,
         desc: 'Decentralized social.',
@@ -322,7 +317,6 @@ const APPS = [
         name: 'Manga',
         cat: 'lifestyle',
         desc: 'Read manga and webtoons.',
-        newBadge: true,
         icon: '<path d="M6 4 h12 v24 h-12 z M18 4 l8 4 v20 l-8 -4 M18 4 v24" fill="none" stroke="black" stroke-width="2"/><line x1="8" y1="8" x2="16" y2="8" stroke="black" stroke-width="1.5"/><line x1="8" y1="12" x2="16" y2="12" stroke="black" stroke-width="1.5"/><line x1="8" y1="16" x2="14" y2="16" stroke="black" stroke-width="1.5"/>'
     },
     {
@@ -341,7 +335,6 @@ const APPS = [
         id: 'life',
         name: 'Life Calendar',
         cat: 'lifestyle',
-        newBadge: true,
         icon: '<g><circle cx="6" cy="6" r="3" fill="black"/><circle cx="16" cy="6" r="3" fill="black"/><circle cx="26" cy="6" r="3" fill="black"/><circle cx="6" cy="16" r="3" fill="black"/><circle cx="16" cy="16" r="3" fill="black"/><circle cx="26" cy="16" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="6" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="16" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/><circle cx="26" cy="26" r="3" fill="none" stroke="black" stroke-width="2"/></g>',
         desc: 'Memento Mori.'
     },
@@ -465,7 +458,6 @@ const APPS = [
         name: 'Photo Frame',
         cat: 'lifestyle',
         plus: true,
-        newBadge: true,
         desc: 'Digital photo slideshow.',
         icon: '<rect x="4" y="6" width="24" height="20" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="black"/><path d="M4 26 l8 -8 l4 4 l6 -6 l6 6" fill="none" stroke="black" stroke-width="2"/>'
     },
@@ -597,7 +589,6 @@ const APPS = [
         id: 'maze',
         name: 'Maze',
         cat: 'games',
-        newBadge: true,
         icon: '<path d="M4 4 h24 v24 h-24 z" fill="none" stroke="black" stroke-width="2"/><line x1="12" y1="4" x2="12" y2="20" stroke="black" stroke-width="2"/><line x1="20" y1="12" x2="20" y2="28" stroke="black" stroke-width="2"/>'
     },
     {
@@ -698,14 +689,21 @@ const APPS = [
     },
     {
         id: '2pcheckers',
-        name: 'Checkers 2P',
+        name: 'Checkers',
         cat: 'two_player',
         icon: '<circle cx="14" cy="18" r="7" fill="white" stroke="black" stroke-width="2"/><circle cx="20" cy="14" r="7" fill="black" stroke="black" stroke-width="2"/>'
     },
     {
         id: '2pchess',
-        name: 'Chess 2P',
+        name: 'Chess',
         cat: 'two_player',
+        icon: '<g transform="translate(-2, 2) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/></g><g transform="translate(8, 6) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="black" stroke="black" stroke-width="2" stroke-linejoin="round"/></g>'
+    },
+    {
+        id: 'livechess',
+        name: 'Chess',
+        cat: 'live_game',
+        live: true,
         icon: '<g transform="translate(-2, 2) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/></g><g transform="translate(8, 6) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="black" stroke="black" stroke-width="2" stroke-linejoin="round"/></g>'
     },
     {
@@ -716,9 +714,8 @@ const APPS = [
     },
     {
         id: '2pdotsandboxes',
-        name: 'Dots & Boxes 2P',
+        name: 'Dots & Boxes',
         cat: 'two_player',
-        newBadge: true,
         icon: '<circle cx="10" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="22" r="1.5" fill="black" stroke="none"/><line x1="10" y1="10" x2="16" y2="10" stroke="black" stroke-width="2"/><line x1="16" y1="10" x2="16" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="10" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="16" x2="16" y2="16" stroke="black" stroke-width="2"/>'
     },
     {
@@ -729,8 +726,23 @@ const APPS = [
         icon: '<line x1="12" y1="6" x2="12" y2="26"/><line x1="20" y1="6" x2="20" y2="26"/><line x1="6" y1="12" x2="26" y2="12"/><line x1="6" y1="20" x2="26" y2="20"/>'
     },
     {
+        id: 'liveuno',
+        name: 'Uno',
+        cat: 'live_game',
+        live: true,
+        filled: true,
+        icon: '<rect x="6" y="4" width="20" height="24" rx="2" fill="none" stroke="black" stroke-width="2"/><ellipse cx="16" cy="16" rx="8" ry="5" fill="black" stroke="none" transform="rotate(-30 16 16)"/><text x="16" y="19" font-size="8" text-anchor="middle" font-weight="bold" fill="white" transform="rotate(-30 16 16)">UNO</text>'
+    },
+    /*     {
+            id: 'liveyahtzee',
+            name: 'Yahtzee',
+            cat: 'live_game',
+            live: true,
+            icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="white" stroke="black" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="black"/><circle cx="22" cy="10" r="2.5" fill="black"/><circle cx="10" cy="22" r="2.5" fill="black"/><circle cx="22" cy="22" r="2.5" fill="black"/><circle cx="16" cy="16" r="2.5" fill="black"/>'
+        }, */
+    {
         id: 'pool2p',
-        name: '8 Ball 2P',
+        name: '8 Ball',
         cat: 'two_player',
         icon: '<circle cx="21" cy="11" r="8" fill="white" stroke="black" stroke-width="2"/><circle cx="13" cy="19" r="10" fill="white" stroke="black" stroke-width="2"/><text x="13" y="23.5" font-size="11" font-weight="bold" text-anchor="middle" fill="black">8</text>'
     },

@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Live Yahtzee</title>
+    <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="theme.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        * { transition: none !important; animation: none !important; }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-image: repeating-linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), repeating-linear-gradient(45deg, #e5e5e5 25%, white 25%, white 75%, #e5e5e5 75%, #e5e5e5);
+            background-position: 0 0, 2px 2px;
+            background-size: 4px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 800px;
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin: 5px;
+            font-size: 1rem;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(3px, 3px);
+        }
+
+        .sys-btn:disabled {
+            color: #999;
+            border-color: #999;
+            box-shadow: 3px 3px 0 #999;
+        }
+
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 8px 0;
+            margin-bottom: 10px;
+            background: #eee;
+        }
+
+        /* YAHTZEE SPECIFIC */
+        .dice-container {
+            position: relative;
+            width: 100%;
+            height: 130px;
+            box-sizing: border-box;
+            background: #fafafa;
+            border: 2px solid black;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .die-wrapper {
+            position: absolute;
+            cursor: pointer;
+        }
+
+        .die {
+            width: 44px;
+            height: 44px;
+            border: 3px solid black;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 3px 3px 0px black;
+        }
+
+        .die-wrapper[data-held="true"] .die {
+            background: black;
+            color: white;
+            border-color: black;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .roll-area {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding-bottom: 10px;
+        }
+
+        .rolls-left {
+            font-weight: bold;
+            font-family: "Courier New", monospace;
+            text-transform: uppercase;
+            margin-right: 15px;
+        }
+
+        .score-table {
+            width: 100%;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .score-row {
+            display: grid;
+            grid-template-columns: 2.2fr 1fr;
+            border-bottom: 2px solid black;
+            cursor: pointer;
+        }
+
+        .score-row.header {
+            font-weight: bold;
+            background: #ddd;
+            cursor: default;
+            border-bottom: 4px double black;
+        }
+
+        .score-row:last-child {
+            border-bottom: none;
+        }
+
+        .score-cell {
+            padding: 4px 8px;
+            border-right: 2px solid black;
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .score-cell:last-child {
+            border-right: none;
+        }
+
+        .score-cell.center {
+            justify-content: center;
+            font-weight: bold;
+            font-family: "Courier New", monospace;
+        }
+
+        .score-row.disabled {
+            cursor: default;
+            background: #f0f0f0;
+        }
+
+        .score-row.total {
+            background: #ddd;
+            font-weight: bold;
+            cursor: default;
+        }
+
+        .filled {
+            background: #eaeaea;
+            color: black;
+        }
+
+        .preview-score {
+            color: #aaa;
+        }
+
+        .current-turn-row {
+            border: 2px solid black;
+            background: #ffffcc;
+            font-weight: bold;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 85%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .player-list {
+            margin: 10px 0;
+            text-align: left;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .opponent-score-summary {
+            width: 100%;
+            margin-top: 10px;
+            border-top: 2px dashed black;
+            padding-top: 10px;
+        }
+
+        .opponent-score-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            padding: 2px 0;
+        }
+
+        .opponent-score-row.active-turn {
+            background: black;
+            color: white;
+            font-weight: bold;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 5px 10px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <!-- Lobby / Menu Screen -->
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="goHome()">X</div>
+            <div class="title-text" data-i18n="yahtzee.title">Yahtzee</div>
+        </div>
+
+        <div class="window-content" id="screen-menu">
+            <h1 style="font-size: 2.5rem; margin: 10px 0;">YAHTZEE</h1>
+            <p data-i18n="liveyahtzee.lobby.subtitle">Real-time Multiplayer Dice Game</p>
+            <button class="sys-btn" onclick="hostGame()" data-i18n="liveyahtzee.btn.host">Host Game</button>
+            <button class="sys-btn" onclick="goHome()" data-i18n="common.back">Back</button>
+        </div>
+
+        <div class="window-content" id="screen-loading" style="display:none; justify-content:center;">
+            <h2 data-i18n="common.loading">Loading...</h2>
+        </div>
+
+        <div class="window-content" id="screen-lobby" style="display:none;">
+            <h2 data-i18n="yahtzee.title">Lobby</h2>
+            <div style="font-size: 1.1rem; margin-bottom: 10px;" id="lobby-status" data-i18n="liveyahtzee.lobby.waiting">Waiting for players...</div>
+            <div class="player-list" id="lobby-players"></div>
+
+            <div id="host-controls" style="display:none; flex-direction: column; align-items: center;">
+                <p style="font-size: 0.8rem; margin-bottom: 5px;" data-i18n="liveyahtzee.lobby.auto_start">Starts automatically when 2+ players join.</p>
+                <button class="sys-btn" id="btn-force-start" onclick="forceStartGame()" data-i18n="liveyahtzee.btn.force_start">Force Start Now</button>
+            </div>
+            <button class="sys-btn" onclick="leaveMatch()" data-i18n="common.close">Leave</button>
+        </div>
+
+        <!-- Game Screen -->
+        <div class="window-content" id="screen-game" style="display:none; padding:10px;">
+            <div id="status-bar" data-i18n="liveyahtzee.status.waiting">Waiting...</div>
+
+            <div class="dice-container" id="dice-container">
+                <div class="die-wrapper" data-index="0" data-held="false" onclick="toggleHold(0)"><div class="die"></div></div>
+                <div class="die-wrapper" data-index="1" data-held="false" onclick="toggleHold(1)"><div class="die"></div></div>
+                <div class="die-wrapper" data-index="2" data-held="false" onclick="toggleHold(2)"><div class="die"></div></div>
+                <div class="die-wrapper" data-index="3" data-held="false" onclick="toggleHold(3)"><div class="die"></div></div>
+                <div class="die-wrapper" data-index="4" data-held="false" onclick="toggleHold(4)"><div class="die"></div></div>
+            </div>
+
+            <div class="roll-area">
+                <span class="rolls-left" id="rolls-left-display">Rolls: 3</span>
+                <button class="sys-btn roll-btn" id="roll-btn" onclick="rollDiceClick()" data-i18n="yahtzee.btn.roll">Roll</button>
+            </div>
+
+            <div class="score-table" id="score-table">
+                <div class="score-row header">
+                    <div class="score-cell" data-i18n="yahtzee.label.category">Category</div>
+                    <div class="score-cell center" data-i18n="yahtzee.label.score">Score</div>
+                </div>
+                <!-- Rows will be populated by JS -->
+            </div>
+
+            <div class="opponent-score-summary" id="opponent-summary">
+                <!-- Opponent total scores summary -->
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <div id="winner-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 id="winner-text" data-i18n="yahtzee.msg.game_over">Game Over</h2>
+                <div id="final-scoreboard" style="text-align: left; margin: 15px 0;"></div>
+                <button class="sys-btn" onclick="leaveMatch()" data-i18n="common.back">Main Menu</button>
+            </div>
+        </div>
+
+        <div id="custom-alert-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="custom-alert-title" data-i18n="common.notice">Notice</h3>
+                <p id="custom-alert-msg" style="margin: 15px 0;"></p>
+                <button class="sys-btn" onclick="closeAlert()" data-i18n="common.ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="theme.js"></script>
+    <script src="js/i18n.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+
+        const auth = firebase.auth();
+        const rtdb = firebase.database();
+
+        let currentUser = null;
+        let matchId = null;
+        let isHost = false;
+        let matchRef = null;
+        let gameState = null;
+
+        const CATS = ['ones','twos','threes','fours','fives','sixes','three_of_a_kind','four_of_a_kind','full_house','small_straight','large_straight','yahtzee','chance'];
+        const CAT_NAMES = {
+            ones: 'Ones', twos: 'Twos', threes: 'Threes', fours: 'Fours', fives: 'Fives', sixes: 'Sixes',
+            three_of_a_kind: '3 of a Kind', four_of_a_kind: '4 of a Kind', full_house: 'Full House',
+            small_straight: 'Sm Straight', large_straight: 'Lg Straight', yahtzee: 'Yahtzee', chance: 'Chance'
+        };
+
+        function goHome() { window.location.href = 'index.html'; }
+
+        function showAlert(title, msg) {
+            document.getElementById('custom-alert-title').innerText = title;
+            document.getElementById('custom-alert-msg').innerText = msg;
+            document.getElementById('custom-alert-modal').style.display = 'flex';
+        }
+        function closeAlert() { document.getElementById('custom-alert-modal').style.display = 'none'; }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = { uid: user.uid, name: (user.email ? user.email.split('@')[0] : 'Player') };
+                checkUrlForMatch();
+            } else {
+                showAlert("Sign In Required", "Please log in from the home screen first.");
+                setTimeout(goHome, 3000);
+            }
+        });
+
+        function checkUrlForMatch() {
+            const params = new URLSearchParams(window.location.search);
+            const mId = params.get('matchId');
+            if (mId) joinMatch(mId);
+            else showScreen('menu');
+        }
+
+        function showScreen(screen) {
+            ['menu', 'lobby', 'loading', 'game'].forEach(s => {
+                document.getElementById('screen-' + s).style.display = (s === screen ? 'flex' : 'none');
+            });
+        }
+
+        function generateId() { return Math.random().toString(36).substr(2, 9); }
+
+        // ====== MATCHMAKING ======
+        async function hostGame() {
+            showScreen('loading');
+            matchId = generateId();
+            isHost = true;
+            const mmRef = rtdb.ref(`matchmaking/yahtzee/${matchId}`);
+            await mmRef.set({ hostUid: currentUser.uid, hostName: currentUser.name, status: 'waiting', playerCount: 1, createdAt: firebase.database.ServerValue.TIMESTAMP });
+            matchRef = rtdb.ref(`games/yahtzee/${matchId}`);
+            const initialGame = { status: 'lobby', host: currentUser.uid, players: {}, countdown: 0 };
+            initialGame.players[currentUser.uid] = { name: currentUser.name, joinedAt: Date.now(), scores: {}, total: 0 };
+            mmRef.onDisconnect().remove();
+            matchRef.onDisconnect().remove();
+            await matchRef.set(initialGame);
+            listenToMatch();
+            showScreen('lobby');
+            document.getElementById('host-controls').style.display = 'flex';
+        }
+
+        async function joinMatch(mId) {
+            showScreen('loading');
+            matchId = mId;
+            isHost = false;
+            matchRef = rtdb.ref(`games/yahtzee/${matchId}`);
+            const snap = await matchRef.once('value');
+            if (!snap.exists()) { showAlert("Not Found", "Game not found!"); goHome(); return; }
+            const state = snap.val();
+            if (state.status === 'playing' && !state.players[currentUser.uid]) { showAlert("Error", "Game already started!"); goHome(); return; }
+            await matchRef.child('players').child(currentUser.uid).set({ name: currentUser.name, joinedAt: Date.now(), scores: {}, total: 0 });
+            const mmRef = rtdb.ref(`matchmaking/yahtzee/${matchId}`);
+            const mmSnap = await mmRef.once('value');
+            if (mmSnap.exists()) {
+                const count = Object.keys(state.players || {}).length + 1;
+                await mmRef.update({ playerCount: count });
+            }
+            listenToMatch();
+            showScreen('lobby');
+        }
+
+        function leaveMatch() {
+            if (matchRef && currentUser) {
+                if (isHost && gameState && gameState.status === 'lobby') {
+                    rtdb.ref(`matchmaking/yahtzee/${matchId}`).remove();
+                    matchRef.remove();
+                } else matchRef.child('players').child(currentUser.uid).remove();
+                rtdb.ref(`matchmaking/yahtzee/${matchId}`).onDisconnect().cancel();
+                matchRef.onDisconnect().cancel();
+            }
+            window.location.href = 'index.html';
+        }
+
+        let countdownTimer = null;
+        function updateLobbyUI() {
+            const players = Object.entries(gameState.players || {}).map(([uid, p]) => ({ uid, ...p })).sort((a,b) => a.joinedAt - b.joinedAt);
+            const listDiv = document.getElementById('lobby-players');
+            listDiv.innerHTML = players.map(p => `
+                <div style="display:flex; align-items:center; gap:10px; font-weight:bold; font-size:1.1rem; border-bottom:1px solid #eee; padding:5px 0;">
+                    <canvas id="avatar-${p.uid}" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; image-rendering:pixelated;"></canvas>
+                    ${p.name}
+                </div>
+            `).join('');
+
+            // Draw avatars
+            setTimeout(() => {
+                players.forEach(p => drawAvatar(`avatar-${p.uid}`, p.uid));
+            }, 0);
+
+            const statusDiv = document.getElementById('lobby-status');
+            if (gameState.countdown > 0) {
+                const secondsLeft = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                statusDiv.innerText = `Starting in ${secondsLeft}s...`;
+                if (!countdownTimer) {
+                    countdownTimer = setInterval(() => {
+                        const s = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                        document.getElementById('lobby-status').innerText = `Starting in ${s}s...`;
+                        if (s <= 0 && isHost) { clearInterval(countdownTimer); countdownTimer = null; startGame(); }
+                    }, 1000);
+                }
+            } else {
+                statusDiv.innerText = `Waiting for players... (${players.length})`;
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                if (isHost && players.length >= 2 && gameState.countdown === 0) matchRef.update({ countdown: Date.now() + 15000 });
+            }
+        }
+
+        function forceStartGame() {
+            if (isHost && Object.keys(gameState.players || {}).length >= 2) {
+                if (countdownTimer) clearInterval(countdownTimer);
+                startGame();
+            } else showAlert("Host", "Need 2+ players!");
+        }
+
+        function listenToMatch() {
+            matchRef.on('value', snap => {
+                const data = snap.val();
+                if (!data) { showAlert("Game Closed", "The match has ended."); goHome(); return; }
+                gameState = data;
+                if (gameState.status === 'lobby') {
+                    if (document.getElementById('screen-lobby').style.display === 'none') showScreen('lobby');
+                    updateLobbyUI();
+                } else if (gameState.status === 'playing') {
+                    if (document.getElementById('screen-game').style.display === 'none') {
+                        showScreen('game');
+                        initGameBoard();
+                    }
+                    updateGameUI();
+                } else if (gameState.status === 'finished') {
+                    showGameOver();
+                }
+            });
+        }
+
+        // ====== GAME LOGIC ======
+        async function startGame() {
+            if (!isHost) return;
+            const playerIds = Object.keys(gameState.players).sort((a,b) => gameState.players[a].joinedAt - gameState.players[b].joinedAt);
+            await matchRef.update({
+                status: 'playing',
+                playerOrder: playerIds,
+                turnIndex: 0,
+                dice: [1,1,1,1,1],
+                held: [false,false,false,false,false],
+                rollsLeft: 3,
+                turnStarted: false,
+                countdown: null
+            });
+            rtdb.ref(`matchmaking/yahtzee/${matchId}`).remove();
+        }
+
+        function initGameBoard() {
+            const table = document.getElementById('score-table');
+            const header = `<div class="score-row header"><div class="score-cell" data-i18n="yahtzee.label.category">${window.t('yahtzee.label.category', 'Category')}</div><div class="score-cell center" data-i18n="yahtzee.label.score">${window.t('yahtzee.label.score', 'Score')}</div></div>`;
+            const rows = CATS.map(cat => `
+                <div class="score-row" id="row-${cat}" onclick="scoreCategoryClick('${cat}')">
+                    <div class="score-cell" data-i18n="yahtzee.cat.${cat}">${CAT_NAMES[cat]}</div>
+                    <div class="score-cell center" id="score-${cat}"></div>
+                </div>
+            `).join('');
+            const upperBonusRow = `<div class="score-row disabled" id="row-bonus"><div class="score-cell" data-i18n="yahtzee.label.upper_bonus">${window.t('yahtzee.label.upper_bonus', 'Bonus:')}</div><div class="score-cell center" id="score-bonus">0/63</div></div>`;
+            const totalRow = `<div class="score-row total"><div class="score-cell" data-i18n="yahtzee.label.total">${window.t('yahtzee.label.total', 'Total:')}</div><div class="score-cell center" id="score-total">0</div></div>`;
+            table.innerHTML = header + rows + upperBonusRow + totalRow;
+        }
+
+        function updateGameUI() {
+            const currentPlayerId = gameState.playerOrder[gameState.turnIndex];
+            const isMyTurn = currentPlayerId === currentUser.uid;
+            
+            // Status bar
+            const statusEl = document.getElementById('status-bar');
+            statusEl.innerText = isMyTurn ? window.t('liveyahtzee.status.your_turn', 'YOUR TURN') : window.t('liveyahtzee.status.player_turn', "${name}'s Turn").replace('${name}', gameState.players[currentPlayerId].name);
+            statusEl.style.background = isMyTurn ? "#000" : "#eee";
+            statusEl.style.color = isMyTurn ? "#fff" : "#000";
+
+            // Dice
+            const container = document.getElementById('dice-container');
+            for(let i=0; i<5; i++) {
+                const wrapper = document.querySelector(`.die-wrapper[data-index="${i}"]`);
+                const val = gameState.dice[i];
+                wrapper.querySelector('.die').innerHTML = getDieSVG(val);
+                wrapper.dataset.held = gameState.held[i] ? "true" : "false";
+                // Only show dice if turn started
+                wrapper.style.display = gameState.turnStarted ? 'flex' : 'none';
+            }
+
+            // Rolls
+            const rollsLeftEl = document.getElementById('rolls-left-display');
+            rollsLeftEl.innerText = window.t('yahtzee.msg.rolls_left', 'Rolls: ${n}').replace('${n}', gameState.rollsLeft);
+
+            // Buttons
+            const rollBtn = document.getElementById('roll-btn');
+            rollBtn.disabled = !isMyTurn || gameState.rollsLeft <= 0;
+
+            // Score Table (My Scores)
+            const myData = gameState.players[currentUser.uid];
+            let upperSum = 0;
+            CATS.forEach(cat => {
+                const el = document.getElementById(`score-${cat}`);
+                const row = document.getElementById(`row-${cat}`);
+                if (myData.scores && myData.scores[cat] !== undefined) {
+                    el.innerText = myData.scores[cat];
+                    el.classList.add('filled');
+                    row.classList.add('disabled');
+                    if (['ones','twos','threes','fours','fives','sixes'].includes(cat)) upperSum += myData.scores[cat];
+                } else {
+                    el.classList.remove('filled');
+                    row.classList.remove('disabled');
+                    if (isMyTurn && gameState.turnStarted) {
+                        el.innerText = calculateScore(cat, gameState.dice);
+                        el.classList.add('preview-score');
+                    } else {
+                        el.innerText = '';
+                        el.classList.remove('preview-score');
+                    }
+                }
+            });
+
+            // Bonus and Total
+            const bonusEl = document.getElementById('score-bonus');
+            const bonusLabel = window.t('yahtzee.label.upper_bonus', 'Bonus:');
+            if (upperSum >= 63) bonusEl.innerText = `${upperSum}/63 (+35)`;
+            else bonusEl.innerText = `${upperSum}/63`;
+            document.getElementById('score-total').innerText = myData.total || 0;
+
+            // Opponent Summary
+            const summaryEl = document.getElementById('opponent-summary');
+            summaryEl.innerHTML = `<b>${window.t('liveyahtzee.label.scores_header', 'Scores:')}</b><br>` + gameState.playerOrder.map(uid => {
+                const p = gameState.players[uid];
+                const isActive = uid === currentPlayerId;
+                return `<div class="opponent-score-row ${isActive ? 'active-turn' : ''}">
+                    <span>${isActive ? '▶ ' : ''}${p.name}</span>
+                    <span>${p.total}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function rollDiceClick() {
+            const currentPlayerId = gameState.playerOrder[gameState.turnIndex];
+            if (currentPlayerId !== currentUser.uid || gameState.rollsLeft <= 0) return;
+
+            const newDice = [...gameState.dice];
+            for(let i=0; i<5; i++) {
+                if (!gameState.held[i]) newDice[i] = Math.floor(Math.random() * 6) + 1;
+            }
+
+            matchRef.update({
+                dice: newDice,
+                rollsLeft: gameState.rollsLeft - 1,
+                turnStarted: true
+            });
+            // Update placement visually for roller
+            arrangeDiceRandomly();
+        }
+
+        function toggleHold(idx) {
+            const currentPlayerId = gameState.playerOrder[gameState.turnIndex];
+            if (currentPlayerId !== currentUser.uid || !gameState.turnStarted || gameState.rollsLeft === 0) return;
+
+            const newHeld = [...gameState.held];
+            newHeld[idx] = !newHeld[idx];
+            matchRef.update({ held: newHeld });
+        }
+
+        async function scoreCategoryClick(cat) {
+            const currentPlayerId = gameState.playerOrder[gameState.turnIndex];
+            if (currentPlayerId !== currentUser.uid || !gameState.turnStarted) return;
+
+            const myData = gameState.players[currentUser.uid];
+            if (myData.scores && myData.scores[cat] !== undefined) return;
+
+            const score = calculateScore(cat, gameState.dice);
+            const newScores = { ...(myData.scores || {}), [cat]: score };
+            
+            // Calc total
+            let total = 0; let uSum = 0;
+            Object.values(newScores).forEach(s => total += s);
+            CATS.slice(0,6).forEach(c => { if(newScores[c] !== undefined) uSum += newScores[c]; });
+            if (uSum >= 63) total += 35;
+
+            // Check if game finished for me
+            const isFinished = Object.keys(newScores).length === 13;
+
+            // Update player
+            await matchRef.child('players').child(currentUser.uid).update({ scores: newScores, total: total });
+
+            // Next turn
+            let nextIndex = (gameState.turnIndex + 1) % gameState.playerOrder.length;
+            
+            // Check if all players finished
+            const allFinished = gameState.playerOrder.every(uid => {
+                const p = gameState.players[uid];
+                return Object.keys(p.uid === currentUser.uid ? newScores : (p.scores || {})).length === 13;
+            });
+
+            if (allFinished) {
+                matchRef.update({ status: 'finished' });
+            } else {
+                // If next player already finished, skip them (not really possible in standard Yahtzee as turns are synced, but good for robustness)
+                matchRef.update({
+                    turnIndex: nextIndex,
+                    rollsLeft: 3,
+                    dice: [1,1,1,1,1],
+                    held: [false,false,false,false,false],
+                    turnStarted: false
+                });
+            }
+        }
+
+        function calculateScore(cat, dice) {
+            const counts = {};
+            dice.forEach(d => counts[d] = (counts[d] || 0) + 1);
+            const sum = dice.reduce((a,b) => a+b, 0);
+
+            if (cat === 'ones') return (counts[1] || 0) * 1;
+            if (cat === 'twos') return (counts[2] || 0) * 2;
+            if (cat === 'threes') return (counts[3] || 0) * 3;
+            if (cat === 'fours') return (counts[4] || 0) * 4;
+            if (cat === 'fives') return (counts[5] || 0) * 5;
+            if (cat === 'sixes') return (counts[6] || 0) * 6;
+
+            if (cat === 'three_of_a_kind') return Object.values(counts).some(v => v >= 3) ? sum : 0;
+            if (cat === 'four_of_a_kind') return Object.values(counts).some(v => v >= 4) ? sum : 0;
+            if (cat === 'full_house') {
+                const vals = Object.values(counts);
+                return (vals.includes(3) && vals.includes(2)) || vals.includes(5) ? 25 : 0;
+            }
+            if (cat === 'small_straight') {
+                const s = [...new Set(dice)].sort().join('');
+                return /1234|2345|3456/.test(s) ? 30 : 0;
+            }
+            if (cat === 'large_straight') {
+                const s = [...new Set(dice)].sort().join('');
+                return /12345|23456/.test(s) ? 40 : 0;
+            }
+            if (cat === 'yahtzee') return Object.values(counts).some(v => v === 5) ? 50 : 0;
+            if (cat === 'chance') return sum;
+            return 0;
+        }
+
+        function getDieSVG(num) {
+            let dots = ''; const r = 3.5; const c = "currentColor";
+            if (num===1) dots = `<circle cx="20" cy="20" r="${r}" fill="${c}"/>`;
+            if (num===2) dots = `<circle cx="12" cy="12" r="${r}" fill="${c}"/><circle cx="28" cy="28" r="${r}" fill="${c}"/>`;
+            if (num===3) dots = `<circle cx="12" cy="12" r="${r}" fill="${c}"/><circle cx="20" cy="20" r="${r}" fill="${c}"/><circle cx="28" cy="28" r="${r}" fill="${c}"/>`;
+            if (num===4) dots = `<circle cx="12" cy="12" r="${r}" fill="${c}"/><circle cx="28" cy="12" r="${r}" fill="${c}"/><circle cx="12" cy="28" r="${r}" fill="${c}"/><circle cx="28" cy="28" r="${r}" fill="${c}"/>`;
+            if (num===5) dots = `<circle cx="12" cy="12" r="${r}" fill="${c}"/><circle cx="28" cy="12" r="${r}" fill="${c}"/><circle cx="20" cy="20" r="${r}" fill="${c}"/><circle cx="12" cy="28" r="${r}" fill="${c}"/><circle cx="28" cy="28" r="${r}" fill="${c}"/>`;
+            if (num===6) dots = `<circle cx="12" cy="12" r="${r}" fill="${c}"/><circle cx="28" cy="12" r="${r}" fill="${c}"/><circle cx="12" cy="20" r="${r}" fill="${c}"/><circle cx="28" cy="20" r="${r}" fill="${c}"/><circle cx="12" cy="28" r="${r}" fill="${c}"/><circle cx="28" cy="28" r="${r}" fill="${c}"/>`;
+            return `<svg width="100%" height="100%" viewBox="0 0 40 40">${dots}</svg>`;
+        }
+
+        function arrangeDiceRandomly() {
+            const container = document.getElementById('dice-container');
+            const w = container.clientWidth; const h = container.clientHeight;
+            for(let i=0; i<5; i++) {
+                const wrapper = document.querySelector(`.die-wrapper[data-index="${i}"]`);
+                if (wrapper.dataset.held === "true") continue;
+                wrapper.style.left = (10 + Math.random() * (w - 60)) + 'px';
+                wrapper.style.top = (10 + Math.random() * (h - 60)) + 'px';
+            }
+        }
+
+        function showGameOver() {
+            document.getElementById('winner-modal').style.display = 'flex';
+            const board = document.getElementById('final-scoreboard');
+            const sorted = Object.values(gameState.players).sort((a,b) => b.total - a.total);
+            board.innerHTML = sorted.map((p, idx) => `<div>${idx+1}. ${p.name}: <b>${p.total}</b></div>`).join('');
+            document.getElementById('winner-text').innerText = (sorted[0].uid === currentUser.uid) ? "You Win!" : `${sorted[0].name} Wins!`;
+        }
+        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+    </script>
+</body>
+</html>

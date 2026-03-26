@@ -415,6 +415,8 @@
 
         .beta-label,
         .new-label,
+        .two-p-label,
+        .live-label,
         .disabled-label {
             position: absolute;
             top: -4px;
@@ -435,9 +437,17 @@
             box-shadow: 1px 1px 0 white;
         }
 
-        .new-label {
+        .new-label,
+        .two-p-label {
             background: white;
             color: black;
+        }
+
+        .live-label {
+            background: repeating-linear-gradient(45deg, black, black 3px, white 3px, white 4px);
+            color: white;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            box-shadow: 1px 1px 0 black;
         }
 
         .disabled-label {
@@ -690,7 +700,7 @@
                 <div class="nav-item" id="nav-games" onclick="filterApps('games', this)" data-i18n="home.nav.games">
                     Games</div>
                 <div class="nav-item" id="nav-two_player" onclick="filterApps('two_player', this)"
-                    data-i18n="home.nav.two_player">Two Player Games</div>
+                    data-i18n="home.nav.two_player">Multiplayer Games</div>
 
                 <div style="flex-grow:1"></div>
 
@@ -716,6 +726,9 @@
             <div class="view-header">
                 <span id="category-title" data-i18n="home.header.all">All Applications</span>
                 <div style="display:flex; align-items:center;">
+                    <button class="sys-btn" id="featured-toggle-btn" onclick="toggleFeaturedSection()"
+                        style="box-shadow: 2px 2px 0 black; display:none; margin-right:10px; font-size:0.8rem;"
+                        data-i18n="home.btn.featured_on">Featured: ON</button>
                     <button class="sys-btn" id="reset-btn" onclick="openResetModal()"
                         style="box-shadow: 2px 2px 0 black; display:none; margin-right:10px; font-size:0.8rem;"
                         data-i18n="home.btn.reset">Reset</button>
@@ -828,6 +841,7 @@
     </div>
 
     <script>
+        let featuredHidden = localStorage.getItem('rekindle_featured_hidden') === 'true';
         // Note: Global variables and logic mostly unchanged, specific fixes applied inside functions.
         let currentFilter = 'all';
         let currentUser = null;
@@ -1174,21 +1188,43 @@
             isEditMode = !isEditMode;
             const btn = document.getElementById('edit-done-btn');
             const resetBtn = document.getElementById('reset-btn');
+            const featToggle = document.getElementById('featured-toggle-btn');
             if (isEditMode) {
                 btn.innerText = "Done";
                 if (resetBtn) resetBtn.style.display = 'block';
+                if (featToggle) {
+                    featToggle.style.display = 'block';
+                    const key = featuredHidden ? 'home.btn.featured_off' : 'home.btn.featured_on';
+                    const def = featuredHidden ? 'Featured: OFF' : 'Featured: ON';
+                    featToggle.innerText = window.t ? window.t(key, def) : def;
+                }
                 document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
                 document.querySelectorAll('.hide-toggle').forEach(t => t.classList.add('show-toggle'));
-                document.querySelectorAll('.beta-label, .new-label').forEach(l => l.style.display = 'none');
+                document.querySelectorAll('.beta-label, .new-label, .two-p-label, .live-label, .disabled-label, .plus-label').forEach(l => l.style.display = 'none');
             } else {
                 btn.innerText = "Edit";
                 if (resetBtn) resetBtn.style.display = 'none';
+                if (featToggle) featToggle.style.display = 'none';
                 document.querySelectorAll('.favorite-toggle').forEach(t => t.classList.remove('show-toggle'));
                 document.querySelectorAll('.hide-toggle').forEach(t => t.classList.remove('show-toggle'));
-                document.querySelectorAll('.beta-label, .new-label').forEach(l => l.style.display = 'block');
+                document.querySelectorAll('.beta-label, .new-label, .two-p-label, .live-label, .disabled-label, .plus-label').forEach(l => l.style.display = 'block');
             }
+            if (currentFilter === 'all') renderFeaturedSection();
             renderAppGrid(currentFilter);
             renderFavoriteSection();
+        }
+
+        function toggleFeaturedSection() {
+            featuredHidden = !featuredHidden;
+            localStorage.setItem('rekindle_featured_hidden', featuredHidden.toString());
+            const featToggle = document.getElementById('featured-toggle-btn');
+            if (featToggle) {
+                const key = featuredHidden ? 'home.btn.featured_off' : 'home.btn.featured_on';
+                const def = featuredHidden ? 'Featured: OFF' : 'Featured: ON';
+                featToggle.innerText = window.t ? window.t(key, def) : def;
+            }
+            if (currentFilter === 'all') renderFeaturedSection();
+            renderAppGrid(currentFilter);
         }
 
         function openResetModal() {
@@ -1198,8 +1234,16 @@
         function confirmReset() {
             favoriteApps = [];
             hiddenApps = [];
+            featuredHidden = false;
+            localStorage.setItem('rekindle_featured_hidden', 'false');
+            const featToggle = document.getElementById('featured-toggle-btn');
+            if (featToggle) {
+                const labelOn = window.t ? window.t('home.btn.featured_on', 'Featured: ON') : 'Featured: ON';
+                featToggle.innerText = labelOn;
+            }
             saveFavorites();
             renderFavoriteSection();
+            if (currentFilter === 'all') renderFeaturedSection();
             renderAppGrid(currentFilter);
             closeModal('reset-modal');
         }
@@ -1257,10 +1301,14 @@
                 </div>`;
 
             const showPlus = app.plus && !isPro;
-            if (app.beta && !showPlus) extraHtml += `<div class="beta-label">BETA</div>`;
-            if (app.newBadge && !showPlus) extraHtml += `<div class="new-label" data-i18n="badge.new">NEW</div>`;
-            if (app.disabled) extraHtml += `<div class="disabled-label">CLOSED</div>`;
-            else if (showPlus) extraHtml += `<div class="plus-label">+</div>`;
+            if (!isEditMode) {
+                if (app.live && !showPlus) extraHtml += `<div class="live-label">LIVE</div>`;
+                else if (app.beta && !showPlus) extraHtml += `<div class="beta-label">BETA</div>`;
+                if (app.newBadge && !showPlus) extraHtml += `<div class="new-label" data-i18n="badge.new">NEW</div>`;
+                if (app.cat === 'two_player' && !showPlus) extraHtml += `<div class="two-p-label" data-i18n="badge.2p">2P</div>`;
+                if (app.disabled) extraHtml += `<div class="disabled-label">CLOSED</div>`;
+                else if (showPlus) extraHtml += `<div class="plus-label">+</div>`;
+            }
 
             const viewBox = app.viewBox || "0 0 32 32";
             const svgClass = app.filled ? 'icon-img' : 'icon-img outlined-icon';
@@ -1297,6 +1345,10 @@
         function renderFeaturedSection() {
             const featuredContainer = document.getElementById('featured-section');
             const featuredGrid = document.getElementById('featured-grid');
+            if (featuredHidden) {
+                featuredContainer.style.display = 'none';
+                return;
+            }
             featuredContainer.style.display = 'block';
             featuredGrid.innerHTML = '';
             const fragment = document.createDocumentFragment();
@@ -1311,8 +1363,12 @@
                 a.className = 'featured-card';
                 const subheading = app.desc || '';
                 let badgeHtml = '';
-                if (app.plus && !isPro) badgeHtml = '<div class="plus-label" style="right:5px; top:5px;">+</div>';
-                else if (app.newBadge) badgeHtml = '<div class="new-label">NEW</div>';
+                if (!isEditMode) {
+                    if (app.plus && !isPro) badgeHtml = `<div class="plus-label" style="right:5px; top:5px;">+</div>`;
+                    else if (app.live) badgeHtml = '<div class="live-label">LIVE</div>';
+                    else if (app.newBadge) badgeHtml = '<div class="new-label">NEW</div>';
+                    else if (app.cat === 'two_player') badgeHtml = '<div class="two-p-label" data-i18n="badge.2p">2P</div>';
+                }
 
                 if (app.plus && !isPro) {
                     // OPTIMIZATION: Removed 'gap:10px' from inline style here as well
@@ -1342,16 +1398,16 @@
         function renderAppGrid(category) {
             const grid = document.getElementById('app-grid');
             grid.innerHTML = '';
-            const titles = { all: "All Applications", productivity: "Productivity", essentials: "Essentials", tools: "Tools", lifestyle: "Lifestyle", games: "Games", two_player: "Two Player Games" };
+            const titles = { all: "All Applications", productivity: "Productivity", essentials: "Essentials", tools: "Tools", lifestyle: "Lifestyle", games: "Games", two_player: "Multiplayer Games" };
             const fragment = document.createDocumentFragment();
 
             if (category === 'all') {
                 document.getElementById('category-title').innerText = "All Applications";
-                let baseList = APPS.filter(a => !a.featured && !favoriteApps.includes(a.id));
+                let baseList = APPS.filter(a => (!a.featured || featuredHidden) && !favoriteApps.includes(a.id));
                 if (!isEditMode) baseList = baseList.filter(a => !hiddenApps.includes(a.id));
-                if (gamesDisabled) baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
-                const games = baseList.filter(a => a.cat === 'games' || a.cat === 'two_player');
-                const apps = baseList.filter(a => a.cat !== 'games' && a.cat !== 'two_player');
+                if (gamesDisabled) baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
+                const games = baseList.filter(a => a.cat === 'games' || a.cat === 'two_player' || a.cat === 'live_game');
+                const apps = baseList.filter(a => a.cat !== 'games' && a.cat !== 'two_player' && a.cat !== 'live_game');
                 apps.sort((a, b) => a.name.localeCompare(b.name));
                 games.sort((a, b) => a.name.localeCompare(b.name));
                 apps.forEach(app => fragment.appendChild(createAppElement(app)));
@@ -1366,8 +1422,11 @@
                 }
             } else {
                 let filtered = APPS.filter(a => a.cat === category);
+                if (category === 'two_player') {
+                    filtered = APPS.filter(a => a.cat === 'two_player' || a.cat === 'live_game');
+                }
                 if (!isEditMode) filtered = filtered.filter(a => !hiddenApps.includes(a.id));
-                if (gamesDisabled) filtered = filtered.filter(app => app.cat !== 'games' && app.cat !== 'two_player');
+                if (gamesDisabled) filtered = filtered.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
                 filtered.sort((a, b) => a.name.localeCompare(b.name));
                 document.getElementById('category-title').innerText = titles[currentFilter] || "Applications";
                 filtered.forEach(app => fragment.appendChild(createAppElement(app)));
@@ -1376,7 +1435,7 @@
             if (isEditMode) {
                 document.getElementById('app-grid').querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
                 document.getElementById('app-grid').querySelectorAll('.hide-toggle').forEach(t => t.classList.add('show-toggle'));
-                document.getElementById('app-grid').querySelectorAll('.beta-label, .new-label').forEach(l => l.style.display = 'none');
+                document.getElementById('app-grid').querySelectorAll('.beta-label, .new-label, .two-p-label, .live-label, .disabled-label, .plus-label').forEach(l => l.style.display = 'none');
             }
         }
 
