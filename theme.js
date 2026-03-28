@@ -656,6 +656,29 @@
         }
     };
 
+    // --- AVATAR CACHING HELPER ---
+    window.rekindleAvatarCache = {};
+    window.rekindleFetchAvatarSeed = function(db, uid, callback) {
+        if (!uid) { callback('default'); return; }
+        if (window.rekindleAvatarCache[uid]) {
+            callback(window.rekindleAvatarCache[uid]);
+            return;
+        }
+        if (!db) { callback(uid); return; }
+        
+        db.ref('users_public/' + uid).once('value').then(function(snap) {
+            var seed = uid;
+            if (snap.exists()) {
+                var profile = snap.val();
+                seed = profile.customAvatar || profile.avatarSeed || uid;
+            }
+            window.rekindleAvatarCache[uid] = seed;
+            callback(seed);
+        }).catch(function() {
+            callback(uid);
+        });
+    };
+
     // --- AUTO-INITIALIZE GLOBAL PRESENCE ---
     function autoInitPresence() {
         if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length > 0) {
