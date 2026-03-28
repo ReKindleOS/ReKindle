@@ -622,4 +622,72 @@
         lastTouchEnd = now;
     }, false);
 
+    // --- GLOBAL PRESENCE TRACKING ---
+    // Change the "online" indicator in topics and kindlechat to show number of total people online on rekindle.ink
+    window.rekindleInitGlobalPresence = function (db, uid) {
+        if (!db || !uid) return;
+        var presenceRef = db.ref('presence/' + uid);
+
+        // Set presence to true and remove on disconnect
+        presenceRef.set(true);
+        presenceRef.onDisconnect().remove();
+
+        // 🚀 OPTIMIZATION FOR KINDLE:
+        // Only download the massive 'presence' object if the current page actually displays the count.
+        // This saves enormous amounts of CPU, RAM, and bandwidth on pages that don't need it.
+        var displayEl = document.getElementById('online-count-display');
+        var valueEl = document.getElementById('online-count-value');
+
+        if (displayEl || valueEl) {
+            // Listen for total online count (Global)
+            var countRef = db.ref('presence');
+            var countTimeout = null;
+
+            countRef.on('value', function (snapshot) {
+                var count = snapshot.numChildren() || 0;
+
+                // Throttle DOM updates to avoid e-ink checkerboarding & CPU hogging on massive connection spikes
+                if (countTimeout) clearTimeout(countTimeout);
+                countTimeout = setTimeout(function () {
+                    if (valueEl) valueEl.innerText = count;
+                    if (displayEl) displayEl.style.display = 'flex';
+                }, 5000);
+            });
+        }
+    };
+
+    // --- AUTO-INITIALIZE GLOBAL PRESENCE ---
+    function autoInitPresence() {
+        if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length > 0) {
+            try {
+                var auth = firebase.auth();
+                var db = firebase.database();
+                if (auth && db) {
+                    // Only attach one listener to avoid leaks
+                    if (window._rekindlePresenceInited) return true;
+                    window._rekindlePresenceInited = true;
+
+                    auth.onAuthStateChanged(function (user) {
+                        if (user && window.rekindleInitGlobalPresence) {
+                            window.rekindleInitGlobalPresence(db, user.uid);
+                        }
+                    });
+                    return true;
+                }
+            } catch (e) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // Try multiple times to catch async Firebase loading
+    var presenceAttempts = 0;
+    var presenceTimer = setInterval(function () {
+        presenceAttempts++;
+        if (autoInitPresence() || presenceAttempts > 30) {
+            clearInterval(presenceTimer);
+        }
+    }, 1000);
+
 })();

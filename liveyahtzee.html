@@ -8,7 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="theme.js"></script>
+    <script src="theme.js?v=15"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -44,6 +44,7 @@
             justify-content: center;
             user-select: none;
             box-sizing: border-box;
+            touch-action: none;
         }
 
         .window {
@@ -178,6 +179,10 @@
             cursor: pointer;
         }
 
+        .die-wrapper[data-held="true"] {
+            z-index: 10;
+        }
+
         .die {
             width: 44px;
             height: 44px;
@@ -259,6 +264,10 @@
 
         .score-row.disabled {
             cursor: default;
+            background: #f0f0f0;
+        }
+
+        .score-row:hover:not(.header):not(.disabled):not(.total) {
             background: #f0f0f0;
         }
 
@@ -423,7 +432,7 @@
         </div>
     </div>
 
-    <script src="theme.js"></script>
+    <script src="theme.js?v=15"></script>
     <script src="js/i18n.js"></script>
 
     <script>
@@ -454,6 +463,37 @@
             three_of_a_kind: '3 of a Kind', four_of_a_kind: '4 of a Kind', full_house: 'Full House',
             small_straight: 'Sm Straight', large_straight: 'Lg Straight', yahtzee: 'Yahtzee', chance: 'Chance'
         };
+
+        // --- DRAW AVATAR ---
+        function drawAvatar(canvasId, seed) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+
+            let hash = 0;
+            const str = String(seed);
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const gridSize = 16;
+            const pixelSize = canvas.width / gridSize;
+            for (let x = 0; x < 8; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const bitIndex = (x * gridSize + y) % 32;
+                    const secondary = ((hash >> 3) ^ (hash << 7)) + (y * 17);
+                    const val = ((hash >> bitIndex) ^ (secondary >> (bitIndex % 16))) & 1;
+                    const distFromCenter = Math.abs(y - 8) + Math.abs(x - 4);
+                    const fillChance = distFromCenter < 6 ? val : (val && ((hash >> (x + y)) & 3) === 0);
+                    if (fillChance) {
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                        ctx.fillRect((gridSize - 1 - x) * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
 
         function goHome() { window.location.href = 'index.html'; }
 
@@ -552,7 +592,7 @@
 
             // Draw avatars
             setTimeout(() => {
-                players.forEach(p => drawAvatar(`avatar-${p.uid}`, p.uid));
+                players.forEach(p => drawAvatar(`avatar-${p.uid}`, p.name));
             }, 0);
 
             const statusDiv = document.getElementById('lobby-status');
@@ -610,6 +650,7 @@
                 turnIndex: 0,
                 dice: [1,1,1,1,1],
                 held: [false,false,false,false,false],
+                positions: [null,null,null,null,null],
                 rollsLeft: 3,
                 turnStarted: false,
                 countdown: null
@@ -618,16 +659,51 @@
         }
 
         function initGameBoard() {
-            const table = document.getElementById('score-table');
-            const header = `<div class="score-row header"><div class="score-cell" data-i18n="yahtzee.label.category">${window.t('yahtzee.label.category', 'Category')}</div><div class="score-cell center" data-i18n="yahtzee.label.score">${window.t('yahtzee.label.score', 'Score')}</div></div>`;
-            const rows = CATS.map(cat => `
-                <div class="score-row" id="row-${cat}" onclick="scoreCategoryClick('${cat}')">
+            const numPlayers = gameState.playerOrder.length;
+            const displayOrder = [...gameState.playerOrder].sort((a,b) => {
+                if (a === currentUser.uid) return -1;
+                if (b === currentUser.uid) return 1;
+                return 0;
+            });
+            
+            let playerCols = "";
+            displayOrder.forEach(uid => {
+                const name = uid === currentUser.uid ? (window.t ? window.t('yahtzee.label.you', 'You') : 'You') : gameState.players[uid].name;
+                playerCols += `<div class="score-cell center">${name}</div>`;
+            });
+
+            const header = `<div class="score-row header" style="grid-template-columns: 2.2fr repeat(${numPlayers}, 1fr);">
+                <div class="score-cell" data-i18n="yahtzee.label.category">${window.t ? window.t('yahtzee.label.category', 'Category') : 'Category'}</div>
+                ${playerCols}
+            </div>`;
+
+            const rows = CATS.map(cat => {
+                let pCols = "";
+                displayOrder.forEach(uid => {
+                    pCols += `<div class="score-cell center" id="score-${uid}-${cat}"></div>`;
+                });
+                return `
+                <div class="score-row" id="row-${cat}" onclick="scoreCategoryClick('${cat}')" style="grid-template-columns: 2.2fr repeat(${numPlayers}, 1fr);">
                     <div class="score-cell" data-i18n="yahtzee.cat.${cat}">${CAT_NAMES[cat]}</div>
-                    <div class="score-cell center" id="score-${cat}"></div>
+                    ${pCols}
                 </div>
-            `).join('');
-            const upperBonusRow = `<div class="score-row disabled" id="row-bonus"><div class="score-cell" data-i18n="yahtzee.label.upper_bonus">${window.t('yahtzee.label.upper_bonus', 'Bonus:')}</div><div class="score-cell center" id="score-bonus">0/63</div></div>`;
-            const totalRow = `<div class="score-row total"><div class="score-cell" data-i18n="yahtzee.label.total">${window.t('yahtzee.label.total', 'Total:')}</div><div class="score-cell center" id="score-total">0</div></div>`;
+            `}).join('');
+
+            let pBonusCols = "";
+            displayOrder.forEach(uid => pBonusCols += `<div class="score-cell center" id="score-${uid}-bonus">0/63</div>`);
+            const upperBonusRow = `<div class="score-row disabled" id="row-bonus" style="grid-template-columns: 2.2fr repeat(${numPlayers}, 1fr);">
+                <div class="score-cell" data-i18n="yahtzee.label.upper_bonus">${window.t ? window.t('yahtzee.label.upper_bonus', 'Bonus:') : 'Bonus:'}</div>
+                ${pBonusCols}
+            </div>`;
+
+            let pTotalCols = "";
+            displayOrder.forEach(uid => pTotalCols += `<div class="score-cell center" id="score-${uid}-total">0</div>`);
+            const totalRow = `<div class="score-row total" style="grid-template-columns: 2.2fr repeat(${numPlayers}, 1fr);">
+                <div class="score-cell" data-i18n="yahtzee.label.total">${window.t ? window.t('yahtzee.label.total', 'Total:') : 'Total:'}</div>
+                ${pTotalCols}
+            </div>`;
+
+            const table = document.getElementById('score-table');
             table.innerHTML = header + rows + upperBonusRow + totalRow;
         }
 
@@ -643,6 +719,7 @@
 
             // Dice
             const container = document.getElementById('dice-container');
+            const cWidth = Math.max(1, container.clientWidth || 300);
             for(let i=0; i<5; i++) {
                 const wrapper = document.querySelector(`.die-wrapper[data-index="${i}"]`);
                 const val = gameState.dice[i];
@@ -650,6 +727,11 @@
                 wrapper.dataset.held = gameState.held[i] ? "true" : "false";
                 // Only show dice if turn started
                 wrapper.style.display = gameState.turnStarted ? 'flex' : 'none';
+                
+                if (gameState.positions && gameState.positions[i]) {
+                    wrapper.style.left = (gameState.positions[i].xPct * cWidth) + 'px';
+                    wrapper.style.top = gameState.positions[i].y + 'px';
+                }
             }
 
             // Rolls
@@ -660,47 +742,79 @@
             const rollBtn = document.getElementById('roll-btn');
             rollBtn.disabled = !isMyTurn || gameState.rollsLeft <= 0;
 
-            // Score Table (My Scores)
-            const myData = gameState.players[currentUser.uid];
-            let upperSum = 0;
-            CATS.forEach(cat => {
-                const el = document.getElementById(`score-${cat}`);
-                const row = document.getElementById(`row-${cat}`);
-                if (myData.scores && myData.scores[cat] !== undefined) {
-                    el.innerText = myData.scores[cat];
-                    el.classList.add('filled');
-                    row.classList.add('disabled');
-                    if (['ones','twos','threes','fours','fives','sixes'].includes(cat)) upperSum += myData.scores[cat];
-                } else {
-                    el.classList.remove('filled');
-                    row.classList.remove('disabled');
-                    if (isMyTurn && gameState.turnStarted) {
-                        el.innerText = calculateScore(cat, gameState.dice);
-                        el.classList.add('preview-score');
-                    } else {
-                        el.innerText = '';
+            // Score Table
+            gameState.playerOrder.forEach(uid => {
+                const pData = gameState.players[uid];
+                let pUpperSum = 0;
+                CATS.forEach(cat => {
+                    const el = document.getElementById(`score-${uid}-${cat}`);
+                    if (!el) return;
+                    
+                    if (pData.scores && pData.scores[cat] !== undefined) {
+                        el.innerText = pData.scores[cat];
+                        el.classList.add('filled');
                         el.classList.remove('preview-score');
+                        if (['ones','twos','threes','fours','fives','sixes'].includes(cat)) pUpperSum += pData.scores[cat];
+                    } else {
+                        el.classList.remove('filled');
+                        if (uid === currentUser.uid && isMyTurn && gameState.turnStarted) {
+                            el.innerText = calculateScore(cat, gameState.dice);
+                            el.classList.add('preview-score');
+                        } else {
+                            el.innerText = '';
+                            el.classList.remove('preview-score');
+                        }
                     }
+                });
+
+                const pBonusEl = document.getElementById(`score-${uid}-bonus`);
+                if (pBonusEl) {
+                    if (pUpperSum >= 63) pBonusEl.innerText = `${pUpperSum}/63 (+35)`;
+                    else pBonusEl.innerText = `${pUpperSum}/63`;
+                }
+                const pTotalEl = document.getElementById(`score-${uid}-total`);
+                if (pTotalEl) {
+                    pTotalEl.innerText = pData.total || 0;
                 }
             });
 
-            // Bonus and Total
-            const bonusEl = document.getElementById('score-bonus');
-            const bonusLabel = window.t('yahtzee.label.upper_bonus', 'Bonus:');
-            if (upperSum >= 63) bonusEl.innerText = `${upperSum}/63 (+35)`;
-            else bonusEl.innerText = `${upperSum}/63`;
-            document.getElementById('score-total').innerText = myData.total || 0;
+            const myData = gameState.players[currentUser.uid];
+            CATS.forEach(cat => {
+                const row = document.getElementById(`row-${cat}`);
+                if (!row) return;
+                if (myData.scores && myData.scores[cat] !== undefined) {
+                    row.classList.add('disabled');
+                } else {
+                    row.classList.remove('disabled');
+                }
+            });
 
             // Opponent Summary
             const summaryEl = document.getElementById('opponent-summary');
-            summaryEl.innerHTML = `<b>${window.t('liveyahtzee.label.scores_header', 'Scores:')}</b><br>` + gameState.playerOrder.map(uid => {
+            const displayOrder = [...gameState.playerOrder].sort((a,b) => {
+                if (a === currentUser.uid) return -1;
+                if (b === currentUser.uid) return 1;
+                return 0;
+            });
+            summaryEl.innerHTML = `<b>${window.t ? window.t('liveyahtzee.label.scores_header', 'Scores:') : 'Scores:'}</b><br>` + displayOrder.map(uid => {
                 const p = gameState.players[uid];
                 const isActive = uid === currentPlayerId;
+                const name = uid === currentUser.uid ? (window.t ? window.t('yahtzee.label.you', 'You') : 'You') : p.name;
                 return `<div class="opponent-score-row ${isActive ? 'active-turn' : ''}">
-                    <span>${isActive ? '▶ ' : ''}${p.name}</span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <canvas id="game-avatar-${uid}" width="24" height="24" style="border:1px solid black; width:24px; height:24px; image-rendering:pixelated;"></canvas>
+                        <span>${isActive ? '▶ ' : ''}${name}</span>
+                    </div>
                     <span>${p.total}</span>
                 </div>`;
             }).join('');
+
+            // Draw game avatars
+            setTimeout(() => {
+                gameState.playerOrder.forEach(uid => {
+                    drawAvatar(`game-avatar-${uid}`, gameState.players[uid].name);
+                });
+            }, 0);
         }
 
         function rollDiceClick() {
@@ -708,17 +822,53 @@
             if (currentPlayerId !== currentUser.uid || gameState.rollsLeft <= 0) return;
 
             const newDice = [...gameState.dice];
+            const container = document.getElementById('dice-container');
+            const cWidth = Math.max(1, container.clientWidth || 300);
+            const cHeight = Math.max(1, container.clientHeight || 130);
+            const dieSize = 50; 
+            
+            let placed = [];
+            let newPositions = gameState.positions ? [...gameState.positions] : [null,null,null,null,null];
+            
             for(let i=0; i<5; i++) {
-                if (!gameState.held[i]) newDice[i] = Math.floor(Math.random() * 6) + 1;
+                if (gameState.held[i] && newPositions[i]) {
+                    placed.push({
+                        x: newPositions[i].xPct * cWidth,
+                        y: newPositions[i].y
+                    });
+                }
+            }
+            
+            for(let i=0; i<5; i++) {
+                if (!gameState.held[i]) {
+                    newDice[i] = Math.floor(Math.random() * 6) + 1;
+                    
+                    let x, y;
+                    let attempts = 0;
+                    do {
+                        x = 10 + Math.floor(Math.random() * Math.max(1, cWidth - dieSize - 20));
+                        y = 10 + Math.floor(Math.random() * Math.max(1, cHeight - dieSize - 20));
+                        let overlap = false;
+                        for(let p of placed) {
+                            if (p && Math.hypot(p.x - x, p.y - y) < 65) { overlap = true; break; }
+                        }
+                        if (!overlap) break;
+                        attempts++;
+                    } while(attempts < 5000);
+                    
+                    placed.push({x,y});
+                    newPositions[i] = { xPct: x / cWidth, y: y };
+                }
             }
 
             matchRef.update({
                 dice: newDice,
                 rollsLeft: gameState.rollsLeft - 1,
-                turnStarted: true
+                turnStarted: true,
+                positions: newPositions
             });
-            // Update placement visually for roller
-            arrangeDiceRandomly();
+            
+            flashRefresh();
         }
 
         function toggleHold(idx) {
@@ -770,6 +920,7 @@
                     rollsLeft: 3,
                     dice: [1,1,1,1,1],
                     held: [false,false,false,false,false],
+                    positions: [null,null,null,null,null],
                     turnStarted: false
                 });
             }
@@ -817,15 +968,21 @@
             return `<svg width="100%" height="100%" viewBox="0 0 40 40">${dots}</svg>`;
         }
 
-        function arrangeDiceRandomly() {
-            const container = document.getElementById('dice-container');
-            const w = container.clientWidth; const h = container.clientHeight;
-            for(let i=0; i<5; i++) {
-                const wrapper = document.querySelector(`.die-wrapper[data-index="${i}"]`);
-                if (wrapper.dataset.held === "true") continue;
-                wrapper.style.left = (10 + Math.random() * (w - 60)) + 'px';
-                wrapper.style.top = (10 + Math.random() * (h - 60)) + 'px';
-            }
+        function flashRefresh() {
+            const mode = (window.rekindleGetDisplayMode ? window.rekindleGetDisplayMode() : localStorage.getItem('rekindle_display_mode')) || 'eink';
+            if (mode !== 'eink') return;
+            const target = document.querySelector('.window-content');
+            if (!target) return;
+            const rect = target.getBoundingClientRect();
+            const flash = document.createElement('div');
+            flash.style.position = 'fixed';
+            flash.style.top = rect.top + 'px'; flash.style.left = rect.left + 'px';
+            flash.style.width = rect.width + 'px'; flash.style.height = rect.height + 'px';
+            flash.style.backgroundColor = 'black'; flash.style.zIndex = '9999';
+            flash.style.pointerEvents = 'none'; flash.style.opacity = '1';
+            document.body.appendChild(flash);
+            void flash.offsetWidth;
+            setTimeout(() => { if (flash.parentNode) flash.parentNode.removeChild(flash); }, 300);
         }
 
         function showGameOver() {

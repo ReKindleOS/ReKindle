@@ -786,7 +786,7 @@
         </div>
     </div>
 
-    <script src="theme.js?v=14"></script> <!-- Inject Theme Script -->
+    <script src="theme.js?v=15"></script> <!-- Inject Theme Script -->
     <script src="js/i18n.js"></script>
     <script src="js/custom-select.js"></script>
 
@@ -1372,11 +1372,28 @@
                 key = 'rekindle_disable_games';
                 isEnabled = document.getElementById('toggle-games').checked;
                 localStorage.setItem(key, isEnabled);
+
+                if (isEnabled) {
+                    // Automatically switch to Classic layout when games are disabled
+                    localStorage.setItem('rekindle_layout', 'old');
+                    const layoutSelect = document.getElementById('layout-select');
+                    if (layoutSelect) {
+                        layoutSelect.value = 'old';
+                        if (window.rekindleRefreshCustomSelect) window.rekindleRefreshCustomSelect();
+                    }
+                }
+
                 if (currentUser) {
-                    db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({ disableGames: isEnabled }, { merge: true });
+                    const update = { disableGames: isEnabled };
+                    if (isEnabled) update.homeLayout = 'old';
+                    db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set(update, { merge: true });
                     triggerSettingsSyncSignal();
                 }
-                showModal(isEnabled ? "Games and entertainment apps are now disabled and hidden." : "Games and entertainment apps are now enabled.");
+
+                const msg = isEnabled ? 
+                    window.t('settings.modal.games_disabled', "Games are now disabled and hidden.") : 
+                    window.t('settings.modal.games_enabled', "Games are now enabled.");
+                showModal(msg);
                 return;
             }
 

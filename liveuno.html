@@ -8,7 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="theme.js"></script>
+    <script src="theme.js?v=15"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -632,8 +632,7 @@
             // Draw avatars
             setTimeout(() => {
                 players.forEach(p => {
-                    const seed = p.uid; // Use UID as deterministic seed
-                    drawAvatar(`avatar-${p.uid}`, seed);
+                    drawAvatar(`avatar-${p.uid}`, p.name);
                 });
             }, 0);
             
@@ -832,9 +831,20 @@
             
             // Status bar
             const turnName = turnId === currentUser.uid ? "Your Turn!" : `${gameState.players[turnId].name}'s Turn`;
-            document.getElementById('status-bar').innerText = turnName;
-            document.getElementById('status-bar').style.background = myTurn ? '#000' : '#eee';
-            document.getElementById('status-bar').style.color = myTurn ? '#fff' : '#000';
+            const turnStatusBar = document.getElementById('status-bar');
+            turnStatusBar.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                    <canvas id="status-avatar" width="24" height="24" style="border:1px solid black; width:24px; height:24px; image-rendering:pixelated; background:white;"></canvas>
+                    ${turnName}
+                </div>
+            `;
+            turnStatusBar.style.background = myTurn ? '#000' : '#eee';
+            turnStatusBar.style.color = myTurn ? '#fff' : '#000';
+            
+            // Draw status avatar
+            setTimeout(() => {
+                drawAvatar('status-avatar', gameState.players[turnId].name);
+            }, 0);
             
             const discardPile = gameState.discard || [];
             const topCard = discardPile[discardPile.length - 1];
@@ -868,13 +878,23 @@
                     const count = ((gameState.hands || {})[uid] || []).length;
                     const isActive = (uid === turnId);
                     oppDiv.innerHTML += `
-                        <div class="opponent ${isActive ? 'active-turn' : ''}">
+                        <div class="opponent ${isActive ? 'active-turn' : ''}" style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+                            <canvas id="game-avatar-${uid}" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:pixelated; background:white;"></canvas>
                             <div>${isActive ? '▶ ' : ''}${gameState.players[uid].name}</div>
                             <div style="font-size:0.8rem; font-weight:normal;">${count} cards</div>
                         </div>
                     `;
                 }
             });
+
+            // Draw game avatars
+            setTimeout(() => {
+                playerOrder.forEach(uid => {
+                    if (uid !== currentUser.uid) {
+                        drawAvatar(`game-avatar-${uid}`, gameState.players[uid].name);
+                    }
+                });
+            }, 0);
             
             // Auto action processing for drawn cards (e.g., if someone played a +2 on me, I must draw it)
             if (myTurn && gameState.actionPending) {

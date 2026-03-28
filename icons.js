@@ -733,13 +733,13 @@ const APPS = [
         filled: true,
         icon: '<rect x="6" y="4" width="20" height="24" rx="2" fill="none" stroke="black" stroke-width="2"/><ellipse cx="16" cy="16" rx="8" ry="5" fill="black" stroke="none" transform="rotate(-30 16 16)"/><text x="16" y="19" font-size="8" text-anchor="middle" font-weight="bold" fill="white" transform="rotate(-30 16 16)">UNO</text>'
     },
-    /*     {
-            id: 'liveyahtzee',
-            name: 'Yahtzee',
-            cat: 'live_game',
-            live: true,
-            icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="white" stroke="black" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="black"/><circle cx="22" cy="10" r="2.5" fill="black"/><circle cx="10" cy="22" r="2.5" fill="black"/><circle cx="22" cy="22" r="2.5" fill="black"/><circle cx="16" cy="16" r="2.5" fill="black"/>'
-        }, */
+    {
+        id: 'liveyahtzee',
+        name: 'Yahtzee',
+        cat: 'live_game',
+        live: true,
+        icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="white" stroke="black" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="black"/><circle cx="22" cy="10" r="2.5" fill="black"/><circle cx="10" cy="22" r="2.5" fill="black"/><circle cx="22" cy="22" r="2.5" fill="black"/><circle cx="16" cy="16" r="2.5" fill="black"/>'
+    },
     {
         id: 'pool2p',
         name: '8 Ball',
