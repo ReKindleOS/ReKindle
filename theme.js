@@ -628,9 +628,16 @@
         if (!db || !uid) return;
         var presenceRef = db.ref('presence/' + uid);
 
-        // Set presence to true and remove on disconnect
-        presenceRef.set(true);
-        presenceRef.onDisconnect().remove();
+        var connectedRef = db.ref('.info/connected');
+
+        connectedRef.on('value', function(snap) {
+            if (snap.val() === true) {
+                // We're connected! Set up the disconnect hook first
+                presenceRef.onDisconnect().remove();
+                // Then set our presence to true
+                presenceRef.set(true);
+            }
+        });
 
         // 🚀 OPTIMIZATION FOR KINDLE:
         // Only download the massive 'presence' object if the current page actually displays the count.
