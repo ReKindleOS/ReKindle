@@ -114,9 +114,20 @@
         // Set CSS custom property for apps that want selective scaling
         document.documentElement.style.setProperty('--rekindle-scale', finalScale);
 
+        var scaledMaxHeight = 95 / parseFloat(finalScale);
+
         style.textContent =
             '.dashboard, .desktop-wrapper, .sys-menu-bar, .window { ' +
             'zoom: ' + finalScale + '; ' +
+            '} ' +
+            ':root { ' +
+            '--scaled-window-vh: ' + scaledMaxHeight + 'vh; ' +
+            '} ' +
+            '.window { ' +
+            'max-height: ' + scaledMaxHeight + 'vh !important; ' +
+            '} ' +
+            '.window.scaled-height { ' +
+            'height: ' + scaledMaxHeight + 'vh !important; ' +
             '} ' +
             '@supports not (zoom: 1) { ' +
             '.dashboard, .desktop-wrapper, .window { ' +

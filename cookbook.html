@@ -62,8 +62,8 @@
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            height: 90vh;
-            width: 90%;
+            min-height: 90vh;
+            width: 100%;
             max-width: 800px;
             position: relative;
         }
@@ -776,56 +776,81 @@
                 let meals = [];
 
                 if (searchMode === 'ingredients') {
-                    // --- EXISTING INGREDIENT SEARCH LOGIC ---
+                    // --- INGREDIENT SEARCH LOGIC ---
+                    // Fetch candidate recipes for ALL ingredients in parallel,
+                    // then UNION (not intersect) the results, because the filter API
+                    // uses exact ingredient names (e.g. "Chicken Breasts" won't appear
+                    // in results for "chicken"). The detail verification pass handles
+                    // substring matching to confirm all search terms are present.
 
-                    // Fetch recipes for first ingredient
-                    const firstIngredient = searchIngredients[0];
-                    const res = await fetch(`${API_BASE}filter.php?i=${encodeURIComponent(firstIngredient)}`);
-                    const data = await res.json();
+                    var fetchPromises = searchIngredients.map(function(ing) {
+                        return fetch(API_BASE + 'filter.php?i=' + encodeURIComponent(ing))
+                            .then(function(r) { return r.json(); })
+                            .then(function(d) { return d.meals || []; })
+                            .catch(function() { return []; });
+                    });
 
-                    if (!data.meals) {
-                        container.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:20px;">${window.t('cookbook.status.none', 'No recipes found with those ingredients.')}</div>`;
-                        return;
-                    }
+                    var allResults = await Promise.all(fetchPromises);
 
-                    // If only one ingredient, use these results
                     if (searchIngredients.length === 1) {
-                        meals = data.meals;
+                        // Single ingredient — use results directly
+                        if (allResults[0].length === 0) {
+                            container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">' + window.t('cookbook.status.none', 'No recipes found with those ingredients.') + '</div>';
+                            return;
+                        }
+                        meals = allResults[0];
                     } else {
-                        // Multiple ingredients: fetch details and filter
+                        // Multiple ingredients — union all candidate meals, deduplicate by ID
                         container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">Finding matching recipes...</div>';
 
-                        const matchingMeals = [];
-                        const lowerIngredients = searchIngredients.map(i => i.toLowerCase());
+                        var mealMap = {};
+                        for (var si = 0; si < allResults.length; si++) {
+                            allResults[si].forEach(function(m) {
+                                if (!mealMap[m.idMeal]) {
+                                    mealMap[m.idMeal] = m;
+                                }
+                            });
+                        }
 
-                        // Check each recipe for all ingredients
-                        // Limit to 20 to avoid spamming API too much if first ingredient is generic like "egg"
-                        // But sticking to previous logic for now (which iterates all)
-                        for (const meal of data.meals) {
+                        var candidateMeals = Object.keys(mealMap).map(function(id) { return mealMap[id]; });
+
+                        if (candidateMeals.length === 0) {
+                            container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px;">' + window.t('cookbook.status.none', 'No recipes found with those ingredients.') + '</div>';
+                            return;
+                        }
+
+                        // Verification pass: fetch details and confirm ALL search terms appear
+                        var matchingMeals = [];
+                        var lowerIngredients = searchIngredients.map(function(i) { return i.toLowerCase(); });
+
+                        for (var ci = 0; ci < candidateMeals.length; ci++) {
+                            var meal = candidateMeals[ci];
                             try {
-                                const detailRes = await fetch(`${API_BASE}lookup.php?i=${meal.idMeal}`);
-                                const detailData = await detailRes.json();
-                                const fullMeal = detailData.meals[0];
+                                var detailRes = await fetch(API_BASE + 'lookup.php?i=' + meal.idMeal);
+                                var detailData = await detailRes.json();
+                                var fullMeal = detailData.meals[0];
 
                                 // Get all ingredients from this recipe
-                                const recipeIngredients = [];
-                                for (let i = 1; i <= 20; i++) {
-                                    const ing = fullMeal[`strIngredient${i}`];
+                                var recipeIngredients = [];
+                                for (var ri = 1; ri <= 20; ri++) {
+                                    var ing = fullMeal['strIngredient' + ri];
                                     if (ing && ing.trim()) {
                                         recipeIngredients.push(ing.toLowerCase());
                                     }
                                 }
 
-                                // Check if all search ingredients are in this recipe
-                                const hasAll = lowerIngredients.every(userIng =>
-                                    recipeIngredients.some(recipeIng => recipeIng.includes(userIng) || userIng.includes(recipeIng))
-                                );
+                                // Check if all search ingredients appear in the recipe
+                                var hasAll = lowerIngredients.every(function(userIng) {
+                                    return recipeIngredients.some(function(recipeIng) {
+                                        return recipeIng.indexOf(userIng) !== -1 || userIng.indexOf(recipeIng) !== -1;
+                                    });
+                                });
 
                                 if (hasAll) {
                                     matchingMeals.push(meal);
                                 }
                             } catch (e) {
-                                // Skip
+                                // Skip on error
                             }
                         }
                         meals = matchingMeals;
