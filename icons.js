@@ -500,13 +500,13 @@ const APPS = [
         id: 'checkers',
         name: 'Checkers',
         cat: 'games',
-        icon: '<circle cx="16" cy="16" r="10" fill="white" stroke="black" stroke-width="2"/>'
+        icon: '<circle cx="14" cy="18" r="7" fill="white" stroke="black" stroke-width="2"/><circle cx="20" cy="14" r="7" fill="black" stroke="black" stroke-width="2"/>'
     },
     {
         id: 'chess', // <-- THIS IS THE SINGLE PLAYER CHESS ID
         name: 'Chess',
         cat: 'games',
-        icon: '<path d="M22 26 H10 V23 H22 V26 M12 23 L13 15 C12 13 11 11 12 9 C13 5 17 4 20 5 C22 6 23 8 23 8 L21 12 L21 23 H12" fill="black" stroke="black" stroke-width="1" stroke-linejoin="round"/>' // <-- This icon is now a King/Queen (Black Piece)
+        icon: '<g transform="translate(-2, 2) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/></g><g transform="translate(8, 6) scale(0.8)"><path d="M20 26 H8 V23 H20 V26 M10 23 L11 15 C10 13 9 11 10 9 C11 5 15 4 18 5 C20 6 21 8 21 8 L19 12 L19 23 H10" fill="black" stroke="black" stroke-width="2" stroke-linejoin="round"/></g>'
     },
     {
         id: 'codebreaker',
@@ -626,7 +626,7 @@ const APPS = [
     },
     {
         id: 'tetris',
-        name: 'Blocks',
+        name: 'Tetris',
         cat: 'games',
         icon: '<path d="M6 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/><path d="M16 20 h10 v10 h-10 z" fill="black" stroke="none"/><path d="M16 10 h10 v10 h-10 z" fill="none" stroke="black" stroke-width="2"/>'
     },
@@ -738,13 +738,42 @@ const APPS = [
         name: 'Yahtzee',
         cat: 'live_game',
         live: true,
-        icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="white" stroke="black" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="black"/><circle cx="22" cy="10" r="2.5" fill="black"/><circle cx="10" cy="22" r="2.5" fill="black"/><circle cx="22" cy="22" r="2.5" fill="black"/><circle cx="16" cy="16" r="2.5" fill="black"/>'
+        icon: '<rect x="3" y="3" width="16" height="16" rx="2" fill="white" stroke="black" stroke-width="2"/><circle cx="7" cy="7" r="1.5" fill="black"/><circle cx="15" cy="15" r="1.5" fill="black"/><circle cx="7" cy="15" r="1.5" fill="black"/><circle cx="15" cy="7" r="1.5" fill="black"/><circle cx="11" cy="11" r="1.5" fill="black"/><rect x="13" y="13" width="16" height="16" rx="2" fill="white" stroke="black" stroke-width="2"/><circle cx="17" cy="17" r="1.5" fill="black"/><circle cx="25" cy="17" r="1.5" fill="black"/><circle cx="17" cy="21" r="1.5" fill="black"/><circle cx="25" cy="21" r="1.5" fill="black"/><circle cx="17" cy="25" r="1.5" fill="black"/><circle cx="25" cy="25" r="1.5" fill="black"/>'
+    },
+    {
+        id: 'livecheckers',
+        name: 'Checkers',
+        cat: 'live_game',
+        live: true,
+        icon: '<circle cx="14" cy="18" r="7" fill="white" stroke="black" stroke-width="2"/><circle cx="20" cy="14" r="7" fill="black" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'liveconnect4',
+        name: 'Connect 4',
+        cat: 'live_game',
+        live: true,
+        icon: '<rect x="4" y="4" width="24" height="24" fill="none"/><circle cx="10" cy="10" r="3"/><circle cx="22" cy="22" r="3" fill="black"/>'
+    },
+    {
+        id: 'livedotsandboxes',
+        name: 'Dots & Boxes',
+        cat: 'live_game',
+        live: true,
+        icon: '<circle cx="10" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="22" r="1.5" fill="black" stroke="none"/><line x1="10" y1="10" x2="16" y2="10" stroke="black" stroke-width="2"/><line x1="16" y1="10" x2="16" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="10" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="16" x2="16" y2="16" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'livetictactoe',
+        name: 'Tic-Tac-Toe',
+        es6: true,
+        cat: 'live_game',
+        live: true,
+        icon: '<line x1="12" y1="6" x2="12" y2="26"/><line x1="20" y1="6" x2="20" y2="26"/><line x1="6" y1="12" x2="26" y2="12"/><line x1="6" y1="20" x2="26" y2="20"/>'
     },
     {
         id: 'pool2p',
         name: '8 Ball',
         cat: 'two_player',
-        icon: '<circle cx="21" cy="11" r="8" fill="white" stroke="black" stroke-width="2"/><circle cx="13" cy="19" r="10" fill="white" stroke="black" stroke-width="2"/><text x="13" y="23.5" font-size="11" font-weight="bold" text-anchor="middle" fill="black">8</text>'
+        icon: '<circle cx="16" cy="16" r="14" fill="none" stroke="black" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" text-anchor="middle" fill="black">8</text>'
     },
     {
         id: 'doom',
@@ -763,7 +792,7 @@ const APPS = [
         id: 'yahtzee',
         name: 'Yahtzee',
         cat: 'games',
-        icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="white" stroke="black" stroke-width="2"/><circle cx="10" cy="10" r="2.5" fill="black"/><circle cx="22" cy="10" r="2.5" fill="black"/><circle cx="10" cy="22" r="2.5" fill="black"/><circle cx="22" cy="22" r="2.5" fill="black"/><circle cx="16" cy="16" r="2.5" fill="black"/>'
+        icon: '<rect x="3" y="3" width="16" height="16" rx="2" fill="white" stroke="black" stroke-width="2"/><circle cx="7" cy="7" r="1.5" fill="black"/><circle cx="15" cy="15" r="1.5" fill="black"/><circle cx="7" cy="15" r="1.5" fill="black"/><circle cx="15" cy="7" r="1.5" fill="black"/><circle cx="11" cy="11" r="1.5" fill="black"/><rect x="13" y="13" width="16" height="16" rx="2" fill="white" stroke="black" stroke-width="2"/><circle cx="17" cy="17" r="1.5" fill="black"/><circle cx="25" cy="17" r="1.5" fill="black"/><circle cx="17" cy="21" r="1.5" fill="black"/><circle cx="25" cy="21" r="1.5" fill="black"/><circle cx="17" cy="25" r="1.5" fill="black"/><circle cx="25" cy="25" r="1.5" fill="black"/>'
     }
 ];
 

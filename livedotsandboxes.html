@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title data-i18n="app.livedotsandboxes.name">Dots & Boxes</title>
+    <!-- Firebase App -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="theme.js?v=15"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --player2-pattern: repeating-linear-gradient(45deg, #000, #000 4px, transparent 4px, transparent 8px);
+        }
+
+        * { transition: none !important; animation: none !important; }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-image: repeating-linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), repeating-linear-gradient(45deg, #e5e5e5 25%, white 25%, white 75%, #e5e5e5 75%, #e5e5e5);
+            background-position: 0 0, 2px 2px;
+            background-size: 4px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 800px;
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin: 10px;
+            font-size: 1rem;
+        }
+        .sys-btn:active { background: black; color: white; box-shadow: none; transform: translate(3px, 3px); }
+
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 10px 0;
+            margin-bottom: 10px;
+            background: #eee;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        .score-block { display: flex; align-items: center; }
+        .score-indicator { width: 16px; height: 16px; border: 2px solid black; margin-right: 8px; display: inline-block; }
+        .score-indicator.p1 { background-color: black; }
+        .score-indicator.p2 { background-image: var(--player2-pattern); }
+
+        .player-list {
+            margin: 15px 0;
+            text-align: left;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            background: white;
+        }
+
+        /* DOTS & BOXES BOARD */
+        #game-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            min-height: 250px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: 8px 1fr 8px 1fr 8px 1fr 8px 1fr 8px;
+            grid-template-rows: 8px 1fr 8px 1fr 8px 1fr 8px 1fr 8px;
+            gap: 0;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1/1;
+        }
+
+        .dot { background-color: black; width: 100%; height: 100%; }
+        .line { background-color: transparent; cursor: pointer; z-index: 5; }
+        .line.h { position: relative; }
+        .line.h::after { content: ''; position: absolute; top: -10px; bottom: -10px; left: 0; right: 0; }
+        .line.v { position: relative; }
+        .line.v::after { content: ''; position: absolute; left: -10px; right: -10px; top: 0; bottom: 0; }
+        .line:not(.claimed):hover { background-color: #ddd; }
+
+        .line.claimed.p1 { background-color: black; }
+        .line.claimed.p2 { background-image: var(--player2-pattern); }
+
+        .box { background-color: transparent; z-index: 1; }
+        .box.claimed.p1 { background-color: black; }
+        .box.claimed.p2 { background-image: var(--player2-pattern); }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 30px;
+            width: 80%;
+            max-width: 350px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="goHome()">X</div>
+            <div class="title-text" data-i18n="app.livedotsandboxes.name">Dots & Boxes</div>
+        </div>
+
+        <!-- MENU -->
+        <div class="window-content" id="screen-menu">
+            <h1 style="font-size: 2.5rem; margin: 10px 0;">DOTS & BOXES</h1>
+            <p>Real-time Multiplayer.</p>
+            <button class="sys-btn" onclick="hostGame()">Host Game</button>
+            <button class="sys-btn" onclick="goHome()">Back</button>
+        </div>
+        
+        <div class="window-content" id="screen-loading" style="display:none; justify-content:center;">
+            <h2>Loading...</h2>
+        </div>
+
+        <!-- LOBBY -->
+        <div class="window-content" id="screen-lobby" style="display:none;">
+            <h2>Lobby</h2>
+            <div style="font-size: 1.2rem; margin-bottom: 10px;" id="lobby-status">Waiting for opponent...</div>
+            <div class="player-list" id="lobby-players"></div>
+            
+            <div id="host-controls" style="display:none; width:100%; margin-top:10px;">
+                <p style="font-size: 0.9rem;">Game starts automatically when an opponent joins.</p>
+            </div>
+            <button class="sys-btn" onclick="leaveMatch()">Leave Lobby</button>
+        </div>
+
+        <!-- GAME -->
+        <div class="window-content" id="screen-game" style="display:none; padding:10px;">
+            <div id="status-bar">
+                <div class="score-block"><div class="score-indicator p1"></div><span id="score-p1">0</span></div>
+                <div id="turn-indicator" style="flex-grow:1;">Waiting...</div>
+                <div class="score-block"><span id="score-p2">0</span><div class="score-indicator p2" style="margin-right:0; margin-left:8px;"></div></div>
+            </div>
+            
+            <div id="player-banner" style="width: 100%; display: flex; justify-content: space-between; margin-bottom: 10px; border: 2px solid black; padding: 5px; background: #fafafa; font-size: 0.8rem;">
+                <div id="player-1" style="display:flex; align-items:center; gap:8px;">
+                    <canvas id="avatar-1" width="32" height="32" style="border:1px solid black; width:32px; height:32px; image-rendering:pixelated; background:white;"></canvas>
+                    <div><div style="font-weight:bold;">PLAYER 1 (SOLID)</div><div id="name-1">...</div></div>
+                </div>
+                <div id="player-2" style="display:flex; align-items:center; gap:8px; flex-direction: row-reverse; text-align: right;">
+                    <canvas id="avatar-2" width="32" height="32" style="border:1px solid black; width:32px; height:32px; image-rendering:pixelated; background:white;"></canvas>
+                    <div><div style="font-weight:bold;">PLAYER 2 (STRIPES)</div><div id="name-2">...</div></div>
+                </div>
+            </div>
+
+            <div id="game-container">
+                <div id="board"></div>
+            </div>
+
+            <div style="margin-top: 10px; display: flex; width: 100%;">
+                <button class="sys-btn" style="flex:1" id="new-game-btn" onclick="requestNewGame()">Rematch</button>
+                <button class="sys-btn" style="flex:1" onclick="leaveMatch()">Quit</button>
+            </div>
+        </div>
+        
+        <!-- MODALS -->
+        <div id="winner-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 id="winner-text">Game Over</h2>
+                <button class="sys-btn" onclick="document.getElementById('winner-modal').style.display='none'">Back to Board</button>
+            </div>
+        </div>
+
+        <div id="custom-alert-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="custom-alert-title">Notice</h3>
+                <p id="custom-alert-msg" style="margin: 15px 0;"></p>
+                <button class="sys-btn" onclick="closeAlert()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        
+        const auth = firebase.auth();
+        const rtdb = firebase.database();
+        
+        let currentUser = null;
+        let matchId = null;
+        let isHost = false;
+        let matchRef = null;
+        let gameState = null;
+        let mySymbol = null; // 1 or 2
+        
+        const GRID_SIZE = 5;
+
+        // Ensure board resize on window changes
+        window.addEventListener('resize', resizeBoard);
+        function resizeBoard() {
+            const board = document.getElementById('board');
+            if (board) board.style.height = board.offsetWidth + 'px';
+        }
+
+        function drawAvatar(canvasId, seed) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+
+            if (Array.isArray(seed)) {
+                const gridSize = Math.sqrt(seed.length);
+                const pixelSize = canvas.width / gridSize;
+                for (let i = 0; i < seed.length; i++) {
+                    if (seed[i] === 1) {
+                        const x = i % gridSize;
+                        const y = Math.floor(i / gridSize);
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+                return;
+            }
+
+            let hash = 0;
+            const str = String(seed);
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            const gridSize = 16;
+            const pixelSize = canvas.width / gridSize;
+            for (let x = 0; x < 8; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const bitIndex = (x * gridSize + y) % 32;
+                    const secondary = ((hash >> 3) ^ (hash << 7)) + (y * 17);
+                    const val = ((hash >> bitIndex) ^ (secondary >> (bitIndex % 16))) & 1;
+                    const distFromCenter = Math.abs(y - 8) + Math.abs(x - 4);
+                    const fillChance = distFromCenter < 6 ? val : (val && ((hash >> (x + y)) & 3) === 0);
+                    if (fillChance) {
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                        ctx.fillRect((gridSize - 1 - x) * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        function goHome() { window.location.href = 'index.html'; }
+        function showAlert(title, msg) {
+            document.getElementById('custom-alert-title').innerText = title;
+            document.getElementById('custom-alert-msg').innerText = msg;
+            document.getElementById('custom-alert-modal').style.display = 'flex';
+        }
+        function closeAlert() { document.getElementById('custom-alert-modal').style.display = 'none'; }
+
+        auth.onAuthStateChanged(function(user) {
+            if (user) {
+                currentUser = { uid: user.uid, name: (user.email ? user.email.split('@')[0] : 'Player') };
+                checkUrlForMatch();
+            } else {
+                showAlert("Sign In Required", "Please log in from the home screen first.");
+                setTimeout(goHome, 3000);
+            }
+        });
+        
+        function checkUrlForMatch() {
+            const params = new URLSearchParams(window.location.search);
+            const mId = params.get('matchId');
+            if (mId) { joinMatch(mId); } else { showScreen('menu'); }
+        }
+        
+        function showScreen(screen) {
+            document.getElementById('screen-menu').style.display = 'none';
+            document.getElementById('screen-lobby').style.display = 'none';
+            document.getElementById('screen-loading').style.display = 'none';
+            document.getElementById('screen-game').style.display = 'none';
+            document.getElementById('screen-' + screen).style.display = 'flex';
+        }
+        
+        function generateId() { return Math.random().toString(36).substr(2, 9); }
+
+        async function hostGame() {
+            showScreen('loading');
+            matchId = generateId();
+            isHost = true;
+            mySymbol = 1;
+            
+            const mmRef = rtdb.ref('matchmaking/dotsandboxes/' + matchId);
+            await mmRef.set({
+                hostUid: currentUser.uid,
+                hostName: currentUser.name,
+                status: 'waiting',
+                playerCount: 1,
+                maxPlayers: 2,
+                createdAt: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            matchRef = rtdb.ref('games/dotsandboxes/' + matchId);
+            const initialGame = {
+                status: 'lobby',
+                host: currentUser.uid,
+                players: {},
+            };
+            initialGame.players[currentUser.uid] = { name: currentUser.name, joinedAt: Date.now(), symbol: 1 };
+            
+            mmRef.onDisconnect().remove();
+            matchRef.onDisconnect().remove();
+            
+            await matchRef.set(initialGame);
+            listenToMatch();
+            showScreen('lobby');
+            document.getElementById('host-controls').style.display = 'block';
+        }
+        
+        async function joinMatch(mId) {
+            showScreen('loading');
+            matchId = mId;
+            isHost = false;
+            
+            matchRef = rtdb.ref('games/dotsandboxes/' + matchId);
+            const snap = await matchRef.once('value');
+            if (!snap.exists()) {
+                showAlert("Not Found", "Game not found!");
+                goHome();
+                return;
+            }
+            
+            const state = snap.val();
+            if (state.status === 'playing' && !state.players[currentUser.uid]) {
+                showAlert("Error", "Game already started!");
+                goHome(); return;
+            }
+            
+            const players = state.players || {};
+            if (state.status === 'lobby' && Object.keys(players).length >= 2 && !players[currentUser.uid]) {
+                showAlert("Lobby Full", "Game is full!");
+                goHome(); return;
+            }
+            
+            if (players[currentUser.uid]) {
+                mySymbol = players[currentUser.uid].symbol;
+            } else {
+                mySymbol = 2;
+                await matchRef.child('players').child(currentUser.uid).set({
+                    name: currentUser.name,
+                    joinedAt: Date.now(),
+                    symbol: 2
+                });
+                if (Object.keys(players).length === 1) { await startGame(); }
+            }
+            
+            listenToMatch();
+            showScreen('lobby');
+        }
+        
+        async function startGame() {
+            const hLines = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE - 1).fill(0));
+            const vLines = Array(GRID_SIZE - 1).fill(null).map(() => Array(GRID_SIZE).fill(0));
+            const boxes = Array(GRID_SIZE - 1).fill(null).map(() => Array(GRID_SIZE - 1).fill(0));
+
+            await matchRef.update({
+                status: 'playing',
+                turn: 1,
+                scores: { 1: 0, 2: 0 },
+                hLines: hLines,
+                vLines: vLines,
+                boxes: boxes,
+                winner: null,
+                rematchReq: null
+            });
+            rtdb.ref('matchmaking/dotsandboxes/' + matchId).remove();
+        }
+
+        function leaveMatch() {
+            if (matchRef && currentUser) {
+                if (isHost && gameState && gameState.status === 'lobby') {
+                    rtdb.ref('matchmaking/dotsandboxes/' + matchId).remove();
+                    matchRef.remove();
+                } else {
+                    matchRef.child('players').child(currentUser.uid).remove();
+                }
+            }
+            goHome();
+        }
+
+        function listenToMatch() {
+            matchRef.on('value', function(snap) {
+                const data = snap.val();
+                if (!data) {
+                    showAlert("Game Closed", "The match has been ended.");
+                    goHome();
+                    return;
+                }
+                const oldState = gameState;
+                gameState = data;
+                
+                if (gameState.status === 'lobby') {
+                    updateLobbyUI();
+                } else if (gameState.status === 'playing' || gameState.status === 'finished') {
+                    if (document.getElementById('screen-game').style.display === 'none') {
+                        showScreen('game');
+                        updatePlayerInfo();
+                    }
+                    renderBoard();
+                    checkStatus();
+
+                    if(gameState.status === 'finished' && (!oldState || oldState.status !== 'finished')){
+                       showWinner();
+                    }
+                }
+            });
+        }
+
+        function updateLobbyUI() {
+            const players = Object.entries(gameState.players || {}).map(entry => ({ uid: entry[0], name: entry[1].name, joinedAt: entry[1].joinedAt })).sort((a,b)=>a.joinedAt-b.joinedAt);
+            const listDiv = document.getElementById('lobby-players');
+            listDiv.innerHTML = players.map(p => '<div style="display:flex; align-items:center; gap:10px; font-weight:bold; font-size:1.1rem; border-bottom:1px solid #eee; padding:5px 0;"><canvas id="avatar-' + p.uid + '" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; image-rendering:pixelated;"></canvas>' + p.name + '</div>').join('');
+            
+            setTimeout(() => { players.forEach(p => window.rekindleFetchAvatarSeed(rtdb, p.uid, seed => drawAvatar('avatar-' + p.uid, seed))); }, 0);
+            
+            if (players.length >= 2 && gameState.status === 'lobby') {
+                document.getElementById('lobby-status').innerText = "Game starting...";
+            }
+        }
+
+        function updatePlayerInfo() {
+            const players = Object.keys(gameState.players || {}).map(k => ({uid: k, ...gameState.players[k]}));
+            const p1 = players.find(p => p.symbol === 1);
+            const p2 = players.find(p => p.symbol === 2);
+
+            if (p1) {
+                document.getElementById('name-1').innerText = p1.name;
+                window.rekindleFetchAvatarSeed(rtdb, p1.uid, seed => drawAvatar('avatar-1', seed));
+            }
+            if (p2) {
+                document.getElementById('name-2').innerText = p2.name;
+                window.rekindleFetchAvatarSeed(rtdb, p2.uid, seed => drawAvatar('avatar-2', seed));
+            }
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            
+            const { hLines, vLines, boxes } = gameState;
+            if (!hLines || !vLines || !boxes) return;
+
+            for (let cssRow = 0; cssRow < (GRID_SIZE * 2) - 1; cssRow++) {
+                for (let cssCol = 0; cssCol < (GRID_SIZE * 2) - 1; cssCol++) {
+                    const el = document.createElement('div');
+
+                    if (cssRow % 2 === 0 && cssCol % 2 === 0) {
+                        el.className = 'dot';
+                    } else if (cssRow % 2 === 0 && cssCol % 2 !== 0) {
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'line h';
+                        if (hLines[r] && hLines[r][c] !== 0) {
+                            el.classList.add('claimed', hLines[r][c] === 1 ? 'p1' : 'p2');
+                        } else {
+                            el.onclick = () => handleLineClick('h', r, c);
+                        }
+                    } else if (cssRow % 2 !== 0 && cssCol % 2 === 0) {
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'line v';
+                        if (vLines[r] && vLines[r][c] !== 0) {
+                            el.classList.add('claimed', vLines[r][c] === 1 ? 'p1' : 'p2');
+                        } else {
+                            el.onclick = () => handleLineClick('v', r, c);
+                        }
+                    } else {
+                        const r = Math.floor(cssRow / 2);
+                        const c = Math.floor(cssCol / 2);
+                        el.className = 'box';
+                        if (boxes[r] && boxes[r][c] !== 0) {
+                            el.classList.add('claimed', boxes[r][c] === 1 ? 'p1' : 'p2');
+                        }
+                    }
+
+                    el.style.gridRow = cssRow + 1;
+                    el.style.gridColumn = cssCol + 1;
+                    boardEl.appendChild(el);
+                }
+            }
+            setTimeout(resizeBoard, 50);
+        }
+
+        function handleLineClick(type, r, c) {
+            if (gameState.status !== 'playing') return;
+            if (gameState.turn !== mySymbol) return;
+
+            // Clone state
+            let newHLines = (gameState.hLines || []).map(row => [...row]);
+            let newVLines = (gameState.vLines || []).map(row => [...row]);
+            let newBoxes = (gameState.boxes || []).map(row => [...row]);
+
+            if (type === 'h') {
+                if (newHLines[r][c] !== 0) return;
+                newHLines[r][c] = mySymbol;
+            } else {
+                if (newVLines[r][c] !== 0) return;
+                newVLines[r][c] = mySymbol;
+            }
+
+            let boxesWon = 0;
+
+            const isBoxComplete = (br, bc) => {
+                return newHLines[br][bc] !== 0 && newHLines[br + 1][bc] !== 0 && 
+                       newVLines[br][bc] !== 0 && newVLines[br][bc + 1] !== 0;
+            };
+
+            if (type === 'h') {
+                if (r > 0 && isBoxComplete(r - 1, c)) {
+                    newBoxes[r - 1][c] = mySymbol;
+                    boxesWon++;
+                }
+                if (r < GRID_SIZE - 1 && isBoxComplete(r, c)) {
+                    newBoxes[r][c] = mySymbol;
+                    boxesWon++;
+                }
+            } else {
+                if (c > 0 && isBoxComplete(r, c - 1)) {
+                    newBoxes[r][c - 1] = mySymbol;
+                    boxesWon++;
+                }
+                if (c < GRID_SIZE - 1 && isBoxComplete(r, c)) {
+                    newBoxes[r][c] = mySymbol;
+                    boxesWon++;
+                }
+            }
+
+            let newScores = { ...gameState.scores };
+            if (boxesWon > 0) {
+                newScores[mySymbol] += boxesWon;
+            }
+
+            const totalBoxes = (GRID_SIZE - 1) * (GRID_SIZE - 1);
+            const isGameOver = (newScores[1] + newScores[2]) === totalBoxes;
+            
+            let updates = {
+                hLines: newHLines,
+                vLines: newVLines,
+                boxes: newBoxes,
+                scores: newScores,
+                turn: boxesWon > 0 ? mySymbol : (mySymbol === 1 ? 2 : 1)
+            };
+
+            if (isGameOver) {
+                updates.status = 'finished';
+                if (newScores[1] > newScores[2]) updates.winner = 1;
+                else if (newScores[2] > newScores[1]) updates.winner = 2;
+                else updates.winner = 'draw';
+            }
+
+            matchRef.update(updates);
+        }
+
+        function checkStatus() {
+            document.getElementById('score-p1').innerText = gameState.scores ? gameState.scores[1] : 0;
+            document.getElementById('score-p2').innerText = gameState.scores ? gameState.scores[2] : 0;
+
+            const turnEl = document.getElementById('turn-indicator');
+            let isMyTurn = (gameState.turn === mySymbol);
+
+            if (gameState.status === 'finished') {
+                if (gameState.winner === 'draw') {
+                    turnEl.innerText = "Draw!";
+                } else {
+                    const winnerPlayer = Object.values(gameState.players).find(p => p.symbol === gameState.winner);
+                    turnEl.innerText = (winnerPlayer ? winnerPlayer.name : `Player ${gameState.winner}`) + " Wins!";
+                }
+            } else {
+                turnEl.innerText = (gameState.turn === 1 ? "Player 1's Turn" : "Player 2's Turn") + (isMyTurn ? " [YOU]" : "");
+            }
+            
+            const newGameBtn = document.getElementById('new-game-btn');
+            if(gameState.status === 'finished') {
+                newGameBtn.style.display = 'block';
+                if(gameState.rematchReq === mySymbol) {
+                    newGameBtn.innerText = "Waiting for opp...";
+                    newGameBtn.disabled = true;
+                } else {
+                    newGameBtn.innerText = "Rematch";
+                    newGameBtn.disabled = false;
+                }
+            } else {
+                newGameBtn.style.display = 'none';
+            }
+        }
+
+        function showWinner() {
+            const winnerText = document.getElementById('winner-text');
+            if(gameState.winner === 'draw') {
+                winnerText.innerText = "It's a Draw!";
+            } else {
+                const winnerPlayer = Object.values(gameState.players).find(p => p.symbol === gameState.winner);
+                winnerText.innerText = (winnerPlayer ? winnerPlayer.name : `Player ${gameState.winner}`) + " Wins!";
+            }
+            document.getElementById('winner-modal').style.display = 'flex';
+        }
+
+        async function requestNewGame() {
+            if (!gameState || gameState.status !== 'finished') return;
+            
+            if (gameState.rematchReq && gameState.rematchReq !== mySymbol) {
+                const pKeys = Object.keys(gameState.players);
+                
+                const hLines = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE - 1).fill(0));
+                const vLines = Array(GRID_SIZE - 1).fill(null).map(() => Array(GRID_SIZE).fill(0));
+                const boxes = Array(GRID_SIZE - 1).fill(null).map(() => Array(GRID_SIZE - 1).fill(0));
+                                
+                const updates = {
+                    status: 'playing',
+                    turn: 1,
+                    scores: { 1: 0, 2: 0 },
+                    hLines: hLines,
+                    vLines: vLines,
+                    boxes: boxes,
+                    winner: null,
+                    rematchReq: null
+                };
+                
+                // Swap symbols
+                updates[`players/${pKeys[0]}/symbol`] = gameState.players[pKeys[0]].symbol === 1 ? 2 : 1;
+                updates[`players/${pKeys[1]}/symbol`] = gameState.players[pKeys[1]].symbol === 1 ? 2 : 1;
+                mySymbol = mySymbol === 1 ? 2 : 1;
+                
+                await matchRef.update(updates);
+                document.getElementById('winner-modal').style.display = 'none';
+            } else {
+                await matchRef.update({ rematchReq: mySymbol });
+            }
+        }
+    
+        
+        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+        if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+    </script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11" defer></script>
+</body>
+</html>

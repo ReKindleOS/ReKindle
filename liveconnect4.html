@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title data-i18n="app.liveconnect4.name">Connect 4</title>
+    <!-- Firebase App -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="theme.js?v=15"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --chip-p1: #000000;
+            --chip-p2: #ffffff;
+        }
+
+        * { transition: none !important; animation: none !important; }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            background-image: repeating-linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), repeating-linear-gradient(45deg, #e5e5e5 25%, white 25%, white 75%, #e5e5e5 75%, #e5e5e5);
+            background-position: 0 0, 2px 2px;
+            background-size: 4px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 800px;
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+        .close-box:active { background: black; color: white; transform: translate(1px, 1px); box-shadow: none; }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            margin: 10px;
+            font-size: 1rem;
+        }
+        .sys-btn:active { background: black; color: white; box-shadow: none; transform: translate(3px, 3px); }
+        .sys-btn.active-btn { background: black; color: white; box-shadow: none; transform: translate(1px, 1px); }
+
+        #status-bar {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 2px solid black;
+            padding: 10px 0;
+            margin-bottom: 15px;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .player-list {
+            margin: 15px 0;
+            text-align: left;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            background: white;
+        }
+
+        /* --- CONNECT 4 BOARD --- */
+        .board-wrapper {
+            background: black;
+            padding: 6px;
+            border: 2px solid black;
+            border-bottom-width: 8px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .board {
+            display: grid;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            flex-grow: 1;
+        }
+
+        .column > * + * { margin-top: 4px; }
+        .column:hover { background-color: #f0f0f0; }
+
+        .slot {
+            width: 100%;
+            border: 2px solid #999;
+            border-radius: 50%;
+            background: white;
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .chip {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            border: 2px solid black;
+            box-sizing: border-box;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .chip.p1 { background-color: var(--chip-p1); }
+        .chip.p2 { background-color: var(--chip-p2); background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, #999 2px, #999 3px); }
+
+        .slot.winner { background-color: black; border-color: black; }
+        .slot.winner .chip { filter: invert(1); }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 30px;
+            width: 80%;
+            max-width: 350px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="goHome()">X</div>
+            <div class="title-text" data-i18n="app.liveconnect4.name">Connect 4</div>
+        </div>
+
+        <!-- MENU -->
+        <div class="window-content" id="screen-menu">
+            <h1 style="font-size: 3rem; margin: 10px 0;">CONNECT 4</h1>
+            <p>Real-time Multiplayer.</p>
+            <button class="sys-btn" onclick="toggleModeMenu()" id="menu-mode-btn" data-i18n="connect4.btn.mode" data-i18n-args='{"num": 4}' style="width: 200px; margin-bottom: 20px;">Mode: 4</button>
+            <button class="sys-btn" onclick="hostGame()" style="width: 200px;">Host Game</button>
+            <button class="sys-btn" onclick="goHome()" style="width: 200px;">Back</button>
+        </div>
+        
+        <div class="window-content" id="screen-loading" style="display:none; justify-content:center;">
+            <h2>Loading...</h2>
+        </div>
+
+        <!-- LOBBY -->
+        <div class="window-content" id="screen-lobby" style="display:none;">
+            <h2>Lobby</h2>
+            <div style="font-size: 1.2rem; margin-bottom: 10px;" id="lobby-status">Waiting for opponent...</div>
+            <div class="player-list" id="lobby-players"></div>
+            
+            <div id="host-controls" style="display:none; width:100%; margin-top:10px;">
+                <p style="font-size: 0.9rem;">Game starts automatically when an opponent joins.</p>
+                <div style="display:flex; justify-content:center;">
+                    <button class="sys-btn" onclick="toggleModeLobby()" id="lobby-mode-btn" data-i18n="connect4.btn.mode" data-i18n-args='{"num": 4}'>Mode: 4</button>
+                </div>
+            </div>
+            <button class="sys-btn" onclick="leaveMatch()">Leave Lobby</button>
+        </div>
+
+        <!-- GAME -->
+        <div class="window-content" id="screen-game" style="display:none; padding:10px;">
+            <div id="status-bar">Waiting...</div>
+            
+            <div id="player-banner" style="width: 100%; display: flex; justify-content: space-between; margin-bottom: 10px; border: 2px solid black; padding: 5px; background: #fafafa; font-size: 0.8rem;">
+                <div id="player-1" style="display:flex; align-items:center; gap:8px;">
+                    <canvas id="avatar-1" width="32" height="32" style="border:1px solid black; width:32px; height:32px; image-rendering:pixelated; background:white;"></canvas>
+                    <div><div style="font-weight:bold;">PLAYER 1 (BLACK)</div><div id="name-1">...</div></div>
+                </div>
+                <div id="player-2" style="display:flex; align-items:center; gap:8px; flex-direction: row-reverse; text-align: right;">
+                    <canvas id="avatar-2" width="32" height="32" style="border:1px solid black; width:32px; height:32px; image-rendering:pixelated; background:white;"></canvas>
+                    <div><div style="font-weight:bold;">PLAYER 2 (WHITE)</div><div id="name-2">...</div></div>
+                </div>
+            </div>
+
+            <div class="board-wrapper">
+                <div class="board" id="game-board"></div>
+            </div>
+
+            <div style="margin-top: 10px; display: flex; width: 100%;">
+                <button class="sys-btn" style="flex:1" id="new-game-btn" onclick="requestNewGame()">Rematch</button>
+                <button class="sys-btn" style="flex:1" onclick="leaveMatch()">Quit</button>
+            </div>
+        </div>
+        
+        <!-- MODALS -->
+        <div id="winner-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 id="winner-text">Game Over</h2>
+                <button class="sys-btn" onclick="document.getElementById('winner-modal').style.display='none'">Back to Board</button>
+            </div>
+        </div>
+
+        <div id="custom-alert-modal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 id="custom-alert-title">Notice</h3>
+                <p id="custom-alert-msg" style="margin: 15px 0;"></p>
+                <button class="sys-btn" onclick="closeAlert()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            databaseURL: "https://rekindle-dd1fa-default-rtdb.firebaseio.com",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+        
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        
+        const auth = firebase.auth();
+        const rtdb = firebase.database();
+        
+        let currentUser = null;
+        let matchId = null;
+        let isHost = false;
+        let matchRef = null;
+        let gameState = null;
+        let mySymbol = null; // 1 or 2
+        
+        let lobbyWinLength = 4;
+
+        function drawAvatar(canvasId, seed) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+
+            if (Array.isArray(seed)) {
+                const gridSize = Math.sqrt(seed.length);
+                const pixelSize = canvas.width / gridSize;
+                for (let i = 0; i < seed.length; i++) {
+                    if (seed[i] === 1) {
+                        const x = i % gridSize;
+                        const y = Math.floor(i / gridSize);
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+                return;
+            }
+
+            let hash = 0;
+            const str = String(seed);
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            const gridSize = 16;
+            const pixelSize = canvas.width / gridSize;
+            for (let x = 0; x < 8; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const bitIndex = (x * gridSize + y) % 32;
+                    const secondary = ((hash >> 3) ^ (hash << 7)) + (y * 17);
+                    const val = ((hash >> bitIndex) ^ (secondary >> (bitIndex % 16))) & 1;
+                    const distFromCenter = Math.abs(y - 8) + Math.abs(x - 4);
+                    const fillChance = distFromCenter < 6 ? val : (val && ((hash >> (x + y)) & 3) === 0);
+                    if (fillChance) {
+                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                        ctx.fillRect((gridSize - 1 - x) * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('resize', resizeSlots);
+        function resizeSlots() {
+            const columns = document.querySelectorAll('.column');
+            if (columns.length === 0) return;
+            const width = columns[0].clientWidth;
+            const slots = document.querySelectorAll('.slot');
+            slots.forEach(s => { s.style.height = width + 'px'; });
+        }
+
+        function goHome() { window.location.href = 'index.html'; }
+        function showAlert(title, msg) {
+            document.getElementById('custom-alert-title').innerText = title;
+            document.getElementById('custom-alert-msg').innerText = msg;
+            document.getElementById('custom-alert-modal').style.display = 'flex';
+        }
+        function closeAlert() { document.getElementById('custom-alert-modal').style.display = 'none'; }
+
+        auth.onAuthStateChanged(function(user) {
+            if (user) {
+                currentUser = { uid: user.uid, name: (user.email ? user.email.split('@')[0] : 'Player') };
+                checkUrlForMatch();
+            } else {
+                showAlert("Sign In Required", "Please log in from the home screen first.");
+                setTimeout(goHome, 3000);
+            }
+        });
+        
+        function checkUrlForMatch() {
+            const params = new URLSearchParams(window.location.search);
+            const mId = params.get('matchId');
+            if (mId) { joinMatch(mId); } else { showScreen('menu'); }
+        }
+        
+        function showScreen(screen) {
+            document.getElementById('screen-menu').style.display = 'none';
+            document.getElementById('screen-lobby').style.display = 'none';
+            document.getElementById('screen-loading').style.display = 'none';
+            document.getElementById('screen-game').style.display = 'none';
+            document.getElementById('screen-' + screen).style.display = 'flex';
+        }
+        
+        function generateId() { return Math.random().toString(36).substr(2, 9); }
+
+        function toggleModeMenu() {
+            lobbyWinLength = lobbyWinLength === 4 ? 5 : 4;
+            const btn = document.getElementById('menu-mode-btn');
+            if (btn) btn.innerText = window.t ? window.t('connect4.btn.mode', { num: lobbyWinLength }) : `Mode: ${lobbyWinLength}`;
+            
+            // Just update the title for aesthetics on the menu screen if t() is available
+            const titleStr = window.t ? window.t(`connect4.title.${lobbyWinLength}inrow`) : `${lobbyWinLength} in a Row`;
+            document.querySelector('.title-text').innerText = titleStr;
+            const h1Str = window.t ? window.t(`connect4.title.${lobbyWinLength}inrow`) : `CONNECT ${lobbyWinLength}`;
+            document.querySelector('#screen-menu h1').innerText = h1Str.toUpperCase();
+        }
+
+        function toggleModeLobby() {
+            if (!isHost) return;
+            lobbyWinLength = lobbyWinLength === 4 ? 5 : 4;
+            matchRef.update({ winLength: lobbyWinLength });
+        }
+
+        async function hostGame() {
+            showScreen('loading');
+            matchId = generateId();
+            isHost = true;
+            mySymbol = 1;
+            
+            const mmRef = rtdb.ref('matchmaking/connect4/' + matchId);
+            await mmRef.set({
+                hostUid: currentUser.uid,
+                hostName: currentUser.name,
+                status: 'waiting',
+                playerCount: 1,
+                maxPlayers: 2,
+                createdAt: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            matchRef = rtdb.ref('games/connect4/' + matchId);
+            const initialGame = {
+                status: 'lobby',
+                host: currentUser.uid,
+                winLength: lobbyWinLength,
+                players: {},
+            };
+            initialGame.players[currentUser.uid] = { name: currentUser.name, joinedAt: Date.now(), symbol: 1 };
+            
+            mmRef.onDisconnect().remove();
+            matchRef.onDisconnect().remove();
+            
+            await matchRef.set(initialGame);
+            listenToMatch();
+            showScreen('lobby');
+            document.getElementById('host-controls').style.display = 'block';
+        }
+        
+        async function joinMatch(mId) {
+            showScreen('loading');
+            matchId = mId;
+            isHost = false;
+            
+            matchRef = rtdb.ref('games/connect4/' + matchId);
+            const snap = await matchRef.once('value');
+            if (!snap.exists()) {
+                showAlert("Not Found", "Game not found!");
+                goHome();
+                return;
+            }
+            
+            const state = snap.val();
+            if (state.status === 'playing' && !state.players[currentUser.uid]) {
+                showAlert("Error", "Game already started!");
+                goHome(); return;
+            }
+            
+            const players = state.players || {};
+            if (state.status === 'lobby' && Object.keys(players).length >= 2 && !players[currentUser.uid]) {
+                showAlert("Lobby Full", "Game is full!");
+                goHome(); return;
+            }
+            
+            if (players[currentUser.uid]) {
+                mySymbol = players[currentUser.uid].symbol;
+            } else {
+                mySymbol = 2;
+                await matchRef.child('players').child(currentUser.uid).set({
+                    name: currentUser.name,
+                    joinedAt: Date.now(),
+                    symbol: 2
+                });
+                if (Object.keys(players).length === 1) { await startGame(state); }
+            }
+            
+            listenToMatch();
+            showScreen('lobby');
+        }
+        
+        async function startGame(currentState = null) {
+            const actualWinLength = currentState ? currentState.winLength : (gameState ? gameState.winLength : lobbyWinLength);
+            const COLS = actualWinLength === 4 ? 7 : 9;
+            const ROWS = actualWinLength === 4 ? 6 : 7;
+            const newBoard = Array(COLS).fill(null).map(() => Array(ROWS).fill(0));
+            
+            await matchRef.update({
+                status: 'playing',
+                board: newBoard,
+                turn: 1,
+                winner: null,
+                rematchReq: null,
+                winningSlots: null
+            });
+            rtdb.ref('matchmaking/connect4/' + matchId).remove();
+        }
+
+        function leaveMatch() {
+            if (matchRef && currentUser) {
+                if (isHost && gameState && gameState.status === 'lobby') {
+                    rtdb.ref('matchmaking/connect4/' + matchId).remove();
+                    matchRef.remove();
+                } else {
+                    matchRef.child('players').child(currentUser.uid).remove();
+                }
+            }
+            goHome();
+        }
+
+        function listenToMatch() {
+            matchRef.on('value', function(snap) {
+                const data = snap.val();
+                if (!data) {
+                    showAlert("Game Closed", "The match has been ended.");
+                    goHome();
+                    return;
+                }
+                const oldState = gameState;
+                gameState = data;
+                
+                if (gameState.status === 'lobby') {
+                    updateLobbyUI();
+                    if (gameState.winLength) {
+                        lobbyWinLength = gameState.winLength;
+                        const btn = document.getElementById('lobby-mode-btn');
+                        btn.innerText = window.t ? window.t('connect4.btn.mode', { num: lobbyWinLength }) : `Mode: ${lobbyWinLength}`;
+                    }
+                } else if (gameState.status === 'playing' || gameState.status === 'finished') {
+                    if (document.getElementById('screen-game').style.display === 'none') {
+                        showScreen('game');
+                        updatePlayerInfo();
+                    }
+                    renderBoard();
+                    checkStatus();
+
+                    if(gameState.status === 'finished' && (!oldState || oldState.status !== 'finished')){
+                       showWinner();
+                    }
+                }
+            });
+        }
+
+        function updateLobbyUI() {
+            const players = Object.entries(gameState.players || {}).map(entry => ({ uid: entry[0], name: entry[1].name, joinedAt: entry[1].joinedAt })).sort((a,b)=>a.joinedAt-b.joinedAt);
+            const listDiv = document.getElementById('lobby-players');
+            listDiv.innerHTML = players.map(p => '<div style="display:flex; align-items:center; gap:10px; font-weight:bold; font-size:1.1rem; border-bottom:1px solid #eee; padding:5px 0;"><canvas id="avatar-' + p.uid + '" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; image-rendering:pixelated;"></canvas>' + p.name + '</div>').join('');
+            
+            setTimeout(() => { players.forEach(p => window.rekindleFetchAvatarSeed(rtdb, p.uid, seed => drawAvatar('avatar-' + p.uid, seed))); }, 0);
+            
+            if (players.length >= 2 && gameState.status === 'lobby') {
+                document.getElementById('lobby-status').innerText = "Game starting...";
+            }
+        }
+
+        function updatePlayerInfo() {
+            const players = Object.keys(gameState.players || {}).map(k => ({uid: k, ...gameState.players[k]}));
+            const p1 = players.find(p => p.symbol === 1);
+            const p2 = players.find(p => p.symbol === 2);
+
+            if (p1) {
+                document.getElementById('name-1').innerText = p1.name;
+                window.rekindleFetchAvatarSeed(rtdb, p1.uid, seed => drawAvatar('avatar-1', seed));
+            }
+            if (p2) {
+                document.getElementById('name-2').innerText = p2.name;
+                window.rekindleFetchAvatarSeed(rtdb, p2.uid, seed => drawAvatar('avatar-2', seed));
+            }
+            
+            const titleStr = window.t ? window.t(`connect4.title.${gameState.winLength}inrow`) : `${gameState.winLength} in a Row`;
+            document.querySelector('.title-text').innerText = titleStr;
+        }
+
+        function renderBoard() {
+            const container = document.getElementById('game-board');
+            container.innerHTML = '';
+            
+            if (!gameState.board) return;
+            const COLS = gameState.board.length;
+            const ROWS = gameState.board[0].length;
+            
+            if (COLS > 7) {
+                document.querySelector('.window').style.maxWidth = '800px';
+            } else {
+                document.querySelector('.window').style.maxWidth = '600px';
+            }
+            
+            container.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+
+            for (let c = 0; c < COLS; c++) {
+                const colDiv = document.createElement('div');
+                colDiv.className = 'column';
+                colDiv.onclick = () => handleMove(c);
+
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+                    slot.id = `slot-${c}-${r}`;
+
+                    const cellVal = gameState.board[c][r];
+                    if (cellVal !== 0) {
+                        const chip = document.createElement('div');
+                        chip.className = `chip ${cellVal === 1 ? 'p1' : 'p2'}`;
+                        slot.appendChild(chip);
+                    }
+                    
+                    if (gameState.winningSlots) {
+                        const isWin = gameState.winningSlots.some(s => s.c === c && s.r === r);
+                        if (isWin) slot.classList.add('winner');
+                    }
+
+                    colDiv.appendChild(slot);
+                }
+                container.appendChild(colDiv);
+            }
+            setTimeout(resizeSlots, 0);
+        }
+
+        function handleMove(c) {
+            if (gameState.status !== 'playing') return;
+            if (gameState.turn !== mySymbol) return;
+            if (!gameState.board) return;
+
+            const colArr = gameState.board[c];
+            const r = colArr.indexOf(0);
+            if (r === -1) return;
+
+            const newBoard = gameState.board.map(col => [...col]);
+            newBoard[c][r] = mySymbol;
+
+            const winCoords = checkWin(newBoard, c, r, mySymbol);
+            
+            let isDraw = false;
+            if (!winCoords) {
+                isDraw = newBoard.every(col => col.every(cell => cell !== 0));
+            }
+
+            let updates = {
+                board: newBoard,
+                turn: mySymbol === 1 ? 2 : 1
+            };
+
+            if (winCoords) {
+                updates.status = 'finished';
+                updates.winner = mySymbol;
+                updates.winningSlots = winCoords;
+            } else if (isDraw) {
+                updates.status = 'finished';
+                updates.winner = 'draw';
+            }
+
+            matchRef.update(updates);
+        }
+
+        function checkWin(boardState, c, r, player) {
+            const COLS = boardState.length;
+            const ROWS = boardState[0].length;
+            const WIN_LENGTH = gameState.winLength || 4;
+            
+            const directions = [
+                [[0, 1], [0, -1]], // Vertical
+                [[1, 0], [-1, 0]], // Horizontal
+                [[1, 1], [-1, -1]], // Diagonal /
+                [[1, -1], [-1, 1]]  // Diagonal \
+            ];
+
+            for (let axis of directions) {
+                let count = 1;
+                let winningSlots = [{ c, r }];
+
+                for (let dir of axis) {
+                    let dc = dir[0];
+                    let dr = dir[1];
+                    let nextC = c + dc;
+                    let nextR = r + dr;
+
+                    while (
+                        nextC >= 0 && nextC < COLS &&
+                        nextR >= 0 && nextR < ROWS &&
+                        boardState[nextC][nextR] === player
+                    ) {
+                        count++;
+                        winningSlots.push({ c: nextC, r: nextR });
+                        nextC += dc;
+                        nextR += dr;
+                    }
+                }
+
+                if (count >= WIN_LENGTH) return winningSlots;
+            }
+            return null;
+        }
+
+        function checkStatus() {
+            const statusEl = document.getElementById('status-bar');
+            let isMyTurn = (gameState.turn === mySymbol);
+
+            if (gameState.status === 'finished') {
+                if (gameState.winner === 'draw') {
+                    statusEl.innerText = "Draw!";
+                } else {
+                    const winnerPlayer = Object.values(gameState.players).find(p => p.symbol === gameState.winner);
+                    statusEl.innerText = (winnerPlayer ? winnerPlayer.name : `Player ${gameState.winner}`) + " Wins!";
+                }
+                statusEl.style.background = "#eee";
+                statusEl.style.color = "#000";
+            } else {
+                statusEl.innerText = (gameState.turn === 1 ? "Player 1's Turn (Black)" : "Player 2's Turn (White)") + (isMyTurn ? " [YOU]" : "");
+                statusEl.style.background = isMyTurn ? "#000" : "#eee";
+                statusEl.style.color = isMyTurn ? "#fff" : "#000";
+            }
+            
+            const newGameBtn = document.getElementById('new-game-btn');
+            if(gameState.status === 'finished') {
+                newGameBtn.style.display = 'block';
+                if(gameState.rematchReq === mySymbol) {
+                    newGameBtn.innerText = "Waiting for opp...";
+                    newGameBtn.disabled = true;
+                } else {
+                    newGameBtn.innerText = "Rematch";
+                    newGameBtn.disabled = false;
+                }
+            } else {
+                newGameBtn.style.display = 'none';
+            }
+        }
+
+        function showWinner() {
+            const winnerText = document.getElementById('winner-text');
+            if(gameState.winner === 'draw') {
+                winnerText.innerText = "It's a Draw!";
+            } else {
+                const winnerPlayer = Object.values(gameState.players).find(p => p.symbol === gameState.winner);
+                winnerText.innerText = (winnerPlayer ? winnerPlayer.name : `Player ${gameState.winner}`) + " Wins!";
+            }
+            document.getElementById('winner-modal').style.display = 'flex';
+        }
+
+        async function requestNewGame() {
+            if (!gameState || gameState.status !== 'finished') return;
+            
+            if (gameState.rematchReq && gameState.rematchReq !== mySymbol) {
+                const pKeys = Object.keys(gameState.players);
+                
+                const COLS = gameState.winLength === 4 ? 7 : 9;
+                const ROWS = gameState.winLength === 4 ? 6 : 7;
+                const newBoard = Array(COLS).fill(null).map(() => Array(ROWS).fill(0));
+                
+                const updates = {
+                    status: 'playing',
+                    board: newBoard,
+                    winner: null,
+                    winningSlots: null,
+                    rematchReq: null,
+                    turn: 1
+                };
+                
+                // Swap symbols
+                updates[`players/${pKeys[0]}/symbol`] = gameState.players[pKeys[0]].symbol === 1 ? 2 : 1;
+                updates[`players/${pKeys[1]}/symbol`] = gameState.players[pKeys[1]].symbol === 1 ? 2 : 1;
+                mySymbol = mySymbol === 1 ? 2 : 1;
+                
+                await matchRef.update(updates);
+                document.getElementById('winner-modal').style.display = 'none';
+            } else {
+                await matchRef.update({ rematchReq: mySymbol });
+            }
+        }
+    
+        
+        if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+        if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+    </script>
+    <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11" defer></script>
+</body>
+</html>

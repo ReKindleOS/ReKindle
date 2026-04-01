@@ -444,6 +444,7 @@
         let rollsLeft = 3;
         let turnStarted = false;
         let currentPlayer = 'player'; // 'player' or 'cpu'
+        let currentGameCounter = 0;
 
         function flashRefresh() {
             const mode = (window.rekindleGetDisplayMode ? window.rekindleGetDisplayMode() : localStorage.getItem('rekindle_display_mode')) || 'eink';
@@ -504,6 +505,7 @@
         }
 
         function initGame() {
+            currentGameCounter++;
             for(let i=0; i<CATS.length; i++) {
                 pScores[CATS[i]] = null;
                 cScores[CATS[i]] = null;
@@ -773,7 +775,8 @@
             updateScores();
             
             if (currentPlayer === 'player') {
-                setTimeout(playCpuTurn, 500);
+                let capturedCounter = currentGameCounter;
+                setTimeout(() => playCpuTurn(capturedCounter), 500);
             } else {
                 startPlayerTurn();
             }
@@ -781,7 +784,8 @@
         
         function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
         
-        async function playCpuTurn() {
+        async function playCpuTurn(expectedGameCounter) {
+            if (currentGameCounter !== expectedGameCounter) return;
             currentPlayer = 'cpu';
             document.getElementById('dice-container').dataset.cpu = 'true';
             resetTurn();
@@ -789,6 +793,7 @@
             // First roll
             rollDice(true);
             await sleep(800);
+            if (currentGameCounter !== expectedGameCounter) return;
             
             for(let r=0; r<2; r++) {
                 let holds = determineCpuHolds();
@@ -799,19 +804,25 @@
                         newlyHeld = true;
                         // staggered hold visual
                         await sleep(300);
+                        if (currentGameCounter !== expectedGameCounter) return;
                     }
                 }
-                if (newlyHeld) await sleep(500);
+                if (newlyHeld) {
+                    await sleep(500);
+                    if (currentGameCounter !== expectedGameCounter) return;
+                }
                 
                 if (rollsLeft > 0 && holds.length < 5) {
                     rollDice(true);
                     await sleep(800);
+                    if (currentGameCounter !== expectedGameCounter) return;
                 } else {
                     break;
                 }
             }
             
             await sleep(500);
+            if (currentGameCounter !== expectedGameCounter) return;
             let bestCat = chooseCpuCategory();
             scoreCategory(bestCat, true);
         }

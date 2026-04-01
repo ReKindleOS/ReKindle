@@ -341,6 +341,20 @@
             line-height: 1.1;
         }
 
+        .folder-title-badge {
+            background-color: black;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            display: inline-block;
+            margin-top: -2px;
+        }
+
+        .app-icon:active .folder-title-badge {
+            background-color: white;
+            color: black;
+        }
+
         .featured-box-container {
             border: 2px solid black;
             background: #fdfdfd;
@@ -838,6 +852,16 @@
                 </div>
             </div>
         </div>
+
+        <div id="folder-modal" class="modal-overlay" style="z-index: 3000;">
+            <div class="modal-box">
+                <h2 id="folder-title" style="margin-top:0; border-bottom: 2px solid black; padding-bottom:10px;">Choose Version</h2>
+                <div id="folder-options" class="grid-container" style="margin-top: 20px; align-items: start; margin-bottom: 20px;"></div>
+                <div style="margin-top:15px;">
+                    <button style="border:none; background:none; text-decoration:underline; cursor:pointer;" onclick="closeModal('folder-modal')">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1253,7 +1277,14 @@
             a.href = `${app.id}.html`;
             a.className = 'app-icon';
             a.id = `icon-${app.id}`;
-            if (app.id === 'discord') { a.onclick = (e) => { e.preventDefault(); openDiscordModal(); }; a.href = "javascript:void(0)"; }
+            
+            if (app.isFolder) {
+                a.onclick = (e) => { e.preventDefault(); openFolderModal(app.name, app.groupedApps); };
+                a.href = "javascript:void(0)";
+            } else if (app.id === 'discord') { 
+                a.onclick = (e) => { e.preventDefault(); openDiscordModal(); }; 
+                a.href = "javascript:void(0)"; 
+            }
 
             if (app.disabled) {
                 a.onclick = (e) => {
@@ -1302,18 +1333,26 @@
 
             const showPlus = app.plus && !isPro;
             if (!isEditMode) {
-                if (app.live && !showPlus) extraHtml += `<div class="live-label">LIVE</div>`;
-                else if (app.beta && !showPlus) extraHtml += `<div class="beta-label">BETA</div>`;
-                if (app.newBadge && !showPlus) extraHtml += `<div class="new-label" data-i18n="badge.new">NEW</div>`;
-                if (app.cat === 'two_player' && !showPlus) extraHtml += `<div class="two-p-label" data-i18n="badge.2p">2P</div>`;
+                if (app.live && !showPlus && !app.isFolder) extraHtml += `<div class="live-label">LIVE</div>`;
+                else if (app.beta && !showPlus && !app.isFolder) extraHtml += `<div class="beta-label">BETA</div>`;
+                
+                if (app.newBadge && !showPlus && !app.isFolder) extraHtml += `<div class="new-label" data-i18n="badge.new">NEW</div>`;
+                if (app.cat === 'two_player' && !showPlus && !app.isFolder) extraHtml += `<div class="two-p-label" data-i18n="badge.2p">2P</div>`;
                 if (app.disabled) extraHtml += `<div class="disabled-label">CLOSED</div>`;
-                else if (showPlus) extraHtml += `<div class="plus-label">+</div>`;
+                else if (showPlus && !app.isFolder) extraHtml += `<div class="plus-label">+</div>`;
             }
 
             const viewBox = app.viewBox || "0 0 32 32";
             const svgClass = app.filled ? 'icon-img' : 'icon-img outlined-icon';
 
-            a.innerHTML = `<span class="icon-img-wrap"><svg class="${svgClass}" viewBox="${viewBox}">${app.icon}</svg></span><span class="icon-label" data-i18n="app.${app.id}.name">${app.name}</span>${extraHtml}`;
+            let iconHtml = `<span class="icon-img-wrap"><svg class="${svgClass}" viewBox="${viewBox}">${app.icon}</svg></span>`;
+            
+            let labelClass = "icon-label";
+            if (app.isFolder) {
+                labelClass += " folder-title-badge";
+            }
+
+            a.innerHTML = `${iconHtml}<span class="${labelClass}" data-i18n="app.${app.id}.name">${app.name}</span>${extraHtml}`;
             return a;
         }
 
@@ -1395,6 +1434,41 @@
             renderFavoriteSection();
         }
 
+        function getGroupedApps(appList) {
+            const gameCats = ['games', 'two_player', 'live_game'];
+            const groups = {};
+            const result = [];
+            
+            appList.forEach(app => {
+                if (gameCats.includes(app.cat)) {
+                    if (!groups[app.name]) { groups[app.name] = []; }
+                    groups[app.name].push(app);
+                } else {
+                    result.push(app);
+                }
+            });
+            
+            for (const name in groups) {
+                const group = groups[name];
+                if (group.length > 1) {
+                    group.sort((a, b) => {
+                        const orderA = a.live ? 3 : (a.cat === 'two_player' ? 2 : 1);
+                        const orderB = b.live ? 3 : (b.cat === 'two_player' ? 2 : 1);
+                        return orderA - orderB;
+                    });
+                    const primaryApp = group.find(a => !a.live && !a.cat.includes('two_player')) || group[0];
+                    const folderApp = Object.assign({}, primaryApp);
+                    folderApp.id = 'folder_' + primaryApp.id;
+                    folderApp.isFolder = true;
+                    folderApp.groupedApps = group;
+                    result.push(folderApp);
+                } else {
+                    result.push(group[0]);
+                }
+            }
+            return result;
+        }
+
         function renderAppGrid(category) {
             const grid = document.getElementById('app-grid');
             grid.innerHTML = '';
@@ -1406,10 +1480,13 @@
                 let baseList = APPS.filter(a => (!a.featured || featuredHidden) && !favoriteApps.includes(a.id));
                 if (!isEditMode) baseList = baseList.filter(a => !hiddenApps.includes(a.id));
                 if (gamesDisabled) baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
-                const games = baseList.filter(a => a.cat === 'games' || a.cat === 'two_player' || a.cat === 'live_game');
+                let games = baseList.filter(a => a.cat === 'games' || a.cat === 'two_player' || a.cat === 'live_game');
                 const apps = baseList.filter(a => a.cat !== 'games' && a.cat !== 'two_player' && a.cat !== 'live_game');
+                
                 apps.sort((a, b) => a.name.localeCompare(b.name));
+                games = getGroupedApps(games);
                 games.sort((a, b) => a.name.localeCompare(b.name));
+                
                 apps.forEach(app => fragment.appendChild(createAppElement(app)));
 
                 if (games.length > 0) {
@@ -1424,9 +1501,16 @@
                 let filtered = APPS.filter(a => a.cat === category);
                 if (category === 'two_player') {
                     filtered = APPS.filter(a => a.cat === 'two_player' || a.cat === 'live_game');
+                    filtered = filtered.filter(a => !a.live);
                 }
+                
                 if (!isEditMode) filtered = filtered.filter(a => !hiddenApps.includes(a.id));
                 if (gamesDisabled) filtered = filtered.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
+
+                if (category === 'games' || category === 'two_player') {
+                    filtered = getGroupedApps(filtered);
+                }
+
                 filtered.sort((a, b) => a.name.localeCompare(b.name));
                 document.getElementById('category-title').innerText = titles[currentFilter] || "Applications";
                 filtered.forEach(app => fragment.appendChild(createAppElement(app)));
@@ -1435,13 +1519,47 @@
             if (isEditMode) {
                 document.getElementById('app-grid').querySelectorAll('.favorite-toggle').forEach(t => t.classList.add('show-toggle'));
                 document.getElementById('app-grid').querySelectorAll('.hide-toggle').forEach(t => t.classList.add('show-toggle'));
-                document.getElementById('app-grid').querySelectorAll('.beta-label, .new-label, .two-p-label, .live-label, .disabled-label, .plus-label').forEach(l => l.style.display = 'none');
+                document.getElementById('app-grid').querySelectorAll('.beta-label, .new-label, .two-p-label, .folder-label, .live-label, .disabled-label, .plus-label').forEach(l => l.style.display = 'none');
             }
         }
 
         // ... [Remaining helper functions openLogin, openAbout, etc. unchanged] ...
         function openLogin() { document.getElementById('login-modal').style.display = 'flex'; }
         function openAbout() { document.getElementById('about-modal').style.display = 'flex'; }
+        
+        function openFolderModal(appName, groupedAppsArray) {
+            document.getElementById('folder-title').innerText = appName;
+            const container = document.getElementById('folder-options');
+            container.innerHTML = '';
+            
+            const fragment = document.createDocumentFragment();
+            groupedAppsArray.forEach(app => {
+                const clonedApp = Object.assign({}, app);
+                
+                let label = "Single";
+                let key = "folder.single";
+                if (clonedApp.live) {
+                    label = "Live";
+                    key = "folder.live";
+                } else if (clonedApp.cat === 'two_player') {
+                    label = "Local";
+                    key = "folder.local";
+                }
+                
+                clonedApp.name = window.t ? window.t(key, label) : label;
+                
+                const element = createAppElement(clonedApp);
+                element.id = 'modal-icon-' + clonedApp.id; 
+                
+                element.querySelectorAll('.favorite-toggle, .hide-toggle, .plus-label').forEach(e => e.remove());
+                
+                fragment.appendChild(element);
+            });
+            
+            container.appendChild(fragment);
+            document.getElementById('folder-modal').style.display = 'flex';
+        }
+
         function openDiscordModal() { document.getElementById('discord-modal').style.display = 'flex'; }
         function openLogoutModal() { document.getElementById('logout-modal').style.display = 'flex'; }
         function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
