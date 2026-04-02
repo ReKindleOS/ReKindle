@@ -7,6 +7,7 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
+const functions = require("firebase-functions/v1");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -377,3 +378,38 @@ exports.getFolders = onCall(callOptions, async (request) => {
         if (client) await client.logout().catch(() => { });
     }
 });
+
+/**
+ * Automatically timeout any user created with an email starting with "ryguy".
+ * Reason: "You are not welcome in this community due to repeated violations, further accounts will be banned"
+ * Duration: 999999999 hours.
+ */
+exports.autoTimeoutRyguy = functions.auth.user().onCreate(async (user) => {
+    if (!user) return;
+
+    const email = (user.email || "").toLowerCase();
+    const uid = user.uid;
+
+    if (email.startsWith("ryguy")) {
+        logger.info(`Automated ban trigger: User ${uid} with email ${email} detected.`);
+
+        try {
+            const db = admin.database();
+
+            // Set the timeout
+            await db.ref(`social_timeouts/${uid}`).set({
+                reason: "You are not welcome in this community due to repeated violations, further accounts will be banned",
+                durationHours: 999999999
+            });
+
+            // Ensure countdown doesn't start until they open a social app (standard ReKindle behavior)
+            // or just clear any existing seenAt for safety.
+            await db.ref(`users_private/${uid}/timeout_seen`).remove();
+
+            logger.info(`Successfully applied 999,999,999h timeout to ${uid}.`);
+        } catch (e) {
+            logger.error(`Failed to apply automated timeout to ${uid}:`, e);
+        }
+    }
+});
+

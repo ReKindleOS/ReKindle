@@ -638,15 +638,21 @@
     window.rekindleInitGlobalPresence = function (db, uid) {
         if (!db || !uid) return;
         var presenceRef = db.ref('presence/' + uid);
+        window._rekindlePresenceRef = presenceRef;
 
         var connectedRef = db.ref('.info/connected');
 
-        connectedRef.on('value', function(snap) {
+        if (window._rekindlePresenceListener) {
+            connectedRef.off('value', window._rekindlePresenceListener);
+        }
+
+        window._rekindlePresenceListener = connectedRef.on('value', function(snap) {
             if (snap.val() === true) {
                 // We're connected! Set up the disconnect hook first
-                presenceRef.onDisconnect().remove();
-                // Then set our presence to true
-                presenceRef.set(true);
+                presenceRef.onDisconnect().remove().then(function() {
+                    // Then set our presence to true
+                    presenceRef.set(true);
+                }).catch(function() {});
             }
         });
 
@@ -711,6 +717,10 @@
                     auth.onAuthStateChanged(function (user) {
                         if (user && window.rekindleInitGlobalPresence) {
                             window.rekindleInitGlobalPresence(db, user.uid);
+                        } else if (!user && window._rekindlePresenceRef) {
+                            window._rekindlePresenceRef.remove();
+                            window._rekindlePresenceRef.onDisconnect().cancel();
+                            window._rekindlePresenceRef = null;
                         }
                     });
                     return true;
