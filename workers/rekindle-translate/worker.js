@@ -114,7 +114,8 @@ function isAsciiEmoji(text) {
     if (KNOWN_EMOJI_SET.has(trimmed)) return true;
 
     // Heuristics
-    const letters = trimmed.replace(/[^a-zA-Z]/g, '').length;
+    const letterMatch = trimmed.match(/[\p{L}\p{N}]/gu);
+    const letters = letterMatch ? letterMatch.length : 0;
     const symbols = trimmed.length - letters;
     if (trimmed.length < 15 && symbols > letters) return true;
     if (/^[()0-9^>.<_ \-*\\/|]+$/.test(trimmed)) return true;
