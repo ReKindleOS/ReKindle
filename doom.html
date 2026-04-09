@@ -221,6 +221,48 @@
             font-size: 1rem;
             box-sizing: border-box;
         }
+
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 30px;
+            width: 300px;
+            text-align: center;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+            padding: 8px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            margin-top: 15px;
+        }
+
+        .sys-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
     </style>
     <script src="js/i18n.js"></script>
     <script src="theme.js?v=15"></script>
@@ -228,6 +270,15 @@
 </head>
 
 <body>
+
+    <!-- WebAssembly Error Modal -->
+    <div id="wasm-error-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <h3 style="margin-top:0; border-bottom:1px solid black; padding-bottom:10px;" data-i18n="doom.modal.errorTitle">System Alert</h3>
+            <p style="margin-bottom:20px; font-weight:bold;" data-i18n="doom.modal.errorMsg">Amazon may have disabled WebAssembly on your device in a recent Kindle firmware update. The game cannot run.</p>
+            <button class="sys-btn" onclick="document.getElementById('wasm-error-overlay').style.display='none';" data-i18n="doom.modal.close">OK</button>
+        </div>
+    </div>
 
     <div class="window">
         <!-- Title Bar -->
@@ -300,7 +351,7 @@
 
     <script>
         // Global variables for Graham's Doom Port
-        let wasmMemory = new WebAssembly.Memory({ initial: 108 });
+        let wasmMemory = null;
         let canvas = document.getElementById('canvas');
         let ctx = canvas.getContext('2d');
         // Doom Resolution is 320x200, but this port might output scaled or raw. 
@@ -394,15 +445,28 @@
         window.onload = () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             initDoom();
-        }
-
-            ;
+        };
 
         async function initDoom() {
             const status = document.getElementById('status');
 
             try {
+                if (typeof WebAssembly === 'undefined') {
+                    const defaultFallback = "Error: Game not supported on this device. WebAssembly is required.";
+                    const noWasmTxt = window.t ? window.t('doom.status.nowasm', defaultFallback) : defaultFallback;
+                    status.removeAttribute('data-i18n');
+                    status.innerText = noWasmTxt;
+                    status.style.color = "red";
+                    const overlay = document.getElementById('wasm-error-overlay');
+                    if (overlay) overlay.style.display = 'flex';
+                    return;
+                }
+
+                // Instantiating here prevents the JIT-less Kindle engine from hard-crashing during page interpretation
+                wasmMemory = new WebAssembly.Memory({ initial: 108 });
+
                 const downloadingTxt = window.t ? window.t('doom.status.downloading') : "Downloading game data...";
+                status.removeAttribute('data-i18n'); // Prevent i18n.js from overwriting this status asynchronously
                 status.innerText = downloadingTxt;
                 const response = await fetch('doom.wasm');
 
@@ -410,6 +474,7 @@
                 const buffer = await response.arrayBuffer();
 
                 const initializingTxt = window.t ? window.t('doom.status.initializing') : "Initializing...";
+                status.removeAttribute('data-i18n');
                 status.innerText = initializingTxt;
 
                 const imports = {
@@ -513,7 +578,10 @@
             }
 
             catch (err) {
-                const errorTxt = window.t ? window.t('doom.status.error').replace('${msg}', err.message) : "Error: " + err.message;
+                const msg = err.message || String(err);
+                const defaultFallback = "Error: " + msg;
+                const errorTxt = window.t ? window.t('doom.status.error', defaultFallback).replace('${msg}', msg) : defaultFallback;
+                status.removeAttribute('data-i18n');
                 status.innerText = errorTxt;
                 status.style.color = "red";
                 console.error(err);

@@ -41,14 +41,37 @@
 
         const isTargetingUserZone = !zone || (manualZone && zone === manualZone);
 
-        // ALWAYS use manual offset for user's zone (never trust browser timezone)
+        // If we have an explicit IANA zone string for the user's location, we can use Intl 
+        // to handle Daylight Saving Time automatically (circumvents Kindle's broken system timezone issue).
+        if (isTargetingUserZone && manualZone) {
+            try {
+                const options = {
+                    timeZone: manualZone,
+                    year: 'numeric', month: 'numeric', day: 'numeric',
+                    hour: 'numeric', minute: 'numeric', second: 'numeric',
+                    hour12: false
+                };
+                const s = date.toLocaleString('en-US', options);
+                const [datePart, timePart] = s.split(', ');
+                const [m, d, y] = datePart.split('/').map(Number);
+                const [h, min, sec] = timePart.split(':').map(Number);
+                if (!isNaN(y) && !isNaN(h)) {
+                    return new Date(y, m - 1, d, h, min, sec);
+                }
+            } catch (e) {
+                // If the zone string is unsupported by this browser version, fall back below.
+            }
+        }
+
+        // STATIC FALLBACK: use manual UTC offset if Intl isn't an option (with manual DST switch support)
         if (offsetHours !== null && isTargetingUserZone) {
             if (!isNaN(offsetHours)) {
+                let dstOffsetHours = localStorage.getItem('rekindle_dst_active') === 'true' ? 1 : 0;
                 // Calculate wall clock components:
                 // 1. Get UTC milliseconds from the input date
                 const utcMs = date.getTime();
                 // 2. Create a temp Date at the UTC time PLUS the offset
-                const shifted = new Date(utcMs + (offsetHours * 3600000));
+                const shifted = new Date(utcMs + ((offsetHours + dstOffsetHours) * 3600000));
                 // 3. Extract UTC components (which now represent wall-clock time in target zone)
                 const y = shifted.getUTCFullYear();
                 const mo = shifted.getUTCMonth();
@@ -166,6 +189,36 @@
         checkTimezoneOffset();
     }
 
+    // --- DAYLIGHT SAVING COMPONENT ---
+    // Injects a UI toggle to enable/disable Daylight Saving Time (+1 hr)
+    function renderDSTToggle(parentElement) {
+        const container = document.createElement('div');
+        container.style.cssText = 'display:flex; align-items:center; gap:10px; margin-top:10px; font-family:"Geneva","Verdana",sans-serif;';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'rekindle-dst-toggle';
+        checkbox.checked = localStorage.getItem('rekindle_dst_active') === 'true';
+        
+        const label = document.createElement('label');
+        label.htmlFor = 'rekindle-dst-toggle';
+        label.innerText = (window.t ? window.t('time.dst_active', 'Daylight Saving Time (+1 hr)') : 'Daylight Saving Time (+1 hr)');
+        
+        checkbox.addEventListener('change', function() {
+            localStorage.setItem('rekindle_dst_active', this.checked);
+            document.dispatchEvent(new Event('rekindle:time:dst_changed'));
+            // If the user is on a page that needs immediate refresh, they can listen to this event.
+        });
+        
+        container.appendChild(checkbox);
+        container.appendChild(label);
+        
+        if (parentElement) {
+            parentElement.appendChild(container);
+        }
+        return container;
+    }
+
     // Timezone Exports
     window.rekindleGetGlobalTimeZone = getGlobalTimeZone;
     window.rekindleGetZonedDate = getZonedDate;
@@ -173,5 +226,6 @@
     window.rekindleFormatTime = formatGlobalTime;
     window.rekindleFormatWallDate = formatWallDate;
     window.rekindleCheckTimezoneOffset = checkTimezoneOffset;
+    window.rekindleRenderDSTToggle = renderDSTToggle;
 
 })();
