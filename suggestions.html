@@ -566,6 +566,9 @@
                         <option value="newest" data-i18n="suggestions.sort.newest">Newest</option>
                     </select>
                 </div>
+                <input type="text" id="search-input" oninput="onSearchInput()" placeholder="Search..."
+                    style="font-family:inherit; font-size:0.8rem; border:2px solid black; padding:3px; margin: 0 10px; flex-grow: 1; min-width: 0;"
+                    data-i18n-placeholder="suggestions.ph.search">
                 <button class="sys-btn" onclick="openCreateModal()" data-i18n="suggestions.btn.new">+ New Idea</button>
             </div>
 
@@ -901,8 +904,49 @@
             }
 
             let allSuggestions = []; // Cache for client-side sorting
+            let allSearchSuggestions = null;
             let currentSort = 'popular';
             let currentFilter = 'suggestion'; // Default to suggestions
+
+            let searchTimeout = null;
+            window.onSearchInput = function() {
+                const searchEl = document.getElementById('search-input');
+                const searchBoxValue = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
+                renderList(); // Render immediately with local tab data
+
+                // Fetch global suggestions if performing a search and not yet loaded
+                if (searchBoxValue.length >= 2 && !allSearchSuggestions) {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(function() {
+                        const listEl = document.getElementById('suggestion-list');
+                        if (!document.getElementById('search-loading')) {
+                            const loadingDiv = document.createElement('div');
+                            loadingDiv.style.textAlign = 'center';
+                            loadingDiv.style.padding = '10px';
+                            loadingDiv.style.color = '#666';
+                            loadingDiv.innerText = window.t ? window.t('suggestions.msg.loading') || 'Loading global results...' : 'Loading global results...';
+                            loadingDiv.id = 'search-loading';
+                            listEl.appendChild(loadingDiv);
+                        }
+
+                        // Fetch a wider pool for searching
+                        db.collection('suggestions').orderBy('createdAt', 'desc').limit(300).get().then(function (snapshot) {
+                            allSearchSuggestions = [];
+                            snapshot.forEach(function (doc) {
+                                var data = doc.data();
+                                data.id = doc.id;
+                                allSearchSuggestions.push(data);
+                            });
+                            renderList();
+                        }).catch(function (error) {
+                            console.error("Error loading search suggestions:", error);
+                            const loading = document.getElementById('search-loading');
+                            if (loading) loading.remove();
+                        });
+                    }, 500);
+                }
+            };
 
             window.changeSort = function () {
                 currentSort = document.getElementById('sort-select').value;
@@ -956,10 +1000,19 @@
                 const listEl = document.getElementById('suggestion-list');
                 listEl.innerHTML = '';
 
-                // FILTER
-                const filtered = allSuggestions.filter(function (item) {
+                const searchEl = document.getElementById('search-input');
+                const searchBoxValue = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
+                // FILTER LOCAL (Current Tab)
+                const filteredLocal = allSuggestions.filter(function (item) {
                     const status = item.status || '';
                     const type = item.type || 'suggestion';
+
+                    if (searchBoxValue) {
+                        const titleMatch = item.title && item.title.toLowerCase().indexOf(searchBoxValue) > -1;
+                        const descMatch = item.desc && item.desc.toLowerCase().indexOf(searchBoxValue) > -1;
+                        if (!titleMatch && !descMatch) return false;
+                    }
 
                     // 1. Status Tabs
                     if (currentFilter === 'done') return status === 'done';
@@ -975,13 +1028,9 @@
 
                     // Default: Suggestion
                     return type !== 'problem' && type !== 'translation'; // Includes 'suggestion' or undefined
-                }); const sorted = [].concat(filtered);
+                });
 
-                // Primary Sort: Status (In Progress first, Done last)
-                // Secondary Sort: Selected Criteria
-
-                sorted.sort(function (a, b) {
-                    // Check status first
+                const sortLogic = function (a, b) {
                     const statusA = a.status || '';
                     const statusB = b.status || '';
 
@@ -996,21 +1045,62 @@
 
                     if (wA !== wB) return wB - wA; // Higher weight first
 
-                    // If status same, check criteria
                     if (currentSort === 'popular') {
                         const votesA = (a.upvotes || []).length;
                         const votesB = (b.upvotes || []).length;
                         return votesB - votesA;
                     } else {
-                        // Newest
-                        // SAFE ACCESS: No optional chaining
                         const tA = (a.createdAt && a.createdAt.seconds) ? a.createdAt.seconds : 0;
                         const tB = (b.createdAt && b.createdAt.seconds) ? b.createdAt.seconds : 0;
                         return tB - tA;
                     }
+                };
+
+                const sortedLocal = [].concat(filteredLocal);
+                sortedLocal.sort(sortLogic);
+
+                // Build Final List
+                let finalSorted = [];
+                let localIds = new Set();
+                sortedLocal.forEach(item => {
+                    item._isCurrentTab = true;
+                    localIds.add(item.id);
+                    finalSorted.push(item);
                 });
 
-                sorted.forEach(function (data) {
+                if (searchBoxValue && searchBoxValue.length >= 2 && allSearchSuggestions) {
+                    const filteredGlobal = allSearchSuggestions.filter(function (item) {
+                        if (localIds.has(item.id)) return false; // Already in local
+                        const titleMatch = item.title && item.title.toLowerCase().indexOf(searchBoxValue) > -1;
+                        const descMatch = item.desc && item.desc.toLowerCase().indexOf(searchBoxValue) > -1;
+                        return titleMatch || descMatch;
+                    });
+                    
+                    const sortedGlobal = [].concat(filteredGlobal);
+                    sortedGlobal.sort(sortLogic);
+                    
+                    sortedGlobal.forEach(item => {
+                        item._isCurrentTab = false;
+                        finalSorted.push(item);
+                    });
+                }
+
+                let hasShownOtherDivider = false;
+
+                finalSorted.forEach(function (data) {
+                    if (searchBoxValue && !data._isCurrentTab && !hasShownOtherDivider) {
+                        const div = document.createElement('div');
+                        div.style.textAlign = 'center';
+                        div.style.padding = '10px';
+                        div.style.paddingBottom = '0px';
+                        div.style.fontWeight = 'bold';
+                        div.style.marginTop = '10px';
+                        div.style.color = '#666';
+                        div.innerText = window.t ? window.t('suggestions.label.other_tabs') || 'Other Results' : 'Other Results';
+                        listEl.appendChild(div);
+                        hasShownOtherDivider = true;
+                    }
+
                     const id = data.id;
                     const voteCount = (data.upvotes || []).length;
                     const isDone = data.status === 'done';
@@ -1082,7 +1172,7 @@
                     listEl.appendChild(el);
                 });
 
-                if (sorted.length === 0) {
+                if (finalSorted.length === 0) {
                     listEl.innerHTML = `<div style="text-align:center; padding:20px;">${window.t ? window.t('suggestions.msg.empty') : 'No suggestions yet. Be the first!'}</div>`;
                 }
             }
