@@ -260,6 +260,10 @@
             align-items: center;
         }
 
+        .room-item.unread .room-top span {
+            font-weight: bold;
+        }
+
         .room-time {
             font-size: 0.75rem;
             color: #666;
@@ -1086,6 +1090,7 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
+            <button class="sys-btn" onclick="markAllAsRead()" style="position:absolute; left: 35px; z-index:2; height: 18px; line-height:1; font-size:0.7rem; padding: 0 5px;" data-i18n="kindlechat.btn.mark_read" title="Mark All As Read">Mark Read</button>
             <span class="title-text" data-i18n="kindlechat.title">KindleChat</span>
             <div class="title-controls">
                 <button class="sys-btn" onclick="openRulesModal()"
@@ -1412,10 +1417,70 @@
         var supporterUsers = {}; // Store supporter usernames as object for ES5 compatibility
         var usernameToProfile = {}; // Cache: username -> { uid, avatarSeed, customAvatar }
         var userRooms = [];
-        var userRooms = [];
-        var userRooms = [];
         var generalRoom = { id: 'general', name: window.t('kindlechat.room.general', 'All of KindleChat'), lastMessageAt: null };
+        var userRoomStates = {};
+        var roomStatesLoaded = false;
 
+        function loadRoomStates() {
+            if (!currentUser) return Promise.resolve();
+            return rtdb.ref('users_private/' + currentUser.uid + '/chat_states').once('value')
+                .then(function(snap) {
+                    userRoomStates = snap.val() || {};
+                    roomStatesLoaded = true;
+                    if (userRooms.length > 0) updateSidebar();
+                });
+        }
+
+        function markAllAsRead() {
+            if (!currentUser) return;
+            var updates = {};
+            var hasUpdates = false;
+
+            // Check General Room
+            var generalMsgs = getCachedMessages('general');
+            if (generalRoom && generalRoom.lastMessageAt) {
+                var generalTs = generalRoom.lastMessageAt;
+                if (generalTs && generalTs.toMillis) generalTs = generalTs.toMillis();
+                else if (generalTs && generalTs.seconds) generalTs = generalTs.seconds * 1000;
+                
+                var currentGeneralLastRead = (userRoomStates['general'] && typeof userRoomStates['general'].lastReadTime === 'number') ? userRoomStates['general'].lastReadTime : 0;
+                
+                if (generalTs > currentGeneralLastRead) {
+                    if (!userRoomStates['general']) userRoomStates['general'] = {};
+                    userRoomStates['general'].lastReadTime = generalTs;
+                    updates['general/lastReadTime'] = generalTs;
+                    hasUpdates = true;
+                }
+            }
+
+            // Check DMs/Other Rooms
+            userRooms.forEach(function(r) {
+                var currentTs = r.lastMessageAt;
+                if (currentTs && currentTs.toMillis) currentTs = currentTs.toMillis();
+                else if (currentTs && currentTs.seconds) currentTs = currentTs.seconds * 1000;
+                
+                var lastRead = 0;
+                if (userRoomStates[r.id] && userRoomStates[r.id].lastReadTime) {
+                    lastRead = userRoomStates[r.id].lastReadTime;
+                }
+                
+                if (currentTs > lastRead) {
+                    if (!userRoomStates[r.id]) userRoomStates[r.id] = {};
+                    userRoomStates[r.id].lastReadTime = currentTs;
+                    updates[r.id + '/lastReadTime'] = currentTs;
+                    hasUpdates = true;
+                }
+            });
+
+            if (hasUpdates) {
+                rtdb.ref('users_private/' + currentUser.uid + '/chat_states').update(updates).then(function() {
+                    updateSidebar();
+                }).catch(function(error) {
+                    console.error("Error updating all chats read states:", error);
+                    updateSidebar(); // update local anyways
+                });
+            }
+        }
         // --- SETTINGS ---
         // Create a resolution function for language (mirrors i18n.js logic)
         function resolveUserLanguage() {
@@ -1525,7 +1590,9 @@
                         loadMessages();
                     });
 
-                    loadRooms();
+                    loadRoomStates().then(function() {
+                        loadRooms();
+                    });
                     initPresence(user.uid);
 
                     // DEEP LINK: Open DM if requested
@@ -2108,15 +2175,41 @@
         }
 
         function renderRoomItem(room, listEl) {
+            var roomMsgTime = room.lastMessageAt || 0;
+            if (roomMsgTime && roomMsgTime.toMillis) roomMsgTime = roomMsgTime.toMillis();
+            else if (roomMsgTime && roomMsgTime.seconds) roomMsgTime = roomMsgTime.seconds * 1000;
+            
+            var showUnread = false;
+            var _lastRead = 0;
+            if (roomStatesLoaded) {
+                _lastRead = (userRoomStates[room.id] && typeof userRoomStates[room.id].lastReadTime === 'number') ? userRoomStates[room.id].lastReadTime : 0;
+                if (roomMsgTime > _lastRead && room.id !== currentRoomId) {
+                    showUnread = true;
+                }
+            }
+            
+            // Auto-sync current room state
+            if (room.id === currentRoomId && roomStatesLoaded) {
+                 if (!userRoomStates[room.id]) userRoomStates[room.id] = {};
+                 var currentLastRead = userRoomStates[room.id].lastReadTime || 0;
+                 if (currentLastRead < roomMsgTime) {
+                     userRoomStates[room.id].lastReadTime = roomMsgTime;
+                     if (currentUser) {
+                         rtdb.ref('users_private/' + currentUser.uid + '/chat_states/' + room.id + '/lastReadTime').set(roomMsgTime);
+                     }
+                 }
+            }
+
             var div = document.createElement('div');
-            div.className = 'room-item' + (room.id === currentRoomId ? ' active' : '');
+            div.className = 'room-item' + (room.id === currentRoomId ? ' active' : '') + (showUnread ? ' unread' : '');
 
             var deleteHtml = '';
             if (room.id !== 'general') {
                 deleteHtml = '<span class="del-room-btn" onclick="promptLeaveRoom(\'' + room.id + '\', event)">×</span>';
             }
 
-            var timeStr = formatChatTime(room.lastMessageAt);
+            var unreadBadge = showUnread ? ' &bull; <b>New</b>' : '';
+            var timeStr = formatChatTime(roomMsgTime) + unreadBadge;
 
             // Avatar for DM rooms
             var avatarHtml = '';
@@ -2147,6 +2240,15 @@
 
             currentRoomId = id;
             document.getElementById('room-title').innerText = name;
+            
+            if (currentUser && roomStatesLoaded) {
+                var now = Date.now();
+                if (!userRoomStates[id]) userRoomStates[id] = {};
+                userRoomStates[id].lastReadTime = now;
+                rtdb.ref('users_private/' + currentUser.uid + '/chat_states/' + id).update({
+                    lastReadTime: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
 
             // Clear previous messages to prevent ghosting
             document.getElementById('chat-history').innerHTML = '';
@@ -2163,7 +2265,7 @@
             }
 
             loadMessages();
-            updateSidebar(); // Refresh highlighting
+            updateSidebar(); // Refresh highlighting and clear unread statuses
         }
 
         // --- MESSAGE LOGIC (with pagination) ---
@@ -2486,6 +2588,10 @@
                 if (titleEl) titleEl.innerText = 'KindleChat';
                 setChatInputEnabled(true);
 
+                // WE MUST CHECK SCROLL STATE BEFORE CLEARING INNER_HTML
+                var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
+                var previousScrollTop = history.scrollTop;
+
                 history.innerHTML = '';
 
                 if (!snapshot.exists()) {
@@ -2493,7 +2599,6 @@
                     return;
                 }
 
-                var isScrolledToBottom = history.scrollHeight - history.clientHeight <= history.scrollTop + 100;
                 recentGeneralMsgUsers = []; // Reset for spam protection
 
                 // Convert snapshot to array and sort by timestamp
@@ -2524,6 +2629,8 @@
 
                 if (isScrolledToBottom) {
                     history.scrollTop = history.scrollHeight;
+                } else {
+                    history.scrollTop = previousScrollTop;
                 }
             }, function (error) {
                 var titleEl = document.querySelector('.title-text');
