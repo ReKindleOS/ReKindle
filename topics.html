@@ -744,7 +744,10 @@
                         <div id="tab-fav" class="tab-btn" onclick="switchTab('fav')" data-i18n="topics.tab.favorites">
                             Favs</div>
                     </div>
-                    <button class="sys-btn" onclick="openTopicModal()" data-i18n="topics.btn.new">+ New</button>
+                    <div style="display: flex;">
+                        <button class="sys-btn" onclick="openTopicModal()" data-i18n="topics.btn.new" style="flex: 1; margin-right: 5px;">+ New</button>
+                        <button class="sys-btn" onclick="markAllAsRead()" style="flex: 1; padding: 2px 5px; font-size: 0.8rem;" data-i18n="topics.btn.mark_read">Mark Read</button>
+                    </div>
                     <input type="text" id="topic-search" class="full-input" placeholder="Search topics..." data-i18n-placeholder="topics.ph.search" oninput="renderSidebar()" style="margin-bottom:0;">
                 </div>
                 <div id="topic-list">
@@ -1120,6 +1123,36 @@
             document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
             document.getElementById('tab-' + tab).classList.add('active');
             renderSidebar();
+        }
+
+        function markAllAsRead() {
+            if (!currentUser) return;
+            var updates = {};
+            var hasUpdates = false;
+
+            allTopicsCache.forEach(function(t) {
+                var currentCount = t.commentCount || 0;
+                var lastRead = 0;
+                if (userTopicStates[t.id] && userTopicStates[t.id].lastReadCount) {
+                    lastRead = userTopicStates[t.id].lastReadCount;
+                }
+                
+                if (currentCount > lastRead) {
+                    if (!userTopicStates[t.id]) userTopicStates[t.id] = {};
+                    userTopicStates[t.id].lastReadCount = currentCount;
+                    updates[t.id + '/lastReadCount'] = currentCount;
+                    hasUpdates = true;
+                }
+            });
+
+            if (hasUpdates) {
+                db.ref('users_private/' + currentUser.uid + '/topic_states').update(updates).then(function() {
+                    renderSidebar();
+                }).catch(function(error) {
+                    console.error("Error updating all topis read states:", error);
+                    renderSidebar(); // update local anyways
+                });
+            }
         }
         function openRulesModal(mode) {
             // mode: 'view' (default) or 'accept'
@@ -1566,7 +1599,9 @@
             }
         }
 
+        var isPostingComment = false;
         function postComment() {
+            if (isPostingComment) return;
             checkRules(function () {
                 var input = document.getElementById('msg-input');
                 var text = input.value.trim();
@@ -1578,6 +1613,18 @@
 
                 if (!text || !currentTopicId) return;
 
+                isPostingComment = true;
+                setTimeout(function() { isPostingComment = false; }, 3000); // failsafe unlock
+                
+                var btnSend = document.getElementById('btn-send');
+                if (btnSend) {
+                    btnSend.disabled = true;
+                    btnSend.style.opacity = '0.5';
+                }
+
+                // Clear immediately to prevent UI-bound double submissions
+                input.value = '';
+
                 var comment = {
                     body: text,
                     authorName: currentUserName,
@@ -1587,7 +1634,11 @@
 
                 var postingTopicId = currentTopicId;
                 db.ref('topic_comments/' + postingTopicId).push(comment).then(function () {
-                    input.value = '';
+                    isPostingComment = false;
+                    if (btnSend) {
+                        btnSend.disabled = false;
+                        btnSend.style.opacity = '1';
+                    }
                     db.ref('topics/' + postingTopicId + '/commentCount').transaction(function (cnt) { return (cnt || 0) + 1; })
                         .then(function (result) {
                             // Update local read state so own comment doesn't show as unread
@@ -1601,6 +1652,13 @@
                             }
                         });
                     db.ref('topics/' + postingTopicId + '/lastActive').set(firebase.database.ServerValue.TIMESTAMP);
+                }).catch(function(err) {
+                    isPostingComment = false;
+                    if (btnSend) {
+                        btnSend.disabled = false;
+                        btnSend.style.opacity = '1';
+                    }
+                    console.error("Error posting comment:", err);
                 });
             });
         }
@@ -1757,6 +1815,14 @@
             if (!title) {
                 showAlertModal(window.t('topics.alert.enter_title', "Please enter a title."));
                 return;
+            }
+
+            // Profanity Check
+            if (window.filterBadWords) {
+                if (title !== window.filterBadWords(title) || (subheading && subheading !== window.filterBadWords(subheading))) {
+                    showAlertModal(window.t('topics.alert.profanity', "Please keep topic names and descriptions family-friendly."));
+                    return;
+                }
             }
 
             // Duplicate Check

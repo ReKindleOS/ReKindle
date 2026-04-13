@@ -2890,6 +2890,10 @@
                     }
                 }
 
+                if (translationText) {
+                    translationText = censorText(translationText);
+                }
+
                 if (settings.showTranslations && hasTranslation) {
                     textToDisplay = wrapAsciiEmojis(linkify(escapeHtml(translationText)));
                     // Tagify translation too? Maybe not purely necessary but consistent. Let's tagify it.
@@ -3039,7 +3043,9 @@
             return score < MAX_SCORE;
         }
 
+        var isSendingMessage = false;
         function sendMessage() {
+            if (isSendingMessage) return;
             checkRules(function () {
                 var inputEl = document.getElementById('msg-input');
                 var text = inputEl.value.trim();
@@ -3064,6 +3070,14 @@
                 }
 
                 inputEl.value = '';
+                isSendingMessage = true;
+                setTimeout(function() { isSendingMessage = false; }, 3000); // failsafe unlock
+                
+                var sendBtn = document.getElementById('send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = true;
+                    sendBtn.style.opacity = '0.5';
+                }
 
                 // BRANCH: Use Realtime Database via Worker (for translation) or direct
                 if (currentRoomId === 'general') {
@@ -3199,6 +3213,12 @@
                         return res.json();
                     })
                     .then(function (data) {
+                        isSendingMessage = false;
+                        var sendBtn = document.getElementById('send-btn');
+                        if (sendBtn) {
+                            sendBtn.disabled = false;
+                            sendBtn.style.opacity = '1';
+                        }
                         if (data.translationError) {
                             console.warn("Translation Worker Report:", data.translationError);
                         }
@@ -3222,7 +3242,20 @@
                 text: text
             };
 
-            generalChatRef.push(messageData)['catch'](function (e) {
+            generalChatRef.push(messageData).then(function() {
+                isSendingMessage = false;
+                var sendBtn = document.getElementById('send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.style.opacity = '1';
+                }
+            })['catch'](function (e) {
+                isSendingMessage = false;
+                var sendBtn = document.getElementById('send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.style.opacity = '1';
+                }
                 console.error("Error sending general message:", e);
             });
         }
@@ -3240,6 +3273,12 @@
             // Add the message first
             roomRef.collection('messages').add(messageData)
                 .then(function () {
+                    isSendingMessage = false;
+                    var sendBtn = document.getElementById('send-btn');
+                    if (sendBtn) {
+                        sendBtn.disabled = false;
+                        sendBtn.style.opacity = '1';
+                    }
                     // Update room activity
                     return roomRef.set({
                         lastMessageAt: firebase.firestore.FieldValue.serverTimestamp()
