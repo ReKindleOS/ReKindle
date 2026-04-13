@@ -3157,6 +3157,7 @@
                         })
                     })
                         .then(function (res) {
+                            if (!res.ok) throw new Error("Worker Error " + res.status);
                             return res.json();
                         })
                         .then(function (data) {
@@ -3165,9 +3166,32 @@
                             if (btn) btn.disabled = false;
                         })
                         .catch(function (err) {
-                            showAlertModal("Error posting: " + err.message);
-                            if (btn) btn.disabled = false;
+                            console.error("Worker failed, falling back to direct write:", err);
+                            db.ref('neighbourhood_posts').push({
+                                uid: currentUser.uid,
+                                text: text,
+                                timestamp: firebase.database.ServerValue.TIMESTAMP
+                            }).then(() => {
+                                input.value = '';
+                                if (btn) btn.disabled = false;
+                            }).catch(firebaseErr => {
+                                showAlertModal("Error posting: " + firebaseErr.message);
+                                if (btn) btn.disabled = false;
+                            });
                         });
+                }).catch(function(err) {
+                    console.error("Could not get auth token:", err);
+                    db.ref('neighbourhood_posts').push({
+                        uid: currentUser.uid,
+                        text: text,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    }).then(() => {
+                        input.value = '';
+                        if (btn) btn.disabled = false;
+                    }).catch(firebaseErr => {
+                        showAlertModal("Error posting: " + firebaseErr.message);
+                        if (btn) btn.disabled = false;
+                    });
                 });
             } else {
                 db.ref('neighbourhood_posts').push({
