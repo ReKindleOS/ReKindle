@@ -115,6 +115,7 @@
         document.documentElement.style.setProperty('--rekindle-scale', finalScale);
 
         var scaledMaxHeight = 95 / parseFloat(finalScale);
+        var minHeightRule = parseFloat(finalScale) > 1.0 ? 'min-height: 0 !important; ' : '';
 
         style.textContent =
             '.dashboard, .desktop-wrapper, .sys-menu-bar, .window { ' +
@@ -125,6 +126,7 @@
             '} ' +
             '.window { ' +
             'max-height: ' + scaledMaxHeight + 'vh !important; ' +
+            minHeightRule +
             '} ' +
             '.window.scaled-height { ' +
             'height: ' + scaledMaxHeight + 'vh !important; ' +
