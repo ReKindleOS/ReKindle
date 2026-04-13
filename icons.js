@@ -345,6 +345,13 @@ const APPS = [
         icon: '<path d="M6 6 Q16 2 26 6 V26 Q16 22 6 26 Z"/>'
     },
     {
+        id: 'bible',
+        name: 'Bible',
+        cat: 'lifestyle',
+        desc: 'Read the Word anywhere.',
+        icon: '<rect x="6" y="4" width="20" height="24" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M16 8 v10 M12 12 h8" stroke="black" stroke-width="2" fill="none"/>'
+    },
+    {
         id: 'books',
         name: 'Reading List',
         cat: 'lifestyle',
@@ -463,6 +470,14 @@ const APPS = [
     },
 
     // --- GAMES ---
+    /*     {
+            id: 'oregontrail',
+            name: 'Oregon Trail',
+            cat: 'games',
+            beta: true,
+            desc: 'Travel the trail to Oregon.',
+            icon: '<path d="M4 32 C 32 20 0 12 14 2 L 18 2 C 4 12 36 20 28 32 Z" fill="black"/>'
+        }, */
     {
         id: 'trivia',
         name: 'Trivia',

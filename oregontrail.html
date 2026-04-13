@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Oregon Trail</title>
+
+    <script src="js/i18n.js"></script>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            background-repeat: repeat;
+            background-position: top left;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0px #000000;
+            display: flex;
+            flex-direction: column;
+            max-width: 500px;
+            width: 100%;
+            height: 90vh; /* Using height as needed, though rule suggests min-height */
+            min-height: 400px;
+            position: relative;
+        }
+
+        /* Enforce min-height standard based on recent user rules */
+        .window {
+            height: auto;
+            min-height: 80vh;
+            max-height: 85vh;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            background: white;
+        }
+
+        /* UI ELEMENTS */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+            font-family: inherit;
+        }
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+        .sys-btn:disabled {
+            background: #ccc;
+            box-shadow: none;
+            transform: none;
+            color: #666;
+        }
+
+        .panel {
+            border: 2px solid black;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px; /* wait! rule says NO Flexbox gap, but Grid gap is allowed */
+            font-family: "Courier New", monospace;
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px dotted black;
+        }
+
+        .log-box {
+            flex: 1;
+            border: 2px solid black;
+            padding: 10px;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+            overflow-y: auto;
+            background: #f9f9f9;
+            margin-bottom: 10px;
+            min-height: 0;
+            white-space: pre-wrap;
+        }
+
+        .action-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px; /* Grid gap allowed */
+            margin-top: auto;
+        }
+        
+        .action-bar .sys-btn { margin-top: 0; }
+
+        .hidden { display: none !important; }
+
+        /* STORE UI */
+        .store-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-family: "Courier New", monospace;
+        }
+        .store-item input {
+            width: 50px;
+            border: 2px solid black;
+            text-align: right;
+            font-family: "Courier New", monospace;
+        }
+        
+        /* MODALS */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+        .modal-box h2 { margin-top: 0; }
+    </style>
+    <script src="theme.js"></script>
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-text" data-i18n="oregontrail.title">Oregon Trail</span>
+            <div class="restart-box" onclick="document.getElementById('restart-modal').classList.remove('hidden')" style="position: absolute; right: 10px; width: 18px; height: 18px; border: 2px solid black; background: white; z-index: 2; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 2px 2px 0 black; line-height: 1;" title="Restart">R</div>
+        </div>
+
+        <div class="window-content" id="screen-store" style="display:none;">
+            <h3 style="margin-top:0;" data-i18n="oregontrail.store.title">General Store</h3>
+            <p><span data-i18n="oregontrail.store.funds">Funds</span>: $<span id="store-funds">800</span></p>
+            
+            <div class="panel">
+                <div class="store-item">
+                    <span data-i18n="oregontrail.item.oxen">Oxen ($40/ea)</span>
+                    <input type="number" id="buy-oxen" value="4" min="2" max="10" onchange="updateStore()">
+                </div>
+                <div class="store-item">
+                    <span data-i18n="oregontrail.item.food">Food ($0.20/lb)</span>
+                    <input type="number" id="buy-food" value="500" min="100" max="2000" step="100" onchange="updateStore()">
+                </div>
+                <div class="store-item">
+                    <span data-i18n="oregontrail.item.ammo">Ammo ($2/box)</span>
+                    <input type="number" id="buy-ammo" value="20" min="0" max="100" step="5" onchange="updateStore()">
+                </div>
+                <div class="store-item">
+                    <span data-i18n="oregontrail.item.parts">Parts ($10/ea)</span>
+                    <input type="number" id="buy-parts" value="3" min="0" max="10" onchange="updateStore()">
+                </div>
+            </div>
+            
+            <p><span data-i18n="oregontrail.store.total">Total Cost</span>: $<span id="store-total">0</span></p>
+            <button class="sys-btn" id="btn-start-trail" onclick="startTrail()" data-i18n="oregontrail.btn.start" style="margin-top: auto;">Begin Trail</button>
+        </div>
+
+        <div class="window-content" id="screen-game" style="display:none;">
+            <!-- New Scene Area -->
+            <div id="art-scene" style="margin-bottom: 10px; min-height: 50px; border: 2px solid black; padding: 5px; background: white; display: flex; align-items: center; justify-content: center; box-sizing: border-box;"></div>
+            
+            <div class="stat-grid panel">
+                <div class="stat-row"><span data-i18n="oregontrail.stat.day">Day</span> <span id="stat-day">1</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.dist">Miles</span> <span id="stat-dist">0/2000</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.weather">Weather</span> <span id="stat-weather">Sunny</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.health">Health</span> <span id="stat-health">100</span></div>
+                
+                <div class="stat-row"><span data-i18n="oregontrail.stat.pace">Pace</span> <button id="btn-pace" onclick="cyclePace()" style="font-family: inherit; font-size: 0.85em; padding: 0 4px; cursor: pointer; border: 1px solid black; background: white;">Steady</button></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.rations">Rations</span> <button id="btn-rations" onclick="cycleRations()" style="font-family: inherit; font-size: 0.85em; padding: 0 4px; cursor: pointer; border: 1px solid black; background: white;">Filling</button></div>
+
+                <div class="stat-row"><span data-i18n="oregontrail.stat.oxen">Oxen</span> <span id="stat-oxen">4</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.food">Food</span> <span id="stat-food">500</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.ammo">Ammo</span> <span id="stat-ammo">20</span></div>
+                <div class="stat-row"><span data-i18n="oregontrail.stat.parts">Parts</span> <span id="stat-parts">3</span></div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="panel" style="margin-bottom: 10px; padding: 5px;">
+                <div style="text-align: center; font-size: 0.7rem; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dotted black; padding-bottom: 3px;" data-i18n="oregontrail.ui.journey">JOURNEY PROGRESS</div>
+                <div style="position: relative; height: 26px; width: calc(100% - 20px); margin: 0 auto;">
+                    <div style="position: absolute; top: 12px; left: 0; right: 0; border-top: 2px dashed black;"></div>
+                    <div style="position: absolute; left: -2px; top: 10px; width: 6px; height: 6px; background: white; border: 2px solid black;"></div>
+                    <div style="position: absolute; right: -2px; top: 10px; width: 6px; height: 6px; background: black;"></div>
+                    
+                    <div id="progress-marker" style="position: absolute; left: 0%; top: -2px; background: white; padding: 0 4px; margin-left: -12px;">
+                        <svg viewBox="35 5 30 30" width="24" height="24">
+                            <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="white" stroke="black" stroke-width="2"/>
+                            <circle cx="44" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                            <circle cx="56" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                        </svg>
+                    </div>
+                </div>
+                <div style="font-size: 0.65rem; font-weight: bold; margin-top: 2px; overflow: hidden;">
+                    <span style="float: left;" data-i18n="oregontrail.ui.mo">MO</span>
+                    <span style="float: right;" data-i18n="oregontrail.ui.or">OR</span>
+                </div>
+            </div>
+
+            <div class="log-box" id="game-log"></div>
+
+            <div class="action-bar">
+                <button class="sys-btn" onclick="takeAction('travel')" data-i18n="oregontrail.action.travel">Travel</button>
+                <button class="sys-btn" onclick="takeAction('rest')" data-i18n="oregontrail.action.rest">Rest</button>
+                <button class="sys-btn" onclick="takeAction('hunt')" data-i18n="oregontrail.action.hunt">Hunt</button>
+                <button class="sys-btn" onclick="takeAction('repair')" data-i18n="oregontrail.action.repair" id="btn-repair" disabled>Repair</button>
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <div class="modal-overlay hidden" id="river-modal">
+            <div class="modal-box">
+                <h2 id="river-title" data-i18n="oregontrail.river.title">River Crossing</h2>
+                <p id="river-text" data-i18n="oregontrail.river.desc">River looks deep and swift.</p>
+                <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 15px;">
+                    <button class="sys-btn" onclick="attemptRiver('ford')" data-i18n="oregontrail.river.ford">Ford the River</button>
+                    <button class="sys-btn" onclick="attemptRiver('caulk')" data-i18n="oregontrail.river.caulk">Caulk & Float</button>
+                    <button class="sys-btn" onclick="attemptRiver('wait')" data-i18n="oregontrail.river.wait">Wait a Day</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-overlay hidden" id="event-modal">
+            <div class="modal-box">
+                <h2 id="event-title">Event</h2>
+                <p id="event-text">Details</p>
+                <div id="event-actions">
+                    <button class="sys-btn" onclick="closeModal('event-modal')" data-i18n="oregontrail.btn.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay hidden" id="gameover-modal">
+            <div class="modal-box">
+                <h2 id="gameover-title" data-i18n="oregontrail.gameover.title">Game Over</h2>
+                <p id="gameover-text"></p>
+                <button class="sys-btn" onclick="initStore()" data-i18n="oregontrail.btn.playagain">Play Again</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay hidden" id="restart-modal">
+            <div class="modal-box">
+                <h2 data-i18n="oregontrail.restart.title">Restart Journey?</h2>
+                <p data-i18n="oregontrail.restart.desc" style="font-size: 0.9rem;">Are you sure you want to abandon the current trail and start over?</p>
+                <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
+                    <button class="sys-btn" onclick="execRestart()" data-i18n="oregontrail.btn.yes">Yes</button>
+                    <button class="sys-btn" onclick="document.getElementById('restart-modal').classList.add('hidden')" data-i18n="oregontrail.btn.no">No</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Game State
+        const INITIAL_FUNDS = 800;
+        const TARGET_DIST = 2000;
+        
+        const PACES = ['Steady', 'Strenuous', 'Grueling'];
+        const RATIONS = ['Filling', 'Meager', 'Bare Bones'];
+        const WEATHER_TYPES = ['Sunny', 'Cloudy', 'Raining', 'Blizzard', 'Intense Heat'];
+
+        let state = {
+            day: 1,
+            distance: 0,
+            health: 100,
+            food: 0,
+            ammo: 0,
+            parts: 0,
+            oxen: 0,
+            money: 0,
+            wagonBroken: false,
+            riverPending: false,
+            paceIdx: 0,
+            rationsIdx: 0,
+            weatherIdx: 0,
+            nextRiverDist: 400 + Math.random() * 200
+        };
+
+        // DOM Elements
+        const screens = {
+            store: document.getElementById('screen-store'),
+            game: document.getElementById('screen-game')
+        };
+        const storeUI = {
+            oxen: document.getElementById('buy-oxen'),
+            food: document.getElementById('buy-food'),
+            ammo: document.getElementById('buy-ammo'),
+            parts: document.getElementById('buy-parts'),
+            funds: document.getElementById('store-funds'),
+            total: document.getElementById('store-total'),
+            btn: document.getElementById('btn-start-trail')
+        };
+        const statsUI = {
+            day: document.getElementById('stat-day'),
+            dist: document.getElementById('stat-dist'),
+            health: document.getElementById('stat-health'),
+            oxen: document.getElementById('stat-oxen'),
+            food: document.getElementById('stat-food'),
+            ammo: document.getElementById('stat-ammo'),
+            parts: document.getElementById('stat-parts')
+        };
+        const gameLog = document.getElementById('game-log');
+        const modals = {
+            event: document.getElementById('event-modal'),
+            gameover: document.getElementById('gameover-modal')
+        };
+
+        // --- INIT & STORE ---
+        function execRestart() {
+            document.getElementById('restart-modal').classList.add('hidden');
+            localStorage.removeItem('rekindle_oregontrail_save');
+            initStore();
+        }
+
+        function initStore() {
+            modals.gameover.classList.add('hidden');
+            screens.game.style.display = 'none';
+            screens.store.style.display = 'block';
+            
+            storeUI.oxen.value = 4;
+            storeUI.food.value = 500;
+            storeUI.ammo.value = 20;
+            storeUI.parts.value = 3;
+            
+            updateStore();
+        }
+
+        function updateStore() {
+            let oxenCost = parseInt(storeUI.oxen.value) * 40;
+            let foodCost = parseInt(storeUI.food.value) * 0.20;
+            let ammoCost = parseInt(storeUI.ammo.value) * 2;
+            let partsCost = parseInt(storeUI.parts.value) * 10;
+            
+            let total = oxenCost + foodCost + ammoCost + partsCost;
+            storeUI.total.innerText = total.toFixed(2);
+            
+            if (total > INITIAL_FUNDS) {
+                storeUI.total.style.color = 'red';
+                storeUI.btn.disabled = true;
+            } else {
+                storeUI.total.style.color = 'black';
+                storeUI.btn.disabled = false;
+            }
+        }
+
+        function startTrail() {
+            let oxenCost = parseInt(storeUI.oxen.value) * 40;
+            let foodCost = parseInt(storeUI.food.value) * 0.20;
+            let ammoCost = parseInt(storeUI.ammo.value) * 2;
+            let partsCost = parseInt(storeUI.parts.value) * 10;
+            
+            let total = oxenCost + foodCost + ammoCost + partsCost;
+            if (total > INITIAL_FUNDS) return;
+            
+            state = {
+                day: 1,
+                distance: 0,
+                health: 100,
+                food: parseInt(storeUI.food.value),
+                ammo: parseInt(storeUI.ammo.value),
+                parts: parseInt(storeUI.parts.value),
+                oxen: parseInt(storeUI.oxen.value),
+                money: INITIAL_FUNDS - total,
+                wagonBroken: false,
+                riverPending: false,
+                paceIdx: 0,
+                rationsIdx: 0,
+                weatherIdx: 0,
+                nextRiverDist: 400 + Math.random() * 200
+            };
+            
+            screens.store.style.display = 'none';
+            screens.game.style.display = 'block';
+            
+            gameLog.innerHTML = "";
+            let startEntry = document.createElement('div');
+            startEntry.style.marginBottom = "5px";
+            startEntry.innerText = window.t ? window.t('oregontrail.log.start', "You depart Independence, Missouri.") : "You depart Independence, Missouri.";
+            gameLog.appendChild(startEntry);
+            updateStats();
+        }
+
+        // --- NEW VISUAL LOGIC ---
+        function cyclePace() {
+            state.paceIdx = (state.paceIdx + 1) % PACES.length;
+            updateStats();
+        }
+        function cycleRations() {
+            state.rationsIdx = (state.rationsIdx + 1) % RATIONS.length;
+            updateStats();
+        }
+
+        function updateArtScene(type) {
+            const artEl = document.getElementById('art-scene');
+            let svg = "";
+            let weather = WEATHER_TYPES[state.weatherIdx];
+            
+            if (type === 'hunt') {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90" stroke="black" stroke-width="2"/>
+                    <circle cx="20" cy="16" r="3" fill="none" stroke="black" stroke-width="2"/>
+                    <path d="M 20 19 V 26 M 20 26 L 16 30 M 20 26 L 24 30 M 20 22 H 24 M 20 20 H 26" stroke="black" stroke-width="2"/>
+                    <path d="M 24 20 L 34 20" stroke="black" stroke-width="2"/>
+                    <path d="M 70 20 L 75 18 L 80 20 L 80 25 M 72 20 L 72 30 M 78 20 L 78 30" fill="none" stroke="black" stroke-width="2"/>
+                    <path d="M 74 18 L 72 15 M 76 18 L 78 15" stroke="black" stroke-width="1.5"/>
+                </svg>`;
+            } else if (state.wagonBroken) {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90 M 40 30 L 40 20 L 55 25 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                    <circle cx="44" cy="32" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <ellipse cx="60" cy="33" rx="4" ry="2" fill="white" stroke="black" stroke-width="2"/>
+                </svg>`;
+            } else if (weather === 'Raining') {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90" stroke="black" stroke-width="2"/>
+                    <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                    <circle cx="44" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <circle cx="56" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <path d="M 20 0 L 15 10 M 30 5 L 25 15 M 70 0 L 65 10 M 80 5 L 75 15" stroke="black" stroke-width="1.5"/>
+                </svg>`;
+            } else if (weather === 'Blizzard') {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90" stroke="black" stroke-width="2"/>
+                    <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                    <circle cx="44" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <circle cx="56" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <path d="M 20 5 L 24 9 M 24 5 L 20 9 M 22 3 V 11 M 18 7 H 26 M 70 15 L 74 19 M 74 15 L 70 19 M 72 13 V 21 M 68 17 H 76" stroke="black" stroke-width="1"/>
+                </svg>`;
+            } else if (weather === 'Intense Heat') {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90" stroke="black" stroke-width="2"/>
+                    <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                    <circle cx="44" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <circle cx="56" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <circle cx="20" cy="10" r="4" fill="none" stroke="black" stroke-width="2"/>
+                    <path d="M 20 2 V 4 M 20 16 V 18 M 12 10 H 14 M 26 10 H 28 M 14 4 L 15.5 5.5 M 26 16 L 24.5 14.5 M 26 4 L 24.5 5.5 M 14 16 L 15.5 14.5" stroke="black" stroke-width="2"/>
+                </svg>`;
+            } else if (type === 'river') {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M 10 30 Q 15 25 20 30 T 30 30 T 40 30 T 50 30 T 60 30 T 70 30 T 80 30 T 90 30" fill="none" stroke="black" stroke-width="2"/>
+                    <path d="M 10 35 Q 15 30 20 35 T 30 35 T 40 35 T 50 35 T 60 35 T 70 35 T 80 35 T 90 35" fill="none" stroke="black" stroke-width="2"/>
+                    <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                </svg>`;
+            } else {
+                svg = `<svg viewBox="0 0 100 40" width="100%" height="40" style="max-height: 50px; display: block; margin: 0 auto; overflow: visible;">
+                    <path d="M10 30 H 90" stroke="black" stroke-width="2"/>
+                    <path d="M 40 30 L 40 20 L 60 20 L 60 30 Z M 44 20 L 48 10 H 52 L 56 20 Z" fill="none" stroke="black" stroke-width="2"/>
+                    <circle cx="44" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                    <circle cx="56" cy="30" r="4" fill="white" stroke="black" stroke-width="2"/>
+                </svg>`;
+            }
+            artEl.innerHTML = svg;
+        }
+
+        function updateProgressBar() {
+            let progress = Math.min(1.0, state.distance / TARGET_DIST);
+            let percent = Math.floor(progress * 100);
+            let pMarker = document.getElementById('progress-marker');
+            if (pMarker) {
+                pMarker.style.left = percent + "%";
+            }
+        }
+
+        // --- GAME LOOP ---
+        function updateStats() {
+            statsUI.day.innerText = state.day;
+            statsUI.dist.innerText = Math.floor(state.distance) + "/" + TARGET_DIST;
+            statsUI.health.innerText = state.health;
+            statsUI.oxen.innerText = state.oxen;
+            statsUI.food.innerText = Math.floor(state.food);
+            statsUI.ammo.innerText = state.ammo;
+            statsUI.parts.innerText = state.parts;
+            
+            document.getElementById('stat-weather').innerText = (window.t ? window.t('oregontrail.weather.' + state.weatherIdx, WEATHER_TYPES[state.weatherIdx]) : WEATHER_TYPES[state.weatherIdx]);
+            document.getElementById('btn-pace').innerText = (window.t ? window.t('oregontrail.pace.' + state.paceIdx, PACES[state.paceIdx]) : PACES[state.paceIdx]);
+            document.getElementById('btn-rations').innerText = (window.t ? window.t('oregontrail.rations.' + state.rationsIdx, RATIONS[state.rationsIdx]) : RATIONS[state.rationsIdx]);
+
+            updateProgressBar();
+            if (!state.riverPending) updateArtScene('trail');
+
+            document.getElementById('btn-repair').disabled = !state.wagonBroken;
+            
+            // Save state
+            localStorage.setItem('rekindle_oregontrail_save', JSON.stringify(state));
+
+            // Check win/loss
+            if (state.health <= 0) {
+                localStorage.removeItem('rekindle_oregontrail_save');
+                endGame(window.t ? window.t('oregontrail.msg.died', "You have died of dysentery (or starvation).") : "You have died of dysentery (or starvation).");
+            } else if (state.distance >= TARGET_DIST) {
+                localStorage.removeItem('rekindle_oregontrail_save');
+                endGame(window.t ? window.t('oregontrail.msg.win', "Congratulations! You reached Oregon City!") : "Congratulations! You reached Oregon City!");
+            }
+        }
+
+        function logEvent(msg) {
+            let entry = document.createElement('div');
+            entry.style.marginBottom = "5px";
+            entry.innerText = "Day " + state.day + ": " + msg;
+            gameLog.appendChild(entry);
+            gameLog.scrollTop = gameLog.scrollHeight;
+        }
+
+        function takeAction(action) {
+            if (state.health <= 0 || state.distance >= TARGET_DIST) return;
+            if (state.riverPending && action !== 'rest') {
+                document.getElementById('river-modal').classList.remove('hidden');
+                return;
+            }
+            
+            let eventMsg = "";
+            let advancedDay = true;
+            
+            if (state.wagonBroken && action !== 'repair') {
+                logEvent(window.t ? window.t('oregontrail.msg.wagon_broken', "Wagon is broken. You must repair it!") : "Wagon is broken. You must repair it!");
+                return;
+            }
+
+            if (action === 'travel') {
+                if (state.oxen <= 0) {
+                    logEvent(window.t ? window.t('oregontrail.msg.no_oxen', "No oxen to pull the wagon!") : "No oxen to pull the wagon!");
+                    return;
+                }
+                
+                let wMul = 1.0;
+                if (WEATHER_TYPES[state.weatherIdx] === 'Raining') wMul = 0.6;
+                if (WEATHER_TYPES[state.weatherIdx] === 'Blizzard') wMul = 0.2;
+                if (WEATHER_TYPES[state.weatherIdx] === 'Intense Heat') wMul = 0.8;
+
+                let pMul = 1.0;
+                if (state.paceIdx === 1) pMul = 1.5;
+                if (state.paceIdx === 2) pMul = 2.0;
+
+                let speed = 15 + (state.oxen * 2);
+                if (state.health < 50) speed *= 0.5;
+                
+                let dailyDist = speed * (0.8 + Math.random() * 0.4) * wMul * pMul;
+                state.distance += dailyDist;
+                eventMsg = (window.t ? window.t('oregontrail.msg.travel', "Traveled " + Math.floor(dailyDist) + " miles.") : "Traveled " + Math.floor(dailyDist) + " miles.");
+                
+            } else if (action === 'rest') {
+                let heal = 10 + Math.floor(Math.random() * 10);
+                state.health = Math.min(100, state.health + heal);
+                eventMsg = (window.t ? window.t('oregontrail.msg.rest', "Rested and gained health.") : "Rested and gained health.");
+                
+            } else if (action === 'hunt') {
+                if (state.ammo <= 0) {
+                    logEvent(window.t ? window.t('oregontrail.msg.no_ammo', "No ammo to hunt!") : "No ammo to hunt!");
+                    return;
+                }
+                state.ammo -= 1;
+                if (Math.random() > 0.4) {
+                    let meat = 20 + Math.floor(Math.random() * 50);
+                    state.food += meat;
+                    eventMsg = (window.t ? window.t('oregontrail.msg.hunt_success', "Hunted and gained " + meat + " lbs of food.") : "Hunted and gained " + meat + " lbs of food.");
+                } else {
+                    eventMsg = window.t ? window.t('oregontrail.msg.hunt_fail', "Hunting failed. Lost 1 ammo.") : "Hunting failed. Lost 1 ammo.";
+                }
+                // Hunting takes time
+                advancedDay = true;
+                updateArtScene('hunt');
+                
+            } else if (action === 'repair') {
+                if (state.parts > 0) {
+                    state.parts -= 1;
+                    state.wagonBroken = false;
+                    eventMsg = window.t ? window.t('oregontrail.msg.repair_success', "Wagon repaired using 1 part.") : "Wagon repaired using 1 part.";
+                } else {
+                    // Try to repair without parts (low chance)
+                    if (Math.random() > 0.7) {
+                        state.wagonBroken = false;
+                        eventMsg = window.t ? window.t('oregontrail.msg.repair_luck', "Wagon repaired against all odds!") : "Wagon repaired against all odds!";
+                    } else {
+                        eventMsg = window.t ? window.t('oregontrail.msg.repair_fail', "Repair failed. Need spare parts!") : "Repair failed. Need spare parts!";
+                    }
+                }
+            }
+
+            if (advancedDay) {
+                state.day += 1;
+                
+                // Weather
+                if (Math.random() < 0.3) {
+                    state.weatherIdx = Math.floor(Math.random() * WEATHER_TYPES.length);
+                } else if (Math.random() < 0.2) {
+                    state.weatherIdx = 0; // Sunny
+                }
+
+                // Consume food
+                let rMul = 1.0;
+                if (state.rationsIdx === 1) rMul = 0.5;
+                if (state.rationsIdx === 2) rMul = 0.2;
+
+                let consume = (4 + (state.oxen * 1.5)) * rMul;
+                state.food -= consume;
+                
+                let healthLoss = 0;
+                if (state.rationsIdx === 1) healthLoss += 1;
+                if (state.rationsIdx === 2) healthLoss += 3;
+                
+                if (action === 'travel') {
+                    if (state.paceIdx === 1) healthLoss += 1;
+                    if (state.paceIdx === 2) healthLoss += 3;
+                    if (WEATHER_TYPES[state.weatherIdx] === 'Blizzard') healthLoss += 5;
+                    if (WEATHER_TYPES[state.weatherIdx] === 'Intense Heat') healthLoss += 3;
+                }
+
+                if (state.food <= 0) {
+                    state.food = 0;
+                    healthLoss += 15;
+                    eventMsg += " " + (window.t ? window.t('oregontrail.msg.starving', "Starving!") : "Starving!");
+                } else if (healthLoss === 0 && state.health < 100 && action !== 'travel') {
+                    state.health += 2;
+                }
+                
+                state.health = Math.max(0, state.health - healthLoss);
+                
+                logEvent(eventMsg);
+                
+                if (state.distance >= state.nextRiverDist && state.distance < TARGET_DIST) {
+                    logEvent(window.t ? window.t('oregontrail.msg.river_approach', "Approached a river crossing!") : "Approached a river crossing!");
+                    state.riverPending = true;
+                    state.distance = state.nextRiverDist;
+                    state.nextRiverDist += 400 + Math.random() * 300;
+                    updateArtScene('river');
+                    document.getElementById('river-modal').classList.remove('hidden');
+                    return;
+                }
+                
+                // Random events (20% chance if traveling)
+                if (action === 'travel' && Math.random() < 0.2) {
+                    triggerRandomEvent();
+                }
+            }
+            
+            updateStats();
+        }
+
+        function attemptRiver(method) {
+            document.getElementById('river-modal').classList.add('hidden');
+            let successBase = 0.8;
+            if (WEATHER_TYPES[state.weatherIdx] === 'Raining') successBase -= 0.3;
+            
+            if (method === 'ford') {
+                logEvent(window.t ? window.t('oregontrail.log.ford', "Attempting to ford the river...") : "Attempting to ford the river...");
+                if (Math.random() < successBase) {
+                    logEvent(window.t ? window.t('oregontrail.log.river_success', "Crossed safely.") : "Crossed safely.");
+                } else {
+                    logEvent(window.t ? window.t('oregontrail.log.ford_fail', "River was too deep! Wagon swamped. Lost supplies.") : "River was too deep! Wagon swamped. Lost supplies.");
+                    state.food = Math.max(0, state.food - 50);
+                    state.ammo = Math.max(0, state.ammo - 5);
+                }
+                state.riverPending = false;
+                state.distance += 1;
+            } else if (method === 'caulk') {
+                logEvent(window.t ? window.t('oregontrail.log.caulk', "Attempting to caulk and float the wagon...") : "Attempting to caulk and float the wagon...");
+                if (Math.random() < (successBase + 0.1)) {
+                    logEvent(window.t ? window.t('oregontrail.log.river_success', "Crossed safely.") : "Crossed safely.");
+                } else {
+                    logEvent(window.t ? window.t('oregontrail.log.caulk_fail', "Wagon tipped! Lost supplies.") : "Wagon tipped! Lost supplies.");
+                    state.food = Math.max(0, state.food - 100);
+                    state.parts = Math.max(0, state.parts - 1);
+                }
+                state.riverPending = false;
+                state.distance += 1;
+            } else if (method === 'wait') {
+                logEvent(window.t ? window.t('oregontrail.log.wait', "Waited a day for conditions to improve.") : "Waited a day for conditions to improve.");
+                takeAction('rest'); 
+                return;
+            }
+            updateStats();
+        }
+
+        function triggerRandomEvent() {
+            const events = [
+                { type: 'disease', msg: 'Someone got Dysentery. Lose 20 health.', effect: () => { state.health -= 20; } },
+                { type: 'ox_dies', msg: 'An ox strayed and died.', effect: () => { state.oxen = Math.max(0, state.oxen - 1); } },
+                { type: 'wagon', msg: 'Wagon wheel broke!', effect: () => { state.wagonBroken = true; } },
+                { type: 'thief', msg: 'Thieves stole some food.', effect: () => { state.food = Math.max(0, state.food - 50); } },
+                { type: 'fruit', msg: 'Found wild berries. Gain 30 food.', effect: () => { state.food += 30; } },
+                { type: 'snake', msg: 'Snake bite! Lose 15 health.', effect: () => { state.health -= 15; } },
+                { type: 'abandoned', msg: 'Found abandoned wagon. Gained parts and ammo.', effect: () => { state.parts += 1; state.ammo += 10; } },
+                { type: 'spoiled', msg: 'Some food spoiled. Lost 20 food.', effect: () => { state.food = Math.max(0, state.food - 20); } }
+            ];
+            
+            let ev = events[Math.floor(Math.random() * events.length)];
+            
+            document.getElementById('event-title').innerText = "Random Event";
+            document.getElementById('event-text').innerText = (window.t ? window.t('oregontrail.event.' + ev.type) : ev.msg);
+            
+            ev.effect();
+            modals.event.classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+            updateStats();
+        }
+
+        function endGame(msg) {
+            document.getElementById('gameover-text').innerText = msg;
+            modals.gameover.classList.remove('hidden');
+        }
+
+        // Init on load
+        window.onload = () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            
+            let savedState = localStorage.getItem('rekindle_oregontrail_save');
+            if (savedState) {
+                try {
+                    state = JSON.parse(savedState);
+                    screens.store.style.display = 'none';
+                    screens.game.style.display = 'block';
+                    
+                    gameLog.innerHTML = "";
+                    let startEntry = document.createElement('div');
+                    startEntry.style.marginBottom = "5px";
+                    startEntry.innerText = window.t ? window.t('oregontrail.msg.resume', "Journey resumed.") : "Journey resumed.";
+                    gameLog.appendChild(startEntry);
+                    
+                    if (state.riverPending) {
+                        document.getElementById('river-modal').classList.remove('hidden');
+                        updateArtScene('river');
+                    }
+                    
+                    updateStats();
+                } catch(e) {
+                    initStore();
+                }
+            } else {
+                initStore();
+            }
+        };
+
+    </script>
+</body>
+</html>
