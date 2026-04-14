@@ -266,6 +266,13 @@ const APPS = [
         desc: 'Decentralized social.',
         icon: '<path d="M21.3,4.5c-2.2-1.1-4.7-1.1-6.9-0.2c-0.6-0.3-1.3-0.4-1.9-0.4c-0.7,0-1.4,0.1-2,0.4C8.2,3.4,5.7,3.5,3.5,4.5C1.3,5.6,0,8.5,0,8.5v11c0,3,2.2,5.5,5,5.5h3v-7c0-1.1,0.9-2,2-2s2,0.9,2,2v6h1v-6c0-1.1,0.9-2,2-2s2,0.9,2,2v7h3c2.8,0,5-2.5,5-5.5v-11C25,8.5,23.6,5.6,21.3,4.5z" fill="black"/>'
     },
+    /*     {
+            id: 'beeper',
+            name: 'Beeper',
+            cat: 'tools',
+            desc: 'Unified Chat Inbox',
+            icon: '<rect x="4" y="4" width="24" height="24" rx="4" fill="black"/><path d="M12 8 V24 M12 16 A 4 4 0 0 1 20 16 A 4 4 0 0 1 12 20" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/>'
+        }, */
     {
         id: 'libby',
         name: 'Libby',
@@ -353,15 +360,9 @@ const APPS = [
     },
     {
         id: 'books',
-        name: 'Reading List',
+        name: 'Books',
         cat: 'lifestyle',
         icon: '<rect x="6" y="4" width="20" height="24"/><line x1="6" y1="8" x2="26" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="22" y2="16"/><line x1="10" y1="20" x2="22" y2="20"/>'
-    },
-    {
-        id: 'reading',
-        name: 'Reading Log',
-        cat: 'lifestyle',
-        icon: '<rect x="6" y="4" width="20" height="24"/><line x1="10" y1="8" x2="22" y2="8"/><line x1="10" y1="12" x2="22" y2="12"/><line x1="10" y1="16" x2="18" y2="16"/><polyline points="17 23 21 25 23 19" fill="none" stroke="black" stroke-width="2" transform="rotate(10, 16, 20)"/>'
     },
     {
         id: 'watchlist',
@@ -369,6 +370,7 @@ const APPS = [
         cat: 'lifestyle',
         icon: '<path d="M22 18 L28 14 V26 L22 22 Z" fill="black"/><rect x="4" y="12" width="18" height="14" rx="2" stroke="black" stroke-width="2" fill="none"/><circle cx="9" cy="8" r="4" stroke="black" stroke-width="2" fill="none"/><circle cx="17" cy="8" r="4" stroke="black" stroke-width="2" fill="none"/><circle cx="9" cy="8" r="1.5" fill="black"/><circle cx="17" cy="8" r="1.5" fill="black"/>'
     },
+
     {
         id: 'reddit',
         name: 'Reddit',
@@ -467,6 +469,13 @@ const APPS = [
         plus: true,
         desc: 'Digital photo slideshow.',
         icon: '<rect x="4" y="6" width="24" height="20" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="black"/><path d="M4 26 l8 -8 l4 4 l6 -6 l6 6" fill="none" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'food',
+        name: 'Food Log',
+        cat: 'lifestyle',
+        desc: 'Log and track food.',
+        icon: '<path d="M 6 20 C 6 6 26 6 26 20 M 2 20 H 30 M 6 20 V 23 H 26 V 20 M 13 7 C 13 3 19 3 19 7" fill="none" stroke="black" stroke-width="2"/>'
     },
 
     // --- GAMES ---
