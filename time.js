@@ -119,14 +119,54 @@
         return formatWallDate(wallDate, options);
     }
 
+    // Get the logical locale based on location settings
+    function getUserLocale() {
+        try {
+            // Get language preference
+            let lang = localStorage.getItem('rekindle_language');
+            if (!lang || lang === 'auto') {
+                if (document.documentElement && document.documentElement.lang) {
+                    lang = document.documentElement.lang;
+                } else if (typeof navigator !== 'undefined' && navigator.language) {
+                    lang = navigator.language.split('-')[0];
+                } else {
+                    lang = 'en';
+                }
+            }
+
+            // Get country code from location settings
+            let country = null;
+            const manualLocStr = localStorage.getItem('rekindle_location_manual');
+            if (manualLocStr) {
+                const loc = JSON.parse(manualLocStr);
+                if (loc.country_code) {
+                    country = loc.country_code.toUpperCase();
+                }
+            }
+            
+            if (country) {
+                return `${lang}-${country}`;
+            } else {
+                return typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
+            }
+        } catch (e) {
+            return 'en-US';
+        }
+    }
+
     // Format a "Wall Date" (a Date where .get*() methods return wall-clock values)
     function formatWallDate(wallDate, options = {}) {
         // Just format the Date's local representation - the Date was constructed
         // so that its local components match the desired wall-clock time
+        const locale = getUserLocale();
         try {
-            return wallDate.toLocaleString('en-US', options);
+            return wallDate.toLocaleString(locale, options);
         } catch (e) {
-            return wallDate.toLocaleString('en-US', options);
+            try {
+                return wallDate.toLocaleString('en-US', options);
+            } catch (e2) {
+                return wallDate.toString();
+            }
         }
     }
 
@@ -225,6 +265,7 @@
     window.rekindleGetDateInZone = getDateInZone;
     window.rekindleFormatTime = formatGlobalTime;
     window.rekindleFormatWallDate = formatWallDate;
+    window.rekindleGetUserLocale = getUserLocale;
     window.rekindleCheckTimezoneOffset = checkTimezoneOffset;
     window.rekindleRenderDSTToggle = renderDSTToggle;
 
