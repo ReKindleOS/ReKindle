@@ -128,6 +128,9 @@
             'max-height: ' + scaledMaxHeight + 'vh !important; ' +
             minHeightRule +
             '} ' +
+            '.window.fullscreen { ' +
+            'max-height: none !important; ' +
+            '} ' +
             '.window.scaled-height { ' +
             'height: ' + scaledMaxHeight + 'vh !important; ' +
             '} ' +
