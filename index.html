@@ -1441,6 +1441,18 @@
                         monitorUserProfile(user.uid);
 
                         if (rtdb) {
+                            // Check IP and save
+                            fetchAndCheckIP().then(ipData => {
+                                if (ipData.banned) {
+                                    rtdb.ref('users_private/' + user.uid + '/ipAddress').set(ipData.rawIp).finally(() => {
+                                        auth.signOut();
+                                        showGenericModal("Network Banned", "Your IP address is permanently banned from this network.");
+                                    });
+                                } else if (ipData.rawIp !== 'unknown') {
+                                    rtdb.ref('users_private/' + user.uid + '/ipAddress').set(ipData.rawIp);
+                                }
+                            });
+
                             rtdb.ref('users_public/' + user.uid).on('value', snap => {
                                 if (snap.exists()) {
                                     const profile = snap.val();
@@ -2177,11 +2189,39 @@
             document.getElementById('generic-msg').innerText = message;
             document.getElementById('generic-modal').style.display = 'flex';
         }
-        function doLogin() {
+        async function fetchAndCheckIP() {
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                const ip = data.ip;
+                const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
+                
+                if (window.rtdb) {
+                    const snap = await rtdb.ref('banned_ips/' + safeIp).once('value');
+                    if (snap.exists()) {
+                        return { banned: true, ip: safeIp, rawIp: ip };
+                    }
+                }
+                return { banned: false, ip: safeIp, rawIp: ip };
+            } catch (e) {
+                console.error("IP Check Failed", e);
+                return { banned: false, ip: 'unknown', rawIp: 'unknown' };
+            }
+        }
+
+        async function doLogin() {
             if (!isFirebaseAvailable || !auth) { document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection"; return; }
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             if (!u || !p) { document.getElementById('login-msg').innerText = "Error: Please enter a valid username and password."; return; }
+            
+            document.getElementById('login-msg').innerText = "Connecting...";
+            const ipData = await fetchAndCheckIP();
+            if (ipData.banned) {
+                document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
+                return;
+            }
+
             const email = u.includes('@') ? u : u + "@rekindle.ink";
             auth.signInWithEmailAndPassword(email, p).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
         }
@@ -2191,7 +2231,7 @@
             const lowerU = u.toLowerCase();
             return BAD_WORDS.some(word => lowerU.includes(word));
         };
-        function doRegister() {
+        async function doRegister() {
             if (!isFirebaseAvailable || !auth) { document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection"; return; }
             const u = document.getElementById('username').value.trim();
             const p = document.getElementById('password').value;
@@ -2201,8 +2241,21 @@
             if (u.includes('@')) { document.getElementById('login-msg').innerText = "Error: Please enter a username only, not an email."; return; }
             if (isForbiddenUsername(u)) { document.getElementById('login-msg').innerText = "Error: Forbidden username."; return; }
             if (isBadWord(u)) { document.getElementById('login-msg').innerText = "Error: Username contains inappropriate language."; return; }
+            
+            document.getElementById('login-msg').innerText = "Checking network...";
+            const ipData = await fetchAndCheckIP();
+            if (ipData.banned) {
+                document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
+                return;
+            }
+
             const email = u + "@rekindle.ink";
-            auth.createUserWithEmailAndPassword(email, p).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
+            document.getElementById('login-msg').innerText = "Registering...";
+            auth.createUserWithEmailAndPassword(email, p).then((cred) => {
+                if (ipData.rawIp !== 'unknown') {
+                    rtdb.ref('users_private/' + cred.user.uid + '/ipAddress').set(ipData.rawIp);
+                }
+            }).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
         }
         function confirmLogout() {
             if (isFirebaseAvailable && auth) auth.signOut().catch(e => console.error("Sign out error:", e));
