@@ -25,6 +25,7 @@
 
     let isPro = false;
     let currentUser = null;
+    let checkComplete = false;
 
     function initFirebase() {
         if (typeof firebase === 'undefined') return false;
@@ -40,7 +41,7 @@
             // Create overlay if not exists
             overlay = document.createElement('div');
             overlay.id = 'paywall-overlay';
-            overlay.style.cssText = 'display:flex; position:fixed; top:35px; left:0; width:100%; height:calc(100% - 35px); background:rgba(255,255,255,0.98); z-index:9000; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; box-sizing:border-box;';
+            overlay.style.cssText = 'display:flex !important; position:fixed !important; top:35px !important; left:0 !important; width:100% !important; height:calc(100% - 35px) !important; background:rgba(255,255,255,0.98) !important; z-index:2147483647 !important; flex-direction:column !important; justify-content:center !important; align-items:center !important; text-align:center !important; padding:20px !important; box-sizing:border-box !important; visibility:visible !important; opacity:1 !important; transform:none !important; clip-path:none !important; clip:auto !important;';
             overlay.innerHTML = `
                 <h2 style="margin-top:0;">ReKindle+</h2>
                 <p>Support ReKindle development and get<br>access to exclusive apps.</p>
@@ -67,6 +68,7 @@
 
     async function checkProStatus(user) {
         if (!user) {
+            isPro = false;
             showPaywall('Please log in to access this app.');
             return false;
         }
@@ -95,15 +97,18 @@
                     return true;
                 } else {
                     localStorage.removeItem(CACHE_KEY);
+                    isPro = false;
                     showPaywall(expires > 0 ? 'Subscription expired.' : 'Subscription required.');
                     return false;
                 }
             } else {
+                isPro = false;
                 showPaywall('Subscription required.');
                 return false;
             }
         } catch (e) {
             console.error('Pro gate check failed:', e);
+            isPro = false;
             showPaywall('Error verifying subscription.');
             return false;
         }
@@ -132,9 +137,24 @@
         firebase.auth().onAuthStateChanged(async (user) => {
             currentUser = user;
             const result = await checkProStatus(user);
+            checkComplete = true;
             if (callback) callback(result);
         });
     }
+
+    // Anti-tamper enforcer
+    setInterval(() => {
+        if (checkComplete && !isPro) {
+            const overlay = document.getElementById('paywall-overlay');
+            if (!overlay || 
+                overlay.style.display === 'none' || 
+                overlay.style.visibility === 'hidden' || 
+                overlay.style.opacity === '0' ||
+                overlay.style.zIndex !== '2147483647') {
+                showPaywall('Subscription required.');
+            }
+        }
+    }, 500);
 
     // Expose API
     window.rekindleProGate = {
