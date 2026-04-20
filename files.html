@@ -668,7 +668,7 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        async function loadFiles() {
+        async function loadFiles(isRetry = false) {
             if (!currentUser) return;
 
             const listRef = firebase.storage().ref(`users/${currentUser.uid}/files`);
@@ -676,7 +676,7 @@
             const fileListEl = document.getElementById('file-list');
 
             try {
-                fileListEl.innerHTML = '<div class="empty-state">Loading...</div>';
+                if (!isRetry) fileListEl.innerHTML = '<div class="empty-state">Loading...</div>';
                 const fileRes = await listRef.listAll();
 
                 let photoRes = { items: [] };
@@ -709,6 +709,19 @@
 
             } catch (error) {
                 console.error("Error loading files:", error);
+                
+                // If unauthorized and we haven't retried yet, try refreshing the token
+                // This handles cases where the user just became Pro and has a stale token.
+                if (error.code === 'storage/unauthorized' && !isRetry && window.rekindleProGate && rekindleProGate.isPro()) {
+                    console.log("Storage unauthorized but user is Pro. Attempting token refresh...");
+                    try {
+                        await firebase.auth().currentUser.getIdToken(true);
+                        return loadFiles(true); // Retry once
+                    } catch (refreshError) {
+                        console.error("Token refresh failed:", refreshError);
+                    }
+                }
+
                 fileListEl.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
             }
         }

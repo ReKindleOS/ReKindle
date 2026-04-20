@@ -91,9 +91,17 @@
 
                 if (expires > now) {
                     // User is Pro!
+                    const wasPro = localStorage.getItem(CACHE_KEY);
                     localStorage.setItem(CACHE_KEY, expires.toString());
                     isPro = true;
                     hidePaywall();
+
+                    // If they weren't pro in the last hour, force a token refresh to pick up custom claims
+                    if (!wasPro && user) {
+                        console.log("Pro status newly detected, refreshing token...");
+                        user.getIdToken(true).catch(err => console.error("Pro gate token refresh failed:", err));
+                    }
+
                     return true;
                 } else {
                     localStorage.removeItem(CACHE_KEY);
