@@ -1805,6 +1805,16 @@
                 renderDefaultIcons();
                 return;
             }
+
+            // Check for inappropriate content in query
+            if (window.filterBadWords) {
+                var cleanQuery = window.filterBadWords(query);
+                if (cleanQuery !== query) {
+                    picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found.</div>';
+                    return;
+                }
+            }
+
             picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">Searching...</div>';
 
             xhrGet('https://api.iconify.design/search?query=' + encodeURIComponent(query) + '&limit=20&palette=false')
@@ -1815,7 +1825,17 @@
                         return;
                     }
 
+                    var shownCount = 0;
                     data.icons.forEach(function (iconName) {
+                        // Extra safety: Filter the icon name itself
+                        if (window.filterBadWords) {
+                            // Iconify names often use dashes/colons, replace with spaces for \b regex check
+                            var readableName = iconName.replace(/[:_-]/g, ' ');
+                            if (window.filterBadWords(readableName) !== readableName) {
+                                return; // Skip this icon
+                            }
+                        }
+
                         var el = document.createElement('div');
                         el.className = 'icon-option';
                         var imgUrl = 'https://api.iconify.design/' + iconName + '.svg';
@@ -1833,7 +1853,12 @@
                                 });
                         };
                         picker.appendChild(el);
+                        shownCount++;
                     });
+
+                    if (shownCount === 0) {
+                        picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found.</div>';
+                    }
                 })
                 .catch(function (e) {
                     picker.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:red;">Error searching.</div>';
