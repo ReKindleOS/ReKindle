@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="theme.js?v=15"></script>
     <script src="js/i18n.js"></script>
+    <script src="bad_words.js?v=2"></script>
     <style>
         :root {
             --shadow: 4px 4px 0px #000000;
@@ -773,6 +774,17 @@ function listenToMatch() {
         updateGameOverModal();
         updatePlayerRowHint();
         startLocalTimer();
+
+        // Host checks if all guessers have guessed — works regardless of who is drawing
+        if (isHost && data.status === 'drawing') {
+            const totalGuessers = (data.drawOrder || []).length - 1;
+            const guessedCount = Object.values(data.players || {}).filter(function(p) {
+                return p.guessedRound === data.round;
+            }).length;
+            if (totalGuessers > 0 && guessedCount >= totalGuessers) {
+                endRound();
+            }
+        }
     });
 }
 
@@ -1292,6 +1304,11 @@ async function clearBoard() {
     seenStrokeKeys = {};
 }
 
+function clean(text) {
+    if (!text) return text;
+    return window.filterBadWords ? window.filterBadWords(text) : text;
+}
+
 // ===== CHAT / GUESS =====
 function appendChat(msg) {
     const list = document.getElementById('chat-list');
@@ -1302,12 +1319,12 @@ function appendChat(msg) {
         div.innerText = msg.text;
     } else if (msg.correct) {
         div.classList.add('correct');
-        div.innerText = tfmt('pictionary.chat.guessed', '${name} guessed the word!', { name: msg.name || tfmt('pictionary.chat.someone', 'Someone') });
+        div.innerText = tfmt('pictionary.chat.guessed', '${name} guessed the word!', { name: clean(msg.name) || tfmt('pictionary.chat.someone', 'Someone') });
     } else if (msg.closeGuess) {
         div.classList.add('close');
-        div.innerHTML = '<span class="cname">' + escapeHTML(msg.name) + ':</span> ' + escapeHTML(msg.text) + ' <em>' + escapeHTML(tfmt('pictionary.chat.close', '(close!)')) + '</em>';
+        div.innerHTML = '<span class="cname">' + escapeHTML(clean(msg.name)) + ':</span> ' + escapeHTML(clean(msg.text)) + ' <em>' + escapeHTML(tfmt('pictionary.chat.close', '(close!)')) + '</em>';
     } else {
-        div.innerHTML = '<span class="cname">' + escapeHTML(msg.name) + ':</span> ' + escapeHTML(msg.text);
+        div.innerHTML = '<span class="cname">' + escapeHTML(clean(msg.name)) + ':</span> ' + escapeHTML(clean(msg.text));
     }
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
@@ -1321,9 +1338,10 @@ async function submitGuess(e) {
     const txt = (input.value || '').trim();
     if (!txt) return;
     input.value = '';
+    const cleanTxt = clean(txt);
 
     if (!gameState || gameState.status !== 'drawing') {
-        chatRef.push({ uid: currentUser.uid, name: currentUser.name, text: txt, ts: Date.now() });
+        chatRef.push({ uid: currentUser.uid, name: currentUser.name, text: cleanTxt, ts: Date.now() });
         return;
     }
 
@@ -1333,7 +1351,7 @@ async function submitGuess(e) {
     if (me.guessedRound === gameState.round) return; // already guessed
 
     const word = (gameState.currentWord || '').toLowerCase();
-    const guess = txt.toLowerCase();
+    const guess = txt.toLowerCase(); // use raw txt for word matching so filter doesn't break correct guesses
 
     if (word && guess === word) {
         await handleCorrectGuess();
@@ -1345,14 +1363,14 @@ async function submitGuess(e) {
         chatRef.push({
             uid: currentUser.uid,
             name: currentUser.name,
-            text: txt,
+            text: cleanTxt,
             closeGuess: true,
             ts: Date.now()
         });
         return;
     }
 
-    chatRef.push({ uid: currentUser.uid, name: currentUser.name, text: txt, ts: Date.now() });
+    chatRef.push({ uid: currentUser.uid, name: currentUser.name, text: cleanTxt, ts: Date.now() });
 }
 
 async function handleCorrectGuess() {
@@ -1387,12 +1405,8 @@ async function handleCorrectGuess() {
         correct: true,
         ts: Date.now()
     });
-
-    // If everyone guessed -> end round early (host only)
-    const totalGuessers = (gameState.drawOrder || []).length - 1;
-    if (isHost && (order) >= totalGuessers) {
-        setTimeout(() => endRound(), 400);
-    }
+    // Early round-end is now handled by the host's listenToMatch
+    // reacting to the guessedRound update above, so no manual check needed here.
 }
 
 function levenshtein(a, b) {
