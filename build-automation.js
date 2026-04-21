@@ -471,7 +471,7 @@ async function transpileHtml(htmlContent, filename = '') {
         });
 
         // 6. ADD VISUAL INDICATOR & INFO MODAL
-        $('.os-title').after('<div class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Lite Mode">LITE</div>');
+        $('.os-title, .logo-item').after('<div class="lite-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Lite Mode">LITE</div>');
 
         // Fix for specific styling in Lite where badges might look weird
         $('style').append('.lite-badge { background: white; border: 1px solid black; padding: 0 2px; }');
@@ -1021,7 +1021,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         $('video[src$=".mp4"]').each((i, el) => { const src = $(el).attr('src'); if (src) $(el).attr('src', src.replace('.mp4', '.webm')); });
 
         // 7. VISUAL INDICATOR
-        $('.os-title').after('<div class="legacy-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Legacy Mode">LEGACY</div>');
+        $('.os-title, .logo-item').after('<div class="legacy-badge" onclick="document.getElementById(\'lite-info-modal\').style.display=\'flex\'" style="font-size:0.6em; cursor:pointer; border:1px solid black; background:white; padding:0 4px; margin-top:0px; display:inline-block;" title="About Legacy Mode">LEGACY</div>');
         $('style').append('.legacy-badge { background: white; border: 1px solid black; padding: 0 2px; }');
 
         // 7b. INJECT INFO MODAL (Reusing Lite Modal ID for simplicity or creating new one? User said "modal popup we made")

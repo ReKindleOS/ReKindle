@@ -1325,41 +1325,80 @@
 
                     // Global Matchmaking Listener for Tab Badge
                     if (rtdb) {
-                        let currentBadgeRenderId = 0;
-                        rtdb.ref('matchmaking').on('value', async (snap) => {
-                            const renderId = ++currentBadgeRenderId;
-                            let waitingMatches = [];
-                            if (snap.exists()) {
-                                const games = snap.val();
-                                for (const gameType in games) {
-                                    for (const matchId in games[gameType]) {
-                                        const match = games[gameType][matchId];
-                                        if (match && match.status === 'waiting') {
-                                            waitingMatches.push(match);
+                        let badgeListener = null;
+                        let badgeListenerRef = null;
+                        let badgeDebounceTimer = null;
+                        // Cache presence lookups: uid -> { value: bool, ts: number }
+                        const presenceCache = new Map();
+                        const PRESENCE_TTL = 30000;
+
+                        async function cachedPresence(uid) {
+                            const cached = presenceCache.get(uid);
+                            if (cached && (Date.now() - cached.ts) < PRESENCE_TTL) return cached.value;
+                            try {
+                                const snap = await rtdb.ref('presence/' + uid).once('value');
+                                const val = snap.val() === true;
+                                presenceCache.set(uid, { value: val, ts: Date.now() });
+                                return val;
+                            } catch (e) {
+                                return false;
+                            }
+                        }
+
+                        function attachBadgeListener() {
+                            if (badgeListener) return;
+                            // Server-filter to only waiting matches
+                            badgeListenerRef = rtdb.ref('matchmaking');
+                            badgeListener = badgeListenerRef.on('value', (snap) => {
+                                // Debounce rapid deltas (5s) to reduce GC churn
+                                clearTimeout(badgeDebounceTimer);
+                                badgeDebounceTimer = setTimeout(async () => {
+                                    let count = 0;
+                                    if (snap.exists()) {
+                                        const games = snap.val();
+                                        const checks = [];
+                                        for (const gameType in games) {
+                                            for (const matchId in games[gameType]) {
+                                                const match = games[gameType][matchId];
+                                                if (match && match.status === 'waiting') {
+                                                    checks.push(match.hostUid
+                                                        ? cachedPresence(match.hostUid)
+                                                        : Promise.resolve(true));
+                                                }
+                                            }
                                         }
+                                        const results = await Promise.all(checks);
+                                        count = results.filter(Boolean).length;
                                     }
-                                }
+                                    const badge = document.getElementById('live-games-count');
+                                    if (badge) {
+                                        badge.innerText = count;
+                                        badge.style.display = count > 0 ? 'inline-flex' : 'none';
+                                    }
+                                }, 5000);
+                            });
+                        }
+
+                        function detachBadgeListener() {
+                            clearTimeout(badgeDebounceTimer);
+                            if (badgeListenerRef && badgeListener) {
+                                badgeListenerRef.off('value', badgeListener);
+                                badgeListener = null;
+                                badgeListenerRef = null;
                             }
+                        }
 
-                            const validatedMatches = await Promise.all(waitingMatches.map(async match => {
-                                if (!match.hostUid) return true;
-                                try {
-                                    const presSnap = await rtdb.ref('presence/' + match.hostUid).once('value');
-                                    return presSnap.val() === true;
-                                } catch (e) {
-                                    return false;
-                                }
-                            }));
+                        attachBadgeListener();
 
-                            if (renderId !== currentBadgeRenderId) return;
-
-                            const totalWaiting = validatedMatches.filter(isOnline => isOnline).length;
-                            const badge = document.getElementById('live-games-count');
-                            if (badge) {
-                                badge.innerText = totalWaiting;
-                                badge.style.display = totalWaiting > 0 ? 'inline-flex' : 'none';
-                            }
+                        // Detach when page is hidden, reattach when visible
+                        document.addEventListener('visibilitychange', () => {
+                            if (document.hidden) detachBadgeListener();
+                            else attachBadgeListener();
                         });
+
+                        window._badgeDetach = detachBadgeListener;
+                        window._badgeAttach = attachBadgeListener;
+                        window._presenceCache = presenceCache;
                     }
                 } else {
                     console.warn("Firebase SDK not loaded. Running in offline mode.");
@@ -1872,10 +1911,14 @@
             if (liveGamesSection) {
                 if (category === 'two_player') {
                     liveGamesSection.style.display = 'block';
+                    // Detach badge listener — loadLiveGames has its own matchmaking listener
+                    if (window._badgeDetach) window._badgeDetach();
                     loadLiveGames();
                 } else {
                     liveGamesSection.style.display = 'none';
                     if (window.liveGamesUnsubscribe) { window.liveGamesUnsubscribe(); window.liveGamesUnsubscribe = null; }
+                    // Reattach badge listener now that Live Games tab is closed
+                    if (window._badgeAttach) window._badgeAttach();
                 }
             }
 
@@ -2648,6 +2691,7 @@
         }
 
         let dashboardLoaded = false;
+        let dashboardClockInterval = null;
         function loadDashboard() {
             if (dashboardLoaded) return;
             dashboardLoaded = true;
@@ -2655,7 +2699,16 @@
             fetchDashboardWeather();
             renderDashboardCalendar();
             fetchDashboardAgenda();
-            setInterval(updateDashboardTime, 60000);
+            dashboardClockInterval = setInterval(updateDashboardTime, 60000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    clearInterval(dashboardClockInterval);
+                    dashboardClockInterval = null;
+                } else if (!dashboardClockInterval) {
+                    updateDashboardTime();
+                    dashboardClockInterval = setInterval(updateDashboardTime, 60000);
+                }
+            });
         }
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"
