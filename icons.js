@@ -786,6 +786,13 @@ const APPS = [
         icon: '<circle cx="10" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="10" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="16" r="1.5" fill="black" stroke="none"/><circle cx="10" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="16" cy="22" r="1.5" fill="black" stroke="none"/><circle cx="22" cy="22" r="1.5" fill="black" stroke="none"/><line x1="10" y1="10" x2="16" y2="10" stroke="black" stroke-width="2"/><line x1="16" y1="10" x2="16" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="10" x2="10" y2="16" stroke="black" stroke-width="2"/><line x1="10" y1="16" x2="16" y2="16" stroke="black" stroke-width="2"/>'
     },
     {
+        id: 'livepictionary',
+        name: 'Pictionary',
+        cat: 'live_game',
+        live: true,
+        icon: '<rect x="4" y="5" width="22" height="18" fill="none" stroke="black" stroke-width="2"/><path d="M8 18 Q11 12 14 16 T20 14" fill="none" stroke="black" stroke-width="2" stroke-linecap="round"/><path d="M22 22 L28 28" stroke="black" stroke-width="2" stroke-linecap="round"/><path d="M21 21 L24 24 L22 26 L19 23 Z" fill="white" stroke="black" stroke-width="2"/><path d="M19 23 L22 26" stroke="black" stroke-width="1.5"/>'
+    },
+    {
         id: 'livetictactoe',
         name: 'Tic-Tac-Toe',
         es6: true,

@@ -564,6 +564,7 @@
                         style="font-family:inherit; font-size:0.8rem; border:2px solid black; padding:3px;; margin-left: 10px">
                         <option value="popular" data-i18n="suggestions.sort.popular">Popular</option>
                         <option value="newest" data-i18n="suggestions.sort.newest">Newest</option>
+                        <option value="mine" data-i18n="suggestions.sort.mine">My Suggestions</option>
                     </select>
                 </div>
                 <input type="text" id="search-input" oninput="onSearchInput()" placeholder="Search..."
@@ -949,8 +950,17 @@
             };
 
             window.changeSort = function () {
-                currentSort = document.getElementById('sort-select').value;
-                renderList();
+                var val = document.getElementById('sort-select').value;
+                if (val === 'mine') {
+                    switchTab('mine');
+                } else {
+                    currentSort = val;
+                    if (currentFilter === 'mine') {
+                        switchTab('suggestion');
+                    } else {
+                        renderList();
+                    }
+                }
             };
 
             window.toggleFullScreen = function () {
@@ -959,6 +969,9 @@
 
             window.switchTab = function (tab) {
                 currentFilter = tab;
+                // Sync dropdown
+                var sel = document.getElementById('sort-select');
+                sel.value = (tab === 'mine') ? 'mine' : currentSort;
                 // Update UI
                 document.querySelectorAll('.tab-bar .tab').forEach(t => t.classList.remove('active'));
                 var activeTabEl = document.querySelector(`.tab-bar .tab[onclick="switchTab('${tab}')"]`);
@@ -973,7 +986,9 @@
 
                 let query = db.collection('suggestions');
 
-                if (currentFilter === 'done' || currentFilter === 'closed' || currentFilter === 'deferred') {
+                if (currentFilter === 'mine') {
+                    query = query.where('authorUid', '==', currentUser.uid);
+                } else if (currentFilter === 'done' || currentFilter === 'closed' || currentFilter === 'deferred') {
                     query = query.where('status', '==', currentFilter);
                 } else if (currentFilter === 'problem' || currentFilter === 'translation') {
                     query = query.where('type', '==', currentFilter);
@@ -982,7 +997,7 @@
                     query = query.where('type', '==', 'suggestion');
                 }
 
-                query.orderBy('createdAt', 'desc').limit(100).get().then(function (snapshot) {
+                query.orderBy('createdAt', 'desc').limit(200).get().then(function (snapshot) {
                     allSuggestions = [];
                     snapshot.forEach(function (doc) {
                         var data = doc.data();
@@ -1014,12 +1029,15 @@
                         if (!titleMatch && !descMatch) return false;
                     }
 
-                    // 1. Status Tabs
+                    // 1. Mine Tab — show all user's items regardless of status
+                    if (currentFilter === 'mine') return true;
+
+                    // 2. Status Tabs
                     if (currentFilter === 'done') return status === 'done';
                     if (currentFilter === 'closed') return status === 'closed';
                     if (currentFilter === 'deferred') return status === 'deferred';
 
-                    // 2. Main Tabs (Suggestion / Problem)
+                    // 3. Main Tabs (Suggestion / Problem)
                     // Must NOT be in any of the special status states
                     if (['done', 'closed', 'deferred'].includes(status)) return false;
 
@@ -1105,7 +1123,7 @@
                     const voteCount = (data.upvotes || []).length;
                     const isDone = data.status === 'done';
                     const isProgress = data.status === 'in_progress';
-                    const isAuthorPro = data.isPro || supporterUsers[data.authorName];
+                    const isAuthorPro = !!supporterUsers[data.authorName];
                     // SAFE ACCESS: No optional chaining
                     const hasVoted = (data.upvotes || []).includes(currentUser ? currentUser.uid : null);
 
@@ -1195,7 +1213,7 @@
                     dateStr = new Date(data.createdAt.toDate()).toLocaleDateString();
                 }
 
-                let isAuthorPro = data.isPro || supporterUsers[data.authorName];
+                let isAuthorPro = !!supporterUsers[data.authorName];
                 let crown = isAuthorPro ? CROWN_SVG : '';
 
                 let authorHtml = `by ${escapeHtml(data.authorName || (window.t ? window.t('suggestions.msg.anonymous') : 'Anonymous'))}`;
@@ -1588,7 +1606,7 @@
                         list.innerHTML = '';
                         snapshot.forEach(function (doc) {
                             const c = doc.data();
-                            const isCommentPro = c.isPro || supporterUsers[c.authorName];
+                            const isCommentPro = !!supporterUsers[c.authorName];
                             const crown = isCommentPro ? CROWN_SVG : '';
 
                             // Dev Check
