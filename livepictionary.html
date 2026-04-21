@@ -1122,8 +1122,7 @@ function resizeCanvas() {
     canvas.height = h * dpr;
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     redrawAllStrokes();
@@ -1165,12 +1164,12 @@ canvas.addEventListener('pointermove', function(e) {
     } else {
         pts.push(getCanvasCoords(e));
     }
-    // Append points & draw locally
-    const prev = currentStroke.p[currentStroke.p.length - 1];
+    // Draw each segment individually so no intermediate points are skipped
     pts.forEach(p => {
+        const prev = currentStroke.p[currentStroke.p.length - 1];
         currentStroke.p.push(p);
+        drawSegment(prev, p, currentStroke);
     });
-    drawSegment(prev, currentStroke.p[currentStroke.p.length - 1], currentStroke);
 });
 
 canvas.addEventListener('pointerup', endCurrentStroke);
@@ -1251,13 +1250,12 @@ function drawStrokeOnCanvas(stroke) {
 }
 
 function clearCanvasLocal() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
+    // Use setTransform to atomically reset to the DPR scale — never compound it.
+    // ctx.save/restore + ctx.scale would multiply the DPR onto itself each call.
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 }
