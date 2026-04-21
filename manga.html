@@ -409,6 +409,11 @@
             <div id="back-btn" onclick="closeReader()">Back</div>
             <span class="title-text" id="app-title" data-i18n="manga.title">Manga</span>
             <div class="title-controls">
+                <div id="language-select-wrapper" style="display: none; margin-right: 8px;">
+                    <select id="language-select" onchange="changeReadingLanguage(this.value)"
+                        style="border: 2px solid black; padding: 2px 4px; font-family: inherit; font-size: 0.75rem; background: white; outline: none; box-shadow: 1px 1px 0 black; max-width: 100px;">
+                    </select>
+                </div>
                 <div id="chapter-select-wrapper" style="margin-right: 8px;">
                     <select id="chapter-select" class="no-custom-select" onchange="loadChapter(parseInt(this.value))">
                     </select>
@@ -509,6 +514,9 @@
         let currentChapterList = [];
         let currentChapterIndex = 0;
         let isLoadingNextChapter = false;
+        // Resolve system language; 'auto' isn't a MangaDex language so fall back to 'en'
+        const _sysLang = localStorage.getItem('rekindle_language') || 'en';
+        let currentReadingLanguage = (_sysLang === 'auto') ? 'en' : _sysLang;
         let storeSearchQuery = '';
         let storeCategory = '';
         let storeLanguage = 'en';
@@ -837,7 +845,7 @@
         async function saveProgress(mangaId, chapterIdx, pageIdx, chapterNum) {
             try {
                 const progress = await localforage.getItem('manga_progress') || {};
-                progress[mangaId] = { chapter: chapterIdx, page: pageIdx, chapterNum: chapterNum || '' };
+                progress[mangaId] = { chapter: chapterIdx, page: pageIdx, chapterNum: chapterNum || '', language: currentReadingLanguage || 'en' };
                 await localforage.setItem('manga_progress', progress);
             } catch (e) {
                 console.error('Failed to save progress:', e);
@@ -859,6 +867,25 @@
         // --- READER LOGIC ---
         let isReaderOpen = false;
 
+        function getLanguageName(code) {
+            const names = {
+                'en': 'English', 'ja': 'Japanese', 'ko': 'Korean',
+                'zh': 'Chinese (Simp)', 'zh-hk': 'Chinese (Trad)',
+                'es': 'Spanish', 'es-la': 'Spanish (LA)', 'fr': 'French',
+                'de': 'German', 'pt-br': 'Portuguese (BR)', 'pt': 'Portuguese',
+                'it': 'Italian', 'ru': 'Russian', 'ar': 'Arabic',
+                'tr': 'Turkish', 'vi': 'Vietnamese', 'th': 'Thai',
+                'id': 'Indonesian', 'pl': 'Polish', 'uk': 'Ukrainian',
+                'nl': 'Dutch', 'hu': 'Hungarian', 'ro': 'Romanian',
+                'cs': 'Czech', 'bg': 'Bulgarian', 'fi': 'Finnish',
+                'sv': 'Swedish', 'no': 'Norwegian', 'da': 'Danish',
+                'he': 'Hebrew', 'ms': 'Malay', 'hi': 'Hindi',
+                'mn': 'Mongolian', 'fa': 'Persian', 'sr': 'Serbian',
+                'ca': 'Catalan', 'lt': 'Lithuanian', 'hr': 'Croatian'
+            };
+            return names[code] || code.toUpperCase();
+        }
+
         async function openReader(item) {
             currentReading = item;
             currentReading.loadedOnce = false;
@@ -873,6 +900,69 @@
             document.getElementById('app-title').innerText = item.title;
 
             const content = document.getElementById('reader-content');
+            content.innerHTML = '<div style="padding: 20px;">Fetching available languages...</div>';
+
+            // Fetch a page of the chapter feed without a language filter to discover available languages.
+            // This reuses the same proxy+endpoint that chapter loading already uses successfully.
+            try {
+                var langRes = await fetchCORS(API_BASE + '/manga/' + item.id + '/feed?limit=100&order[chapter]=asc');
+                var langData = await langRes.json();
+                var langSet = new Set();
+                if (langData.data) {
+                    langData.data.forEach(function (ch) {
+                        if (ch.attributes && ch.attributes.translatedLanguage) {
+                            langSet.add(ch.attributes.translatedLanguage);
+                        }
+                    });
+                }
+                var availableLangs = Array.from(langSet).sort(function (a, b) {
+                    if (a === 'en') return -1;
+                    if (b === 'en') return 1;
+                    return a.localeCompare(b);
+                });
+                if (availableLangs.length === 0) availableLangs = ['en'];
+
+                var langSelect = document.getElementById('language-select');
+                langSelect.innerHTML = '';
+                availableLangs.forEach(function (lang) {
+                    var opt = document.createElement('option');
+                    opt.value = lang;
+                    opt.innerText = getLanguageName(lang);
+                    langSelect.appendChild(opt);
+                });
+
+                // Restore saved language if still available, else prefer 'en', else first
+                var savedProgress = await getProgress(item.id);
+                var preferred = (savedProgress && savedProgress.language) || currentReadingLanguage;
+                if (availableLangs.includes(preferred)) {
+                    currentReadingLanguage = preferred;
+                } else if (availableLangs.includes('en')) {
+                    currentReadingLanguage = 'en';
+                } else {
+                    currentReadingLanguage = availableLangs[0];
+                }
+                langSelect.value = currentReadingLanguage;
+                document.getElementById('language-select-wrapper').style.display = availableLangs.length > 1 ? 'inline-block' : 'none';
+            } catch (e) {
+                currentReadingLanguage = 'en';
+                document.getElementById('language-select-wrapper').style.display = 'none';
+            }
+
+            await loadChaptersForLanguage(currentReadingLanguage);
+        }
+
+        async function changeReadingLanguage(lang) {
+            currentReadingLanguage = lang;
+            if (currentReading) {
+                currentReading.loadedOnce = false;
+                await loadChaptersForLanguage(lang);
+            }
+        }
+
+        async function loadChaptersForLanguage(language) {
+            if (!currentReading) return;
+
+            const content = document.getElementById('reader-content');
             content.innerHTML = '<div style="padding: 20px;">Fetching chapters...</div>';
 
             try {
@@ -881,13 +971,12 @@
                 var fetchOffset = 0;
                 var hasMore = true;
                 while (hasMore) {
-                    var url = API_BASE + '/manga/' + item.id + '/feed?translatedLanguage[]=en&order[chapter]=asc&limit=100&offset=' + fetchOffset;
+                    var url = API_BASE + '/manga/' + currentReading.id + '/feed?translatedLanguage[]=' + language + '&order[chapter]=asc&limit=100&offset=' + fetchOffset;
                     var res = await fetchCORS(url);
                     var data = await res.json();
                     if (data.data && data.data.length > 0) {
                         allChapters = allChapters.concat(data.data);
                         fetchOffset += data.data.length;
-                        // Stop if we got fewer than 100 (last page) or hit the total
                         if (data.data.length < 100 || (data.total && fetchOffset >= data.total)) {
                             hasMore = false;
                         }
@@ -898,7 +987,7 @@
                 }
 
                 if (allChapters.length === 0) {
-                    content.innerHTML = '<div style="padding: 20px;">No English chapters found.</div>';
+                    content.innerHTML = '<div style="padding: 20px;">No chapters found for this language.</div>';
                     return;
                 }
 
@@ -911,7 +1000,7 @@
                 var seenChapterNums = {};
                 validChapters = validChapters.filter(function (ch) {
                     var chNum = ch.attributes.chapter;
-                    if (!chNum) return true; // Keep unnumbered chapters
+                    if (!chNum) return true;
                     if (seenChapterNums[chNum]) return false;
                     seenChapterNums[chNum] = true;
                     return true;
@@ -930,15 +1019,13 @@
                     return;
                 }
 
-                // Initialize lazy loading state
                 currentChapterList = validChapters;
 
-                // Get saved progress to determine which chapter to open
-                var savedProgress = await getProgress(item.id);
-                currentChapterIndex = savedProgress.chapter;
-                if (currentChapterIndex >= validChapters.length) {
-                    currentChapterIndex = 0;
-                }
+                // Get saved progress — reset chapter to 0 when language changes
+                var savedProgress = await getProgress(currentReading.id);
+                var restoringLanguage = savedProgress && savedProgress.language === language;
+                currentChapterIndex = restoringLanguage ? (savedProgress.chapter || 0) : 0;
+                if (currentChapterIndex >= validChapters.length) currentChapterIndex = 0;
 
                 // Populate chapter dropdown
                 var chapterSelect = document.getElementById('chapter-select');
@@ -959,16 +1046,12 @@
                 chapterSelect.value = currentChapterIndex;
 
                 // Reinitialize custom-select for the chapter dropdown
-                // Remove stale custom-select container if it exists
                 var existingCustom = chapterSelect.parentNode.querySelector('.custom-select-container');
-                if (existingCustom) {
-                    existingCustom.remove();
-                }
+                if (existingCustom) existingCustom.remove();
                 delete chapterSelect.dataset.customSelectInitialized;
                 try {
                     new CustomSelect(chapterSelect);
                 } catch (csErr) {
-                    // If CustomSelect fails, show native select instead
                     console.warn('CustomSelect init failed, using native select:', csErr);
                     chapterSelect.style.display = 'inline-block';
                     chapterSelect.style.border = '2px solid black';
@@ -980,7 +1063,6 @@
                     chapterSelect.style.maxWidth = '140px';
                 }
 
-                // Show the chapter dropdown wrapper
                 document.getElementById('chapter-select-wrapper').style.display = 'inline-block';
 
                 await loadChapter(currentChapterIndex);
@@ -1073,8 +1155,9 @@
             document.getElementById('back-btn').style.display = 'none';
             document.querySelector('.tabs').style.display = 'flex';
 
-            // Hide chapter dropdown
+            // Hide chapter and language dropdowns
             document.getElementById('chapter-select-wrapper').style.display = 'none';
+            document.getElementById('language-select-wrapper').style.display = 'none';
 
             // Restore active tab view
             var activeTab = document.querySelector('.tab.active');
