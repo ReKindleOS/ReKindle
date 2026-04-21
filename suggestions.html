@@ -843,8 +843,7 @@
                         }
 
                         document.getElementById('login-overlay').style.display = 'none';
-                        fetchSupporters();
-                        loadSuggestions();
+                        fetchSupporters(loadSuggestions);
                     });
                 } else {
                     currentUser = null;
@@ -852,31 +851,61 @@
                 }
             });
 
-            function fetchSupporters() {
+            function fetchSupporters(callback) {
                 db.collection('config').doc('supporters').get().then(function (doc) {
                     if (doc.exists) {
                         var data = doc.data();
                         supporterUsers = {};
+                        var now = new Date();
+                        // Normalise key: strip email domain so "user@x.com" → "user"
+                        function normaliseName(key) {
+                            return (key && key.indexOf('@') > -1) ? key.split('@')[0] : key;
+                        }
                         // Handle new map format and legacy array formats
                         if (data.list && Array.isArray(data.list)) {
+                            // Legacy plain array — no expiry info, treat all as active
                             for (var i = 0; i < data.list.length; i++) {
-                                supporterUsers[data.list[i]] = true;
+                                var n = normaliseName(data.list[i]);
+                                if (n) supporterUsers[n] = true;
                             }
                         } else if (data.usernames && Array.isArray(data.usernames)) {
+                            // Legacy plain array — no expiry info, treat all as active
                             for (var i = 0; i < data.usernames.length; i++) {
-                                supporterUsers[data.usernames[i]] = true;
+                                var n = normaliseName(data.usernames[i]);
+                                if (n) supporterUsers[n] = true;
                             }
                         } else {
-                            // Map format: keys are usernames
+                            // Map format: keys are usernames/emails, values have expiresAt + isLifetime
                             for (var key in data) {
-                                if (key !== 'usernames' && key !== 'list') {
-                                    supporterUsers[key] = true;
+                                if (key === 'usernames' || key === 'list') continue;
+                                var val = data[key];
+                                var isActive = false;
+                                if (val && typeof val === 'object') {
+                                    if (val.isLifetime === true) {
+                                        isActive = true;
+                                    } else if (val.expiresAt) {
+                                        var expiry = val.expiresAt.toDate ? val.expiresAt.toDate() : new Date(val.expiresAt);
+                                        isActive = expiry > now;
+                                    }
+                                } else {
+                                    isActive = !!val; // legacy boolean value
+                                }
+                                if (isActive) {
+                                    var n = normaliseName(key);
+                                    if (n) supporterUsers[n] = true;
                                 }
                             }
                         }
                     }
+                    // Re-evaluate isPro for the current user against live supporter data
+                    if (currentUser) {
+                        var displayName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : '');
+                        isPro = !!supporterUsers[displayName] || (currentUser.email === 'ukiyo@rekindle.ink');
+                    }
+                    if (callback) callback();
                 }).catch(function (error) {
                     console.error("Error loading supporters:", error);
+                    if (callback) callback(); // Still load suggestions if supporters fail
                 });
             }
 

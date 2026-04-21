@@ -117,13 +117,9 @@
         var scaledMaxHeight = 95 / parseFloat(finalScale);
         var minHeightRule = parseFloat(finalScale) > 1.0 ? 'min-height: 0 !important; ' : '';
 
-        var invScale = 1 / parseFloat(finalScale);
         style.textContent =
             '.dashboard, .desktop-wrapper, .sys-menu-bar, .window { ' +
             'zoom: ' + finalScale + '; ' +
-            '} ' +
-            '.canvas-wrap { ' +
-            'zoom: ' + invScale + '; ' +
             '} ' +
             ':root { ' +
             '--scaled-window-vh: ' + scaledMaxHeight + 'vh; ' +
@@ -142,12 +138,6 @@
             '.dashboard, .desktop-wrapper, .window { ' +
             'transform: scale(' + finalScale + '); ' +
             'transform-origin: top center; ' +
-            '} ' +
-            '.canvas-wrap { ' +
-            'transform: scale(' + invScale + '); ' +
-            'transform-origin: top left; ' +
-            'width: calc(100% * ' + finalScale + ') !important; ' +
-            'height: calc(100% * ' + finalScale + ') !important; ' +
             '} ' +
             '.sys-menu-bar { ' +
             'transform: scale(' + finalScale + '); ' +
