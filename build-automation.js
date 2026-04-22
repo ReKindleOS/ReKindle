@@ -1474,7 +1474,17 @@ async function run() {
         await fs.copy(path.join(SOURCE_DIR, 'functions'), path.join(LEGACY_DIR, 'functions'));
     }
 
-    // 2.5 Process Main Files (Minify Only)
+    // 2.5 Replace index.html with index_old.html for Lite and Legacy builds
+    const indexOldSrc = path.join(SOURCE_DIR, 'index_old.html');
+    if (await fs.pathExists(indexOldSrc)) {
+        await fs.copy(indexOldSrc, path.join(LITE_DIR, 'index.html'), { overwrite: true });
+        await fs.copy(indexOldSrc, path.join(LEGACY_DIR, 'index.html'), { overwrite: true });
+        console.log("📄 Replaced index.html with index_old.html for Lite and Legacy builds.");
+    } else {
+        console.warn("⚠️  index_old.html not found — Lite/Legacy will use default index.html.");
+    }
+
+    // 2.7 Process Main Files (Minify Only)
     console.log("🛠️  Minifying Main Version...");
 
     // Main HTML
