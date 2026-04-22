@@ -123,9 +123,6 @@
 
         /* INFO BUTTON */
         .info-btn {
-            position: absolute;
-            right: 10px;
-            z-index: 2;
             width: 18px;
             height: 18px;
             border: 2px solid black;
@@ -149,6 +146,97 @@
             box-shadow: none;
         }
 
+        /* SPEED SELECT IN TITLE BAR */
+        .header-controls .custom-select-container {
+            min-width: 0;
+        }
+
+        .header-controls .custom-select-trigger {
+            padding: 1px 18px 1px 5px;
+            font-size: 0.65rem;
+            height: auto;
+            line-height: 1.4;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .header-controls .custom-arrow {
+            right: 5px;
+            font-size: 0.5rem;
+        }
+
+        .header-controls .custom-options {
+            font-size: 0.65rem;
+            min-width: 100%;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .header-controls .custom-option {
+            padding: 5px 8px;
+            font-size: 0.65rem;
+        }
+
+        /* MANUAL MODE TOGGLE */
+        .manual-toggle {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .manual-toggle-box {
+            width: 13px;
+            height: 13px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: bold;
+            font-family: sans-serif;
+            flex-shrink: 0;
+        }
+
+        .manual-toggle-label {
+            font-size: 0.7rem;
+            font-family: "Courier New", monospace;
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        /* CONVERT BUTTON */
+        .convert-btn {
+            width: 26px;
+            height: 18px;
+            border: 2px solid #ccc;
+            background: white;
+            cursor: default;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.85rem;
+            box-shadow: 2px 2px 0 #ccc;
+            color: #ccc;
+            user-select: none;
+        }
+
+        .convert-btn.ready {
+            border-color: black;
+            box-shadow: 2px 2px 0 black;
+            color: black;
+            cursor: pointer;
+        }
+
+        .convert-btn.ready:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
         /* CONTROLS (Right side of title bar) */
         .header-controls {
             position: absolute;
@@ -156,10 +244,10 @@
             z-index: 2;
             display: flex;
             align-items: center;
+            gap: 8px;
+            background: white;
+            padding: 0 8px;
         }
-        .header-controls > * + * {
-            margin-left: 10px;
-}
 
         .sys-btn {
             background: white;
@@ -195,7 +283,6 @@
             border-right: 2px solid #ff9999;
             display: flex;
             flex-direction: column;
-            padding-top: 2px;
             box-sizing: border-box;
             background-color: #fff;
             z-index: 5;
@@ -234,8 +321,6 @@
             flex: 1;
             position: relative;
             /* Lined paper effect */
-            background-image: linear-gradient(transparent 95%, #a0c0e0 95%);
-            background-size: 100% var(--row-height);
             background-attachment: local;
         }
 
@@ -248,7 +333,6 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            padding-top: 2px;
             pointer-events: none;
         }
 
@@ -378,6 +462,8 @@
     <script src="theme.js?v=15"></script>
     <script src="pro-gate.js"></script>
     <script src="js/i18n.js"></script>
+    <link rel="stylesheet" href="css/custom-select.css">
+    <script src="js/custom-select.js"></script>
 </head>
 
 <body>
@@ -387,7 +473,19 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="location.href='index'">X</div>
             <span class="title-text" data-i18n="quicktodo.title">Quick ToDo</span>
-            <div class="info-btn" onclick="showInstructions()" data-i18n-title="quicktodo.modal.instr.title">i</div>
+            <div class="header-controls">
+                <select id="speed-select" onchange="onSpeedChange(this.value)" title="Auto-convert responsiveness">
+                    <option value="fast">Fast</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="slow">Slow</option>
+                </select>
+                <div class="manual-toggle" onclick="toggleManualMode()" title="Manual conversion mode">
+                    <div class="manual-toggle-box" id="manual-toggle-box"></div>
+                    <span class="manual-toggle-label">Manual</span>
+                </div>
+                <div class="convert-btn" id="convert-btn" onclick="processWriting()" title="Convert handwriting to text" style="display:none">✓</div>
+                <div class="info-btn" onclick="showInstructions()" data-i18n-title="quicktodo.modal.instr.title">i</div>
+            </div>
         </div>
 
         <div class="notebook-container">
@@ -468,9 +566,10 @@
     <script>
         // --- CONFIG ---
         const WORKER_URL = "https://ocr.timjarnott.workers.dev/";
-        const ROW_HEIGHT = 50;
+        let ROW_HEIGHT = 50;
         const NUM_ROWS = 16;
-        const AUTO_SEND_DELAY = 1500;
+        const DELAY_OPTIONS = { fast: 1500, normal: 3500, slow: 6000 };
+        let AUTO_SEND_DELAY = DELAY_OPTIONS[localStorage.getItem('quicktodo_speed') || 'normal'];
 
         // Google Config
         const CLIENT_ID = '1000949048966-kkjtgmrsdonk3bm89rvlo0punc519vgj.apps.googleusercontent.com';
@@ -517,7 +616,20 @@
         window.onload = () => {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             initGrid();
+            alignRuledLines();
             resizeCanvas();
+            updateModeUI();
+            const savedSpeed = localStorage.getItem('quicktodo_speed') || 'normal';
+            const speedEl = document.getElementById('speed-select');
+            if (speedEl) speedEl.value = savedSpeed;
+
+            // Disable canvas pointer events while speed dropdown is open
+            const speedContainer = speedEl?.nextElementSibling;
+            if (speedContainer) {
+                new MutationObserver(() => {
+                    canvas.style.pointerEvents = speedContainer.classList.contains('open') ? 'none' : '';
+                }).observe(speedContainer, { attributes: true, attributeFilter: ['class'] });
+            }
             window.addEventListener('resize', resizeCanvas);
 
             // Check First Launch
@@ -769,6 +881,17 @@
         }
 
         // --- GRID SETUP ---
+        function alignRuledLines() {
+            const firstRow = document.querySelector('.text-row');
+            const paperCol = document.getElementById('paper-col');
+            if (!firstRow || !paperCol) return;
+            const h = firstRow.offsetHeight;
+            ROW_HEIGHT = h;
+            paperCol.style.backgroundImage =
+                `linear-gradient(transparent ${h - 1}px, #a0c0e0 ${h - 1}px, #a0c0e0 ${h}px, transparent ${h}px)`;
+            paperCol.style.backgroundSize = `100% ${h}px`;
+        }
+
         function initGrid() {
             marginCol.innerHTML = '';
             textLayer.innerHTML = '';
@@ -805,11 +928,39 @@
             ctx.strokeStyle = 'black';
 
             hasStrokes = false;
+            updateConvertBtn();
 
             // RESET BUFFER & BOUNDS
             strokeBuffer = [];
             minX = Infinity; maxX = -Infinity;
             minY = Infinity; maxY = -Infinity;
+        }
+
+        let manualMode = localStorage.getItem('quicktodo_manual') === 'true';
+
+        function onSpeedChange(value) {
+            AUTO_SEND_DELAY = DELAY_OPTIONS[value] || DELAY_OPTIONS.normal;
+            localStorage.setItem('quicktodo_speed', value);
+        }
+
+        function toggleManualMode() {
+            manualMode = !manualMode;
+            localStorage.setItem('quicktodo_manual', manualMode);
+            clearTimeout(autoSendTimer);
+            updateModeUI();
+        }
+
+        function updateModeUI() {
+            const toggleBox = document.getElementById('manual-toggle-box');
+            const convertBtn = document.getElementById('convert-btn');
+            if (toggleBox) toggleBox.textContent = manualMode ? '✓' : '';
+            if (convertBtn) convertBtn.style.display = manualMode ? 'flex' : 'none';
+            updateConvertBtn();
+        }
+
+        function updateConvertBtn() {
+            const btn = document.getElementById('convert-btn');
+            if (btn) btn.classList.toggle('ready', hasStrokes);
         }
 
         function renderData() {
@@ -883,6 +1034,7 @@
             e.preventDefault();
             isDrawing = true;
             hasStrokes = true;
+            updateConvertBtn();
             clearTimeout(autoSendTimer);
             const y = e.offsetY;
             const x = e.offsetX;
@@ -913,7 +1065,7 @@
             if (!isDrawing) return;
             isDrawing = false;
             ctx.closePath();
-            if (hasStrokes) {
+            if (hasStrokes && !manualMode) {
                 autoSendTimer = setTimeout(processWriting, AUTO_SEND_DELAY);
             }
         }
