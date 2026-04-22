@@ -933,8 +933,29 @@
             return score < MAX_SCORE;
         }
 
+        async function checkUserTimeout() {
+            if (!currentUser) return null;
+            try {
+                const timeoutRef = rtdb.ref('social_timeouts/' + currentUser.uid);
+                const snap = await timeoutRef.once('value');
+                return snap.val();
+            } catch (e) {
+                console.error('Error checking timeout:', e);
+                return null;
+            }
+        }
+
         async function postToPixelChat() {
             if (!currentUser) return showModal(window.t('pixel.status.login_to_post', "You must be logged in to post."));
+
+            // Check for active timeout
+            const timeout = await checkUserTimeout();
+            if (timeout && timeout.reason && timeout.durationHours) {
+                closeModal('post-confirm-modal');
+                const timeoutMsg = `You are temporarily restricted from posting.\n\nReason: ${timeout.reason}`;
+                showModal(timeoutMsg, false);
+                return;
+            }
 
             // Get data URL from the pixel canvas only (no grid)
             const dataUrl = canvas.toDataURL('image/png');

@@ -1425,9 +1425,29 @@
         }
 
         // --- POSTING ---
+        async function checkUserTimeout() {
+            if (!currentUser) return null;
+            try {
+                const timeoutRef = rtdb.ref('social_timeouts/' + currentUser.uid);
+                const snap = await timeoutRef.once('value');
+                return snap.val();
+            } catch (e) {
+                console.error('Error checking timeout:', e);
+                return null;
+            }
+        }
+
         async function confirmPost() {
             closeModal('post-confirm-modal');
             if (!currentUser) { showInfoModal("Please log in."); return; }
+
+            // Check for active timeout
+            const timeout = await checkUserTimeout();
+            if (timeout && timeout.reason && timeout.durationHours) {
+                const timeoutMsg = `You are temporarily restricted from posting.\n\nReason: ${timeout.reason}`;
+                showInfoModal(timeoutMsg);
+                return;
+            }
 
             // Ensure we are up to date
             await performSave();
