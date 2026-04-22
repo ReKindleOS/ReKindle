@@ -1124,11 +1124,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
               @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
               `;
 
-            // Debug Log
-            // console.log("    [Home] CSS Before Process:", homeCss.substring(0, 50) + "...");
-            homeCss = await processLegacyCss(homeCss);
-            // console.log("    [Home] CSS After Process:", homeCss.substring(0, 50) + "...");
-
             const hasStyleClose = finalHtml.includes('</style>');
             if (hasStyleClose) {
                 finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
@@ -1166,7 +1161,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .gallery-grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 0 !important; }
             .gallery-item { width: 130px !important; height: 156px !important; margin: 10px !important; aspect-ratio: auto !important; }
         `;
-            pixelParams = await processLegacyCss(pixelParams);
             finalHtml = finalHtml.replace('</style>', pixelParams + '</style>');
         }
 
@@ -1178,7 +1172,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .keypad button { width: 23% !important; margin-bottom: 12px !important; height: 75px !important; }
             .btn-zero { width: 48% !important; }
         `;
-            calcCss = await processLegacyCss(calcCss);
             finalHtml = finalHtml.replace('</style>', calcCss + '</style>');
         }
 
@@ -1191,7 +1184,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             /* Target the zero key specifically since it spans 2 cols */
             div[style*="span 2"] { width: 48% !important; }
         `;
-            convCss = await processLegacyCss(convCss);
             finalHtml = finalHtml.replace('</style>', convCss + '</style>');
         }
 
@@ -1203,7 +1195,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .cell { width: 68px !important; height: 68px !important; margin: 2px !important; flex: none !important; }
             .grid-container > * { margin: 2px !important; } 
         `;
-            g2048Css = await processLegacyCss(g2048Css);
             finalHtml = finalHtml.replace('</style>', g2048Css + '</style>');
         }
 
@@ -1214,7 +1205,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; gap: 0 !important; }
             .card { width: 23% !important; margin: 1% !important; height: 70px !important; }
         `;
-            connCss = await processLegacyCss(connCss);
             finalHtml = finalHtml.replace('</style>', connCss + '</style>');
         }
 
@@ -1226,7 +1216,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
                 #board { display: flex !important; flex-wrap: wrap !important; width: 300px !important; height: 300px !important; align-content: flex-start !important; border: 4px solid black !important; }
                 .square { width: 12.5% !important; height: 12.5% !important; flex: none !important; margin: 0 !important; padding: 0 !important; }
             `;
-                boardCss = await processLegacyCss(boardCss);
                 finalHtml = finalHtml.replace('</style>', boardCss + '</style>');
             }
         }
@@ -1238,7 +1227,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .grid-container { display: flex !important; flex-wrap: wrap !important; width: 300px !important; height: 300px !important; align-content: flex-start !important; }
             .grid-container > .cell { width: 10% !important; height: 10% !important; flex: none !important; margin: 0 !important; border: 1px solid #ccc; box-sizing: border-box; }
         `;
-            battleCss = await processLegacyCss(battleCss);
             finalHtml = finalHtml.replace('</style>', battleCss + '</style>');
         }
 
@@ -1249,7 +1237,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #pixel-grid { display: flex !important; flex-wrap: wrap !important; width: 200px !important; height: 200px !important; gap: 0 !important; }
             .pixel { width: 12.5% !important; height: 12.5% !important; margin: 0 !important; border-top: 1px solid #eee; border-left: 1px solid #eee; box-sizing: border-box; flex-grow: 0 !important; max-width: none !important; }
         `;
-            pixelCss = await processLegacyCss(pixelCss);
             finalHtml = finalHtml.replace('</style>', pixelCss + '</style>');
         }
 
@@ -1260,7 +1247,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #game-grid { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; }
             .card { width: 22% !important; margin: 1% !important; height: 90px !important; flex: none !important; }
         `;
-            memoryCss = await processLegacyCss(memoryCss);
             finalHtml = finalHtml.replace('</style>', memoryCss + '</style>');
         }
 
@@ -1271,7 +1257,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; width: 100% !important; max-width: 400px !important; height: auto !important; aspect-ratio: 1/1; gap: 0 !important; }
             .cell { width: 20% !important; height: 20% !important; margin: 0 !important; box-sizing: border-box; flex: none !important; border: 1px solid #999; }
         `;
-            miniCss = await processLegacyCss(miniCss);
             finalHtml = finalHtml.replace('</style>', miniCss + '</style>');
         }
 
@@ -1282,7 +1267,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #puzzle-board { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; }
             .piece { margin: 0 !important; box-sizing: border-box; flex: none !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(jigsawCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', jigsawCss + '</style>');
             finalHtml = finalHtml.replace(
                 'div.style.backgroundPosition',
                 "div.style.width = (100/gridSize) + '%'; div.style.height = (100/gridSize) + '%'; div.style.backgroundPosition"
@@ -1296,7 +1281,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; gap: 0 !important; }
             .cell { margin: 0 !important; box-sizing: border-box; flex: none !important; border: 1px solid #999; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(crossCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', crossCss + '</style>');
             finalHtml = finalHtml.replace(
                 "cell.className = 'cell';",
                 "cell.className = 'cell'; cell.style.width = (100/currentPuzzle.cols) + '%'; cell.style.height = (100/currentPuzzle.rows) + '%';"
@@ -1310,7 +1295,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; align-content: flex-start !important; gap: 0 !important; }
             .cell { margin: 0 !important; box-sizing: border-box; flex: none !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(mineCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', mineCss + '</style>');
             finalHtml = finalHtml.replace(
                 "cell.className = 'cell';",
                 "cell.className = 'cell'; cell.style.width = (100/COLS) + '%';"
@@ -1327,7 +1312,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .tile { flex: 1 !important; margin-right: 4px !important; height: auto !important; aspect-ratio: 1/1 !important; }
             .tile:last-child { margin-right: 0 !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(nerdleCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', nerdleCss + '</style>');
         }
 
         // Q. Nonograms: Fix Grid & Previews
@@ -1339,8 +1324,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .nonogram-grid { display: flex !important; flex-wrap: wrap !important; }
             .cell { flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
-            nonoCss = await processLegacyCss(nonoCss);
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(nonoCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', nonoCss + '</style>');
             if (finalHtml.includes('function renderGameGrid()')) {
                 finalHtml = finalHtml.replace(
                     "cell.className = 'cell';",
@@ -1356,7 +1340,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #board { display: flex !important; flex-wrap: wrap !important; width: 100% !important; aspect-ratio: 1/1 !important; }
             .sq { width: 6.66% !important; height: 6.66% !important; flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(scrabbleCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', scrabbleCss + '</style>');
         }
 
         // S. Sudoku: Fix 9x9 Grid
@@ -1366,7 +1350,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #game-container { display: flex !important; flex-wrap: wrap !important; }
             .cell { width: 11.11% !important; height: 11.11% !important; flex: none !important; margin: 0 !important; box-sizing: border-box !important; }
         `;
-            sudokuCss = await processLegacyCss(sudokuCss);
             finalHtml = finalHtml.replace('</style>', sudokuCss + '</style>');
         }
 
@@ -1380,7 +1363,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .sub-board { width: 32% !important; margin: 0.5% !important; padding: 1px !important; box-sizing: border-box !important; flex: none !important; display: flex !important; flex-wrap: wrap !important; height: auto !important; }
             .sub-cell { width: 33.33% !important; height: 35px !important; margin: 0 !important; box-sizing: border-box !important; flex: none !important; }
         `;
-            tttCss = await processLegacyCss(tttCss);
             finalHtml = finalHtml.replace('</style>', tttCss + '</style>');
         }
 
@@ -1391,7 +1373,7 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             #grid-container { display: flex !important; flex-wrap: wrap !important; gap: 0 !important; width: 100% !important; max-width: 550px !important; margin: 0 auto !important; height: auto !important; }
             .cell { width: 10% !important; height: 35px !important; margin: 0 !important; box-sizing: border-box !important; flex: none !important; border: 1px solid #ccc; font-size: 1.2rem !important; }
         `;
-            finalHtml = finalHtml.replace('</style>', (await processLegacyCss(wsCss)) + '</style>');
+            finalHtml = finalHtml.replace('</style>', wsCss + '</style>');
         }
 
         // V. Wordle: Fix Grid Layout
@@ -1407,7 +1389,6 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
             .key { flex: 1 !important; margin: 0 3px !important; }
             .key.big { flex: 1.5 !important; }
         `;
-            wordleCss = await processLegacyCss(wordleCss);
             finalHtml = finalHtml.replace('</style>', wordleCss + '</style>');
         }
 
