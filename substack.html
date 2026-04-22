@@ -1103,7 +1103,10 @@
                     // 1. Find the sub to get the domain
                     const sub = state.subs.find(s => s.publication.id == state.activeFeed);
                     if (sub && sub.publication) {
-                        const targetDomain = new URL(sub.publication.base_url).hostname;
+                        const resolvedBase = sub.publication.base_url || sub.publication.custom_domain_optional
+                        || (sub.publication.subdomain ? `https://${sub.publication.subdomain}.substack.com` : null);
+                    if (!resolvedBase) throw new Error("No base_url for: " + sub.publication.name);
+                    const targetDomain = new URL(resolvedBase).hostname;
                         const sort = 'new';
                         const endpoint = `/posts?limit=${state.limit}&offset=${state.offset}&sort=${sort}`;
                         data = await apiCall(endpoint, { headers: { 'X-Substack-Target': targetDomain } });
@@ -1130,7 +1133,10 @@
                         // Kindle-compatible alternative to Promise.allSettled
                         const wrappedPromises = batch.map(async sub => {
                             try {
-                                const domain = new URL(sub.publication.base_url).hostname;
+                                const baseUrl = sub.publication.base_url || sub.publication.custom_domain_optional
+                                    || (sub.publication.subdomain ? `https://${sub.publication.subdomain}.substack.com` : null);
+                                if (!baseUrl) throw new Error('No base_url for ' + sub.publication.name);
+                                const domain = new URL(baseUrl).hostname;
                                 const posts = await apiCall(`/posts?limit=${subLimit}&offset=${offset}&sort=new`, {
                                     headers: { 'X-Substack-Target': domain }
                                 });
@@ -1219,11 +1225,11 @@
             list.innerHTML = `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:20px; padding:20px;">
                 ${state.subs.map(sub => {
                 const pub = sub.publication;
-                const cover = pub.cover_photo_url || pub.logo_url || "rss_icon.png";
+                const cover = pub.logo_url || pub.author_photo_url || pub.cover_photo_url || "rss_icon.png";
                 return `
                     <div style="background:white; border:2px solid black; box-shadow:4px 4px 0 black; cursor:pointer;" onclick="filterBySub(${pub.id})">
                         <div style="height:100px; background:#ddd; overflow:hidden; border-bottom:2px solid black;">
-                            <img src="${cover}" style="width:100%; height:100%; object-fit:cover;">
+                            <img src="${cover}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='rss_icon.png'">
                         </div>
                         <div style="padding:10px;">
                             <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${pub.name}</div>
