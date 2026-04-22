@@ -391,45 +391,48 @@
                 <div id="ai-provider-settings"
                     style="display:none; background:#eee; padding:5px; border:1px solid #ccc; margin-top:5px;">
                     <div class="setting-row" style="margin:5px 0;">
-                        <strong style="font-size:0.8rem;" data-i18n="settings.provider">Provider</strong>
-                        <select id="ai-provider-select" onchange="updateAiProviderUI()"
+                        <strong style="font-size:0.8rem;">Provider</strong>
+                        <select id="ai-preset-select" onchange="onPresetChange()"
                             style="font-size:0.8rem; padding:2px;">
-                            <option value="gemini">Google Gemini</option>
                             <option value="openai">OpenAI</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="groq">Groq</option>
+                            <option value="xai">xAI (Grok)</option>
+                            <option value="mistral">Mistral</option>
+                            <option value="perplexity">Perplexity</option>
+                            <option value="together">Together AI</option>
+                            <option value="fireworks">Fireworks AI</option>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="custom_openai">Custom (OpenAI-compat)</option>
+                            <option value="custom_gemini">Custom (Gemini-compat)</option>
                         </select>
                     </div>
 
-
                     <div class="setting-row" style="margin:5px 0;">
-                        <strong style="font-size:0.8rem;" data-i18n="settings.model">Model</strong>
+                        <strong style="font-size:0.8rem;">Model</strong>
                         <div style="display: flex; align-items: center">
                             <select id="ai-model-select" onchange="saveSettings()"
                                 style="font-size:0.8rem; padding:2px; max-width:150px;">
-                                <!-- Options populated by JS -->
                             </select>
                             <button class="sys-btn" onclick="fetchModels(true)"
-                                style="font-size:0.7rem; padding:2px 5px;; margin-left: 5px"
+                                style="font-size:0.7rem; padding:2px 5px; margin-left: 5px"
                                 title="Fetch latest models using API Key">↻</button>
                         </div>
                     </div>
 
-                    <!-- GEMINI KEY -->
-                    <div id="gemini-key-section">
-                        <label style="font-size:0.8rem;">Gemini Key:</label>
-                        <input type="password" id="ai-api-key" class="modal-input" placeholder="AIMz..."
-                            style="margin:5px 0;">
-                    </div>
+                    <label id="api-key-label" style="font-size:0.8rem;">API Key:</label>
+                    <input type="password" id="ai-api-key" class="modal-input" placeholder="sk-..."
+                        style="margin:5px 0;">
 
-                    <!-- OPENAI KEY -->
-                    <div id="openai-key-section" style="display:none;">
-                        <label style="font-size:0.8rem;">OpenAI Key:</label>
-                        <input type="password" id="openai-api-key" class="modal-input" placeholder="sk-..."
-                            style="margin:5px 0;">
+                    <div id="custom-endpoint-section" style="display:none;">
+                        <label style="font-size:0.8rem;">Endpoint:</label>
+                        <input type="text" id="custom-endpoint" class="modal-input"
+                            placeholder="http://localhost:11434/v1"
+                            style="margin:5px 0; font-size:0.75rem;">
                     </div>
                 </div>
                 <p style="font-size:0.7rem; color:#666; margin-top:5px;">
-                    Key is stored locally. <a href="https://aistudio.google.com/app/apikey" target="_blank">Get Gemini
-                        Key</a> / <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI Key</a>
+                    Key is stored locally. <span id="api-key-link-wrap"></span>
                 </p>
 
                 <div style="margin-top: 20px; display: flex; justify-content: center">
@@ -469,100 +472,130 @@
 
         // --- SETTINGS LOGIC ---
         let useByoKey = false;
-        let customApiKey = "";
-        let aiProvider = "gemini";
+        let aiPreset = "openai";
+        let aiProvider = "openai"; // API format: 'openai' or 'gemini'
         let aiModel = "";
-        let openAiKey = "";
+        let apiKey = "";
+        let customEndpoint = "";
 
-        const AI_MODELS = {
-            gemini: [],
-            openai: []
+        const PROVIDER_PRESETS = {
+            openai:        { name: 'OpenAI',                 type: 'openai',  endpoint: 'https://api.openai.com',                     keyPlaceholder: 'sk-...',     keyHint: 'Get OpenAI Key',      keyUrl: 'https://platform.openai.com/api-keys' },
+            gemini:        { name: 'Google Gemini',          type: 'gemini',  endpoint: 'https://generativelanguage.googleapis.com',  keyPlaceholder: 'AIzaSy...',  keyHint: 'Get Gemini Key',      keyUrl: 'https://aistudio.google.com/app/apikey' },
+            groq:          { name: 'Groq',                   type: 'openai',  endpoint: 'https://api.groq.com/openai/v1',            keyPlaceholder: 'gsk_...',    keyHint: 'Get Groq Key',        keyUrl: 'https://console.groq.com/keys' },
+            xai:           { name: 'xAI (Grok)',             type: 'openai',  endpoint: 'https://api.x.ai/v1',                       keyPlaceholder: 'xai-...',    keyHint: 'Get xAI Key',         keyUrl: 'https://console.x.ai/' },
+            mistral:       { name: 'Mistral',                type: 'openai',  endpoint: 'https://api.mistral.ai/v1',                 keyPlaceholder: '',           keyHint: 'Get Mistral Key',     keyUrl: 'https://console.mistral.ai/api-keys/' },
+            perplexity:    { name: 'Perplexity',             type: 'openai',  endpoint: 'https://api.perplexity.ai',                 keyPlaceholder: 'pplx-...',   keyHint: 'Get Perplexity Key',  keyUrl: 'https://www.perplexity.ai/settings/api' },
+            together:      { name: 'Together AI',            type: 'openai',  endpoint: 'https://api.together.xyz/v1',               keyPlaceholder: '',           keyHint: 'Get Together Key',    keyUrl: 'https://api.together.ai/settings/api-keys' },
+            fireworks:     { name: 'Fireworks AI',           type: 'openai',  endpoint: 'https://api.fireworks.ai/inference/v1',     keyPlaceholder: 'fw_...',     keyHint: 'Get Fireworks Key',   keyUrl: 'https://fireworks.ai/account/api-keys' },
+            ollama:        { name: 'Ollama (Local)',          type: 'openai',  endpoint: 'http://localhost:11434/v1',                 keyPlaceholder: 'ollama',     keyHint: '',                    keyUrl: '', showEndpoint: true },
+            custom_openai: { name: 'Custom (OpenAI-compat)', type: 'openai',  endpoint: '',                                          keyPlaceholder: '',           keyHint: '',                    keyUrl: '', showEndpoint: true },
+            custom_gemini: { name: 'Custom (Gemini-compat)', type: 'gemini',  endpoint: '',                                          keyPlaceholder: '',           keyHint: '',                    keyUrl: '', showEndpoint: true },
         };
 
-        // Custom Models Cache
-        let customModels = {
-            gemini: [],
-            openai: []
-        };
+        // Per-preset model cache keyed by preset id
+        let customModels = {};
+
+        function getActiveEndpoint() {
+            const preset = PROVIDER_PRESETS[aiPreset];
+            if (!preset) return '';
+            return (preset.showEndpoint && customEndpoint) ? customEndpoint : preset.endpoint;
+        }
+
+        function onPresetChange() {
+            const presetId = document.getElementById('ai-preset-select').value;
+            const preset = PROVIDER_PRESETS[presetId];
+            if (!preset) return;
+
+            // Update key field UI
+            document.getElementById('ai-api-key').placeholder = preset.keyPlaceholder;
+            document.getElementById('api-key-label').innerText = preset.name + ' Key:';
+
+            // Show/hide endpoint field
+            const epSection = document.getElementById('custom-endpoint-section');
+            epSection.style.display = preset.showEndpoint ? 'block' : 'none';
+            if (preset.showEndpoint) {
+                document.getElementById('custom-endpoint').placeholder = preset.endpoint || 'http://localhost:11434/v1';
+            }
+
+            // Update "Get Key" link
+            const wrap = document.getElementById('api-key-link-wrap');
+            wrap.innerHTML = preset.keyUrl
+                ? `<a href="${preset.keyUrl}" target="_blank">${preset.keyHint}</a>`
+                : '';
+
+            // Refresh model list for new preset
+            updateModelDropdown(presetId, '');
+        }
+
+        function updateModelDropdown(presetId, selectedModel) {
+            const modelSelect = document.getElementById('ai-model-select');
+            if (!modelSelect) return;
+            modelSelect.innerHTML = '';
+            const models = customModels[presetId] || [];
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.name;
+                modelSelect.appendChild(opt);
+            });
+            if (selectedModel && models.find(m => m.id === selectedModel)) {
+                modelSelect.value = selectedModel;
+            } else if (models.length > 0) {
+                modelSelect.value = models[0].id;
+            }
+        }
 
         function openSettings() {
-            // Load from storage
             useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
-            customApiKey = localStorage.getItem('chat_custom_api_key') || "";
-            aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
-            aiModel = localStorage.getItem('chat_ai_model') || "";
-            openAiKey = localStorage.getItem('chat_openai_key') || "";
+            aiPreset = localStorage.getItem('chat_ai_preset') || 'openai';
+            aiModel = localStorage.getItem('chat_ai_model') || '';
+            apiKey = localStorage.getItem('chat_api_key') || '';
+            customEndpoint = localStorage.getItem('chat_custom_endpoint') || '';
 
             try {
-                const cm = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
-                if (cm.gemini) customModels.gemini = cm.gemini;
-                if (cm.openai) customModels.openai = cm.openai;
-            } catch (e) { }
+                customModels = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
+            } catch (e) { customModels = {}; }
 
             document.getElementById('byo-toggle').checked = useByoKey;
+            document.getElementById('ai-preset-select').value = aiPreset;
+            document.getElementById('ai-api-key').value = apiKey;
+            document.getElementById('custom-endpoint').value = customEndpoint;
 
-            // Set fields
-            document.getElementById('ai-provider-select').value = aiProvider;
-
-            updateAiProviderUI(aiModel); // Populate models and set visibility
-
-            document.getElementById('ai-api-key').value = customApiKey;
-            document.getElementById('openai-api-key').value = openAiKey;
-
-            toggleByoKey(); // Ensure top-level visibility
-            updateQuickModelBar(); // Update the top bar
+            onPresetChange();
+            updateModelDropdown(aiPreset, aiModel);
+            toggleByoKey();
+            updateQuickModelBar();
             document.getElementById('settings-modal').style.display = 'flex';
         }
 
         function toggleByoKey() {
             const isChecked = document.getElementById('byo-toggle').checked;
             document.getElementById('ai-provider-settings').style.display = isChecked ? 'block' : 'none';
-            // Update global immediately for UI checks
             useByoKey = isChecked;
             updateMessageCounter();
         }
 
         function updateQuickModelBar() {
             const bar = document.getElementById('model-selector-bar');
-
-            // Only show if BYO Key is enabled AND a key is present
-            let hasKey = false;
-            if (aiProvider === 'openai' && openAiKey) hasKey = true;
-            if (aiProvider === 'gemini' && customApiKey) hasKey = true;
-
-            if (useByoKey && hasKey) {
+            if (useByoKey && apiKey) {
                 bar.style.display = 'flex';
-                document.getElementById('model-provider-label').innerText = (aiProvider === 'openai' ? 'OpenAI' : 'Gemini');
+                const preset = PROVIDER_PRESETS[aiPreset];
+                document.getElementById('model-provider-label').innerText = preset ? preset.name : aiPreset;
 
-                // Populate quick select
                 const select = document.getElementById('quick-model-select');
                 select.innerHTML = '';
-
-                // Ensure custom models loaded
-                try {
-                    const cm = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
-                    if (cm.gemini) customModels.gemini = cm.gemini;
-                    if (cm.openai) customModels.openai = cm.openai;
-                } catch (e) { }
-
-                const models = (customModels[aiProvider] && customModels[aiProvider].length > 0)
-                    ? customModels[aiProvider]
-                    : (AI_MODELS[aiProvider] || []);
-
+                const models = customModels[aiPreset] || [];
                 models.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m.id;
                     opt.innerText = m.name;
                     select.appendChild(opt);
                 });
-
-                // Set value
                 if (aiModel && models.find(m => m.id === aiModel)) {
                     select.value = aiModel;
                 } else if (models.length > 0) {
                     select.value = models[0].id;
                 }
-
             } else {
                 bar.style.display = 'none';
             }
@@ -572,8 +605,6 @@
             const val = document.getElementById('quick-model-select').value;
             aiModel = val;
             localStorage.setItem('chat_ai_model', aiModel);
-
-            // Also update firebase if logged in (lazy sync)
             if (currentUserId) {
                 const db = firebase.firestore();
                 db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').set({
@@ -582,60 +613,20 @@
             }
         }
 
-        function updateAiProviderUI(selectedModel) {
-            const provider = document.getElementById('ai-provider-select').value;
-            const modelSelect = document.getElementById('ai-model-select');
+        async function fetchModels(alertUser = false, specificPreset = null, specificKey = null) {
+            const presetId = specificPreset || document.getElementById('ai-preset-select').value || aiPreset;
+            const preset = PROVIDER_PRESETS[presetId];
+            if (!preset) return;
 
-            // Populate Model Dropdown
-            modelSelect.innerHTML = '';
-
-            // Use custom models if available, otherwise defaults
-            let models = (customModels[provider] && customModels[provider].length > 0)
-                ? customModels[provider]
-                : (AI_MODELS[provider] || []);
-
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.innerText = m.name;
-                modelSelect.appendChild(opt);
-            });
-
-            // Set selected model if valid for provider, else default to first
-            if (selectedModel && models.find(m => m.id === selectedModel)) {
-                modelSelect.value = selectedModel;
-            } else if (models.length > 0) {
-                modelSelect.value = models[0].id;
-            }
-
-            // Show/Hide sections based on provider
-            if (provider === 'openai') {
-                document.getElementById('gemini-key-section').style.display = 'none';
-                document.getElementById('openai-key-section').style.display = 'block';
-            } else {
-                document.getElementById('gemini-key-section').style.display = 'block';
-                document.getElementById('openai-key-section').style.display = 'none';
-            }
-        }
-
-        async function fetchModels(alertUser = false, specificProvider = null, specificKey = null) {
-            const provider = specificProvider || document.getElementById('ai-provider-select').value || aiProvider;
-
-            let key = specificKey;
-            if (!key) {
-                if (provider === 'openai') {
-                    const domEl = document.getElementById('openai-api-key');
-                    key = domEl ? domEl.value.trim() : openAiKey;
-                } else {
-                    const domEl = document.getElementById('ai-api-key');
-                    key = domEl ? domEl.value.trim() : customApiKey;
-                }
-            }
-
+            const key = specificKey || document.getElementById('ai-api-key').value.trim() || apiKey;
             if (!key) {
                 if (alertUser) showAlert("Please enter an API Key first.");
                 return;
             }
+
+            const endpoint = (preset.showEndpoint)
+                ? (document.getElementById('custom-endpoint').value.trim() || preset.endpoint)
+                : preset.endpoint;
 
             if (alertUser) {
                 const btn = document.querySelector('button[title="Fetch latest models using API Key"]');
@@ -648,7 +639,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'list_models',
-                        provider: provider,
+                        provider: preset.type,
+                        endpoint: endpoint,
                         apiKey: key
                     })
                 });
@@ -656,23 +648,19 @@
                 const data = await response.json();
 
                 if (data.models && data.models.length > 0) {
-                    customModels[provider] = data.models;
+                    customModels[presetId] = data.models;
                     localStorage.setItem('chat_custom_models', JSON.stringify(customModels));
-
-                    // Only update UI if settings modal is open or we need to refresh the quick bar
                     const modelSelect = document.getElementById('ai-model-select');
                     if (modelSelect && modelSelect.offsetParent !== null) {
-                        updateAiProviderUI(modelSelect.value);
+                        updateModelDropdown(presetId, modelSelect.value);
                     }
                     updateQuickModelBar();
-
                     if (alertUser) showAlert("Models updated successfully!");
                 } else if (data.error) {
                     throw new Error(data.error.message || "Unknown error");
                 } else {
                     throw new Error("No models returned.");
                 }
-
             } catch (e) {
                 console.error(e);
                 if (alertUser) showAlert("Error fetching models: " + e.message);
@@ -686,36 +674,36 @@
 
         function saveSettings() {
             const isChecked = document.getElementById('byo-toggle').checked;
-            const provider = document.getElementById('ai-provider-select').value;
+            const presetId = document.getElementById('ai-preset-select').value;
             const model = document.getElementById('ai-model-select').value;
             const key = document.getElementById('ai-api-key').value.trim();
-            const oKey = document.getElementById('openai-api-key').value.trim();
+            const endpoint = document.getElementById('custom-endpoint').value.trim();
 
             useByoKey = isChecked;
-            aiProvider = provider;
+            aiPreset = presetId;
+            aiProvider = (PROVIDER_PRESETS[presetId] || {}).type || 'openai';
             aiModel = model;
-            customApiKey = key;
-            openAiKey = oKey;
+            apiKey = key;
+            customEndpoint = endpoint;
 
-            // Save Local
             localStorage.setItem('chat_use_byo_key', useByoKey);
-            localStorage.setItem('chat_custom_api_key', customApiKey);
+            localStorage.setItem('chat_ai_preset', aiPreset);
             localStorage.setItem('chat_ai_provider', aiProvider);
             localStorage.setItem('chat_ai_model', aiModel);
-            localStorage.setItem('chat_openai_key', openAiKey);
+            localStorage.setItem('chat_api_key', apiKey);
+            localStorage.setItem('chat_custom_endpoint', customEndpoint);
 
             updateQuickModelBar();
             updateMessageCounter();
 
-            // Save to Firestore (Pro Only for keys)
             if (currentUserId) {
                 const db = firebase.firestore();
-                // Pro Data (Keys)
                 db.collection('users').doc(currentUserId).collection('pro_data').doc('chat').set({
-                    apiKey: key,
-                    openaiKey: oKey,
-                    provider: provider,
+                    aiPreset: presetId,
+                    provider: aiProvider,
                     model: model,
+                    apiKey: key,
+                    customEndpoint: endpoint,
                     useByoKey: isChecked,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).then(() => {
@@ -729,10 +717,8 @@
             }
         }
 
-        // Settings Modal Controls
         function closeSettings() {
             document.getElementById('settings-modal').style.display = 'none';
-            // Reload from Firestore to revert any unsaved changes
             loadSettingsFromFirebase();
         }
 
@@ -749,45 +735,33 @@
             if (!currentUserId) return;
             try {
                 const db = firebase.firestore();
-                // Load from Pro Data (Keys)
                 const doc = await db.collection('users').doc(currentUserId).collection('pro_data').doc('chat').get();
 
                 if (doc.exists) {
                     const data = doc.data();
-
-                    // Refresh globals
                     useByoKey = data.useByoKey || false;
-                    customApiKey = data.apiKey || "";
-                    aiProvider = data.provider || "gemini";
-                    aiModel = data.model || "";
-                    openAiKey = data.openaiKey || "";
-
+                    aiPreset = data.aiPreset || data.provider || 'openai';
+                    aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || data.provider || 'openai';
+                    aiModel = data.model || '';
+                    apiKey = data.apiKey || '';
+                    customEndpoint = data.customEndpoint || '';
 
                     updateQuickModelBar();
                     updateMessageCounter();
 
-                    // Auto-fetch if we have keys
-                    if (useByoKey) {
-                        if (aiProvider === 'gemini' && customApiKey) fetchModels(false, 'gemini', customApiKey);
-                        if (aiProvider === 'openai' && openAiKey) fetchModels(false, 'openai', openAiKey);
+                    if (useByoKey && apiKey) {
+                        fetchModels(false, aiPreset, apiKey);
                     }
-
                 } else {
-                    // No cloud settings (or not Pro) - Reset to defaults/empty
                     useByoKey = false;
-                    customApiKey = "";
-                    aiProvider = "gemini";
-                    aiModel = "";
-                    openAiKey = "";
+                    apiKey = '';
                     updateQuickModelBar();
                     updateMessageCounter();
                 }
             } catch (e) {
-                console.error("Error loading settings (likely not Pro or network)", e);
-                // Safe defaults
+                console.error("Error loading settings", e);
                 useByoKey = false;
-                customApiKey = "";
-                openAiKey = "";
+                apiKey = '';
                 updateQuickModelBar();
                 updateMessageCounter();
             }
@@ -1002,29 +976,22 @@
 
         // Initialize settings on load
         function initSettings() {
-            // Load from storage
             useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
-            customApiKey = localStorage.getItem('chat_custom_api_key') || "";
-            aiProvider = localStorage.getItem('chat_ai_provider') || "gemini";
-            aiModel = localStorage.getItem('chat_ai_model') || "";
-            openAiKey = localStorage.getItem('chat_openai_key') || "";
+            aiPreset = localStorage.getItem('chat_ai_preset') || 'openai';
+            aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || localStorage.getItem('chat_ai_provider') || 'openai';
+            aiModel = localStorage.getItem('chat_ai_model') || '';
+            apiKey = localStorage.getItem('chat_api_key') || '';
+            customEndpoint = localStorage.getItem('chat_custom_endpoint') || '';
 
-            // Load Custom Models
             try {
-                const cm = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
-                if (cm.gemini) customModels.gemini = cm.gemini;
-                if (cm.openai) customModels.openai = cm.openai;
-            } catch (e) { }
+                customModels = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
+            } catch (e) { customModels = {}; }
 
-            // Apply to UI (Hidden Checkbox needs to be set for toggleByoKey to work if called)
             const byoToggle = document.getElementById('byo-toggle');
             if (byoToggle) byoToggle.checked = useByoKey;
 
-            // Trigger UI updates
             toggleByoKey();
             updateQuickModelBar();
-
-            // Note: updateMessageCounter is called by toggleByoKey
         }
 
         window.onload = () => {
@@ -1074,13 +1041,10 @@
                 const payload = { prompt: text };
 
                 if (useByoKey) {
-                    payload.provider = aiProvider; // 'gemini' or 'openai'
+                    payload.provider = aiProvider;
                     payload.model = aiModel;
-                    if (aiProvider === 'openai') {
-                        payload.apiKey = openAiKey;
-                    } else {
-                        payload.apiKey = customApiKey;
-                    }
+                    payload.apiKey = apiKey;
+                    payload.endpoint = getActiveEndpoint();
                 }
 
                 const response = await fetch(WORKER_URL, {
