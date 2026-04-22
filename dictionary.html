@@ -299,6 +299,20 @@
             color: white;
         }
 
+        /* WORD OF THE DAY */
+        .wotd-banner {
+            display: inline-block;
+            background: black;
+            color: white;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 0.7rem;
+            font-weight: bold;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            margin-bottom: 20px;
+        }
+
         /* STANDARD MODAL SYSTEM */
         #modal-overlay {
             display: none;
@@ -411,8 +425,117 @@
 
         const API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/";
 
+        const WORD_OF_DAY_LIST = [
+            "serendipity", "ephemeral", "luminous", "melancholy", "eloquent",
+            "whimsical", "labyrinth", "gossamer", "incandescent", "ethereal",
+            "tenacious", "sanguine", "ebullient", "laconic", "pernicious",
+            "benevolent", "magnanimous", "enigmatic", "capricious", "voracious",
+            "sagacious", "ardent", "fervent", "austere", "serene",
+            "languid", "pensive", "vivacious", "placid", "resilient",
+            "intrepid", "audacious", "aloof", "clandestine", "erudite",
+            "garrulous", "imperious", "jovial", "lugubrious", "morose",
+            "nonchalant", "obsequious", "taciturn", "ubiquitous", "wistful",
+            "zealous", "eclectic", "furtive", "gregarious", "impetuous",
+            "loquacious", "mournful", "nefarious", "ominous", "quaint",
+            "radiant", "sublime", "tenuous", "vehement", "nostalgia",
+            "wanderlust", "zeitgeist", "nemesis", "paradox", "epiphany",
+            "metamorphosis", "catharsis", "maelstrom", "reverie", "solace",
+            "tumult", "vertigo", "alchemy", "anomaly", "cacophony",
+            "elegy", "illusion", "juggernaut", "kaleidoscope", "mythology",
+            "nexus", "oblivion", "panacea", "quandary", "resonance",
+            "serenity", "talisman", "utopia", "vortex", "yearning",
+            "zenith", "abyss", "citadel", "deluge", "fervor",
+            "glamour", "haven", "intrigue", "myriad", "oasis",
+            "pinnacle", "rhapsody", "specter", "tempest", "vestige",
+            "zephyr", "aura", "beacon", "essence", "fable",
+            "grace", "karma", "lore", "marvel", "omen",
+            "pathos", "ruin", "saga", "valor", "bliss",
+            "ruminate", "illuminate", "meander", "ponder", "flourish",
+            "languish", "resonate", "traverse", "beckon", "cascade",
+            "emanate", "glimmer", "linger", "manifest", "nurture",
+            "permeate", "quiver", "radiate", "shimmer", "transcend",
+            "unfurl", "vanish", "whisper", "rapture", "solitude",
+            "twilight", "aurora", "dusk", "ember", "flicker",
+            "jubilant", "kindred", "mystic", "nirvana", "obscure",
+            "pristine", "quintessential", "tranquil", "vigilant", "ambivalent",
+            "blithe", "candid", "dauntless", "effervescent", "gallant",
+            "harbinger", "ingenious", "jubilee", "knell", "liminal",
+            "nomadic", "opulent", "portent", "querulous", "raucous",
+            "stoic", "turbulent", "unwavering", "whimsy", "zeal",
+            "cryptic", "dormant", "exquisite", "fleeting", "hallowed",
+            "immense", "jarring", "luminescent", "meditative", "nascent",
+            "ornate", "perilous", "quiescent", "replete", "solemn"
+        ];
+
+        function getDailyWord() {
+            const d = new Date();
+            const start = new Date(d.getFullYear(), 0, 0);
+            const dayOfYear = Math.floor((d - start) / 86400000);
+            return WORD_OF_DAY_LIST[dayOfYear % WORD_OF_DAY_LIST.length];
+        }
+
+        async function showWordOfDay() {
+            const word = getDailyWord();
+            const content = document.getElementById('content-area');
+            const label = window.t ? window.t('dictionary.wordoftheday', 'Word of the Day') : 'Word of the Day';
+            content.innerHTML = `<div class="wotd-banner">${label}</div><div class="error-msg">${window.t ? window.t('dictionary.msg.searching', 'Searching...') : 'Searching...'}</div>`;
+            try {
+                const res = await fetch(API_URL + encodeURIComponent(word));
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                renderWordOfDayResult(data);
+            } catch (e) {
+                content.innerHTML = `<div style="text-align:center; margin-top:50px;">
+                    <h1 style="font-family:'Helvetica Neue';font-size:2rem;" data-i18n="dictionary.title">Dictionary</h1>
+                    <p data-i18n="dictionary.msg.initial">Type a word above to begin.</p>
+                </div>`;
+            }
+        }
+
+        function renderWordOfDayResult(data) {
+            const content = document.getElementById('content-area');
+            const label = window.t ? window.t('dictionary.wordoftheday', 'Word of the Day') : 'Word of the Day';
+            const entry = data[0];
+
+            let audioHtml = "";
+            const phonetic = entry.phonetics.find(p => p.audio && p.audio.length > 0);
+            if (phonetic) {
+                audioHtml = `<button class="audio-btn" onclick="playAudio('${phonetic.audio}')">🔊</button>`;
+            }
+            const textPhonetic = entry.phonetic || (entry.phonetics.find(p => p.text) ? entry.phonetics.find(p => p.text).text : "");
+
+            let html = `
+                <div class="wotd-banner">${label}</div>
+                <div class="word-header">
+                    <div class="word-title">${entry.word} ${audioHtml}</div>
+                    <div class="phonetic">${textPhonetic}</div>
+                </div>
+            `;
+
+            entry.meanings.forEach(meaning => {
+                html += `<div class="part-of-speech">${meaning.partOfSpeech}</div>`;
+                html += `<ol class="definitions">`;
+                meaning.definitions.forEach(def => {
+                    html += `<li>${def.definition}`;
+                    if (def.example) html += `<span class="example">"${def.example}"</span>`;
+                    html += `</li>`;
+                });
+                html += `</ol>`;
+                if (meaning.synonyms && meaning.synonyms.length > 0) {
+                    const synsLabel = window.t ? window.t('dictionary.label.synonyms') : "Synonyms:";
+                    const syns = meaning.synonyms.slice(0, 5).map(s => `<span class="syn-tag" onclick="searchWord('${s}')">${s}</span>`).join(", ");
+                    html += `<div class="synonyms"><strong>${synsLabel}</strong> ${syns}</div>`;
+                }
+            });
+
+            html += `<br><br><div style="font-size:0.7rem;color:#999;border-top:1px solid #ccc;padding-top:5px;">${window.t ? window.t('dictionary.label.source_api') : "Source: Wiktionary (via DictionaryAPI)"}</div>`;
+            content.innerHTML = html;
+            content.scrollTop = 0;
+        }
+
         window.onload = function () {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            showWordOfDay();
             document.getElementById('search-input').focus();
         };
 
