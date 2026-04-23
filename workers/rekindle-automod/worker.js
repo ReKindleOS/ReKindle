@@ -16,7 +16,7 @@ const IDENTITY_API = `https://identitytoolkit.googleapis.com/v1/projects/${FIREB
 // Set to true to log all decisions without executing any actions.
 // The AI still runs and the automod_log is still written, so you can review
 // what it would have done. Flip to false when you're happy with it.
-const DRY_RUN = false;
+const DRY_RUN = true;
 
 // ─── Strike Config ────────────────────────────────────────────────────────────
 // Reach STRIKE_LIMIT strikes within STRIKE_WINDOW_DAYS → auto full-nuke
@@ -30,29 +30,34 @@ const ACTION_COOLDOWN_MS = 11 * 60 * 1000;
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a content moderator for ReKindle, a cosy book-themed social network for readers worldwide.
+const SYSTEM_PROMPT = `You are a last-resort safety net for ReKindle, a cosy book-themed social network. You are NOT a general conduct enforcer. You exist only to catch the most severe, unambiguous violations — the kind any reasonable person would immediately agree is dangerous or illegal content.
 
-Your ONLY job is to catch people who are actively trying to harm others or deliberately break the community. The vast majority of runs should result in zero actions.
+Most runs should produce zero actions. Producing zero actions is the correct and expected outcome.
 
-ACTION CRITERIA — only act if content clearly meets one of these:
-- nuke (permanent ban): hate speech or slurs targeting protected groups, doxxing (sharing someone's real personal info), explicit sexual content, credible threats of violence against a specific person
-- timeout (temporary ban, 1-4 hours): deliberately targeted harassment of a specific user across multiple messages, blatant spam flooding in KindleChat (10+ near-identical messages back to back)
+The content you receive is split into two sections:
+- BACKGROUND CONTEXT: the last hour of activity, provided so you understand the conversation. Do NOT act on anything in this section.
+- NEW MESSAGES: only the last 10 minutes. This is the only content you should evaluate for action.
 
-NEVER action any of the following — these are not violations under any circumstances:
-- Rudeness, snark, aggression, or an angry tone
-- Using all caps or strong emphasis
-- Heated arguments or disagreements
-- Posting many comments in a topic or thread
-- Personal opinions expressed forcefully
-- Swearing (unless directed as a slur at a protected group)
-- Venting or frustration
+ONLY act for:
+- nuke (permanent ban): explicit slurs targeting a protected group, doxxing (posting someone's real address/phone/personal info), explicit sexual content, a direct and specific threat of violence against a named person
+- timeout (2 hours max): relentless targeted harassment — defined as a sustained campaign of abusive messages directed at one specific user, not a heated exchange or argument
+
+THE FOLLOWING ARE NEVER REASONS TO ACT, NO MATTER HOW EXTREME THEY SEEM:
+- Any form of rudeness, anger, aggression, or hostility
+- Swearing or profanity
+- All caps or emphatic writing style
+- Arguments, debates, or conflict between users
+- Insults or name-calling
+- Posting frequently or posting multiple comments
+- Spam, advertising, or off-topic posts
+- Venting, frustration, or emotional outbursts
 - Self-harm or distress signals
-- Anything that seems "off" but doesn't clearly fit the action criteria above
+- Anything that is merely unpleasant, uncomfortable, or annoying
 
-The user "ukiyo" is the site admin — never flag them.
-If you are not certain something is a clear violation, it is not a violation. Do nothing.
+The user "ukiyo" is the site admin — never flag them under any circumstances.
+If there is any doubt at all, take no action.
 
-Respond with ONLY a valid JSON object and absolutely nothing else:
+Respond with ONLY valid JSON:
 {
   "actions": [
     { "type": "nuke", "username": "exactusername", "reason": "brief reason" },
@@ -113,7 +118,8 @@ export default {
 
 async function runAutomod(env) {
     const startedAt = Date.now();
-    const cutoff = startedAt - 60 * 60 * 1000; // last 1 hour
+    const contextCutoff = startedAt - 60 * 60 * 1000;      // 1 hour ago — context window
+    const actionCutoff  = startedAt - 10 * 60 * 1000;     // 10 min ago — only action on this
     console.log('[Automod] Starting at', new Date(startedAt).toISOString());
 
     let idToken, oauth2Token;
@@ -124,11 +130,15 @@ async function runAutomod(env) {
         return;
     }
 
-    // Gather content from all four sources
-    const { lines, uidMap } = await gatherContent(idToken, cutoff);
+    // Fetch users_public once and share it across gathering + UID lookups
+    let usersPublic = {};
+    try { usersPublic = await rtdbGet(idToken, 'users_public', '') || {}; } catch {}
+
+    // Gather content from all four sources, split into context vs. recent
+    const { lines, uidMap } = await gatherContent(idToken, contextCutoff, actionCutoff, usersPublic);
 
     if (lines.length === 0) {
-        console.log('[Automod] No content in the last hour.');
+        console.log('[Automod] No new messages in the last 10 minutes — nothing to evaluate.');
         return;
     }
 
@@ -139,7 +149,7 @@ async function runAutomod(env) {
     const aiResult = await callAI(env, report);
     if (!aiResult) {
         console.error('[Automod] AI returned no usable result.');
-        await writeLog(token, { ts: startedAt, error: 'ai_failed', actions: [] });
+        await writeLog(idToken, { ts: startedAt, error: 'ai_failed', actions: [] });
         return;
     }
 
@@ -150,7 +160,7 @@ async function runAutomod(env) {
     const results = [];
     for (const action of (aiResult.actions || [])) {
         if (!action.username || action.username.toLowerCase() === 'ukiyo') continue;
-        const res = await applyAction(idToken, oauth2Token, action, uidMap);
+        const res = await applyAction(idToken, oauth2Token, action, uidMap, usersPublic);
         results.push(res);
     }
 
@@ -251,7 +261,11 @@ function rtdbUrl(idToken, path, params = '') {
 
 async function rtdbGet(token, path, params = '') {
     const res = await fetch(rtdbUrl(token, path, params));
-    return res.json();
+    const json = await res.json();
+    if (json && typeof json === 'object' && json.error) {
+        throw new Error(`RTDB ${res.status} at ${path}: ${json.error}`);
+    }
+    return json;
 }
 
 async function rtdbPut(token, path, data) {
@@ -275,124 +289,147 @@ async function rtdbDelete(token, path) {
 }
 
 // ─── Content Gathering ────────────────────────────────────────────────────────
+// contextCutoff: how far back to fetch for background context (1 hour)
+// actionCutoff:  only messages newer than this should be evaluated for action (10 min)
 
-async function gatherContent(token, cutoff) {
-    const lines = [];
+async function gatherContent(token, contextCutoff, actionCutoff, usersPublic = {}) {
     // username (lowercase) -> { uid, displayName }
-    // populated as we encounter users so we can skip UID lookups at action time
     const uidMap = {};
-
     function register(displayName, uid) {
         if (displayName) uidMap[displayName.toLowerCase()] = { uid: uid || null, displayName };
     }
 
+    // Each section produces { context: string[], recent: string[] }
+    // Context = older than actionCutoff but within contextCutoff (background only)
+    // Recent  = newer than actionCutoff (eligible for action)
+    const contextLines = [];
+    const recentLines = [];
+
+    function pushMsg(ts, line) {
+        if (ts >= actionCutoff) recentLines.push(line);
+        else contextLines.push(line);
+    }
+
     // ── KindleChat ───────────────────────────────────────────────────────────
-    // Messages stored at /kindlechat/messages, fields: user (username), text, timestamp
     try {
-        const data = await rtdbGet(token, 'kindlechat/messages', 'orderBy=%22%24key%22&limitToLast=300');
+        const data = await rtdbGet(token, 'kindlechat/messages', `orderBy=%22timestamp%22&startAt=${contextCutoff}&limitToLast=300`);
         if (data && typeof data === 'object') {
-            const all = Object.values(data);
-            const msgs = all
-                .filter(m => m && m.timestamp >= cutoff)
+            const msgs = Object.values(data)
+                .filter(m => m && m.timestamp >= contextCutoff)
                 .sort((a, b) => a.timestamp - b.timestamp);
-            console.log('[Automod DEBUG] KindleChat msgs in window:', msgs.length);
+            const recentCount = msgs.filter(m => m.timestamp >= actionCutoff).length;
+            console.log(`[Automod] KindleChat: ${msgs.length} in context window, ${recentCount} in action window`);
             if (msgs.length) {
-                lines.push('--- KindleChat ---');
+                contextLines.push('--- KindleChat ---');
+                recentLines.push('--- KindleChat ---');
                 msgs.forEach(m => {
                     const u = m.user || '?';
-                    register(u, null); // UID unknown for chat messages; resolved later if needed
-                    lines.push(`${u}: ${(m.text || '').substring(0, 300)}`);
+                    register(u, null);
+                    pushMsg(m.timestamp, `${u}: ${(m.text || '').substring(0, 300)}`);
                 });
-                lines.push('');
+                contextLines.push('');
+                recentLines.push('');
             }
+        } else {
+            console.log('[Automod] KindleChat: no messages in context window');
         }
-    } catch (e) { console.warn('[Automod] KindleChat error:', e.message); }
+    } catch (e) { console.error('[Automod] KindleChat error:', e.message); }
 
     // ── Neighbourhood Posts ───────────────────────────────────────────────────
-    // Posts at /neighbourhood_posts, fields: uid, text, timestamp, comments (nested)
     try {
-        const data = await rtdbGet(token, 'neighbourhood_posts', 'orderBy=%22%24key%22&limitToLast=150');
+        const data = await rtdbGet(token, 'neighbourhood_posts', `orderBy=%22timestamp%22&startAt=${contextCutoff}&limitToLast=150`);
         if (data && typeof data === 'object') {
-            const posts = Object.values(data)
-                .filter(p => p && p.timestamp >= cutoff && p.uid)
+            const all = Object.values(data);
+            const posts = all.filter(p => p && p.timestamp >= contextCutoff && p.uid)
                 .sort((a, b) => a.timestamp - b.timestamp);
+            const recentCount = posts.filter(p => p.timestamp >= actionCutoff).length;
+            console.log(`[Automod] Neighbourhood: ${all.length} total, ${posts.length} in context window, ${recentCount} in action window`);
 
             if (posts.length) {
-                // Collect all unique UIDs to resolve in parallel
-                const uidsNeeded = new Set();
-                posts.forEach(p => {
-                    uidsNeeded.add(p.uid);
-                    if (p.comments) Object.values(p.comments).forEach(c => c?.uid && uidsNeeded.add(c.uid));
-                });
-
                 const nameFor = {};
-                await Promise.all([...uidsNeeded].map(async uid => {
-                    try {
-                        const u = await rtdbGet(token, `users_public/${uid}`);
-                        const name = (u && (u.displayName || (u.email || '').split('@')[0])) || uid.substring(0, 8);
-                        nameFor[uid] = name;
-                        register(name, uid);
-                    } catch { nameFor[uid] = uid.substring(0, 8); }
-                }));
+                const resolveUid = uid => {
+                    if (nameFor[uid]) return nameFor[uid];
+                    const u = usersPublic[uid];
+                    const name = (u && (u.displayName || u.username || (u.email || '').split('@')[0])) || uid.substring(0, 8);
+                    nameFor[uid] = name;
+                    register(name, uid);
+                    return name;
+                };
 
-                lines.push('--- Neighbourhood ---');
+                contextLines.push('--- Neighbourhood ---');
+                recentLines.push('--- Neighbourhood ---');
                 posts.forEach(p => {
-                    const name = nameFor[p.uid] || p.uid.substring(0, 8);
-                    lines.push(`${name}: ${(p.text || '').substring(0, 300)}`);
+                    const name = resolveUid(p.uid);
+                    pushMsg(p.timestamp, `${name}: ${(p.text || '').substring(0, 300)}`);
                     if (p.comments) {
                         Object.values(p.comments)
-                            .filter(c => c && c.timestamp >= cutoff)
+                            .filter(c => c && c.timestamp >= contextCutoff)
                             .sort((a, b) => a.timestamp - b.timestamp)
                             .forEach(c => {
-                                const cn = nameFor[c.uid] || c.uid?.substring(0, 8) || '?';
-                                lines.push(`  ${cn} (reply): ${(c.text || '').substring(0, 300)}`);
+                                const cn = c.uid ? resolveUid(c.uid) : '?';
+                                pushMsg(c.timestamp, `  ${cn} (reply): ${(c.text || '').substring(0, 300)}`);
                             });
                     }
                 });
-                lines.push('');
+                contextLines.push('');
+                recentLines.push('');
             }
+        } else {
+            console.log('[Automod] Neighbourhood: no posts in context window');
         }
-    } catch (e) { console.warn('[Automod] Neighbourhood error:', e.message); }
+    } catch (e) { console.error('[Automod] Neighbourhood error:', e.message); }
 
-    // ── Topics ────────────────────────────────────────────────────────────────
-    // Topics at /topics, fields: authorName, authorId, title, body, lastActive
-    // Comments at /topic_comments/{topicId}, fields: authorName, authorId, body, timestamp
+    // ── Topics & Comments ─────────────────────────────────────────────────────
     try {
-        const data = await rtdbGet(token, 'topics', `orderBy=%22lastActive%22&startAt=${cutoff}&limitToLast=50`);
+        const data = await rtdbGet(token, 'topics', `orderBy=%22lastActive%22&startAt=${contextCutoff}&limitToLast=50`);
         if (data && typeof data === 'object') {
             const entries = Object.entries(data)
-                .filter(([, t]) => t && t.lastActive >= cutoff);
-
+                .filter(([, t]) => t && t.lastActive >= contextCutoff)
+                .sort(([, a], [, b]) => (b.lastActive || 0) - (a.lastActive || 0))
+                .slice(0, 15); // cap at 15 to stay within subrequest budget
+            console.log(`[Automod] Topics: ${entries.length} active in context window`);
             if (entries.length) {
-                lines.push('--- Topics ---');
+                contextLines.push('--- Topics ---');
+                recentLines.push('--- Topics ---');
                 for (const [topicId, t] of entries) {
                     if (t.authorName) register(t.authorName, t.authorId || null);
+                    const topicLabel = t.timestamp >= contextCutoff
+                        ? `TOPIC by ${t.authorName || '?'}: "${(t.title || '').substring(0, 80)}" — ${(t.body || '').substring(0, 200)}`
+                        : `TOPIC (existing): "${(t.title || '').substring(0, 80)}"`;
+                    pushMsg(t.timestamp || contextCutoff, topicLabel);
 
-                    // Only show the topic body if it was just posted in this window
-                    if (t.timestamp >= cutoff) {
-                        lines.push(`TOPIC by ${t.authorName || '?'}: "${(t.title || '').substring(0, 80)}" — ${(t.body || '').substring(0, 200)}`);
-                    } else {
-                        lines.push(`TOPIC (existing, new comments): "${(t.title || '').substring(0, 80)}"`);
-                    }
-
-                    // Fetch recent comments for this topic
                     try {
                         const cData = await rtdbGet(token, `topic_comments/${topicId}`, 'orderBy=%22%24key%22&limitToLast=50');
                         if (cData && typeof cData === 'object') {
                             Object.values(cData)
-                                .filter(c => c && c.timestamp >= cutoff)
+                                .filter(c => c && c.timestamp >= contextCutoff)
                                 .sort((a, b) => a.timestamp - b.timestamp)
                                 .forEach(c => {
                                     if (c.authorName) register(c.authorName, c.authorId || null);
-                                    lines.push(`  Comment by ${c.authorName || '?'}: ${(c.body || '').substring(0, 300)}`);
+                                    pushMsg(c.timestamp, `  Comment by ${c.authorName || '?'}: ${(c.body || '').substring(0, 300)}`);
                                 });
                         }
-                    } catch { /* topic may have no comments */ }
+                    } catch (e) { console.warn(`[Automod] Comments fetch error for topic ${topicId}:`, e.message); }
                 }
-                lines.push('');
+                contextLines.push('');
+                recentLines.push('');
             }
+        } else {
+            console.log('[Automod] Topics: no topics in context window');
         }
-    } catch (e) { console.warn('[Automod] Topics error:', e.message); }
+    } catch (e) { console.error('[Automod] Topics error:', e.message); }
+
+    // Only return lines if there's something recent to evaluate
+    const hasRecent = recentLines.some(l => l && !l.startsWith('---') && l.trim() !== '');
+    if (!hasRecent) return { lines: [], uidMap };
+
+    // Build final report: context first for background, then clearly labelled recent
+    const lines = [
+        '=== BACKGROUND CONTEXT (last hour) — do NOT act on these ===',
+        ...contextLines,
+        '=== NEW MESSAGES (last 10 minutes) — evaluate these for action ===',
+        ...recentLines
+    ];
 
     return { lines, uidMap };
 }
@@ -400,19 +437,18 @@ async function gatherContent(token, cutoff) {
 // ─── AI Moderation ────────────────────────────────────────────────────────────
 
 async function callAI(env, report) {
-    // Truncate to stay within Workers AI context limits
-    const maxChars = 5500;
+    const maxChars = 6000;
     const input = report.length > maxChars
         ? report.substring(0, maxChars) + '\n[...truncated for length]'
         : report;
 
     try {
-        const res = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+        const res = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: `Review these messages from the last hour:\n\n${input}` }
+                { role: 'user', content: `Review these messages:\n\n${input}` }
             ],
-            max_tokens: 600,
+            max_tokens: 1000,
             temperature: 0.1
         });
 
@@ -437,17 +473,17 @@ async function callAI(env, report) {
 
 // ─── Action Execution ─────────────────────────────────────────────────────────
 
-async function applyAction(idToken, oauth2Token, action, uidMap) {
+async function applyAction(idToken, oauth2Token, action, uidMap, usersPublic) {
     const { type, username, hours, reason } = action;
     const result = { type, username, reason: (reason || '').substring(0, 200), status: 'pending' };
 
-    // Resolve UID — use gathered map first, fall back to full scan
+    // Resolve UID — use gathered map first, fall back to in-memory search of shared usersPublic
     let entry = uidMap[username.toLowerCase()];
     let uid = entry?.uid || null;
 
     if (!uid) {
-        console.log(`[Automod] UID not in map for "${username}", scanning users_public...`);
-        uid = await lookupUid(idToken, username);
+        console.log(`[Automod] UID not in map for "${username}", searching users_public...`);
+        uid = lookupUid(usersPublic, username);
     }
 
     if (!uid) {
@@ -497,20 +533,15 @@ async function applyAction(idToken, oauth2Token, action, uidMap) {
     return result;
 }
 
-// Scan users_public to find a UID matching a username/email handle
-async function lookupUid(token, username) {
-    const uidIndex = await rtdbGet(token, 'users_public', 'shallow=true');
-    if (!uidIndex) return null;
-
+// Search the shared usersPublic map — no extra subrequest needed
+function lookupUid(usersPublic, username) {
+    if (!usersPublic || typeof usersPublic !== 'object') return null;
     const target = username.toLowerCase();
-    for (const uid of Object.keys(uidIndex)) {
-        try {
-            const u = await rtdbGet(token, `users_public/${uid}`);
-            if (!u) continue;
-            const name = (u.displayName || '').toLowerCase();
-            const email = (u.email || '').toLowerCase();
-            if (name === target || email === target || email.startsWith(target + '@')) return uid;
-        } catch { /* skip */ }
+    for (const [uid, u] of Object.entries(usersPublic)) {
+        if (!u) continue;
+        const name = (u.displayName || u.username || '').toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        if (name === target || email === target || email.startsWith(target + '@')) return uid;
     }
     return null;
 }
@@ -606,93 +637,111 @@ async function doFullNuke(idToken, oauth2Token, uid, username, reason, ipBan = f
 }
 
 // ── Content Deletion ──────────────────────────────────────────────────────────
+// Fetches each collection in one bulk read, collects all paths to null out,
+// then executes a single multi-path PATCH — avoiding the subrequest limit.
 
 async function deleteUserContent(idToken, uid, username) {
-    const token = idToken;
-    let deleted = 0;
+    // Paths are grouped by top-level collection so each PATCH targets a path the
+    // admin has write access to (a root-level PATCH is rejected as permission denied).
+    const byCollection = {
+        'kindlechat/messages': {},
+        'neighbourhood_posts': {},
+        'topics': {},
+        'topic_comments': {}
+    };
+    let count = 0;
 
-    // KindleChat general messages (indexed by `user` = email handle / username)
+    // Strip the collection prefix and store the remainder as a relative path → null
+    function mark(collection, relativePath) {
+        byCollection[collection][relativePath] = null;
+        count++;
+    }
+
+    // KindleChat messages — indexed by `user`
     try {
-        const msgs = await rtdbGet(token, 'kindlechat/messages',
+        const msgs = await rtdbGet(idToken, 'kindlechat/messages',
             `orderBy=%22user%22&equalTo=${encodeURIComponent(JSON.stringify(username))}`);
         if (msgs && typeof msgs === 'object') {
-            for (const key of Object.keys(msgs)) {
-                await rtdbDelete(token, `kindlechat/messages/${key}`);
-                deleted++;
-            }
-            console.log(`[Automod] Deleted ${Object.keys(msgs).length} KindleChat messages`);
+            for (const key of Object.keys(msgs)) mark('kindlechat/messages', key);
+            console.log(`[Automod] Marking ${Object.keys(msgs).length} KindleChat messages for deletion`);
         }
     } catch (e) { console.warn('[Automod] KindleChat deletion error:', e.message); }
 
-    // Neighbourhood posts (indexed by `uid`)
+    // Neighbourhood posts owned by user — indexed by `uid`
+    const ownedPostIds = new Set();
     try {
-        const posts = await rtdbGet(token, 'neighbourhood_posts',
+        const posts = await rtdbGet(idToken, 'neighbourhood_posts',
             `orderBy=%22uid%22&equalTo=${encodeURIComponent(JSON.stringify(uid))}`);
         if (posts && typeof posts === 'object') {
             for (const key of Object.keys(posts)) {
-                await rtdbDelete(token, `neighbourhood_posts/${key}`);
-                deleted++;
+                mark('neighbourhood_posts', key);
+                ownedPostIds.add(key);
             }
-            console.log(`[Automod] Deleted ${Object.keys(posts).length} Neighbourhood posts`);
+            console.log(`[Automod] Marking ${ownedPostIds.size} Neighbourhood posts for deletion`);
         }
     } catch (e) { console.warn('[Automod] Neighbourhood post deletion error:', e.message); }
 
-    // Neighbourhood comments (nested under posts — must scan all posts)
+    // Neighbourhood comments on others' posts — one bulk fetch, filter in memory
     try {
-        const allPosts = await rtdbGet(token, 'neighbourhood_posts', 'shallow=true');
+        const allPosts = await rtdbGet(idToken, 'neighbourhood_posts', '');
         if (allPosts && typeof allPosts === 'object') {
-            for (const postId of Object.keys(allPosts)) {
-                try {
-                    const post = await rtdbGet(token, `neighbourhood_posts/${postId}`);
-                    if (post?.comments) {
-                        for (const [cid, c] of Object.entries(post.comments)) {
-                            if (c?.uid === uid) {
-                                await rtdbDelete(token, `neighbourhood_posts/${postId}/comments/${cid}`);
-                                deleted++;
-                            }
-                        }
-                    }
-                } catch { /* skip */ }
+            for (const [postId, post] of Object.entries(allPosts)) {
+                if (ownedPostIds.has(postId) || !post?.comments) continue;
+                for (const [cid, c] of Object.entries(post.comments)) {
+                    if (c?.uid === uid) mark('neighbourhood_posts', `${postId}/comments/${cid}`);
+                }
             }
         }
     } catch (e) { console.warn('[Automod] Neighbourhood comment deletion error:', e.message); }
 
-    // Topics (indexed by `authorId`)
+    // Topics owned by user — indexed by `authorId`
+    const ownedTopicIds = new Set();
     try {
-        const topics = await rtdbGet(token, 'topics',
+        const topics = await rtdbGet(idToken, 'topics',
             `orderBy=%22authorId%22&equalTo=${encodeURIComponent(JSON.stringify(uid))}`);
         if (topics && typeof topics === 'object') {
             for (const key of Object.keys(topics)) {
-                await rtdbDelete(token, `topics/${key}`);
-                // Also delete associated comments
-                await rtdbDelete(token, `topic_comments/${key}`);
-                deleted++;
+                mark('topics', key);
+                mark('topic_comments', key); // wipe entire comment thread with the topic
+                ownedTopicIds.add(key);
             }
-            console.log(`[Automod] Deleted ${Object.keys(topics).length} Topics`);
+            console.log(`[Automod] Marking ${ownedTopicIds.size} Topics for deletion`);
         }
     } catch (e) { console.warn('[Automod] Topic deletion error:', e.message); }
 
-    // Topic comments (must scan all topics for comments by this user)
+    // Topic comments on others' topics — one bulk fetch, filter in memory
     try {
-        const topicIndex = await rtdbGet(token, 'topic_comments', 'shallow=true');
-        if (topicIndex && typeof topicIndex === 'object') {
-            for (const topicId of Object.keys(topicIndex)) {
-                try {
-                    const comments = await rtdbGet(token, `topic_comments/${topicId}`);
-                    if (comments && typeof comments === 'object') {
-                        for (const [cid, c] of Object.entries(comments)) {
-                            if (c?.authorId === uid) {
-                                await rtdbDelete(token, `topic_comments/${topicId}/${cid}`);
-                                deleted++;
-                            }
-                        }
-                    }
-                } catch { /* skip */ }
+        const allTopicComments = await rtdbGet(idToken, 'topic_comments', '');
+        if (allTopicComments && typeof allTopicComments === 'object') {
+            for (const [topicId, comments] of Object.entries(allTopicComments)) {
+                if (ownedTopicIds.has(topicId) || !comments || typeof comments !== 'object') continue;
+                for (const [cid, c] of Object.entries(comments)) {
+                    if (c?.authorId === uid) mark('topic_comments', `${topicId}/${cid}`);
+                }
             }
         }
     } catch (e) { console.warn('[Automod] Topic comment deletion error:', e.message); }
 
-    console.log(`[Automod] Content deletion complete — ${deleted} items removed for ${uid}`);
+    if (count === 0) {
+        console.log(`[Automod] No content found to delete for ${uid}`);
+        return;
+    }
+
+    // One PATCH per collection — each targets a path the admin can write to
+    let deleted = 0;
+    for (const [collection, paths] of Object.entries(byCollection)) {
+        if (Object.keys(paths).length === 0) continue;
+        try {
+            const res = await fetch(`${RTDB_BASE}/${collection}.json?auth=${idToken}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(paths)
+            });
+            if (!res.ok) console.warn(`[Automod] Delete failed for ${collection}:`, res.status, await res.text());
+            else deleted += Object.keys(paths).length;
+        } catch (e) { console.error(`[Automod] Delete error for ${collection}:`, e.message); }
+    }
+    console.log(`[Automod] Content deletion complete — ${deleted}/${count} items removed for ${uid}`);
 }
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
