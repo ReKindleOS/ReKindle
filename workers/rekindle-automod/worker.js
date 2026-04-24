@@ -2,10 +2,10 @@
 // Runs every 30 minutes, reviews the last hour of public content via Cloudflare Workers AI,
 // and executes timeouts or bans matching the same logic as timeout_user.js / nuke_user.js.
 //
-// Strike system: each automod timeout records a strike under /automod_strikes/{uid}.
-// Once a user hits STRIKE_LIMIT within STRIKE_WINDOW_DAYS, they are automatically
-// escalated to a full nuke (auth disabled, IP banned, all content deleted).
-// AI-recommended nukes for single severe incidents skip the strike system entirely.
+// Strike system: each AI nuke-recommendation records a strike under /automod_strikes/{uid}.
+// Once a user accumulates STRIKE_LIMIT nuke-strikes within STRIKE_WINDOW_DAYS, a full
+// history confirmation pass runs and, if confirmed, the user is permanently banned.
+// Timeouts do not count towards strikes.
 
 const RTDB_BASE = 'https://rekindle-dd1fa-default-rtdb.firebaseio.com';
 const FIREBASE_PROJECT = 'rekindle-dd1fa';
@@ -160,7 +160,7 @@ async function runAutomod(env) {
     const results = [];
     for (const action of (aiResult.actions || [])) {
         if (!action.username || action.username.toLowerCase() === 'ukiyo') continue;
-        const res = await applyAction(idToken, oauth2Token, action, uidMap, usersPublic);
+        const res = await applyAction(env, idToken, oauth2Token, action, uidMap, usersPublic);
         results.push(res);
     }
 
@@ -452,7 +452,15 @@ async function callAI(env, report) {
             temperature: 0.1
         });
 
-        const raw = (res.response || '').trim();
+        // res.response can occasionally come back as a non-string (object, stream, etc.)
+        // depending on the model version — coerce it safely before trimming.
+        let rawValue = res.response;
+        if (rawValue == null) rawValue = '';
+        if (typeof rawValue !== 'string') {
+            console.warn('[Automod] res.response was not a string (type:', typeof rawValue, ') — stringifying');
+            rawValue = JSON.stringify(rawValue);
+        }
+        const raw = rawValue.trim();
         console.log('[Automod] Raw AI response:', raw.substring(0, 400));
 
         // Extract first JSON object from response
@@ -471,9 +479,173 @@ async function callAI(env, report) {
     }
 }
 
+// ─── Nuke Confirmation ────────────────────────────────────────────────────────
+// Before any nuke executes (whether AI-recommended or strike-escalated), we fetch
+// the user's FULL social history and run a dedicated second AI pass to confirm
+// the ban is genuinely warranted. If the second pass rejects it, the nuke is
+// aborted and logged — erring hard on the side of caution.
+
+async function gatherUserHistory(token, uid, username) {
+    const lines = [];
+
+    // KindleChat messages by this user
+    try {
+        const msgs = await rtdbGet(token, 'kindlechat/messages',
+            `orderBy=%22user%22&equalTo=${encodeURIComponent(JSON.stringify(username))}`);
+        if (msgs && typeof msgs === 'object') {
+            const sorted = Object.values(msgs).filter(m => m)
+                .sort((a, b) => a.timestamp - b.timestamp);
+            if (sorted.length) {
+                lines.push('--- KindleChat ---');
+                sorted.forEach(m => lines.push(`${m.user}: ${(m.text || '').substring(0, 300)}`));
+                lines.push('');
+            }
+        }
+    } catch (e) { console.warn('[Automod/confirm] KindleChat error:', e.message); }
+
+    // Neighbourhood posts owned by user
+    const ownedPostIds = new Set();
+    try {
+        const posts = await rtdbGet(token, 'neighbourhood_posts',
+            `orderBy=%22uid%22&equalTo=${encodeURIComponent(JSON.stringify(uid))}`);
+        if (posts && typeof posts === 'object') {
+            const sorted = Object.entries(posts).filter(([, p]) => p)
+                .sort(([, a], [, b]) => a.timestamp - b.timestamp);
+            if (sorted.length) {
+                lines.push('--- Neighbourhood posts ---');
+                sorted.forEach(([id, p]) => {
+                    ownedPostIds.add(id);
+                    lines.push(`Post: ${(p.text || '').substring(0, 300)}`);
+                });
+                lines.push('');
+            }
+        }
+    } catch (e) { console.warn('[Automod/confirm] Neighbourhood posts error:', e.message); }
+
+    // Neighbourhood comments on others' posts
+    try {
+        const allPosts = await rtdbGet(token, 'neighbourhood_posts', '');
+        if (allPosts && typeof allPosts === 'object') {
+            const commentLines = [];
+            for (const [postId, post] of Object.entries(allPosts)) {
+                if (ownedPostIds.has(postId) || !post?.comments) continue;
+                for (const [, c] of Object.entries(post.comments)) {
+                    if (c?.uid === uid) commentLines.push(`Reply: ${(c.text || '').substring(0, 300)}`);
+                }
+            }
+            if (commentLines.length) {
+                lines.push('--- Neighbourhood replies ---');
+                lines.push(...commentLines);
+                lines.push('');
+            }
+        }
+    } catch (e) { console.warn('[Automod/confirm] Neighbourhood replies error:', e.message); }
+
+    // Topics authored by user
+    const ownedTopicIds = new Set();
+    try {
+        const topics = await rtdbGet(token, 'topics',
+            `orderBy=%22authorId%22&equalTo=${encodeURIComponent(JSON.stringify(uid))}`);
+        if (topics && typeof topics === 'object') {
+            const sorted = Object.entries(topics).filter(([, t]) => t)
+                .sort(([, a], [, b]) => a.timestamp - b.timestamp);
+            if (sorted.length) {
+                lines.push('--- Topics ---');
+                sorted.forEach(([id, t]) => {
+                    ownedTopicIds.add(id);
+                    lines.push(`"${(t.title || '').substring(0, 80)}": ${(t.body || '').substring(0, 200)}`);
+                });
+                lines.push('');
+            }
+        }
+    } catch (e) { console.warn('[Automod/confirm] Topics error:', e.message); }
+
+    // Topic comments by user on any thread
+    try {
+        const allComments = await rtdbGet(token, 'topic_comments', '');
+        if (allComments && typeof allComments === 'object') {
+            const commentLines = [];
+            for (const [, comments] of Object.entries(allComments)) {
+                if (!comments || typeof comments !== 'object') continue;
+                for (const [, c] of Object.entries(comments)) {
+                    if (c?.authorId === uid) commentLines.push(`Topic comment: ${(c.body || '').substring(0, 300)}`);
+                }
+            }
+            if (commentLines.length) {
+                lines.push('--- Topic comments ---');
+                lines.push(...commentLines);
+                lines.push('');
+            }
+        }
+    } catch (e) { console.warn('[Automod/confirm] Topic comments error:', e.message); }
+
+    return lines.join('\n') || '(no content found in any collection)';
+}
+
+async function confirmNukeWithAI(env, idToken, uid, username, triggerReason) {
+    console.log(`[Automod] Running nuke confirmation pass for @${username} (${uid})…`);
+
+    let history;
+    try {
+        history = await gatherUserHistory(idToken, uid, username);
+    } catch (e) {
+        console.error('[Automod] Confirmation: failed to gather history:', e.message);
+        return { confirmed: false, reason: 'History fetch failed — aborting nuke as a precaution' };
+    }
+
+    const prompt =
+`The automated moderation system has flagged @${username} for a PERMANENT BAN.
+Trigger reason: "${triggerReason}"
+
+Below is this user's complete post history on ReKindle. Your job is to decide whether the ban is genuinely warranted.
+
+A permanent ban should ONLY be confirmed if you can see clear, unambiguous evidence of at least one of:
+- Explicit slurs targeting a protected group (race, ethnicity, religion, gender, sexuality, disability)
+- Doxxing — posting someone's real home address, phone number, or other private personal information
+- Explicit sexual content
+- A direct, specific, credible threat of violence against a named person
+
+If you cannot see solid evidence of one of those in the history below, reject the ban.
+Rudeness, profanity, arguments, hostility, or unpleasant behaviour are NEVER enough — reject those.
+When in doubt, reject.
+
+USER HISTORY FOR @${username}:
+${history.substring(0, 8000)}
+
+Respond with ONLY valid JSON — no explanation outside the JSON:
+{ "confirm": true, "reason": "what specific content justifies the ban" }
+or
+{ "confirm": false, "reason": "why you are rejecting it" }`;
+
+    try {
+        const res = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 300,
+            temperature: 0.05
+        });
+
+        let rawValue = res.response;
+        if (rawValue == null) rawValue = '';
+        if (typeof rawValue !== 'string') rawValue = JSON.stringify(rawValue);
+        const raw = rawValue.trim();
+        console.log('[Automod] Nuke confirmation raw response:', raw.substring(0, 300));
+
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) {
+            console.error('[Automod] Confirmation: no JSON in response — rejecting as precaution');
+            return { confirmed: false, reason: 'Confirmation AI returned no parseable JSON' };
+        }
+        const parsed = JSON.parse(match[0]);
+        return { confirmed: !!parsed.confirm, reason: (parsed.reason || '').substring(0, 200) };
+    } catch (e) {
+        console.error('[Automod] Confirmation AI error:', e.message);
+        return { confirmed: false, reason: `Confirmation AI error: ${e.message}` };
+    }
+}
+
 // ─── Action Execution ─────────────────────────────────────────────────────────
 
-async function applyAction(idToken, oauth2Token, action, uidMap, usersPublic) {
+async function applyAction(env, idToken, oauth2Token, action, uidMap, usersPublic) {
     const { type, username, hours, reason } = action;
     const result = { type, username, reason: (reason || '').substring(0, 200), status: 'pending' };
 
@@ -504,21 +676,41 @@ async function applyAction(idToken, oauth2Token, action, uidMap, usersPublic) {
 
     try {
         if (type === 'nuke') {
-            if (DRY_RUN) {
-                result.status = 'dry_run_would_nuke_immediate';
-                console.log(`[Automod DRY RUN] Would immediately nuke+IP ban: ${username} (${uid}) — ${reason}`);
+            // Confirm with AI (full history review) before recording any strike
+            const confirmation = await confirmNukeWithAI(env, idToken, uid, username, reason || 'Automod: severe policy violation');
+            result.confirmationReason = confirmation.reason;
+
+            if (!confirmation.confirmed) {
+                console.warn(`[Automod] Nuke-strike REJECTED by confirmation pass for @${username}: ${confirmation.reason}`);
+                result.status = 'nuke_rejected_by_confirmation';
             } else {
-                await doFullNuke(idToken, oauth2Token, uid, username, reason || 'Automod: severe policy violation', true);
-                result.status = 'nuked_immediate';
+                // Confirmation passed — record the strike
+                const { strikeCount, limitReached } = await recordNukeStrike(idToken, uid, reason || 'Automod: severe policy violation');
+                result.strikeCount = strikeCount;
+                console.log(`[Automod] Nuke-strike confirmed and recorded for @${username}: ${strikeCount}/${STRIKE_LIMIT}`);
+
+                if (!limitReached) {
+                    result.status = `nuke_strike_${strikeCount}_of_${STRIKE_LIMIT}`;
+                } else {
+                    // Strike limit reached — execute the ban
+                    if (DRY_RUN) {
+                        result.status = 'dry_run_would_nuke';
+                        console.log(`[Automod DRY RUN] Would nuke+IP ban: ${username} (${uid})`);
+                    } else {
+                        await doFullNuke(idToken, oauth2Token, uid, username,
+                            `${STRIKE_LIMIT} AI-confirmed severe violations`, true);
+                        result.status = 'nuked';
+                    }
+                }
             }
         } else {
             const h = Math.max(1, Math.min(hours || 24, 168));
             if (DRY_RUN) {
                 result.status = `dry_run_would_timeout_${h}h`;
-                console.log(`[Automod DRY RUN] Would timeout ${h}h + record strike: ${username} (${uid}) — ${reason}`);
+                console.log(`[Automod DRY RUN] Would timeout ${h}h: ${username} (${uid}) — ${reason}`);
             } else {
-                const escalated = await doTimeoutWithStrike(idToken, oauth2Token, uid, username, h, reason || 'Automod');
-                result.status = escalated ? 'nuked_escalated' : `timed_out_${h}h`;
+                await doTimeout(idToken, uid, h, reason || 'Automod');
+                result.status = `timed_out_${h}h`;
             }
         }
         console.log(`[Automod] ${result.status}: ${username} (${uid}) — ${reason}`);
@@ -546,23 +738,28 @@ function lookupUid(usersPublic, username) {
     return null;
 }
 
-// ── Timeout + Strike system ───────────────────────────────────────────────────
-// Returns true if the strike threshold was hit and a full nuke was executed.
+// ── Timeout (no strike) ───────────────────────────────────────────────────────
+// Applies a social timeout only — does not record any strikes.
 
-async function doTimeoutWithStrike(idToken, oauth2Token, uid, username, hours, reason) {
-    // Apply the timeout first (same as timeout_user.js)
+async function doTimeout(idToken, uid, hours, reason) {
     const existing = await rtdbGet(idToken, `social_timeouts/${uid}`);
     if (existing && typeof existing.durationHours === 'number' && existing.durationHours >= hours) {
         console.log(`[Automod] ${uid} already has ${existing.durationHours}h timeout — not shortening`);
-    } else {
-        await rtdbPut(idToken, `social_timeouts/${uid}`, {
-            reason: `[Automod] ${reason}`,
-            durationHours: hours
-        });
-        await rtdbDelete(idToken, `users_private/${uid}/timeout_seen`);
+        return;
     }
+    await rtdbPut(idToken, `social_timeouts/${uid}`, {
+        reason: `[Automod] ${reason}`,
+        durationHours: hours
+    });
+    await rtdbDelete(idToken, `users_private/${uid}/timeout_seen`);
+}
 
-    // Record a strike
+// ── Nuke-strike recorder ──────────────────────────────────────────────────────
+// Called whenever the AI recommends a nuke. Records a strike under
+// automod_strikes/{uid}. Returns { strikeCount, limitReached }.
+// The actual ban is NOT executed here — the caller handles it once the limit hits.
+
+async function recordNukeStrike(idToken, uid, reason) {
     const strikeWindowMs = STRIKE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const cutoff = now - strikeWindowMs;
@@ -570,7 +767,7 @@ async function doTimeoutWithStrike(idToken, oauth2Token, uid, username, hours, r
     let strikeData = await rtdbGet(idToken, `automod_strikes/${uid}`) || { strikes: [] };
     if (!Array.isArray(strikeData.strikes)) strikeData.strikes = [];
 
-    strikeData.strikes.push({ ts: now, reason, hours });
+    strikeData.strikes.push({ ts: now, reason });
     const recentStrikes = strikeData.strikes.filter(s => s.ts >= cutoff);
     strikeData.strikes = recentStrikes;
     strikeData.count = recentStrikes.length;
@@ -580,15 +777,9 @@ async function doTimeoutWithStrike(idToken, oauth2Token, uid, username, hours, r
     }
 
     await rtdbPut(idToken, `automod_strikes/${uid}`, strikeData);
-    console.log(`[Automod] Strike recorded for ${uid}: ${strikeData.count}/${STRIKE_LIMIT} in the last ${STRIKE_WINDOW_DAYS} days`);
+    console.log(`[Automod] Nuke-strike recorded for ${uid}: ${strikeData.count}/${STRIKE_LIMIT} within ${STRIKE_WINDOW_DAYS} days`);
 
-    if (strikeData.count >= STRIKE_LIMIT) {
-        console.log(`[Automod] Strike limit reached for ${uid} — escalating to full nuke (no IP ban)`);
-        await doFullNuke(idToken, oauth2Token, uid, username, `Strike limit reached (${strikeData.count} violations in ${STRIKE_WINDOW_DAYS} days)`, false);
-        return true;
-    }
-
-    return false;
+    return { strikeCount: strikeData.count, limitReached: strikeData.count >= STRIKE_LIMIT };
 }
 
 // ── Full Nuke — mirrors nuke_user.js --force ──────────────────────────────────
