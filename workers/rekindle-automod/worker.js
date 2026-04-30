@@ -16,7 +16,7 @@ const IDENTITY_API = `https://identitytoolkit.googleapis.com/v1/projects/${FIREB
 // Set to true to log all decisions without executing any actions.
 // The AI still runs and the automod_log is still written, so you can review
 // what it would have done. Flip to false when you're happy with it.
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 // ─── Strike Config ────────────────────────────────────────────────────────────
 // Reach STRIKE_LIMIT strikes within STRIKE_WINDOW_DAYS → auto full-nuke
@@ -119,7 +119,7 @@ export default {
 async function runAutomod(env) {
     const startedAt = Date.now();
     const contextCutoff = startedAt - 60 * 60 * 1000;      // 1 hour ago — context window
-    const actionCutoff  = startedAt - 10 * 60 * 1000;     // 10 min ago — only action on this
+    const actionCutoff = startedAt - 10 * 60 * 1000;     // 10 min ago — only action on this
     console.log('[Automod] Starting at', new Date(startedAt).toISOString());
 
     let idToken, oauth2Token;
@@ -132,7 +132,7 @@ async function runAutomod(env) {
 
     // Fetch users_public once and share it across gathering + UID lookups
     let usersPublic = {};
-    try { usersPublic = await rtdbGet(idToken, 'users_public', '') || {}; } catch {}
+    try { usersPublic = await rtdbGet(idToken, 'users_public', '') || {}; } catch { }
 
     // Gather content from all four sources, split into context vs. recent
     const { lines, uidMap } = await gatherContent(idToken, contextCutoff, actionCutoff, usersPublic);
@@ -594,7 +594,7 @@ async function confirmNukeWithAI(env, idToken, uid, username, triggerReason) {
     }
 
     const prompt =
-`The automated moderation system has flagged @${username} for a PERMANENT BAN.
+        `The automated moderation system has flagged @${username} for a PERMANENT BAN.
 Trigger reason: "${triggerReason}"
 
 Below is this user's complete post history on ReKindle. Your job is to decide whether the ban is genuinely warranted.
@@ -690,7 +690,13 @@ async function applyAction(env, idToken, oauth2Token, action, uidMap, usersPubli
                 console.log(`[Automod] Nuke-strike confirmed and recorded for @${username}: ${strikeCount}/${STRIKE_LIMIT}`);
 
                 if (!limitReached) {
-                    result.status = `nuke_strike_${strikeCount}_of_${STRIKE_LIMIT}`;
+                    const timeoutHours = strikeCount >= 2 ? 2 : 1;
+                    if (DRY_RUN) {
+                        console.log(`[Automod DRY RUN] Would timeout ${timeoutHours}h for strike ${strikeCount}: ${username}`);
+                    } else {
+                        await doTimeout(idToken, uid, timeoutHours, `Strike ${strikeCount}/${STRIKE_LIMIT}: ${reason}`);
+                    }
+                    result.status = `nuke_strike_${strikeCount}_of_${STRIKE_LIMIT}_timeout_${timeoutHours}h`;
                 } else {
                     // Strike limit reached — execute the ban
                     if (DRY_RUN) {
