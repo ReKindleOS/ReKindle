@@ -1102,6 +1102,11 @@
         var topicsListenerRef = null;
         var rulesListenerRef = null;
         var sidebarRenderTimer = null;
+        var fullTopicsSnapshot = null;    // one-time fetch for search (sorted desc, 5-min TTL)
+        var fullTopicsSnapshotExpiry = 0;
+        var isFetchingFullTopics = false;
+        var favTopicsExtra = {};          // { topicId: topic } for favourites outside top-200
+        var favTopicsLoading = new Set();
         // Pagination state for the active topic
         var oldestRenderedTs = null;          // timestamp of the oldest comment currently in DOM
         var isLoadingMoreComments = false;    // re-entry guard for paginated fetches
@@ -1135,25 +1140,42 @@
                     loadFavorites().then(function () {
                         loadTopicStates().then(function () {
                             // Load topics
-                            topicsListenerRef = db.ref('topics').orderByChild('lastActive');
+                            topicsListenerRef = db.ref('topics').orderByChild('lastActive').limitToLast(200);
                             var deepLinkChecked = false;
-                            topicsListenerRef.on('value', function (snapshot) {
-                                allTopicsCache = [];
-                                snapshot.forEach(function (child) {
-                                    allTopicsCache.push(Object.assign({ id: child.key }, child.val()));
-                                });
-                                allTopicsCache.reverse();
-                                debouncedRenderSidebar();
 
-                                // DEEP LINK: If a topic_id is in URL, select it once
+                            topicsListenerRef.on('child_added', function(snap) {
+                                var topic = Object.assign({ id: snap.key }, snap.val());
+                                var idx = allTopicsCache.findIndex(function(t) { return t.id === topic.id; });
+                                if (idx === -1) allTopicsCache.push(topic);
+                                else allTopicsCache[idx] = topic;
+                                if (favTopicsExtra[topic.id]) favTopicsExtra[topic.id] = topic;
+                                debouncedRenderSidebar();
                                 if (!deepLinkChecked) {
                                     deepLinkChecked = true;
                                     var params = new URLSearchParams(window.location.search);
                                     var tid = params.get('topic_id');
-                                    if (tid && !currentTopicId) {
-                                        selectTopic(tid);
-                                    }
+                                    if (tid && !currentTopicId) selectTopic(tid);
                                 }
+                            });
+
+                            topicsListenerRef.on('child_changed', function(snap) {
+                                var topic = Object.assign({ id: snap.key }, snap.val());
+                                var idx = allTopicsCache.findIndex(function(t) { return t.id === topic.id; });
+                                if (idx !== -1) allTopicsCache[idx] = topic;
+                                else allTopicsCache.push(topic);
+                                if (fullTopicsSnapshot) {
+                                    var fi = fullTopicsSnapshot.findIndex(function(t) { return t.id === topic.id; });
+                                    if (fi !== -1) fullTopicsSnapshot[fi] = topic;
+                                }
+                                if (favTopicsExtra[topic.id]) favTopicsExtra[topic.id] = topic;
+                                debouncedRenderSidebar();
+                            });
+
+                            topicsListenerRef.on('child_removed', function(snap) {
+                                allTopicsCache = allTopicsCache.filter(function(t) { return t.id !== snap.key; });
+                                if (fullTopicsSnapshot) fullTopicsSnapshot = fullTopicsSnapshot.filter(function(t) { return t.id !== snap.key; });
+                                delete favTopicsExtra[snap.key];
+                                debouncedRenderSidebar();
                             });
                         });
                         checkAdmin();
@@ -1294,6 +1316,44 @@
                 });
         }
 
+        function fetchAllTopicsForSearch() {
+            if (isFetchingFullTopics) return;
+            if (fullTopicsSnapshot && Date.now() < fullTopicsSnapshotExpiry) {
+                renderSidebar();
+                return;
+            }
+            isFetchingFullTopics = true;
+            db.ref('topics').orderByChild('lastActive').once('value').then(function(snap) {
+                fullTopicsSnapshot = [];
+                snap.forEach(function(child) {
+                    fullTopicsSnapshot.push(Object.assign({ id: child.key }, child.val()));
+                });
+                fullTopicsSnapshot.reverse();
+                fullTopicsSnapshotExpiry = Date.now() + 5 * 60 * 1000;
+                isFetchingFullTopics = false;
+                renderSidebar();
+            }).catch(function(e) {
+                isFetchingFullTopics = false;
+                console.error('Failed to fetch all topics for search:', e);
+            });
+        }
+
+        function fetchMissingFavourites(missingIds) {
+            missingIds.forEach(function(id) {
+                if (favTopicsLoading.has(id)) return;
+                favTopicsLoading.add(id);
+                db.ref('topics/' + id).once('value').then(function(snap) {
+                    favTopicsLoading.delete(id);
+                    if (snap.exists()) {
+                        favTopicsExtra[id] = Object.assign({ id: snap.key }, snap.val());
+                    }
+                    debouncedRenderSidebar();
+                }).catch(function(e) {
+                    favTopicsLoading.delete(id);
+                });
+            });
+        }
+
         function checkAdmin() {
             if (currentUser && currentUser.email === ADMIN_EMAIL) {
                 document.getElementById('mod-toggle-container').style.display = 'block';
@@ -1335,17 +1395,34 @@
             var searchEl = document.getElementById('topic-search');
             var searchQuery = searchEl ? searchEl.value.toLowerCase().trim() : '';
 
-            var topicsToShow = allTopicsCache;
-            if (currentTab === 'fav') {
-                topicsToShow = allTopicsCache.filter(function (t) { return userFavorites[t.id]; });
-            }
+            // Child events don't guarantee order — sort live cache before use
+            allTopicsCache.sort(function(a, b) { return (b.lastActive || b.timestamp || 0) - (a.lastActive || a.timestamp || 0); });
 
+            var topicsToShow;
             if (searchQuery) {
-                topicsToShow = topicsToShow.filter(function(t) {
+                if (!fullTopicsSnapshot) {
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">Searching...</div>';
+                    fetchAllTopicsForSearch();
+                    return;
+                }
+                topicsToShow = fullTopicsSnapshot.filter(function(t) {
                     var titleMatch = t.title && t.title.toLowerCase().indexOf(searchQuery) !== -1;
                     var subMatch = t.subheading && t.subheading.toLowerCase().indexOf(searchQuery) !== -1;
                     return titleMatch || subMatch;
                 });
+            } else if (currentTab === 'fav') {
+                var favIds = Object.keys(userFavorites).filter(function(id) { return userFavorites[id]; });
+                var inCache = new Set(allTopicsCache.map(function(t) { return t.id; }));
+                var missing = favIds.filter(function(id) { return !inCache.has(id) && !favTopicsExtra[id] && !favTopicsLoading.has(id); });
+                if (missing.length > 0) fetchMissingFavourites(missing);
+                var fromCache = allTopicsCache.filter(function(t) { return userFavorites[t.id]; });
+                var seenIds = new Set(fromCache.map(function(t) { return t.id; }));
+                var fromExtra = Object.values(favTopicsExtra).filter(function(t) { return userFavorites[t.id] && !seenIds.has(t.id); });
+                topicsToShow = fromCache.concat(fromExtra).sort(function(a, b) {
+                    return (b.lastActive || b.timestamp || 0) - (a.lastActive || a.timestamp || 0);
+                });
+            } else {
+                topicsToShow = allTopicsCache;
             }
 
             if (topicsToShow.length === 0) {
@@ -1432,11 +1509,20 @@
 
         function selectTopic(id, forceReload) {
             if (currentTopicId === id && !forceReload) return;
-            var prevId = currentTopicId;
-            currentTopicId = id;
 
-            var topic = allTopicsCache.filter(function (t) { return t.id === id; })[0];
-            if (!topic) return;
+            var topic = allTopicsCache.find(function(t) { return t.id === id; }) || favTopicsExtra[id];
+            if (!topic) {
+                // Topic is outside the live window (old/inactive) — fetch by ID once and retry
+                db.ref('topics/' + id).once('value').then(function(snap) {
+                    if (snap.exists()) {
+                        favTopicsExtra[snap.key] = Object.assign({ id: snap.key }, snap.val());
+                        selectTopic(id, forceReload);
+                    }
+                });
+                return;
+            }
+
+            currentTopicId = id;
 
             // Mark as read
             var newReadCount = topic.commentCount || 0;
