@@ -1529,67 +1529,67 @@
 
         async function repairHandles() {
             if (!currentUser || currentUser.email !== 'ukiyo@rekindle.ink') return;
-            if (!confirm("Start Handle Repair? This will scan public profiles and recent KindleChat reactions to fix missing handles.")) return;
+            showConfirmModal("Start Handle Repair? This will scan public profiles and recent KindleChat reactions to fix missing handles.", async function() {
+                const btn = document.getElementById('btn-repair-handles');
+                btn.disabled = true;
+                btn.innerText = "Repairing...";
 
-            const btn = document.getElementById('btn-repair-handles');
-            btn.disabled = true;
-            btn.innerText = "Repairing...";
+                try {
+                    // 1. Scan Public Profiles
+                    const snap = await db.ref('users_public').once('value');
+                    const users = snap.val();
+                    let fixCount = 0;
 
-            try {
-                // 1. Scan Public Profiles
-                const snap = await db.ref('users_public').once('value');
-                const users = snap.val();
-                let fixCount = 0;
+                    for (let uid in users) {
+                        const u = users[uid];
+                        let needsSync = false;
+                        let email = u.email;
 
-                for (let uid in users) {
-                    const u = users[uid];
-                    let needsSync = false;
-                    let email = u.email;
+                        // A. Email is empty but displayName is an email
+                        if (!email && u.displayName && u.displayName.indexOf('@') !== -1) {
+                            email = u.displayName;
+                            needsSync = true;
+                        }
 
-                    // A. Email is empty but displayName is an email
-                    if (!email && u.displayName && u.displayName.indexOf('@') !== -1) {
-                        email = u.displayName;
-                        needsSync = true;
+                        if (needsSync && email) {
+                            console.log(`[Repair] Syncing handle for ${uid} as ${email}`);
+                            await db.ref('users_public/' + uid).update({ email: email });
+                            fixCount++;
+                        }
                     }
 
-                    if (needsSync && email) {
-                        console.log(`[Repair] Syncing handle for ${uid} as ${email}`);
-                        await db.ref('users_public/' + uid).update({ email: email });
-                        fixCount++;
-                    }
-                }
-
-                // 2. Scan Recent KindleChat Reactions
-                // Reactions often store { reaction: "...", username: "handle" }
-                // This is a great source of Truth for UIDs
-                const reactionSnap = await db.ref('kindlechat/messages').limitToLast(200).once('value');
-                const msgs = reactionSnap.val();
-                for (let mid in msgs) {
-                    const msg = msgs[mid];
-                    if (msg.reactions) {
-                        for (let rUid in msg.reactions) {
-                            const r = msg.reactions[rUid];
-                            if (r && typeof r === 'object' && r.username) {
-                                // Check if this user needs repair
-                                if (!users[rUid] || !users[rUid].email) {
-                                    const emailVal = r.username.includes('@') ? r.username : r.username + '@rekindle.ink';
-                                    console.log(`[Repair] Found handle in reaction for ${rUid}: ${emailVal}`);
-                                    await db.ref('users_public/' + rUid).update({ email: emailVal });
-                                    fixCount++;
+                    // 2. Scan Recent KindleChat Reactions
+                    // Reactions often store { reaction: "...", username: "handle" }
+                    // This is a great source of Truth for UIDs
+                    const reactionSnap = await db.ref('kindlechat/messages').limitToLast(200).once('value');
+                    const msgs = reactionSnap.val();
+                    for (let mid in msgs) {
+                        const msg = msgs[mid];
+                        if (msg.reactions) {
+                            for (let rUid in msg.reactions) {
+                                const r = msg.reactions[rUid];
+                                if (r && typeof r === 'object' && r.username) {
+                                    // Check if this user needs repair
+                                    if (!users[rUid] || !users[rUid].email) {
+                                        const emailVal = r.username.includes('@') ? r.username : r.username + '@rekindle.ink';
+                                        console.log(`[Repair] Found handle in reaction for ${rUid}: ${emailVal}`);
+                                        await db.ref('users_public/' + rUid).update({ email: emailVal });
+                                        fixCount++;
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                showAlertModal(`Repair Complete! Processed ${fixCount} handles.`);
-            } catch (e) {
-                console.error("Repair Error:", e);
-                showAlertModal("Repair Error: " + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Repair Handles";
-            }
+                    showAlertModal(`Repair Complete! Processed ${fixCount} handles.`);
+                } catch (e) {
+                    console.error("Repair Error:", e);
+                    showAlertModal("Repair Error: " + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = "Repair Handles";
+                }
+            });
         }
 
         // VIEW / EDIT MODES
@@ -2713,6 +2713,7 @@
         let recentPosts = [];
         let isAdminMode = false;
         let openCommentsPosts = new Set(); // Track which posts have comments expanded
+        const commentListeners = new Map(); // postId -> { ref, fn }
 
         function loadPosts() {
             // Check Admin capability
@@ -2733,6 +2734,11 @@
 
             postsListener = postsRef.on('value', snapshot => {
                 loader.style.display = 'none';
+
+                // Detach all comment listeners before wiping the DOM
+                commentListeners.forEach(({ ref, fn }) => ref.off('value', fn));
+                commentListeners.clear();
+
                 feed.innerHTML = '';
 
                 recentPosts = [];
@@ -2952,7 +2958,15 @@
             const listContainer = specificContainer || document.getElementById('comments-list-' + postId);
             if (!listContainer) return;
 
-            db.ref('neighbourhood_posts/' + postId + '/comments').orderByChild('timestamp').on('value', async snapshot => {
+            // Detach any existing listener for this post before attaching a new one
+            if (commentListeners.has(postId)) {
+                const { ref, fn } = commentListeners.get(postId);
+                ref.off('value', fn);
+                commentListeners.delete(postId);
+            }
+
+            const commentsRef = db.ref('neighbourhood_posts/' + postId + '/comments').orderByChild('timestamp');
+            const commentFn = commentsRef.on('value', async snapshot => {
                 listContainer.innerHTML = '';
                 if (!snapshot.exists()) return;
 
@@ -2972,6 +2986,7 @@
                     await renderComment(comment, postId, listContainer);
                 }
             });
+            commentListeners.set(postId, { ref: commentsRef, fn: commentFn });
         }
 
         async function renderComment(comment, postId, container) {
