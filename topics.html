@@ -1094,13 +1094,17 @@
         var RULES_VERSION = 1; // Current Rules Version
         var currentUserRulesVersion = 0;
 
-        // Kindle memory caps
-        var MAX_VISIBLE_COMMENTS = 150;       // bound DOM/canvas count for chat history
+        // Kindle memory caps + batched loading (mirrors kindlechat pattern)
+        var MESSAGES_INITIAL_LOAD = 50;       // initial live window
+        var MESSAGES_PER_BATCH = 25;          // older messages per "load more" page
         var AUTHOR_CACHE_LIMIT = 200;         // bound name/avatar cache
         var SIDEBAR_RENDER_DEBOUNCE_MS = 250; // coalesce sidebar redraws
         var topicsListenerRef = null;
         var rulesListenerRef = null;
         var sidebarRenderTimer = null;
+        // Pagination state for the active topic
+        var oldestRenderedTs = null;          // timestamp of the oldest comment currently in DOM
+        var isLoadingMoreComments = false;    // re-entry guard for paginated fetches
 
         // --- PRESENCE LOGIC ---
         function initPresence(uid) {
@@ -1494,12 +1498,16 @@
             var historyEl = document.getElementById('chat-history');
             historyEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;" data-i18n="topics.msg.loading_comments">' + window.t('topics.msg.loading_comments', 'Loading comments...') + '</div>';
 
-            // Always detach any existing listener (forceReload reuses same id)
+            // Always detach any existing listeners (forceReload reuses same id).
+            // We detach via the bare-ref path, which removes callbacks on both the
+            // limitToLast(child_added) query and the bare-ref child_removed listener.
             if (commentsListener) {
                 db.ref('topic_comments/' + commentsListener).off();
             }
             commentsListener = id;
             renderedCommentIds = {};
+            oldestRenderedTs = null;
+            isLoadingMoreComments = false;
 
             // Render opening post IF it exists (Legacy support)
             historyEl.innerHTML = '';
@@ -1513,26 +1521,109 @@
                 });
             }
 
-            // Listen incrementally; cap to last MAX_VISIBLE_COMMENTS to bound memory on Kindle
-            var commentsRef = db.ref('topic_comments/' + id).limitToLast(MAX_VISIBLE_COMMENTS);
+            // BATCHED LOADING (mirrors kindlechat general-channel pattern):
+            // - Live window: limitToLast(MESSAGES_INITIAL_LOAD) for child_added (new messages)
+            // - Pagination: scroll-to-top fetches MESSAGES_PER_BATCH older messages via .once()
+            // - Deletes: separate bare-ref child_removed listener so window-slide
+            //   (a new message pushing the oldest out of the live query) does NOT
+            //   wipe paginated messages from the DOM.
+            var liveCommentsRef = db.ref('topic_comments/' + id)
+                .orderByChild('timestamp')
+                .limitToLast(MESSAGES_INITIAL_LOAD);
 
-            commentsRef.on('child_added', function (c) {
-                if (commentsListener !== id) return; // stale event after switch
+            liveCommentsRef.on('child_added', function (c) {
+                if (commentsListener !== id) return; // stale event after topic switch
                 if (renderedCommentIds[c.key]) return;
                 renderedCommentIds[c.key] = true;
                 var data = c.val();
                 data.id = c.key;
+
+                // Track range bounds for pagination
+                if (typeof data.timestamp === 'number') {
+                    if (oldestRenderedTs === null || data.timestamp < oldestRenderedTs) {
+                        oldestRenderedTs = data.timestamp;
+                    }
+                }
+
+                // Auto-scroll only if the user is already near the bottom; otherwise
+                // preserve their scroll position so they can keep reading.
+                var nearBottom = (historyEl.scrollHeight - historyEl.clientHeight) - historyEl.scrollTop < 80;
                 appendMessage(data);
-                historyEl.scrollTop = historyEl.scrollHeight;
+                if (nearBottom) historyEl.scrollTop = historyEl.scrollHeight;
             });
 
-            commentsRef.on('child_removed', function (c) {
+            // Genuine deletes (mod-mode) — bare ref so window-slide doesn't fire here.
+            db.ref('topic_comments/' + id).on('child_removed', function (c) {
                 if (commentsListener !== id) return;
                 if (!renderedCommentIds[c.key]) return;
                 delete renderedCommentIds[c.key];
                 var msgEl = historyEl.querySelector('[data-msg-id="' + c.key + '"]');
                 if (msgEl && msgEl.parentNode) msgEl.parentNode.removeChild(msgEl);
             });
+        }
+
+        // Fetch the next older batch of comments and prepend them.
+        // Mirrors kindlechat.loadMoreGeneralFromRTDB.
+        function loadMoreComments() {
+            if (isLoadingMoreComments) return;
+            if (!commentsListener || !oldestRenderedTs) return;
+
+            var historyEl = document.getElementById('chat-history');
+            isLoadingMoreComments = true;
+            var oldScrollHeight = historyEl.scrollHeight;
+            var topicId = commentsListener;
+
+            db.ref('topic_comments/' + topicId)
+                .orderByChild('timestamp')
+                .endAt(oldestRenderedTs - 0.001) // exclusive of current oldest, matches kindlechat
+                .limitToLast(MESSAGES_PER_BATCH)
+                .once('value')
+                .then(function (snap) {
+                    if (commentsListener !== topicId) return; // user switched topics mid-fetch
+                    if (!snap.exists()) return;
+
+                    // RTDB returns ascending; we must prepend in REVERSE so DOM order
+                    // ends up correct (matches kindlechat batch-prepend reasoning).
+                    var batch = [];
+                    snap.forEach(function (c) {
+                        if (renderedCommentIds[c.key]) return;
+                        var data = c.val();
+                        data.id = c.key;
+                        batch.push(data);
+                    });
+
+                    if (batch.length === 0) return;
+
+                    for (var i = batch.length - 1; i >= 0; i--) {
+                        var m = batch[i];
+                        renderedCommentIds[m.id] = true;
+                        if (typeof m.timestamp === 'number') {
+                            if (oldestRenderedTs === null || m.timestamp < oldestRenderedTs) {
+                                oldestRenderedTs = m.timestamp;
+                            }
+                        }
+                        appendMessage(m, true); // prepend
+                    }
+
+                    // Restore scroll position so the user stays anchored at the
+                    // boundary they were reading.
+                    historyEl.scrollTop = historyEl.scrollHeight - oldScrollHeight;
+                })
+                ['catch'](function (e) {
+                    console.error("Error loading more topic comments:", e);
+                })
+                .then(function () {
+                    isLoadingMoreComments = false;
+                });
+        }
+
+        // Scroll-to-top trigger for pagination (matches kindlechat.handleScroll).
+        function handleCommentsScroll() {
+            var historyEl = document.getElementById('chat-history');
+            if (!historyEl) return;
+            if (historyEl.scrollTop <= 50 && !isLoadingMoreComments && oldestRenderedTs) {
+                loadMoreComments();
+            }
         }
 
         function deleteTopic(id) {
@@ -1580,7 +1671,7 @@
             }
         }
 
-        function appendMessage(msg) {
+        function appendMessage(msg, prepend) {
             var historyEl = document.getElementById('chat-history');
 
             var isSelf = msg.authorId === (currentUser ? currentUser.uid : null);
@@ -1639,7 +1730,11 @@
                 '<canvas id="' + avatarId + '" class="msg-avatar" width="32" height="32" onclick="openUserProfile(\'' + msg.authorId + '\')"></canvas>' +
                 '<div class="msg-bubble ' + bubbleClass + '">' + escapeHtml(displayBody) + '</div>' +
                 '</div>';
-            historyEl.appendChild(msgEl);
+            if (prepend && historyEl.firstChild) {
+                historyEl.insertBefore(msgEl, historyEl.firstChild);
+            } else {
+                historyEl.appendChild(msgEl);
+            }
 
             // Resolve real name and avatar (the underlying DB call is already async)
             if (msg.authorId) {
@@ -2339,6 +2434,9 @@
         function detachAllListeners() {
             try {
                 if (commentsListener) {
+                    // .off() with no event-type arg detaches ALL listeners on the
+                    // path, including both the limitToLast(child_added) live query
+                    // and the bare-ref child_removed listener.
                     db.ref('topic_comments/' + commentsListener).off();
                     commentsListener = null;
                 }
@@ -2355,10 +2453,18 @@
                     sidebarRenderTimer = null;
                 }
                 renderedCommentIds = {};
+                oldestRenderedTs = null;
+                isLoadingMoreComments = false;
             } catch (e) { /* ignore — page is going away */ }
         }
         window.addEventListener('pagehide', detachAllListeners);
         window.addEventListener('beforeunload', detachAllListeners);
+
+        // Wire up scroll-to-top pagination once at script load.
+        (function () {
+            var historyEl = document.getElementById('chat-history');
+            if (historyEl) historyEl.addEventListener('scroll', handleCommentsScroll);
+        })();
 
     </script>
     <!-- REKINDLE MODALS -->
