@@ -967,7 +967,22 @@
         var db = firebase.database();
         var ADMIN_EMAIL = 'ukiyo@rekindle.ink';
         var authorNameCache = {};
+        var authorNameCacheKeys = []; // FIFO insertion order to bound cache size
         var supporterUsers = {};
+
+        // Insert into authorNameCache while enforcing AUTHOR_CACHE_LIMIT (FIFO eviction).
+        function setAuthorCache(uid, value) {
+            if (!Object.prototype.hasOwnProperty.call(authorNameCache, uid)) {
+                authorNameCacheKeys.push(uid);
+            }
+            authorNameCache[uid] = value;
+            // window.AUTHOR_CACHE_LIMIT may not be initialized yet on first call
+            var limit = (typeof AUTHOR_CACHE_LIMIT === 'number') ? AUTHOR_CACHE_LIMIT : 200;
+            while (authorNameCacheKeys.length > limit) {
+                var oldest = authorNameCacheKeys.shift();
+                if (oldest !== uid) delete authorNameCache[oldest];
+            }
+        }
 
         function fetchSupporters() {
             var fs = firebase.firestore();
@@ -1074,9 +1089,18 @@
         var topicStatesLoaded = false;
         var allTopicsCache = [];
         var commentsListener = null;
+        var renderedCommentIds = {}; // Tracks DOM-rendered comments for the active topic (Kindle memory)
         var isModMode = false;
         var RULES_VERSION = 1; // Current Rules Version
         var currentUserRulesVersion = 0;
+
+        // Kindle memory caps
+        var MAX_VISIBLE_COMMENTS = 150;       // bound DOM/canvas count for chat history
+        var AUTHOR_CACHE_LIMIT = 200;         // bound name/avatar cache
+        var SIDEBAR_RENDER_DEBOUNCE_MS = 250; // coalesce sidebar redraws
+        var topicsListenerRef = null;
+        var rulesListenerRef = null;
+        var sidebarRenderTimer = null;
 
         // --- PRESENCE LOGIC ---
         function initPresence(uid) {
@@ -1093,7 +1117,9 @@
                 document.getElementById('login-overlay').style.display = 'none';
 
                 // Check Rules Acceptance
-                db.ref('users_private/' + user.uid + '/accepted_rules/topics').on('value', function (snap) {
+                if (rulesListenerRef) rulesListenerRef.off();
+                rulesListenerRef = db.ref('users_private/' + user.uid + '/accepted_rules/topics');
+                rulesListenerRef.on('value', function (snap) {
                     currentUserRulesVersion = snap.val() || 0;
                 });
 
@@ -1105,19 +1131,24 @@
                     loadFavorites().then(function () {
                         loadTopicStates().then(function () {
                             // Load topics
-                            db.ref('topics').orderByChild('lastActive').on('value', function (snapshot) {
+                            topicsListenerRef = db.ref('topics').orderByChild('lastActive');
+                            var deepLinkChecked = false;
+                            topicsListenerRef.on('value', function (snapshot) {
                                 allTopicsCache = [];
                                 snapshot.forEach(function (child) {
                                     allTopicsCache.push(Object.assign({ id: child.key }, child.val()));
                                 });
                                 allTopicsCache.reverse();
-                                renderSidebar();
+                                debouncedRenderSidebar();
 
                                 // DEEP LINK: If a topic_id is in URL, select it once
-                                var params = new URLSearchParams(window.location.search);
-                                var tid = params.get('topic_id');
-                                if (tid && !currentTopicId) {
-                                    selectTopic(tid);
+                                if (!deepLinkChecked) {
+                                    deepLinkChecked = true;
+                                    var params = new URLSearchParams(window.location.search);
+                                    var tid = params.get('topic_id');
+                                    if (tid && !currentTopicId) {
+                                        selectTopic(tid);
+                                    }
                                 }
                             });
                         });
@@ -1281,6 +1312,16 @@
             listEl.innerHTML = ''; // Clear loading message if it was set
             // The actual topic loading and listener setup is now in the auth.onAuthStateChanged block.
             // This function is kept as a no-op to avoid breaking existing calls, but its content is removed.
+        }
+
+        // Coalesce rapid topic-list updates so the sidebar isn't fully re-rendered
+        // every time a comment is posted in any topic system-wide.
+        function debouncedRenderSidebar() {
+            if (sidebarRenderTimer) return; // already scheduled
+            sidebarRenderTimer = setTimeout(function () {
+                sidebarRenderTimer = null;
+                renderSidebar();
+            }, SIDEBAR_RENDER_DEBOUNCE_MS);
         }
 
         function renderSidebar() {
@@ -1453,11 +1494,14 @@
             var historyEl = document.getElementById('chat-history');
             historyEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;" data-i18n="topics.msg.loading_comments">' + window.t('topics.msg.loading_comments', 'Loading comments...') + '</div>';
 
-            if (commentsListener && commentsListener !== id) db.ref('topic_comments/' + commentsListener).off();
+            // Always detach any existing listener (forceReload reuses same id)
+            if (commentsListener) {
+                db.ref('topic_comments/' + commentsListener).off();
+            }
             commentsListener = id;
+            renderedCommentIds = {};
 
             // Render opening post IF it exists (Legacy support)
-            // New topics won't have it, but old ones might.
             historyEl.innerHTML = '';
             if (topic.body) {
                 appendMessage({
@@ -1469,26 +1513,25 @@
                 });
             }
 
-            // Listen for new comments
-            db.ref('topic_comments/' + id).on('value', function (snap) {
-                historyEl.innerHTML = '';
-                // Redraw head if legacy body exists
-                if (topic.body) {
-                    appendMessage({
-                        authorName: topic.authorName,
-                        authorId: topic.authorId,
-                        body: topic.body,
-                        timestamp: topic.timestamp,
-                        isOpening: true
-                    });
-                }
+            // Listen incrementally; cap to last MAX_VISIBLE_COMMENTS to bound memory on Kindle
+            var commentsRef = db.ref('topic_comments/' + id).limitToLast(MAX_VISIBLE_COMMENTS);
 
-                snap.forEach(function (c) {
-                    var data = c.val();
-                    data.id = c.key;
-                    appendMessage(data);
-                });
+            commentsRef.on('child_added', function (c) {
+                if (commentsListener !== id) return; // stale event after switch
+                if (renderedCommentIds[c.key]) return;
+                renderedCommentIds[c.key] = true;
+                var data = c.val();
+                data.id = c.key;
+                appendMessage(data);
                 historyEl.scrollTop = historyEl.scrollHeight;
+            });
+
+            commentsRef.on('child_removed', function (c) {
+                if (commentsListener !== id) return;
+                if (!renderedCommentIds[c.key]) return;
+                delete renderedCommentIds[c.key];
+                var msgEl = historyEl.querySelector('[data-msg-id="' + c.key + '"]');
+                if (msgEl && msgEl.parentNode) msgEl.parentNode.removeChild(msgEl);
             });
         }
 
@@ -1543,6 +1586,7 @@
             var isSelf = msg.authorId === (currentUser ? currentUser.uid : null);
             var msgEl = document.createElement('div');
             msgEl.className = 'msg ' + (isSelf ? 'self' : 'other') + (msg.isOpening ? ' topic-start' : '');
+            if (msg.id) msgEl.setAttribute('data-msg-id', msg.id);
 
             var dateObj = new Date(msg.timestamp);
             var timeStr = formatTopicTime(dateObj);
@@ -1597,12 +1641,10 @@
                 '</div>';
             historyEl.appendChild(msgEl);
 
-            // Resolve real name and avatar
+            // Resolve real name and avatar (the underlying DB call is already async)
             if (msg.authorId) {
                 var nameEl = msgEl.querySelector('.author-name-field');
-                setTimeout(function () {
-                    resolveAuthorName(msg.authorId, nameEl, avatarId);
-                }, 0);
+                resolveAuthorName(msg.authorId, nameEl, avatarId);
             }
         }
 
@@ -2134,11 +2176,11 @@
                         }
                     }
                     profile.uid = uid;
-                    authorNameCache[uid] = profile;
+                    setAuthorCache(uid, profile);
                     return profile;
                 });
 
-            authorNameCache[uid] = promise;
+            setAuthorCache(uid, promise);
             promise.then(function (user) {
                 applyUserTheme(user, element);
             });
@@ -2290,6 +2332,33 @@
                 selectTopic(currentTopicId, true);
             }
         };
+
+        // --- KINDLE MEMORY: detach Firebase listeners on navigation away ---
+        // Without this the JS engine retains the entire allTopicsCache + chat DOM
+        // until GC, and listeners keep firing if the tab is suspended/resumed.
+        function detachAllListeners() {
+            try {
+                if (commentsListener) {
+                    db.ref('topic_comments/' + commentsListener).off();
+                    commentsListener = null;
+                }
+                if (topicsListenerRef) {
+                    topicsListenerRef.off();
+                    topicsListenerRef = null;
+                }
+                if (rulesListenerRef) {
+                    rulesListenerRef.off();
+                    rulesListenerRef = null;
+                }
+                if (sidebarRenderTimer) {
+                    clearTimeout(sidebarRenderTimer);
+                    sidebarRenderTimer = null;
+                }
+                renderedCommentIds = {};
+            } catch (e) { /* ignore — page is going away */ }
+        }
+        window.addEventListener('pagehide', detachAllListeners);
+        window.addEventListener('beforeunload', detachAllListeners);
 
     </script>
     <!-- REKINDLE MODALS -->
