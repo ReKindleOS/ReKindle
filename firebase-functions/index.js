@@ -380,7 +380,71 @@ exports.getFolders = onCall(callOptions, async (request) => {
 });
 
 /**
- * Automatically timeout any user created with an email starting with "ryguy".
+ * Server-side registration with IP ban enforcement.
+ * Because this runs on Google's servers, the IP is read from the actual HTTP
+ * request — the client cannot spoof or bypass it with browser dev tools.
+ *
+ * Expects: { username: string, password: string }
+ * Returns: { customToken: string } — client signs in with signInWithCustomToken()
+ */
+exports.registerUser = onCall(callOptions, async (request) => {
+    const { username, password } = request.data;
+
+    // Basic input validation (mirrors the client-side checks)
+    if (!username || !password) {
+        throw new HttpsError('invalid-argument', 'Username and password are required.');
+    }
+    if (username.length > 20) {
+        throw new HttpsError('invalid-argument', 'Username must be 20 characters or less.');
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+        throw new HttpsError('invalid-argument', 'Username can only contain letters and numbers.');
+    }
+
+    // Get the real client IP from the server-side request
+    const forwarded = request.rawRequest.headers['x-forwarded-for'];
+    const rawIp = (forwarded ? forwarded.split(',')[0].trim() : request.rawRequest.ip) || '';
+    // Strip IPv4-mapped IPv6 prefix (::ffff:1.2.3.4 → 1.2.3.4)
+    const ip = rawIp.replace(/^::ffff:/, '');
+
+    // Check banned IPs — this happens on the server, nothing the client can bypass
+    if (ip) {
+        const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
+        const snap = await admin.database().ref(`banned_ips/${safeIp}`).once('value');
+        if (snap.exists()) {
+            logger.warn(`Blocked registration from banned IP: ${ip} (username attempt: ${username})`);
+            throw new HttpsError('permission-denied', 'Registration is not available from your network.');
+        }
+    }
+
+    // Create the account
+    const email = `${username}@rekindle.ink`;
+    let userRecord;
+    try {
+        userRecord = await admin.auth().createUser({ email, password });
+    } catch (e) {
+        if (e.code === 'auth/email-already-exists') {
+            throw new HttpsError('already-exists', 'That username is already taken.');
+        }
+        if (e.code === 'auth/weak-password') {
+            throw new HttpsError('invalid-argument', 'Password is too weak.');
+        }
+        logger.error('createUser error:', e);
+        throw new HttpsError('internal', 'Registration failed. Please try again.');
+    }
+
+    // Store IP server-side immediately — reliable regardless of client behaviour
+    if (ip) {
+        await admin.database().ref(`users_private/${userRecord.uid}/ipAddress`).set(ip);
+    }
+
+    // Return a custom token so the client can call signInWithCustomToken()
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+    return { customToken };
+});
+
+/**
+ * Automatically timeout any user created with an email starting with "ryguy" or a username containing "ryguy".
  * Reason: "You are not welcome in this community due to repeated violations, further accounts will be banned"
  * Duration: 999999999 hours.
  */
@@ -388,10 +452,11 @@ exports.autoTimeoutRyguy = functions.auth.user().onCreate(async (user) => {
     if (!user) return;
 
     const email = (user.email || "").toLowerCase();
+    const displayName = (user.displayName || "").toLowerCase();
     const uid = user.uid;
 
-    if (email.startsWith("ryguy")) {
-        logger.info(`Automated ban trigger: User ${uid} with email ${email} detected.`);
+    if (email.includes("ryguy") || displayName.includes("ryguy")) {
+        logger.info(`Automated ban trigger: User ${uid} (email: ${email}, displayName: ${user.displayName || ""}) detected.`);
 
         try {
             const db = admin.database();
