@@ -1066,7 +1066,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="emojis.js?v=2"></script>
 
-    <script src="bad_words.js?v=3"></script>
+    <script src="bad_words.js?v=4"></script>
     <script src="time.js"></script>
     <script src="theme.js?v=16"></script>
     <script src="js/i18n.js"></script>
@@ -3482,6 +3482,56 @@
             }
         }
 
+        var TRANSLATION_RETRY_DELAY_MS = 8000;
+        var TRANSLATION_MAX_RETRIES = 3;
+
+        function fireTranslationRequest(user, uid, text, msgId, attempt) {
+            if (!currentUser) return;
+            attempt = attempt || 1;
+
+            currentUser.getIdToken(true).then(function (token) {
+                fetch(TRANSLATION_WORKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        user: user,
+                        uid: uid,
+                        text: text,
+                        msgId: msgId,
+                        translateOnly: true
+                    })
+                }).then(function (resp) {
+                    if (!resp.ok && attempt < TRANSLATION_MAX_RETRIES) {
+                        console.warn("Translation worker returned " + resp.status + ", retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s (attempt " + attempt + ")");
+                        setTimeout(function () {
+                            fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                        }, TRANSLATION_RETRY_DELAY_MS);
+                    }
+                })['catch'](function (err) {
+                    if (attempt < TRANSLATION_MAX_RETRIES) {
+                        console.warn("Translation request failed (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
+                        setTimeout(function () {
+                            fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                        }, TRANSLATION_RETRY_DELAY_MS);
+                    } else {
+                        console.warn("Translation failed after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
+                    }
+                });
+            })['catch'](function (err) {
+                if (attempt < TRANSLATION_MAX_RETRIES) {
+                    console.warn("Could not get auth token for translation (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
+                    setTimeout(function () {
+                        fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                    }, TRANSLATION_RETRY_DELAY_MS);
+                } else {
+                    console.warn("Could not get auth token for translation after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
+                }
+            });
+        }
+
         // --- GENERAL CHANNEL: Send via Worker ---
         function sendGeneralMessageViaWorker(text) {
             if (!currentUser) {
@@ -3508,27 +3558,8 @@
                     sendBtn.style.opacity = '1';
                 }
 
-                // Fire translation in background — child_changed will update the bubble when done
-                currentUser.getIdToken().then(function (token) {
-                    fetch(TRANSLATION_WORKER_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + token
-                        },
-                        body: JSON.stringify({
-                            user: currentUsername,
-                            uid: currentUser.uid,
-                            text: text,
-                            msgId: msgId,
-                            translateOnly: true
-                        })
-                    })['catch'](function (err) {
-                        console.warn("Translation request failed:", err);
-                    });
-                })['catch'](function (err) {
-                    console.warn("Could not get auth token for translation:", err);
-                });
+                // Fire translation in background with retry — child_changed will update the bubble when done
+                fireTranslationRequest(currentUsername, currentUser.uid, text, msgId, 1);
             })['catch'](function (e) {
                 isSendingMessage = false;
                 var sendBtn = document.getElementById('send-btn');
