@@ -2267,16 +2267,25 @@
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             if (!u || !p) { document.getElementById('login-msg').innerText = "Error: Please enter a valid username and password."; return; }
-            
-            document.getElementById('login-msg').innerText = "Connecting...";
-            const ipData = await fetchAndCheckIP();
-            if (ipData.banned) {
-                document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
-                return;
-            }
 
-            const email = u.includes('@') ? u : u + "@rekindle.ink";
-            auth.signInWithEmailAndPassword(email, p).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
+            document.getElementById('login-msg').innerText = "Connecting...";
+            try {
+                const email = u.includes('@') ? u : u + "@rekindle.ink";
+                await auth.signInWithEmailAndPassword(email, p);
+                // After sign-in, call the server to verify the IP. The function uses
+                // the real server-side IP (not spoofable) and revokes the session if banned.
+                const checkIP = firebase.functions().httpsCallable('checkIPOnLogin');
+                const result = await checkIP({});
+                if (result.data.banned) {
+                    await auth.signOut();
+                    document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
+                }
+            } catch (e) {
+                const msg = (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found')
+                    ? "Invalid username or password."
+                    : (e.message || "Login failed.");
+                document.getElementById('login-msg').innerText = "Error: " + msg;
+            }
         }
         const isForbiddenUsername = (u) => { const forbidden = ["root", "system", "admin", "administrator", "mod", "moderator", "support", "ukiyo", "rekindle", "wantban"]; const lowerU = u.toLowerCase(); return forbidden.some(word => lowerU.includes(word)); };
         const isBadWord = (u) => {

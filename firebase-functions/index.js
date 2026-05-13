@@ -443,4 +443,35 @@ exports.registerUser = onCall(callOptions, async (request) => {
     return { customToken };
 });
 
+/**
+ * Called by the client immediately after signInWithEmailAndPassword succeeds.
+ * Checks the real server-side IP against the banned list and, if banned, revokes
+ * all refresh tokens for that user so the session can't persist.
+ *
+ * Returns: { banned: boolean }
+ */
+exports.checkIPOnLogin = onCall(callOptions, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Must be signed in to call this function.');
+    }
+
+    const uid = request.auth.uid;
+    const forwarded = request.rawRequest.headers['x-forwarded-for'];
+    const rawIp = (forwarded ? forwarded.split(',')[0].trim() : request.rawRequest.ip) || '';
+    const ip = rawIp.replace(/^::ffff:/, '');
+
+    if (ip) {
+        const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
+        const snap = await admin.database().ref(`banned_ips/${safeIp}`).once('value');
+        if (snap.exists()) {
+            logger.warn(`Banned IP signed in — revoking session: ${ip} (uid: ${uid})`);
+            await admin.auth().revokeRefreshTokens(uid);
+            return { banned: true };
+        }
+        // Keep stored IP current so ban-by-IP lookups stay accurate
+        await admin.database().ref(`users_private/${uid}/ipAddress`).set(ip);
+    }
+
+    return { banned: false };
+});
 
