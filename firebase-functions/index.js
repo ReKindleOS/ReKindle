@@ -443,38 +443,4 @@ exports.registerUser = onCall(callOptions, async (request) => {
     return { customToken };
 });
 
-/**
- * Automatically timeout any user created with an email starting with "ryguy" or a username containing "ryguy".
- * Reason: "You are not welcome in this community due to repeated violations, further accounts will be banned"
- * Duration: 999999999 hours.
- */
-exports.autoTimeoutRyguy = functions.auth.user().onCreate(async (user) => {
-    if (!user) return;
-
-    const email = (user.email || "").toLowerCase();
-    const displayName = (user.displayName || "").toLowerCase();
-    const uid = user.uid;
-
-    if (email.includes("ryguy") || displayName.includes("ryguy")) {
-        logger.info(`Automated ban trigger: User ${uid} (email: ${email}, displayName: ${user.displayName || ""}) detected.`);
-
-        try {
-            const db = admin.database();
-
-            // Set the timeout
-            await db.ref(`social_timeouts/${uid}`).set({
-                reason: "You are not welcome in this community due to repeated violations, further accounts will be banned",
-                durationHours: 999999999
-            });
-
-            // Ensure countdown doesn't start until they open a social app (standard ReKindle behavior)
-            // or just clear any existing seenAt for safety.
-            await db.ref(`users_private/${uid}/timeout_seen`).remove();
-
-            logger.info(`Successfully applied 999,999,999h timeout to ${uid}.`);
-        } catch (e) {
-            logger.error(`Failed to apply automated timeout to ${uid}:`, e);
-        }
-    }
-});
 
