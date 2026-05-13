@@ -2291,7 +2291,7 @@
             var historyEl = document.getElementById('chat-history');
             var st = historyEl.scrollTop;
 
-            if (st <= 800 && !isLoadingMore) {
+            if (st <= 200 && !isLoadingMore) {
                 // BRANCH: General Chat (RTDB)
                 if (currentRoomId === 'general') {
                     if (oldestGeneralTimestamp && !noMoreGeneralMessages) {
@@ -2743,6 +2743,29 @@
                     var nearBottom = (history.scrollHeight - history.clientHeight) - history.scrollTop < 100;
                     renderMessage(data, msgId);
                     if (nearBottom) history.scrollTop = history.scrollHeight;
+
+                    // Trim DOM to prevent unbounded growth over long sessions.
+                    // Keeps the most recent 80 messages; older ones are still
+                    // reachable via scroll-up pagination.
+                    var MAX_GENERAL_DOM_MSGS = 80;
+                    var domMsgs = history.querySelectorAll('.msg');
+                    if (domMsgs.length > MAX_GENERAL_DOM_MSGS) {
+                        var toRemove = domMsgs.length - MAX_GENERAL_DOM_MSGS;
+                        for (var ri = 0; ri < toRemove; ri++) {
+                            var oldestEl = history.querySelector('.msg');
+                            if (!oldestEl) break;
+                            var oldId = oldestEl.dataset.msgId;
+                            if (oldId) delete renderedKindlechatIds[oldId];
+                            history.removeChild(oldestEl);
+                        }
+                        // Reset pagination anchor to the new oldest visible message so
+                        // scroll-up correctly loads the messages we just trimmed.
+                        var newOldestEl = history.querySelector('.msg');
+                        if (newOldestEl && newOldestEl.dataset.ts) {
+                            oldestGeneralTimestamp = parseInt(newOldestEl.dataset.ts) || oldestGeneralTimestamp;
+                            noMoreGeneralMessages = false;
+                        }
+                    }
                 };
                 generalListener.on('child_added', kcAddedHandler);
 
@@ -2889,7 +2912,7 @@
                 }
             } catch (e) {}
 
-            rtdb.ref('users_public').orderByChild('lastActive').limitToLast(50).once('value').then(function (snap) {
+            rtdb.ref('users_public').orderByChild('lastActive').limitToLast(200).once('value').then(function (snap) {
                 var all = snap.val() || {};
                 usernameToProfile = {};
                 for (var uid in all) {
@@ -3045,11 +3068,7 @@
             div.className = 'msg ' + (isSelf ? 'self' : 'other');
             div.dataset.msgId = msgId;
             div.dataset.user = msg.user;
-
-            var isSelf = currentUser && (msg.user === currentUsername);
-            div.className = 'msg ' + (isSelf ? 'self' : 'other');
-            div.dataset.msgId = msgId;
-            div.dataset.user = msg.user;
+            if (typeof msg.timestamp === 'number') div.dataset.ts = msg.timestamp;
 
             var safeUser = escapeHtml(msg.user || '');
             var safeUid = escapeHtml(msg.uid || '');
