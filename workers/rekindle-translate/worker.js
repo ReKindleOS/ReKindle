@@ -240,7 +240,7 @@ async function handleRequest(request) {
 
     try {
         const payload = await request.json();
-        const { user, uid, text, msgId, reprocess, app } = payload;
+        const { user, uid, text, msgId, reprocess, translateOnly, app } = payload;
 
         console.log("Worker received payload:", JSON.stringify(payload));
 
@@ -249,8 +249,32 @@ async function handleRequest(request) {
             baseFirebaseUrl = "https://rekindle-dd1fa-default-rtdb.firebaseio.com/neighbourhood_posts";
         }
 
+        if (translateOnly && msgId) {
+            // TRANSLATE-ONLY: patch translation onto an already-written message
+            const translatedText = await translateToAllLanguages(text);
+            if (!translatedText) {
+                return new Response(JSON.stringify({ success: true, skipped: true }), { status: 200, headers });
+            }
+
+            let patchUrl = `${baseFirebaseUrl}/${msgId}/translation.json`;
+            if (token) patchUrl += `?auth=${token}`;
+
+            const firebaseResp = await fetch(patchUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(translatedText)
+            });
+
+            if (!firebaseResp.ok) {
+                const errText = await firebaseResp.text();
+                throw new Error(`Firebase translation patch failed (${firebaseResp.status}): ${errText}`);
+            }
+
+            return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
+        }
+
         if (reprocess && msgId) {
-            // REPROCESS LOGIC
+            // REPROCESS LOGIC (admin only)
             let translatedText = await translateToAllLanguages(text);
 
             // Update specific message

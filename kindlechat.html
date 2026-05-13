@@ -3490,42 +3490,53 @@
                 return;
             }
 
-            currentUser.getIdToken().then(function (token) {
-                fetch(TRANSLATION_WORKER_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({
-                        user: currentUsername,
-                        uid: currentUser.uid,
-                        text: text
-                    })
-                })
-                    .then(function (res) {
-                        if (!res.ok) throw new Error("Worker Error " + res.status);
-                        return res.json();
-                    })
-                    .then(function (data) {
-                        isSendingMessage = false;
-                        var sendBtn = document.getElementById('send-btn');
-                        if (sendBtn) {
-                            sendBtn.disabled = false;
-                            sendBtn.style.opacity = '1';
-                        }
-                        if (data.translationError) {
-                            console.warn("Translation Worker Report:", data.translationError);
-                        }
-                        return data;
-                    })
-                ['catch'](function (err) {
-                    console.error("Worker failed, falling back to direct write:", err);
-                    sendGeneralMessageToRTDB(text);
+            // Write message immediately so it appears at once, then translate in background
+            var messageData = {
+                user: currentUsername,
+                uid: currentUser.uid,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                text: text
+            };
+
+            generalChatRef.push(messageData).then(function (ref) {
+                var msgId = ref.key;
+
+                isSendingMessage = false;
+                var sendBtn = document.getElementById('send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.style.opacity = '1';
+                }
+
+                // Fire translation in background — child_changed will update the bubble when done
+                currentUser.getIdToken().then(function (token) {
+                    fetch(TRANSLATION_WORKER_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        },
+                        body: JSON.stringify({
+                            user: currentUsername,
+                            uid: currentUser.uid,
+                            text: text,
+                            msgId: msgId,
+                            translateOnly: true
+                        })
+                    })['catch'](function (err) {
+                        console.warn("Translation request failed:", err);
+                    });
+                })['catch'](function (err) {
+                    console.warn("Could not get auth token for translation:", err);
                 });
-            })['catch'](function (err) {
-                console.error("Could not get auth token:", err);
-                sendGeneralMessageToRTDB(text);
+            })['catch'](function (e) {
+                isSendingMessage = false;
+                var sendBtn = document.getElementById('send-btn');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.style.opacity = '1';
+                }
+                console.error("Error sending general message:", e);
             });
         }
 
