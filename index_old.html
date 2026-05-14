@@ -39,6 +39,7 @@
             if (isLite) { window.location.href = "https://lite.rekindle.ink/" + search; return; }
         })();
     </script>
+    <script src="js/anti-tamper.js"></script>
     <meta charset="UTF-8">
 
     <title>ReKindle</title>
@@ -47,6 +48,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js" defer></script>
 
     <script src="time.js" defer></script>
     <script src="icons.js" defer></script>
@@ -54,6 +57,7 @@
     <script src="theme.js?v=17" defer></script>
     <script src="bad_words.js?v=4" defer></script>
     <script src="js/i18n.js" defer></script>
+    <script src="js/ip-ban.js" defer></script>
 
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -865,6 +869,7 @@
     </div>
 
     <script>
+    (function() {
         let featuredHidden = localStorage.getItem('rekindle_featured_hidden') === 'true';
         // Note: Global variables and logic mostly unchanged, specific fixes applied inside functions.
         let currentFilter = 'all';
@@ -913,6 +918,7 @@
                     firebase.initializeApp(firebaseConfig);
                     auth = firebase.auth();
                     db = firebase.firestore();
+                    rtdb = firebase.database();
                     if (db.settings) {
                         try { db.settings({ experimentalForceLongPolling: true, merge: true }); }
                         catch (e) { console.warn("Settings error:", e); }
@@ -958,6 +964,7 @@
                     }
 
                     if (user) {
+                        RekindleIpBan.enforceOnAuthStateChanged(user);
                         currentUser = user;
                         localStorage.setItem('rekindle_uid', user.uid);
                         let displayUser = user.email.split('@')[0];
@@ -1568,20 +1575,34 @@
             document.getElementById('generic-msg').innerText = message;
             document.getElementById('generic-modal').style.display = 'flex';
         }
-        function doLogin() {
+        async function doLogin() {
             if (!isFirebaseAvailable || !auth) { document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection"; return; }
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             if (!u || !p) { document.getElementById('login-msg').innerText = "Error: Please enter a valid username and password."; return; }
-            const email = u.includes('@') ? u : u + "@rekindle.ink";
-            auth.signInWithEmailAndPassword(email, p).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
+
+            document.getElementById('login-msg').innerText = "Connecting...";
+            try {
+                const email = u.includes('@') ? u : u + "@rekindle.ink";
+                await auth.signInWithEmailAndPassword(email, p);
+                const ipResult = await RekindleIpBan.checkOnLogin();
+                if (ipResult.banned) {
+                    await auth.signOut();
+                    document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
+                }
+            } catch (e) {
+                const msg = (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found')
+                    ? "Invalid username or password."
+                    : (e.message || "Login failed.");
+                document.getElementById('login-msg').innerText = "Error: " + msg;
+            }
         }
         const isForbiddenUsername = (u) => { const forbidden = ["root", "system", "admin", "administrator", "mod", "moderator", "support", "ukiyo", "rekindle", "wantban"]; const lowerU = u.toLowerCase(); return forbidden.some(word => lowerU.includes(word)); };
         const isBadWord = (u) => {
             if (!window.filterBadWords) return false;
             return window.filterBadWords(u) !== u;
         };
-        function doRegister() {
+        async function doRegister() {
             if (!isFirebaseAvailable || !auth) { document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection"; return; }
             const u = document.getElementById('username').value.trim();
             const p = document.getElementById('password').value;
@@ -1591,8 +1612,16 @@
             if (u.includes('@')) { document.getElementById('login-msg').innerText = "Error: Please enter a username only, not an email."; return; }
             if (isForbiddenUsername(u)) { document.getElementById('login-msg').innerText = "Error: Forbidden username."; return; }
             if (isBadWord(u)) { document.getElementById('login-msg').innerText = "Error: Username contains inappropriate language."; return; }
-            const email = u + "@rekindle.ink";
-            auth.createUserWithEmailAndPassword(email, p).catch(e => { document.getElementById('login-msg').innerText = "Error: " + e.message; });
+
+            document.getElementById('login-msg').innerText = "Registering...";
+            try {
+                const registerUser = firebase.functions().httpsCallable('registerUser');
+                const result = await registerUser({ username: u, password: p });
+                await auth.signInWithCustomToken(result.data.customToken);
+            } catch (e) {
+                const msg = e.message || "Registration failed.";
+                document.getElementById('login-msg').innerText = "Error: " + msg;
+            }
         }
         function confirmLogout() {
             if (isFirebaseAvailable && auth) auth.signOut().catch(e => console.error("Sign out error:", e));
@@ -1605,6 +1634,23 @@
             if (isPro) { if (titlePlus) titlePlus.style.display = 'inline-block'; }
             else { if (titlePlus) titlePlus.style.display = 'none'; }
         }
+
+        // Expose functions needed by inline HTML handlers
+        window.filterApps = filterApps;
+        window.openAbout = openAbout;
+        window.openDiscordModal = openDiscordModal;
+        window.openLogin = openLogin;
+        window.openResetModal = openResetModal;
+        window.closeModal = closeModal;
+        window.confirmLogout = confirmLogout;
+        window.confirmReset = confirmReset;
+        window.doLogin = doLogin;
+        window.doRegister = doRegister;
+        window.toggleEditMode = toggleEditMode;
+        window.toggleFeaturedSection = toggleFeaturedSection;
+        window.toggleFavorite = toggleFavorite;
+        window.toggleHidden = toggleHidden;
+    })();
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"
         defer></script>

@@ -151,7 +151,14 @@
     }
 
     // Anti-tamper enforcer
+    const maliciousPatterns = [
+        /#paywall-overlay\s*\{[^}]*display\s*:\s*none/i,
+        /\.pro-locked\s*\{[^}]*display\s*:\s*none/i,
+        /\.plus-label\s*\{[^}]*display\s*:\s*none/i
+    ];
+
     setInterval(() => {
+        // 1. Overlay integrity check
         if (checkComplete && !isPro) {
             const overlay = document.getElementById('paywall-overlay');
             if (!overlay || 
@@ -161,6 +168,42 @@
                 overlay.style.zIndex !== '2147483647') {
                 showPaywall('Subscription required.');
             }
+        }
+
+        // 2. Detect and remove injected malicious styles
+        const styles = document.querySelectorAll('style');
+        styles.forEach(style => {
+            const text = style.textContent || style.innerText || '';
+            for (const pattern of maliciousPatterns) {
+                if (pattern.test(text)) {
+                    console.warn('[ReKindle Anti-Tamper] Removing malicious style injection.');
+                    style.remove();
+                    if (checkComplete && !isPro) showPaywall('Subscription required.');
+                }
+            }
+        });
+
+        // 3. Detect if rekindleProGate API has been tampered with
+        if (!window.rekindleProGate || 
+            typeof window.rekindleProGate.check !== 'function' ||
+            typeof window.rekindleProGate.isPro !== 'function') {
+            console.warn('[ReKindle Anti-Tamper] API tampering detected. Re-establishing...');
+            window.rekindleProGate = {
+                check: check,
+                isPro: () => isPro,
+                getUser: () => currentUser,
+                showPaywall: showPaywall,
+                hidePaywall: hidePaywall
+            };
+            if (checkComplete && !isPro) showPaywall('Subscription required.');
+        }
+
+        // 4. Detect global isPro locking (userscript pattern)
+        const isProDesc = Object.getOwnPropertyDescriptor(window, 'isPro');
+        if (isProDesc && (isProDesc.get || isProDesc.set) && !isProDesc.configurable) {
+            console.warn('[ReKindle Anti-Tamper] Global isPro has been locked by external script.');
+            // We can't unlock it, but we can force the paywall back
+            if (checkComplete && !isPro) showPaywall('Subscription required.');
         }
     }, 500);
 

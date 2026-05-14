@@ -9,6 +9,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
+    <script src="js/ip-ban.js"></script>
     <style>
         body {
             font-family: monospace;
@@ -159,6 +162,7 @@
                 // Auth State Listener
                 auth.onAuthStateChanged(function (user) {
                     if (user) {
+                        RekindleIpBan.enforceOnAuthStateChanged(user);
                         document.getElementById('auth-state').innerText = "Auth State: SIGNED IN (" + user.email + ")";
                         log("User signed in: " + user.uid, "success");
                         user.getIdTokenResult().then(function (t) {
@@ -228,7 +232,7 @@
         }
 
         // --- ACTIONS ---
-        function doLogin() {
+        async function doLogin() {
             var emailVal = document.getElementById('email').value.trim();
             var passVal = document.getElementById('password').value;
 
@@ -248,22 +252,24 @@
                 return;
             }
 
-            // Force Persistence to LOCAL to see if that's the issue
-            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-                .then(function () {
-                    log("Persistence set to LOCAL. Proceeding...", "info");
-                    return auth.signInWithEmailAndPassword(emailVal, passVal);
-                })
-                .then(function (userCredential) {
-                    log("Sign In PROMISE RESOLVED.", "success");
-                    log("User: " + userCredential.user.email, "success");
-                })
-                .catch(function (error) {
-                    log("Sign In ERROR: " + error.code + " - " + error.message, "error");
-                    if (error.code === 'auth/network-request-failed') {
-                        log("Wait! Network request failed. Check system clock and SSL certificates.", "warn");
-                    }
-                });
+            try {
+                await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+                log("Persistence set to LOCAL. Proceeding...", "info");
+                const userCredential = await auth.signInWithEmailAndPassword(emailVal, passVal);
+                log("Sign In PROMISE RESOLVED.", "success");
+                log("User: " + userCredential.user.email, "success");
+
+                const ipResult = await RekindleIpBan.checkOnLogin();
+                if (ipResult.banned) {
+                    await auth.signOut();
+                    log("Sign In BLOCKED: IP address has been banned from this network.", "error");
+                }
+            } catch (error) {
+                log("Sign In ERROR: " + error.code + " - " + error.message, "error");
+                if (error.code === 'auth/network-request-failed') {
+                    log("Wait! Network request failed. Check system clock and SSL certificates.", "warn");
+                }
+            }
         }
 
         function doLogout() {

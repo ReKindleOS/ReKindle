@@ -37,6 +37,7 @@
             if (isLite) { window.location.href = "https://lite.rekindle.ink/" + search; return; }
         })();
     </script>
+    <script src="js/anti-tamper.js"></script>
     <meta charset="UTF-8">
 
     <title>ReKindle</title>
@@ -54,6 +55,7 @@
     <script src="theme.js?v=17" defer></script>
     <script src="bad_words.js?v=4" defer></script>
     <script src="js/i18n.js" defer></script>
+    <script src="js/ip-ban.js" defer></script>
 
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -1232,6 +1234,7 @@
     </div>
 
     <script>
+    (function() {
         // Note: Global variables and logic mostly unchanged, specific fixes applied inside functions.
         let currentFilter = 'all';
         let currentUser = null;
@@ -1481,19 +1484,9 @@
 
                         monitorUserProfile(user.uid);
 
-                        if (rtdb) {
-                            // Check IP and save
-                            fetchAndCheckIP().then(ipData => {
-                                if (ipData.banned) {
-                                    rtdb.ref('users_private/' + user.uid + '/ipAddress').set(ipData.rawIp).finally(() => {
-                                        auth.signOut();
-                                        showGenericModal("Network Banned", "Your IP address is permanently banned from this network.");
-                                    });
-                                } else if (ipData.rawIp !== 'unknown') {
-                                    rtdb.ref('users_private/' + user.uid + '/ipAddress').set(ipData.rawIp);
-                                }
-                            });
+                        RekindleIpBan.enforceOnAuthStateChanged(user);
 
+                        if (rtdb) {
                             rtdb.ref('users_public/' + user.uid).on('value', snap => {
                                 if (snap.exists()) {
                                     const profile = snap.val();
@@ -2242,26 +2235,6 @@
             document.getElementById('generic-msg').innerText = message;
             document.getElementById('generic-modal').style.display = 'flex';
         }
-        async function fetchAndCheckIP() {
-            try {
-                const res = await fetch('https://api.ipify.org?format=json');
-                const data = await res.json();
-                const ip = data.ip;
-                const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
-                
-                if (window.rtdb) {
-                    const snap = await rtdb.ref('banned_ips/' + safeIp).once('value');
-                    if (snap.exists()) {
-                        return { banned: true, ip: safeIp, rawIp: ip };
-                    }
-                }
-                return { banned: false, ip: safeIp, rawIp: ip };
-            } catch (e) {
-                console.error("IP Check Failed", e);
-                return { banned: false, ip: 'unknown', rawIp: 'unknown' };
-            }
-        }
-
         async function doLogin() {
             if (!isFirebaseAvailable || !auth) { document.getElementById('login-msg').innerText = "Error: Offline / No Database Connection"; return; }
             const u = document.getElementById('username').value;
@@ -2274,9 +2247,8 @@
                 await auth.signInWithEmailAndPassword(email, p);
                 // After sign-in, call the server to verify the IP. The function uses
                 // the real server-side IP (not spoofable) and revokes the session if banned.
-                const checkIP = firebase.functions().httpsCallable('checkIPOnLogin');
-                const result = await checkIP({});
-                if (result.data.banned) {
+                const ipResult = await RekindleIpBan.checkOnLogin();
+                if (ipResult.banned) {
                     await auth.signOut();
                     document.getElementById('login-msg').innerText = "Error: Your IP address has been banned from this network.";
                 }
@@ -2725,6 +2697,25 @@
                 }
             });
         }
+
+        // Expose functions needed by inline HTML handlers
+        window.filterApps = filterApps;
+        window.openAbout = openAbout;
+        window.openDiscordModal = openDiscordModal;
+        window.openLogin = openLogin;
+        window.openResetModal = openResetModal;
+        window.closeModal = closeModal;
+        window.confirmLogout = confirmLogout;
+        window.confirmReset = confirmReset;
+        window.doLogin = doLogin;
+        window.doRegister = doRegister;
+        window.toggleEditMode = toggleEditMode;
+        window.toggleFeaturedSection = toggleFeaturedSection;
+        window.toggleFavorite = toggleFavorite;
+        window.toggleHidden = toggleHidden;
+        window.changeDashboardCalendar = changeDashboardCalendar;
+        window.selectDashboardCalendarDay = selectDashboardCalendarDay;
+    })();
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675" data-utcoffset="11"
         defer></script>

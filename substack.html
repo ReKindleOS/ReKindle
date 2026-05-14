@@ -11,6 +11,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
+    <script src="js/ip-ban.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -820,6 +823,7 @@
 
                 auth.onAuthStateChanged(u => {
                     state.user = u;
+                    if (u) RekindleIpBan.enforceOnAuthStateChanged(u);
                     updateUI();
 
                     // Use pro-gate check callback to ensure we have the latest status
@@ -1435,16 +1439,34 @@
             auth.signOut();
         }
 
-        function performRekindleAuth(isLogin) {
+        async function performRekindleAuth(isLogin) {
             const u = document.getElementById('rk-username').value;
             const p = document.getElementById('rk-password').value;
             if (!u || !p) { showAlertModal("Enter credentials"); return; }
             const email = u.includes('@') ? u : u + "@rekindle.ink";
 
             if (isLogin) {
-                auth.signInWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => showAlertModal(e.message));
+                try {
+                    await auth.signInWithEmailAndPassword(email, p);
+                    const ipResult = await RekindleIpBan.checkOnLogin();
+                    if (ipResult.banned) {
+                        await auth.signOut();
+                        showAlertModal("Your IP address has been banned from this network.");
+                        return;
+                    }
+                    closeModal('login-modal');
+                } catch (e) {
+                    showAlertModal(e.message);
+                }
             } else {
-                auth.createUserWithEmailAndPassword(email, p).then(() => closeModal('login-modal')).catch(e => showAlertModal(e.message));
+                try {
+                    const registerUser = firebase.functions().httpsCallable('registerUser');
+                    const result = await registerUser({ username: u, password: p });
+                    await auth.signInWithCustomToken(result.data.customToken);
+                    closeModal('login-modal');
+                } catch (e) {
+                    showAlertModal(e.message || "Registration failed.");
+                }
             }
         }
 

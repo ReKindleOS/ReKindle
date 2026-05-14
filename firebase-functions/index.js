@@ -438,6 +438,18 @@ exports.registerUser = onCall(callOptions, async (request) => {
         await admin.database().ref(`users_private/${userRecord.uid}/ipAddress`).set(ip);
     }
 
+    // Post-creation defence-in-depth: if the IP was banned in the race window
+    // between the pre-check and createUser, disable the account immediately.
+    if (ip) {
+        const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
+        const snap = await admin.database().ref(`banned_ips/${safeIp}`).once('value');
+        if (snap.exists()) {
+            logger.warn(`Banned IP registered (race) — disabling account: ${ip} (uid: ${userRecord.uid})`);
+            await admin.auth().updateUser(userRecord.uid, { disabled: true });
+            throw new HttpsError('permission-denied', 'Registration is not available from your network.');
+        }
+    }
+
     // Return a custom token so the client can call signInWithCustomToken()
     const customToken = await admin.auth().createCustomToken(userRecord.uid);
     return { customToken };
@@ -445,8 +457,8 @@ exports.registerUser = onCall(callOptions, async (request) => {
 
 /**
  * Called by the client immediately after signInWithEmailAndPassword succeeds.
- * Checks the real server-side IP against the banned list and, if banned, revokes
- * all refresh tokens for that user so the session can't persist.
+ * Checks the real server-side IP against the banned list and, if banned, disables
+ * the Firebase Auth account and revokes all refresh tokens so the session can't persist.
  *
  * Returns: { banned: boolean }
  */
@@ -525,7 +537,8 @@ exports.checkIPOnLogin = onCall(callOptions, async (request) => {
         const safeIp = ip.replace(/\./g, '-').replace(/:/g, '_');
         const snap = await admin.database().ref(`banned_ips/${safeIp}`).once('value');
         if (snap.exists()) {
-            logger.warn(`Banned IP signed in — revoking session: ${ip} (uid: ${uid})`);
+            logger.warn(`Banned IP signed in — disabling account and revoking session: ${ip} (uid: ${uid})`);
+            await admin.auth().updateUser(uid, { disabled: true });
             await admin.auth().revokeRefreshTokens(uid);
             return { banned: true };
         }
