@@ -353,9 +353,9 @@ const APPS = [
     },
     {
         id: 'bible',
-        name: 'Bible',
+        name: 'Scriptures',
         cat: 'lifestyle',
-        desc: 'Read the Word anywhere.',
+        desc: 'Bible, Quran, Dhammapada & Tao Te Ching.',
         icon: '<rect x="6" y="4" width="20" height="24" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M16 8 v10 M12 12 h8" stroke="black" stroke-width="2" fill="none"/>'
     },
     {
