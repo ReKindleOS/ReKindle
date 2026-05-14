@@ -343,12 +343,9 @@
 
     <script>
         // CONFIG
-        const STRIPE_LINKS = {
-            monthly: "https://buy.stripe.com/7sY28qekS5vB4eN5k06Na01",
-            yearly: "https://buy.stripe.com/5kQ8wOekS2jp4eN13K6Na02",
-            lifetime: "https://buy.stripe.com/cNieVc1y6e276mVcMs6Na03"
-        };
+        const STRIPE_WORKER_URL = 'https://rekindle-stripe.timjarnott.workers.dev';
         let currentPlan = 'monthly';
+        const sessionUrlCache = {}; // plan -> url, pre-fetched to survive guest checkout
 
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
@@ -518,7 +515,8 @@
                     } else {
                         const dateStr = new Date(expires).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
                         const key = subType === 'recurring' ? 'pay.status.renews' : 'pay.status.expires';
-                        document.getElementById('pay-expiry-date').innerText = window.t ? window.t(key, { date: dateStr }) : (subType === 'recurring' ? "Renews: " : "Expires: ") + dateStr;
+                        const fallback = (subType === 'recurring' ? "Renews: " : "Expires: ") + dateStr;
+                        document.getElementById('pay-expiry-date').innerText = window.t ? window.t(key).replace('${date}', dateStr) : fallback;
                     }
 
                     // Success achieved, stop verifying
@@ -546,30 +544,58 @@
             document.getElementById('guest-hint').style.display = 'none';
         }
 
+        async function createCheckoutSession(plan) {
+            const qrImg = document.getElementById('qrcode-img');
+            const qrContainer = document.getElementById('qr-container');
+            const fallbackLink = document.getElementById('fallback-link');
+            const fallbackContainer = document.getElementById('fallback-container');
+
+            // Show loading state
+            qrContainer.style.display = 'block';
+            qrImg.src = '';
+            qrImg.alt = 'Generating link...';
+            fallbackLink.href = '#';
+            fallbackLink.innerText = window.t ? window.t('pay.link.loading') : 'Generating link...';
+            fallbackContainer.style.display = 'block';
+
+            try {
+                const idToken = await currentUser.getIdToken();
+                const base = window.location.href.split('?')[0];
+                const res = await fetch(`${STRIPE_WORKER_URL}/create-checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        idToken,
+                        plan,
+                        success_url: `${base}?success=true`,
+                        cancel_url: base
+                    })
+                });
+                const data = await res.json();
+                if (!data.url) throw new Error(data.error || 'No URL returned');
+
+                sessionUrlCache[plan] = data.url;
+
+                // Only update UI if this plan is still selected
+                if (plan !== currentPlan) return;
+
+                qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.url)}`;
+                qrImg.alt = 'Payment QR Code';
+                fallbackLink.href = data.url;
+                fallbackLink.innerText = window.t ? window.t('pay.link.standard') : 'Pay via Standard Link';
+            } catch (err) {
+                console.error('Failed to create checkout session:', err);
+                qrImg.alt = 'Error generating link';
+                fallbackLink.innerText = 'Error — please refresh';
+            }
+        }
+
         function showPaymentUI() {
             document.getElementById('payment-section').style.display = 'flex';
             document.getElementById('subscribed-section').style.display = 'none';
             document.getElementById('guest-hint').style.display = 'none';
-
-            // Enable QR Code
-            const refId = currentUser.uid;
-            const link = STRIPE_LINKS[currentPlan];
-            const finalUrl = `${link}?client_reference_id=${refId}`;
-
-            const qrImg = document.getElementById('qrcode-img');
-            const qrContainer = document.getElementById('qr-container');
-
-            // Generate QR using public API
-            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(finalUrl)}`;
-            qrContainer.style.display = 'block';
-
-            // Update Fallback Link
-            const fallbackContainer = document.getElementById('fallback-container');
-            const fallbackLink = document.getElementById('fallback-link');
-            fallbackLink.href = finalUrl;
-            fallbackContainer.style.display = 'block';
+            createCheckoutSession(currentPlan);
         }
-
 
         function setPlan(plan) {
             currentPlan = plan;
@@ -588,9 +614,19 @@
             };
             document.getElementById('price-display').innerText = labels[plan];
 
-            // Regenerate QR if logged in (and not subscribed)
+            // Regenerate session if logged in and payment section is visible
             if (currentUser && document.getElementById('payment-section').style.display !== 'none') {
-                showPaymentUI();
+                if (sessionUrlCache[plan]) {
+                    // Already have a URL for this plan — just update the UI immediately
+                    const qrImg = document.getElementById('qrcode-img');
+                    const fallbackLink = document.getElementById('fallback-link');
+                    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(sessionUrlCache[plan])}`;
+                    qrImg.alt = 'Payment QR Code';
+                    fallbackLink.href = sessionUrlCache[plan];
+                    fallbackLink.innerText = window.t ? window.t('pay.link.standard') : 'Pay via Standard Link';
+                } else {
+                    createCheckoutSession(plan);
+                }
             }
         }
 

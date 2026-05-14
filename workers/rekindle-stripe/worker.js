@@ -117,6 +117,63 @@ export default {
             }
         }
 
+        // --- CREATE CHECKOUT SESSION ---
+        // Called by pay.html to create a server-side session with client_reference_id baked in,
+        // preventing guest checkout from stripping it from the URL.
+        if (request.method === 'POST' && url.pathname.endsWith('/create-checkout')) {
+            const corsHeaders = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+            try {
+                const body = await request.json();
+                const { idToken, plan, success_url, cancel_url } = body;
+
+                if (!idToken || !plan) {
+                    return new Response(JSON.stringify({ error: 'Missing idToken or plan' }), { status: 400, headers: corsHeaders });
+                }
+
+                const priceIds = {
+                    monthly:  env.STRIPE_PRICE_MONTHLY,
+                    yearly:   env.STRIPE_PRICE_YEARLY,
+                    lifetime: env.STRIPE_PRICE_LIFETIME
+                };
+                const priceId = priceIds[plan];
+                if (!priceId) {
+                    return new Response(JSON.stringify({ error: 'Invalid plan' }), { status: 400, headers: corsHeaders });
+                }
+
+                const uid = await verifyFirebaseIdToken(env, idToken);
+
+                const params = new URLSearchParams({
+                    'client_reference_id': uid,
+                    'mode': plan === 'lifetime' ? 'payment' : 'subscription',
+                    'line_items[0][price]': priceId,
+                    'line_items[0][quantity]': '1',
+                    'allow_promotion_codes': 'true',
+                    'success_url': success_url || 'https://rekindle.ink/pay?success=true',
+                    'cancel_url': cancel_url || 'https://rekindle.ink/pay',
+                });
+
+                const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${env.STRIPE_KEY}`,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: params.toString()
+                });
+
+                if (!stripeRes.ok) {
+                    const err = await stripeRes.text();
+                    throw new Error(`Stripe API Error: ${stripeRes.status} ${err}`);
+                }
+
+                const session = await stripeRes.json();
+                return new Response(JSON.stringify({ url: session.url }), { headers: corsHeaders });
+
+            } catch (err) {
+                return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+            }
+        }
+
         if (request.method !== 'POST') {
             return new Response('Method Not Allowed', { status: 405 });
         }
@@ -555,6 +612,47 @@ async function revokeProByCustomerId(env, stripeCustomerId) {
         console.warn(`No user found with stripeCustomerId: ${stripeCustomerId} to revoke.`);
         return { status: 'user_not_found' };
     }
+}
+
+// --- VERIFY FIREBASE ID TOKEN ---
+async function verifyFirebaseIdToken(env, idToken) {
+    const parts = idToken.split('.');
+    if (parts.length !== 3) throw new Error('Invalid token format');
+
+    function b64decode(str) {
+        const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        return JSON.parse(atob(padded));
+    }
+
+    const header = b64decode(parts[0]);
+    const payload = b64decode(parts[1]);
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp < now) throw new Error('Token expired');
+    if (payload.aud !== env.FIREBASE_PROJECT_ID) throw new Error('Invalid audience');
+    if (payload.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`) throw new Error('Invalid issuer');
+
+    const keysRes = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
+    if (!keysRes.ok) throw new Error('Could not fetch Google public keys');
+    const keys = await keysRes.json();
+
+    const jwk = keys.keys.find(k => k.kid === header.kid);
+    if (!jwk) throw new Error('Unknown signing key');
+
+    const cryptoKey = await crypto.subtle.importKey(
+        'jwk', jwk,
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+        false, ['verify']
+    );
+
+    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const sig = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+    const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', cryptoKey, sig, data);
+    if (!valid) throw new Error('Invalid token signature');
+
+    return payload.sub;
 }
 
 // --- GOOGLE AUTH (Service Account JWT) ---
