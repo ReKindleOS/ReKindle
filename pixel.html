@@ -12,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/chat-limits.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -898,41 +899,6 @@
             }
         };
 
-        function canUserSend(chatHistory, currentUserId) {
-            // 1. CONFIGURATION
-            const MAX_SCORE = 3.0;      // If user's score > 3, block them.
-            const DECAY_RATE = 0.05;    // How much 'less' an older message counts.
-            const SCAN_DEPTH = 50;      // Look at up to 50 messages.
-
-            let score = 0;
-
-            // 2. SAFETY CHECK (If chat is empty, let them send)
-            if (!chatHistory || chatHistory.length === 0) return true;
-
-            // 3. CALCULATE SCORE — only pixel art posts count (not text messages)
-            // Assumes chatHistory[0] is the MOST RECENT message
-            const limit = Math.min(chatHistory.length, SCAN_DEPTH);
-
-            for (let i = 0; i < limit; i++) {
-                // Only count pixel art posts from this specific user
-                if (chatHistory[i].userId === currentUserId && chatHistory[i].isPixelArt) {
-
-                    // Calculate weight: 1.0, 0.95, 0.90, etc.
-                    let weight = 1.0 - (i * DECAY_RATE);
-
-                    // If weight drops to 0 or below, we stop counting
-                    if (weight <= 0) break;
-
-                    score += weight;
-                }
-            }
-
-            console.log(`Pixel Score: ${score.toFixed(2)} / ${MAX_SCORE}`);
-
-            // 4. VERDICT
-            return score < MAX_SCORE;
-        }
-
         async function checkUserTimeout() {
             if (!currentUser) return null;
             try {
@@ -976,18 +942,11 @@
                 // Use RTDB for 'general' chat messages (where artwork goes)
                 const messagesRef = rtdb.ref('kindlechat/messages');
 
-                // MODERATION CHECK
-                const snapshot = await messagesRef.orderByChild('timestamp').limitToLast(50).once('value');
-                const history = [];
-                snapshot.forEach(child => {
-                    const val = child.val();
-                    if (val.user) {
-                        history.push({ userId: val.user, isPixelArt: !!val.is_pixel_art });
-                    }
+                // MODERATION CHECK (shared limit)
+                const allowed = await new Promise(function(resolve) {
+                    canUserSend(currentUsername, resolve);
                 });
-                history.reverse(); // Newest first
-
-                if (!canUserSend(history, currentUsername)) {
+                if (!allowed) {
                     closeModal('post-confirm-modal');
                     const slowDownMsg = window.t('pixel.status.slow_down', "To ensure a good experience for everyone, please slow down. You've been posting a lot recently.");
                     showModal(slowDownMsg, false);
@@ -1003,6 +962,7 @@
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
 
+                recordUserSend(currentUsername);
                 closeModal('post-confirm-modal');
 
                 // Show success modal wrapper

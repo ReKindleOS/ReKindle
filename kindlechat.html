@@ -1067,6 +1067,7 @@
     <script src="time.js"></script>
     <script src="theme.js?v=17"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/chat-limits.js"></script>
     <script src="social-timeout.js"></script>
 </head>
 
@@ -1527,9 +1528,7 @@
         var isModeratorMode = false;
 
         // --- SPAM PROTECTION FOR GENERAL CHANNEL ---
-        var GENERAL_MSG_WINDOW = 50; // Check last 50 messages
-        var GENERAL_MAX_USER_MSGS = 20; // Max messages from one user in that window (~40%)
-        var recentGeneralMsgUsers = []; // Track usernames of recent messages in general channel
+        // (Replaced by shared js/chat-limits.js utility)
 
         // --- Rules Logic ---
         var RULES_VERSION = 1; // Current Rules Version
@@ -2630,7 +2629,6 @@
             history.innerHTML = '<div style="text-align:center; padding:20px">Connecting...</div>';
 
             renderedKindlechatIds = {};
-            recentGeneralMsgUsers = [];
             oldestGeneralTimestamp = null;
             noMoreGeneralMessages = false;
 
@@ -2659,14 +2657,9 @@
                             }
                         }
 
-                        if (data.user) recentGeneralMsgUsers.push(data.user);
                         renderMessage(data, msgId);
                         generalDomMsgCount++;
                     });
-
-                    if (recentGeneralMsgUsers.length > GENERAL_MSG_WINDOW) {
-                        recentGeneralMsgUsers = recentGeneralMsgUsers.slice(-GENERAL_MSG_WINDOW);
-                    }
 
                     history.scrollTop = history.scrollHeight;
                 }
@@ -2696,12 +2689,7 @@
                         }
                     }
 
-                    if (data.user) {
-                        recentGeneralMsgUsers.push(data.user);
-                        if (recentGeneralMsgUsers.length > GENERAL_MSG_WINDOW) {
-                            recentGeneralMsgUsers = recentGeneralMsgUsers.slice(-GENERAL_MSG_WINDOW);
-                        }
-                    }
+
 
                     // Smart auto-scroll: only follow if user was already near bottom
                     var nearBottom = (history.scrollHeight - history.clientHeight) - history.scrollTop < 100;
@@ -3316,41 +3304,6 @@
             }
         }
 
-        function canUserSend(chatHistory, currentUserId) {
-            // 1. CONFIGURATION
-            const MAX_SCORE = 6.0;      // If user's score > 6, block them.
-            const DECAY_RATE = 0.1;     // How much 'less' an older message counts.
-            const SCAN_DEPTH = 50;      // Look at up to 50 messages.
-
-            let score = 0;
-
-            // 2. SAFETY CHECK (If chat is empty, let them send)
-            if (!chatHistory || chatHistory.length === 0) return true;
-
-            // 3. CALCULATE SCORE
-            // Assumes chatHistory[0] is the MOST RECENT message
-            const limit = Math.min(chatHistory.length, SCAN_DEPTH);
-
-            for (let i = 0; i < limit; i++) {
-                // Only count messages from this specific user
-                if (chatHistory[i].userId === currentUserId) {
-
-                    // Calculate weight: 1.0, 0.95, 0.90, etc.
-                    let weight = 1.0 - (i * DECAY_RATE);
-
-                    // If weight drops to 0 or below, we stop counting
-                    if (weight <= 0) break;
-
-                    score += weight;
-                }
-            }
-
-            console.log(`User Score: ${score.toFixed(2)} / ${MAX_SCORE}`);
-
-            // 4. VERDICT
-            return score < MAX_SCORE;
-        }
-
         var isSendingMessage = false;
 
         function resetSendState() {
@@ -3398,26 +3351,28 @@
 
                 // SPAM PROTECTION: Check if user is dominating the general channel
                 if (currentRoomId === 'general') {
-                    // Construct history for algorithm (Newest is index 0)
-                    var historyForAlgo = recentGeneralMsgUsers.slice().reverse().map(function (u) { return { userId: u }; });
+                    canUserSend(currentUsername, function (allowed) {
+                        if (!allowed) {
+                            showModal('To ensure a good experience for everyone, please slow down. You\'ve been posting a lot recently.', false);
+                            resetSendState();
+                            return;
+                        }
 
-                    if (!canUserSend(historyForAlgo, currentUsername)) {
-                        showModal('To ensure a good experience for everyone, please slow down. You\'ve been posting a lot recently.', false);
-                        resetSendState();
-                        return;
-                    }
-                }
+                        inputEl.value = '';
 
-                inputEl.value = '';
-
-                // BRANCH: Use Realtime Database via Worker (for translation) or direct
-                if (currentRoomId === 'general') {
-                    if (TRANSLATION_WORKER_URL) {
-                        sendGeneralMessageViaWorker(text);
-                    } else {
-                        sendGeneralMessageToRTDB(text);
-                    }
+                        // BRANCH: Use Realtime Database via Worker (for translation) or direct
+                        if (currentRoomId === 'general') {
+                            if (TRANSLATION_WORKER_URL) {
+                                sendGeneralMessageViaWorker(text);
+                            } else {
+                                sendGeneralMessageToRTDB(text);
+                            }
+                        } else {
+                            sendDMToFirestore(text);
+                        }
+                    });
                 } else {
+                    inputEl.value = '';
                     sendDMToFirestore(text);
                 }
             });
@@ -3848,6 +3803,7 @@
                 var msgId = ref.key;
 
                 resetSendState();
+                recordUserSend(currentUsername);
 
                 // Fire translation in background with retry — child_changed will update the bubble when done
                 fireTranslationRequest(currentUsername, currentUser.uid, text, msgId, 1);
@@ -3871,6 +3827,7 @@
 
             generalChatRef.push(messageData).then(function() {
                 resetSendState();
+                recordUserSend(currentUsername);
             })['catch'](function (e) {
                 resetSendState();
                 console.error("Error sending general message:", e);
