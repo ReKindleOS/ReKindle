@@ -4,6 +4,8 @@ const THREE_DAYS_MS  = 3  * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS  = 7  * 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
+const STRIKE_LIMIT = 3; // must match rekindle-automod/worker.js
+
 // ── Service account JWT auth ──────────────────────────────────────────────────
 
 async function getAccessToken(serviceAccountJson) {
@@ -171,6 +173,37 @@ async function cleanTopicComments(cutoff, token) {
   return { comments: deletedComments, topics: deletedTopics };
 }
 
+async function cleanAutomodStrikes(cutoff, token) {
+  const data = await fbGet('automod_strikes', token);
+  if (!data) return 0;
+
+  const updates = {};
+  let cleaned = 0;
+
+  for (const [uid, entry] of Object.entries(data)) {
+    if (!entry || !Array.isArray(entry.strikes)) continue;
+    if (entry.count >= STRIKE_LIMIT) continue; // banned user — preserve record
+
+    const recent = entry.strikes.filter(s => s.ts > cutoff);
+    if (recent.length === entry.strikes.length) continue; // nothing to prune
+
+    if (recent.length === 0) {
+      updates[uid] = null;
+    } else {
+      updates[uid] = {
+        ...entry,
+        strikes:      recent,
+        count:        recent.length,
+        firstStrikeAt: recent[0].ts,
+      };
+    }
+    cleaned++;
+  }
+
+  if (Object.keys(updates).length) await fbPatch('automod_strikes', updates, token);
+  return cleaned;
+}
+
 async function cleanNeighbourhoodPosts(cutoff, token) {
   const data = await fbGet('neighbourhood_posts', token);
   if (!data) return 0;
@@ -213,11 +246,12 @@ async function runCleanup(env) {
   const sevenDaysAgo  = now - SEVEN_DAYS_MS;
   const thirtyDaysAgo = now - THIRTY_DAYS_MS;
 
-  const [chatDeleted, postsDeleted, { comments: commentsDeleted, topics: topicsDeleted }] =
+  const [chatDeleted, postsDeleted, { comments: commentsDeleted, topics: topicsDeleted }, strikesCleared] =
     await Promise.all([
       cleanKindlechatMessages(threeDaysAgo,  token),
       cleanNeighbourhoodPosts(thirtyDaysAgo, token),
       cleanTopicComments(sevenDaysAgo,       token),
+      cleanAutomodStrikes(sevenDaysAgo,      token),
     ]);
 
   const summary = [
@@ -226,6 +260,7 @@ async function runCleanup(env) {
     `  Topic comments deleted      : ${commentsDeleted}`,
     `  Topics deleted (no comments): ${topicsDeleted}`,
     `  Neighbourhood posts deleted : ${postsDeleted}`,
+    `  Automod strike records aged : ${strikesCleared}`,
   ].join('\n');
 
   console.log(summary);
