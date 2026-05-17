@@ -303,8 +303,8 @@ async function handleRequest(request) {
         }
 
         // NORMAL SEND LOGIC
-        if ((!user && !uid) || (!text && text !== "")) {
-            return new Response(JSON.stringify({ error: "Missing user/uid or text" }), { status: 400, headers });
+        if (!uid || (!text && text !== "")) {
+            return new Response(JSON.stringify({ error: "Missing uid or text" }), { status: 400, headers });
         }
 
         // SKIP EMOJIS AND TRANSLATE
@@ -316,13 +316,7 @@ async function handleRequest(request) {
             ...(translatedText && { translation: translatedText })
         };
 
-        if (app === 'neighbourhood') {
-            dbPayload.uid = uid;
-        } else {
-            dbPayload.user = user;
-            if (uid) dbPayload.uid = uid;
-            if (payload.isPro) dbPayload.isPro = true;
-        }
+        dbPayload.uid = uid;
 
         let postUrl = `${baseFirebaseUrl}.json`;
         if (token) postUrl += `?auth=${token}`;

@@ -2978,6 +2978,24 @@
                     }
                 }
 
+                // Update timeout button label (if present)
+                var timeoutBtn = msgEl.querySelector('button[onclick^="timeOutUser"]');
+                if (timeoutBtn) {
+                    var onclickStr = timeoutBtn.getAttribute('onclick');
+                    var match = onclickStr.match(/timeOutUser\('([^']+)',\s*'([^']*)'\)/);
+                    if (match) {
+                        var safeUsername = escapeHtml(username).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        timeoutBtn.setAttribute('onclick', "timeOutUser('" + match[1] + "', '" + safeUsername + "')");
+                        timeoutBtn.textContent = 'Timeout';
+                    }
+                }
+
+                // Update game link starter name (if present)
+                var gameStarterEl = msgEl.querySelector('.game-starter-name');
+                if (gameStarterEl) {
+                    gameStarterEl.textContent = username;
+                }
+
                 // Cache for username lookups
                 if (username && !usernameToProfile[username]) {
                     usernameToProfile[username] = { uid: uid, avatarSeed: seed };
@@ -3062,7 +3080,7 @@
             div.dataset.uid = msg.uid || '';
             if (typeof msg.timestamp === 'number') div.dataset.ts = msg.timestamp;
 
-            var safeUser = escapeHtml(msg.user || (msg.uid ? msg.uid.substring(0, 8) : ''));
+            var safeUser = escapeHtml(msg.uid ? msg.uid.substring(0, 8) : '');
             var safeUid = escapeHtml(msg.uid || '');
             var avatarId = 'avatar-' + (msgId || Math.random().toString(36).substr(2, 9));
             var nameHtml = isSelf ? '<span class="author-name-field" onclick="openUserProfile(\'' + safeUid + '\', \'\')">' + window.t('kindlechat.msg.you', 'You') + '</span>' : '<span class="author-name-field" onclick="openUserProfile(\'' + safeUid + '\', \'\')" style="font-weight:bold;">' + safeUser + '</span>';
@@ -3088,7 +3106,7 @@
                 }
             } else if (currentUser && isCurrentUserMod && isModeratorMode && currentRoomId === 'general') {
                 var timeoutUid = escapeHtml(msg.uid || '').replace(/\\/g, "\\\\\\\\").replace(/'/g, "\\'");
-                var timeoutName = escapeHtml(msg.user || (msg.uid ? msg.uid.substring(0, 8) : 'this user')).replace(/\\/g, "\\\\\\\\").replace(/'/g, "\\'");
+                var timeoutName = escapeHtml(msg.uid ? msg.uid.substring(0, 8) : 'this user').replace(/\\/g, "\\\\\\\\").replace(/'/g, "\\'");
                 if (timeoutUid && timeoutUid !== currentUser.uid) {
                     modControlsHtml += '<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="timeOutUser(\'' + timeoutUid + '\', \'' + timeoutName + '\')">Timeout</button>';
                 }
@@ -3117,7 +3135,7 @@
                 var displayMsg = '';
                 if (gameType === 'words') {
                     // displayMsg = msg.user + ' started a Scrabble Game\n' + (isStarter ? 'Wait for a player to join!' : 'Click to Join!');
-                    var line1 = window.t('kindlechat.game.started', '{{user}} started a {{game}} Game').replace('{{user}}', msg.user || (msg.uid ? msg.uid.substring(0, 8) : 'Someone')).replace('{{game}}', 'Scrabble');
+                    var line1 = window.t('kindlechat.game.started', '{{user}} started a {{game}} Game').replace('{{user}}', '<span class="game-starter-name">' + escapeHtml(msg.uid ? msg.uid.substring(0, 8) : 'Someone') + '</span>').replace('{{game}}', 'Scrabble');
                     var line2 = isStarter ? window.t('kindlechat.game.wait', 'Wait for a player to join!') : window.t('kindlechat.game.join', 'Click to Join!');
                     displayMsg = line1 + '\n' + line2;
                 } else {
@@ -3372,7 +3390,7 @@
                             inputEl.value = '';
                             resetSendState();
                             if (TRANSLATION_WORKER_URL) {
-                                fireTranslationRequest(currentUsername, currentUser.uid, text, result.data.key, 1);
+                                fireTranslationRequest(currentUser.uid, text, result.data.key, 1);
                             }
                         })
                         .catch(function (e) {
@@ -3453,7 +3471,7 @@
                         'Authorization': 'Bearer ' + token
                     },
                     body: JSON.stringify({
-                        user: currentUsername,
+                        uid: currentUser.uid,
                         text: text,
                         msgId: msgId,
                         reprocess: true
@@ -3750,7 +3768,7 @@
         var TRANSLATION_RETRY_DELAY_MS = 8000;
         var TRANSLATION_MAX_RETRIES = 3;
 
-        function fireTranslationRequest(user, uid, text, msgId, attempt) {
+        function fireTranslationRequest(uid, text, msgId, attempt) {
             if (!currentUser) return;
             attempt = attempt || 1;
 
@@ -3762,7 +3780,6 @@
                         'Authorization': 'Bearer ' + token
                     },
                     body: JSON.stringify({
-                        user: user,
                         uid: uid,
                         text: text,
                         msgId: msgId,
@@ -3772,14 +3789,14 @@
                     if (!resp.ok && attempt < TRANSLATION_MAX_RETRIES) {
                         console.warn("Translation worker returned " + resp.status + ", retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s (attempt " + attempt + ")");
                         setTimeout(function () {
-                            fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                            fireTranslationRequest(uid, text, msgId, attempt + 1);
                         }, TRANSLATION_RETRY_DELAY_MS);
                     }
                 })['catch'](function (err) {
                     if (attempt < TRANSLATION_MAX_RETRIES) {
                         console.warn("Translation request failed (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
                         setTimeout(function () {
-                            fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                            fireTranslationRequest(uid, text, msgId, attempt + 1);
                         }, TRANSLATION_RETRY_DELAY_MS);
                     } else {
                         console.warn("Translation failed after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
@@ -3789,7 +3806,7 @@
                 if (attempt < TRANSLATION_MAX_RETRIES) {
                     console.warn("Could not get auth token for translation (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
                     setTimeout(function () {
-                        fireTranslationRequest(user, uid, text, msgId, attempt + 1);
+                        fireTranslationRequest(uid, text, msgId, attempt + 1);
                     }, TRANSLATION_RETRY_DELAY_MS);
                 } else {
                     console.warn("Could not get auth token for translation after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
@@ -3818,7 +3835,7 @@
                 resetSendState();
 
                 // Fire translation in background with retry — child_changed will update the bubble when done
-                fireTranslationRequest(currentUsername, currentUser.uid, text, msgId, 1);
+                fireTranslationRequest(currentUser.uid, text, msgId, 1);
             })['catch'](function (e) {
                 resetSendState();
                 console.error("Error sending general message:", e);
