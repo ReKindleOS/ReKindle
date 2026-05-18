@@ -12,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -759,8 +760,7 @@
         </div>
 
         <div id="add-source-footer" class="list-footer-controls" style="display: none;">
-            <button class="sys-btn wide-btn" onclick="openAddFeedModal()" style="font-weight: bold;">+ Add New
-                Source</button>
+            <button id="add-source-btn" class="sys-btn wide-btn" onclick="openAddFeedModal()" style="font-weight: bold;">+ Add New Source</button>
         </div>
 
         <div id="status-bar">Local Mode</div>
@@ -836,8 +836,8 @@
                 <input type="text" id="new-feed-name" placeholder="e.g. My Blog">
             </div>
 
-            <div class="input-group">
-                <label>Category</label>
+            <div id="category-input-group" class="input-group">
+                <label>Category <span style="font-size:0.75rem; font-weight:normal; color:#666;">(Pro)</span></label>
                 <input type="text" id="new-feed-category" placeholder="e.g. Tech, News" list="category-list">
                 <datalist id="category-list">
                     <!-- Injected via JS -->
@@ -850,6 +850,21 @@
                 <button class="sys-btn" onclick="saveFeedFromModal()">Save</button>
                 <button class="sys-btn" onclick="closeModal('add-feed-modal')">Cancel</button>
             </div>
+        </div>
+    </div>
+
+    <!-- FEED SELECTION MODAL (free users over limit) -->
+    <div id="feed-selection-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:420px; width:90%;">
+            <p data-i18n="rss.limit.body">Free accounts support up to 2 RSS feeds. Please select 2 to keep.</p>
+            <div id="feed-selection-list" style="margin:12px 0; max-height:260px; overflow-y:auto; border:2px solid #000; padding:8px;"></div>
+            <p id="feed-selection-count" style="font-weight:bold; margin:8px 0;">0 of 2 selected</p>
+            <div class="modal-buttons">
+                <button class="sys-btn" id="feed-selection-confirm" onclick="confirmFeedSelection()" disabled data-i18n="rss.limit.keep">Keep Selected</button>
+            </div>
+            <p style="font-size:0.75rem; margin-top:12px; color:#666; text-align:center;">
+                <a href="pay.html" style="color:#000;" data-i18n="rss.limit.upgrade">Upgrade to ReKindle+ for unlimited feeds.</a>
+            </p>
         </div>
     </div>
 
@@ -935,6 +950,9 @@
         let saveTimer = null;
         let fetchCount = 10; // Items per source to fetch
         let readerFontSize = 16; // Default article font size in px
+        let isPro = false;
+        let proCheckDone = false;
+        const FREE_FEED_LIMIT = 2;
 
         // --- INIT ---
         window.onload = () => {
@@ -943,12 +961,14 @@
             loadReadStatus();
             loadReaderFontSize();
 
-            auth.onAuthStateChanged(user => {
+            auth.onAuthStateChanged(async user => {
                 if (user) {
                     currentUser = user;
                     document.getElementById('status-bar').innerText = "Synced: " + user.email;
-                    loadCloudFeeds();
-                    document.getElementById('status-bar').innerText = "Synced: " + user.email;
+
+                    // Check pro status before loading feeds so UI state is correct
+                    await checkProStatus(user);
+
                     loadCloudFeeds();
                     loadCloudReadStatus();
 
@@ -961,11 +981,100 @@
                         }
                     });
                 } else {
+                    currentUser = null;
+                    isPro = false;
+                    proCheckDone = true;
                     document.getElementById('status-bar').innerText = "Guest Mode (Local)";
                     loadLocalFeeds();
                 }
             });
         };
+
+        // --- PRO STATUS ---
+
+        async function checkProStatus(user) {
+            if (!user) {
+                isPro = false;
+                proCheckDone = true;
+                return false;
+            }
+
+            const now = Date.now();
+
+            // 1. Check legacy proExpiresAt on user document
+            try {
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                if (userDoc.exists) {
+                    const data = userDoc.data();
+                    if (data.proExpiresAt) {
+                        const exp = typeof data.proExpiresAt.toMillis === 'function'
+                            ? data.proExpiresAt.toMillis()
+                            : new Date(data.proExpiresAt).getTime();
+                        if (exp > now) {
+                            isPro = true;
+                            proCheckDone = true;
+                            applyProUI();
+                            return true;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Pro check (userDoc) failed:', e);
+            }
+
+            // 2. Check config/supporters by email
+            try {
+                const supportersDoc = await db.collection('config').doc('supporters').get();
+                if (supportersDoc.exists) {
+                    const data = supportersDoc.data();
+                    const email = user.email;
+                    if (email && email in data && data[email] && data[email].expiresAt) {
+                        const exp = typeof data[email].expiresAt.toMillis === 'function'
+                            ? data[email].expiresAt.toMillis()
+                            : new Date(data[email].expiresAt).getTime();
+                        if (exp > now) {
+                            isPro = true;
+                            proCheckDone = true;
+                            applyProUI();
+                            return true;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Pro check (supporters) failed:', e);
+            }
+
+            isPro = false;
+            proCheckDone = true;
+            applyFreeUI();
+            return false;
+        }
+
+        function applyProUI() {
+            const catGroup = document.getElementById('category-input-group');
+            if (catGroup) catGroup.style.display = '';
+            updateAddSourceButton();
+        }
+
+        function applyFreeUI() {
+            const catGroup = document.getElementById('category-input-group');
+            if (catGroup) catGroup.style.display = 'none';
+            updateAddSourceButton();
+        }
+
+        function updateAddSourceButton() {
+            const btn = document.getElementById('add-source-btn');
+            if (!btn) return;
+            if (currentUser && !isPro && feeds.length >= FREE_FEED_LIMIT) {
+                btn.disabled = true;
+                btn.title = t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.');
+                btn.textContent = t('rss.limit.btn', '+ Add Source (Pro only)');
+            } else {
+                btn.disabled = false;
+                btn.title = '';
+                btn.textContent = t('rss.btn.addnew', '+ Add New Source');
+            }
+        }
 
         // Helper to HTML-escape text
         function escapeHTML(text) {
@@ -1157,44 +1266,78 @@
                         feeds.push({ id: doc.id, ...doc.data() });
                     });
                     renderSources();
-                    if (feeds.length > 0) resetAndFetch();
-                    else {
+                    updateAddSourceButton();
+                    if (feeds.length > 0) {
+                        resetAndFetch();
+                        if (proCheckDone && !isPro && feeds.length > FREE_FEED_LIMIT) {
+                            maybeShowFeedSelectionModal();
+                        }
+                    } else {
                         document.getElementById('articles-container').innerHTML = '<div class="loading-msg">No feeds subscribed. Go to Sources to add some.</div>';
                     }
                 });
         }
 
-        function saveFeed(name, url, category, id = null) {
+        async function saveFeed(name, url, category, id = null) {
             if (currentUser) {
                 if (id) {
-                    // Update existing
-                    db.collection('users').doc(currentUser.uid).collection('rss_feeds').doc(id).set({
-                        name: name,
-                        url: url,
-                        category: category || "Uncategorized",
-                        updated: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
+                    // UPDATE — all users write directly; free users can't set a custom category
+                    const safeCategory = isPro ? (category || 'Uncategorized') : 'Uncategorized';
+                    try {
+                        await db.collection('users').doc(currentUser.uid).collection('rss_feeds').doc(id).set({
+                            name: name,
+                            url: url,
+                            category: safeCategory,
+                            updated: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    } catch (e) {
+                        console.error('saveFeed update failed:', e);
+                        showModal('Failed to save feed: ' + (e.message || 'Unknown error'));
+                    }
                 } else {
-                    // Add new
-                    db.collection('users').doc(currentUser.uid).collection('rss_feeds').add({
-                        name: name,
-                        url: url,
-                        category: category || "Uncategorized",
-                        added: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    // CREATE — pro users write directly; free users call Cloud Function
+                    if (isPro) {
+                        try {
+                            await db.collection('users').doc(currentUser.uid).collection('rss_feeds').add({
+                                name: name,
+                                url: url,
+                                category: category || 'Uncategorized',
+                                added: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        } catch (e) {
+                            console.error('saveFeed direct add failed:', e);
+                            showModal('Failed to add feed: ' + (e.message || 'Unknown error'));
+                        }
+                    } else {
+                        // Free user — enforce limit server-side
+                        try {
+                            const createFn = firebase.functions().httpsCallable('createRssFeed');
+                            await createFn({ name, url, category: 'Uncategorized' });
+                            // onSnapshot listener updates feeds[] automatically
+                        } catch (e) {
+                            const code = e.code || '';
+                            if (code === 'functions/resource-exhausted') {
+                                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
+                            } else if (code === 'functions/already-exists') {
+                                showModal('Already subscribed to this feed.');
+                            } else {
+                                console.error('createRssFeed failed:', e);
+                                showModal('Failed to add feed: ' + (e.message || 'Unknown error'));
+                            }
+                        }
+                    }
                 }
             } else {
+                // GUEST MODE — localStorage only
                 if (id) {
-                    // Update local
                     const idx = feeds.findIndex(f => f.id === id);
                     if (idx !== -1) {
                         feeds[idx].name = name;
                         feeds[idx].url = url;
-                        feeds[idx].category = category || "Uncategorized";
+                        feeds[idx].category = category || 'Uncategorized';
                     }
                 } else {
-                    // Add local
-                    feeds.push({ id: Date.now().toString(), name: name, url: url, category: category || "Uncategorized" });
+                    feeds.push({ id: Date.now().toString(), name: name, url: url, category: category || 'Uncategorized' });
                 }
                 localStorage.setItem('rss_feeds', JSON.stringify(feeds));
                 renderSources();
@@ -1225,6 +1368,85 @@
 
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
+        }
+
+        // --- FEED SELECTION MODAL (free users over limit) ---
+
+        let feedSelectionChoices = new Set();
+
+        function maybeShowFeedSelectionModal() {
+            if (isPro || !currentUser || feeds.length <= FREE_FEED_LIMIT) return;
+
+            feedSelectionChoices = new Set();
+            const listEl = document.getElementById('feed-selection-list');
+            listEl.innerHTML = '';
+
+            feeds.forEach(feed => {
+                const item = document.createElement('div');
+                item.style.cssText = 'display:flex; align-items:flex-start; padding:6px 0; border-bottom:1px solid #ccc;';
+                item.innerHTML = `
+                    <input type="checkbox" id="fsel-${escapeHtml(feed.id)}" value="${escapeHtml(feed.id)}"
+                           style="margin-right:8px; margin-top:3px; width:16px; height:16px; cursor:pointer; flex-shrink:0;"
+                           onchange="toggleFeedSelection('${escapeHtml(feed.id)}', this.checked)">
+                    <label for="fsel-${escapeHtml(feed.id)}" style="cursor:pointer; flex:1;">
+                        <strong>${escapeHtml(feed.name)}</strong>
+                        <br><span style="font-size:0.8rem; color:#666;">${escapeHtml(feed.url)}</span>
+                    </label>`;
+                listEl.appendChild(item);
+            });
+
+            updateFeedSelectionUI();
+            document.getElementById('feed-selection-modal').style.display = 'flex';
+        }
+
+        function toggleFeedSelection(id, checked) {
+            if (checked) {
+                feedSelectionChoices.add(id);
+            } else {
+                feedSelectionChoices.delete(id);
+            }
+            updateFeedSelectionUI();
+        }
+
+        function updateFeedSelectionUI() {
+            const count = feedSelectionChoices.size;
+            const atLimit = count === FREE_FEED_LIMIT;
+            document.getElementById('feed-selection-count').textContent = `${count} ${t('rss.limit.of', 'of')} ${FREE_FEED_LIMIT} ${t('rss.limit.selected', 'selected')}`;
+            document.getElementById('feed-selection-confirm').disabled = !atLimit;
+
+            // Disable unchecked boxes once 2 are chosen
+            feeds.forEach(feed => {
+                const cb = document.getElementById(`fsel-${feed.id}`);
+                if (!cb) return;
+                cb.disabled = !cb.checked && atLimit;
+            });
+        }
+
+        async function confirmFeedSelection() {
+            if (feedSelectionChoices.size !== FREE_FEED_LIMIT) return;
+
+            const confirmBtn = document.getElementById('feed-selection-confirm');
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = t('rss.limit.saving', 'Saving...');
+
+            const toDelete = feeds.filter(f => !feedSelectionChoices.has(f.id));
+
+            try {
+                const batch = db.batch();
+                toDelete.forEach(feed => {
+                    const ref = db.collection('users').doc(currentUser.uid)
+                                  .collection('rss_feeds').doc(feed.id);
+                    batch.delete(ref);
+                });
+                await batch.commit();
+                document.getElementById('feed-selection-modal').style.display = 'none';
+                // onSnapshot listener will update feeds[] and re-render automatically
+            } catch (e) {
+                console.error('Feed selection batch delete failed:', e);
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = t('rss.limit.keep', 'Keep Selected');
+                showModal('Failed to remove feeds: ' + (e.message || 'Unknown error'));
+            }
         }
 
         // --- SOURCES UI ---
@@ -1263,16 +1485,19 @@
                     <button class="filter-btn ${filterMode === 'unread' ? 'active' : ''}" id="filter-unread" onclick="setFilter('unread')">Unread</button>
                 `;
                 let dynamicBtns = '';
-                const cats = Object.keys(grouped).sort();
-                const hasNamedCategories = cats.some(c => c !== 'Uncategorized');
-                cats.forEach(cat => {
-                    // Only show "Uncategorized" filter if user has at least one named category
-                    if (cat === 'Uncategorized' && !hasNamedCategories) return;
-                    // Escape single quotes in cat name for the onclick handler
-                    const escapedCat = escapeHtml(cat).replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'");
-                    const btnId = `filter-${cat.replace(/\s+/g, '-')}`;
-                    dynamicBtns += `<button class="filter-btn ${filterMode === cat ? 'active' : ''}" id="${btnId}" onclick="setFilter('${escapedCat}')">${cat}</button>`;
-                });
+                // Category filters are pro-only; hide for free authenticated users
+                if (!currentUser || isPro) {
+                    const cats = Object.keys(grouped).sort();
+                    const hasNamedCategories = cats.some(c => c !== 'Uncategorized');
+                    cats.forEach(cat => {
+                        // Only show "Uncategorized" filter if user has at least one named category
+                        if (cat === 'Uncategorized' && !hasNamedCategories) return;
+                        // Escape single quotes in cat name for the onclick handler
+                        const escapedCat = escapeHtml(cat).replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'");
+                        const btnId = `filter-${cat.replace(/\s+/g, '-')}`;
+                        dynamicBtns += `<button class="filter-btn ${filterMode === cat ? 'active' : ''}" id="${btnId}" onclick="setFilter('${escapedCat}')">${cat}</button>`;
+                    });
+                }
                 filterBar.innerHTML = staticBtns + dynamicBtns;
             }
 
@@ -1303,6 +1528,11 @@
         }
 
         function openAddFeedModal() {
+            if (currentUser && !isPro && feeds.length >= FREE_FEED_LIMIT) {
+                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
+                return;
+            }
+
             document.getElementById('add-feed-title').innerText = "Add Source";
             document.getElementById('new-feed-url').value = '';
             document.getElementById('new-feed-name').value = '';
@@ -1329,7 +1559,10 @@
         function saveFeedFromModal() {
             const url = document.getElementById('new-feed-url').value.trim();
             const name = document.getElementById('new-feed-name').value.trim() || "New Feed";
-            const category = document.getElementById('new-feed-category').value.trim() || "Uncategorized";
+            // Free users always get Uncategorized; category field is hidden anyway
+            const category = isPro
+                ? (document.getElementById('new-feed-category').value.trim() || "Uncategorized")
+                : "Uncategorized";
             const id = document.getElementById('edit-feed-id').value;
 
             if (!url) {
@@ -1361,6 +1594,10 @@
         }
 
         function addPreset(name, url) {
+            if (currentUser && !isPro && feeds.length >= FREE_FEED_LIMIT) {
+                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
+                return;
+            }
             const exists = feeds.some(f => f.url === url);
             if (exists) {
                 showModal("Already subscribed.");

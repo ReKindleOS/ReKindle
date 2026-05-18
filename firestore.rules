@@ -146,7 +146,13 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       match /rss_feeds/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read:   if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+        // Free users can update (name/url) but cannot set a custom category
+        allow update: if request.auth != null && request.auth.uid == userId &&
+                         (isProUser() || request.resource.data.category == 'Uncategorized');
+        // Creates: pro users write directly; free users must use the createRssFeed Cloud Function
+        allow create: if request.auth != null && request.auth.uid == userId && isProUser();
       }
       match /apps/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
