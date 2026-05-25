@@ -397,23 +397,62 @@ async function moderateContent(text, apiKey, imageUrl) {
     return moderationResult;
 }
 
-// Custom score thresholds for pixel art (omni-moderation-latest returns low scores for stylized images)
-const PIXEL_ART_THRESHOLDS = {
-    sexual: 0.008,
-    violence: 0.008,
-    "violence/graphic": 0.008,
-    "self-harm": 0.008,
-    "self-harm/intent": 0.008,
-    "self-harm/instructions": 0.008
-};
+/* ------------------------------------------------------------------ */
+/*  PIXEL ART MODERATION HELPERS                                       */
+/* ------------------------------------------------------------------ */
 
-function checkPixelArtScores(mod, isPixelArt) {
+// Infer grid size from grid_data so we can tune thresholds per canvas size
+function getGridSize(gridDataStr) {
+    try {
+        const grid = JSON.parse(gridDataStr);
+        if (Array.isArray(grid) && grid.length > 0) {
+            return grid.length;
+        }
+    } catch (e) {}
+    return null;
+}
+
+// Thresholds tuned against a 32x32 test set (smiley, plane, penis, swastika).
+// The penis is caught by the low sexual threshold.
+// Hate thresholds are set low to catch swastikas if the model ever returns
+// a non-zero hate score for them.
+// A heuristic is also used for swastikas because the model currently returns
+// hate=0 for 32x32 pixel art swastikas.
+function getPixelArtThresholds(gridSize) {
+    if (gridSize === 32) {
+        return {
+            sexual: 0.000055,           // penis scored 0.000088; benign scored ~0.000040
+            violence: 0.008,
+            "violence/graphic": 0.008,
+            "self-harm": 0.008,
+            "self-harm/intent": 0.008,
+            "self-harm/instructions": 0.008,
+            hate: 0.000010,
+            "hate/threatening": 0.000010
+        };
+    }
+
+    // Fallback for 16x16 or anything else
+    return {
+        sexual: 0.004,
+        violence: 0.004,
+        "violence/graphic": 0.004,
+        "self-harm": 0.004,
+        "self-harm/intent": 0.004,
+        "self-harm/instructions": 0.004,
+        hate: 0.004,
+        "hate/threatening": 0.004
+    };
+}
+
+function checkPixelArtScores(mod, isPixelArt, gridSize) {
     if (!isPixelArt || mod.flagged) return mod;
 
+    const thresholds = getPixelArtThresholds(gridSize);
     const flaggedCategories = {};
     let anyFlagged = false;
 
-    for (const [category, threshold] of Object.entries(PIXEL_ART_THRESHOLDS)) {
+    for (const [category, threshold] of Object.entries(thresholds)) {
         const score = mod.categoryScores[category] || 0;
         if (score >= threshold) {
             flaggedCategories[category] = true;
@@ -421,8 +460,23 @@ function checkPixelArtScores(mod, isPixelArt) {
         }
     }
 
+    // Experimental heuristic for 32x32 hate symbols (e.g. swastika).
+    // The model often returns near-zero hate scores for small pixel art,
+    // but hate symbols tend to have moderate violence with very low
+    // self-harm/intent compared to benign curved shapes.
+    // Test data: swastika violence=0.000510, self-harm/intent=0.000005.
+    if (gridSize === 32 && !anyFlagged) {
+        const violenceScore = mod.categoryScores["violence"] || 0;
+        const selfHarmIntentScore = mod.categoryScores["self-harm/intent"] || 0;
+        if (violenceScore >= 0.000500 && selfHarmIntentScore <= 0.000050) {
+            flaggedCategories["hate"] = true;
+            anyFlagged = true;
+            console.log("[MODERATION] Pixel art flagged by 32x32 hate-symbol heuristic:", JSON.stringify(flaggedCategories));
+        }
+    }
+
     if (anyFlagged) {
-        console.log("[MODERATION] Pixel art flagged by custom thresholds:", JSON.stringify(flaggedCategories));
+        console.log("[MODERATION] Pixel art flagged by custom thresholds (gridSize:", gridSize, "):", JSON.stringify(flaggedCategories));
         return {
             ...mod,
             flagged: true,
@@ -603,14 +657,20 @@ export default {
                 const isFlipnote = body.is_flipnote === true;
                 // Pixel art sends image for moderation
                 const pixelArt = body.pixel_art || null;
-                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "hasPixelArt:", !!pixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "pixelArtIsBase64:", pixelArt ? pixelArt.startsWith("data:image") : false);
+                const gridSize = getGridSize(body.grid_data);
+                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "hasPixelArt:", !!pixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "pixelArtIsBase64:", pixelArt ? pixelArt.startsWith("data:image") : false, "gridSize:", gridSize);
+
+                if (gridSize === 64) {
+                    return new Response(JSON.stringify({ error: "64× pixel art is not supported in chat." }), { status: 400, headers });
+                }
 
                 if (!isFlipnote) {
-                    // For pixel art, send image-only moderation (no benign text) to avoid diluting image scores
-                    const imageText = pixelArt ? null : trimmed;
+                    // Send pixel art images without text so image-category scores aren't
+                    // diluted by innocent text context.
                     const isPixelArt = body.is_pixel_art === true;
+                    const imageText = isPixelArt ? null : trimmed;
                     let mod = await moderateContent(imageText, env.OPENAI_API_KEY, pixelArt);
-                    mod = checkPixelArtScores(mod, isPixelArt);
+                    mod = checkPixelArtScores(mod, isPixelArt, gridSize);
                     if (mod.flagged) {
                         await logAutomodRejection(uid, "kindlechat", trimmed, mod.categories, accessToken);
                         return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
