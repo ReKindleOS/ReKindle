@@ -1,7 +1,7 @@
 export default {
   async fetch(request, env, ctx) {
     const allowedOrigins = [
-      "https://beta.rekindle.pages.dev",
+      "https://beta.rekindle.ink",
       "https://rekindle.ink",
       "https://lite.rekindle.ink",
       "https://legacy.rekindle.ink",

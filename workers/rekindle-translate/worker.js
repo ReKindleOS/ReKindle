@@ -266,7 +266,7 @@ async function handleRequest(request) {
     const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("x-forwarded-for") || "127.0.0.1";
 
     const allowedOrigins = [
-        "https://beta.rekindle.pages.dev",
+        "https://beta.rekindle.ink",
         "https://rekindle.ink",
         "https://lite.rekindle.ink",
         "https://legacy.rekindle.ink",

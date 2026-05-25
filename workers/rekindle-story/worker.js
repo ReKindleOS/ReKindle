@@ -462,7 +462,7 @@ JSZM.prototype = {
 // ============================================================================
 
 const ALLOWED_ORIGINS = [
-  'https://beta.rekindle.pages.dev',
+  'https://beta.rekindle.ink',
   'https://rekindle.ink',
   'https://lite.rekindle.ink',
   'https://legacy.rekindle.ink'

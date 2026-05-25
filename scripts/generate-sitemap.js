@@ -2,7 +2,7 @@ const fs = require('fs-extra');
 const glob = require('glob');
 const path = require('path');
 
-const DEFAULT_DOMAIN = 'https://beta.rekindle.pages.dev';
+const DEFAULT_DOMAIN = 'https://beta.rekindle.ink';
 // Depending on where this is run from, we usually assume it's run from root via 'node scripts/...'
 // But to be safe, let's resolve relative to this file
 const ROOT_DIR = path.resolve(__dirname, '..');
