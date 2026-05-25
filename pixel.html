@@ -620,6 +620,32 @@
         </div>
     </div>
 
+    <!-- POST CONFIRM MODAL -->
+    <div id="post-confirm-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 data-i18n="pixel.modal.post.title">Post to KindleChat?</h3>
+            <p style="margin-bottom:20px;" data-i18n="pixel.modal.post.text">Are you sure you want to post this drawing
+                to KindleChat?</p>
+            <div style="display: flex; justify-content: center">
+                <button class="sys-btn" onclick="confirmPost()" data-i18n="pixel.btn.yes">Yes</button>
+                <button class="sys-btn" onclick="closeModal('post-confirm-modal')" data-i18n="pixel.btn.no"
+                    style="margin-left: 10px">No</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUCCESS MODAL -->
+    <div id="success-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 data-i18n="pixel.modal.posted.title">Posted!</h3>
+            <p style="margin-bottom:20px;" data-i18n="pixel.modal.posted.text">Your art has been posted to KindleChat.
+            </p>
+            <div style="display: flex; justify-content: center">
+                <button class="sys-btn" onclick="closeModal('success-modal')" data-i18n="pixel.btn.ok">OK</button>
+            </div>
+        </div>
+    </div>
+
     <!-- WALLPAPER SUCCESS MODAL -->
     <div id="wallpaper-modal" class="modal-overlay">
         <div class="modal-box">
@@ -643,6 +669,12 @@
                 Back
             </div>
             <span class="title-text" data-i18n="pixel.title">Pixel</span>
+            <!-- Contextual Back Button -->
+            <div id="back-to-chat-btn" class="close-box"
+                style="left:auto; right:10px; width:auto; padding:0 8px; font-weight:normal; display:none;"
+                onclick="window.location.href='kindlechat'" data-i18n="pixel.btn.back_to_chat">
+                Back to Chat
+            </div>
         </div>
 
         <!-- GALLERY SCREEN -->
@@ -673,6 +705,8 @@
                 <button class="menu-btn" onclick="downloadImage()" data-i18n="pixel.menu.download">Download</button>
                 <button class="menu-btn" onclick="setWallpaper()" data-i18n="pixel.menu.background">Set
                     Background</button>
+                <button class="menu-btn" onclick="openModal('post-confirm-modal')" data-i18n="pixel.menu.post">Post to
+                    KindleChat</button>
             </div>
 
             <div class="game-content">
@@ -891,7 +925,61 @@
             // Prevent context menu
             canvas.oncontextmenu = (e) => e.preventDefault();
 
+            // Check for source param
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('source') === 'kindlechat') {
+                const backBtn = document.getElementById('back-to-chat-btn');
+                if (backBtn) backBtn.style.display = 'flex';
+                // Defer auto-new until manifest is loaded (set flag, initApp handles it)
+                window._pixelAutoCreate = true;
+            }
         };
+
+        async function postToPixelChat() {
+            if (!currentUser) return showModal(window.t('pixel.status.login_to_post', "You must be logged in to post."));
+
+
+            // Get data URL from the pixel canvas only (no grid)
+            const dataUrl = canvas.toDataURL('image/png');
+            const currentUsername = currentUser.email.split('@')[0];
+
+            try {
+                // Use RTDB for 'general' chat messages (where artwork goes)
+                const messagesRef = rtdb.ref('kindlechat/messages');
+
+                // MODERATION CHECK — enforced server-side so it cannot be bypassed client-side
+                const postGeneralChatMessage = firebase.functions().httpsCallable('postGeneralChatMessage');
+                const result = await postGeneralChatMessage({
+                    text: window.t('pixel.status.shared', 'Shared a pixel art!'),
+                    pixel_art: dataUrl,
+                    grid_data: JSON.stringify(grid),
+                    is_pixel_art: true
+                });
+                if (!result.data.allowed) {
+                    closeModal('post-confirm-modal');
+                    const waitSec = Math.ceil((result.data.retryAfter || 20000) / 1000);
+                    const slowDownMsg = window.t('pixel.status.slow_down', 'Please wait ' + waitSec + ' seconds before posting again.');
+                    showModal(slowDownMsg, false);
+                    return;
+                }
+
+                closeModal('post-confirm-modal');
+
+                // Show success modal wrapper
+                const successModal = document.getElementById('success-modal');
+                if (successModal) successModal.style.display = 'flex';
+
+            } catch (e) {
+                console.error("Error posting:", e);
+                const errMsg = window.t('pixel.status.error_posting', "Error posting: ") + e.message;
+                showModal(errMsg);
+            }
+        }
+
+        function confirmPost() {
+            closeModal('post-confirm-modal');
+            postToPixelChat();
+        }
 
         window.onresize = () => {
             if (currentDrawingId) setupCanvas(false); // Resize canvas if in editor
@@ -901,6 +989,12 @@
             await loadManifest();
             migrateLegacyData(); // One-off check
             renderGallery();
+
+            // Show new drawing modal if opened from KindleChat
+            if (window._pixelAutoCreate) {
+                window._pixelAutoCreate = false;
+                openModal('new-drawing-modal');
+            }
         }
 
         // --- MANIFEST & DATA ---

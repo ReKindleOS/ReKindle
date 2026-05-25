@@ -240,6 +240,24 @@ const APPS = [
         icon: '<path d="M4 6 h14 v12 h-4 l-4 4 v-4 h-6 z" fill="white" stroke="black" stroke-width="2"/><path d="M14 14 h14 v12 h-6 l-4 4 v-4 h-4 z" fill="black" stroke="white" stroke-width="2"/>'
     },
     {
+        id: 'neighbourhood',
+        name: 'Neighbourhood',
+        cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 6,
+        desc: 'Post & make connections',
+        icon: '<g transform="translate(0, 3)"><rect x="16" y="3" width="2" height="9" fill="black"/><path d="M12 3 L2 12 H5 V22 H19 V12 H22 L12 3 Z" fill="white" stroke="black" stroke-width="2"/><path d="M2 22 H22" stroke="black" stroke-width="2"/></g>'
+    },
+    {
+        id: 'topics',
+        name: 'Topics',
+        cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 5,
+        desc: 'Discuss anything!',
+        icon: '<g transform="translate(0, 3)"><path d="M3 3 h18 a2 2 0 0 1 2 2 v6 a2 2 0 0 1 -2 2 h-6 l-3 3 l-3 -3 h-6 a2 2 0 0 1 -2 -2 v-6 a2 2 0 0 1 2 -2 z" fill="white" stroke="black" stroke-width="2"/><circle cx="5" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M2 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="19" cy="19" r="3" fill="none" stroke="black" stroke-width="2"/><path d="M16 24 q3 -4 6 0" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="20" r="3" fill="white" stroke="black" stroke-width="2"/><path d="M9 25 q3 -4 6 0" fill="white" stroke="black" stroke-width="2"/></g>'
+    },
+    {
         id: 'mastodon',
         name: 'Mastodon',
         cat: 'lifestyle',
@@ -262,6 +280,15 @@ const APPS = [
         beta: true,
         desc: 'Library books',
         icon: '<path d="M6 6 C6 6, 12 4, 16 6 C 20 4, 26 6, 26 6 V 26 C 26 26, 20 24, 16 26 C 12 24, 6 26, 6 26 Z M16 6 V 26" fill="none" stroke="black" stroke-width="2"/>'
+    },
+    {
+        id: 'kindlechat',
+        name: 'KindleChat',
+        cat: 'lifestyle',
+        featured: true,
+        featuredOrder: 4,
+        desc: 'Now with more pixels!',
+        icon: '<rect x="4" y="6" width="24" height="16" stroke="black" stroke-width="2" fill="none"/><path d="M8 22 L8 28 L14 22" stroke="black" stroke-width="2" fill="none"/>'
     },
     {
         id: 'reader',
