@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+
+    <title>Readwise</title>
+
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        body {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* WINDOW FRAME */
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            min-height: 90vh;
+            width: 100%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .controls {
+            position: absolute;
+            right: 10px;
+            z-index: 1;
+            display: flex;
+        }
+
+        .controls>*+* {
+            margin-left: 10px;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        .icon-contract {
+            display: none;
+        }
+
+        /* APP LAYOUT */
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 180px;
+            border-right: 2px solid black;
+            display: flex;
+            flex-direction: column;
+            background: #f0f0f0;
+            flex-shrink: 0;
+        }
+
+        .nav-menu {
+            border-bottom: 2px solid black;
+            padding: 5px 0;
+            background: #fff;
+        }
+
+        .nav-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .nav-item .nav-icon {
+            margin-right: 10px;
+        }
+
+        .nav-item:hover {
+            background: #f0f0f0;
+        }
+
+        .nav-item.active {
+            background: #ddd;
+            border-left: 4px solid black;
+            padding-left: 11px;
+        }
+
+        .nav-icon {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feed-header {
+            padding: 10px;
+            border-bottom: 2px solid black;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .feed-controls {
+            display: flex;
+            align-items: center;
+        }
+
+        .feed-controls>*+* {
+            margin-left: 10px;
+        }
+
+        .post-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .post-card {
+            border-bottom: 1px solid #ccc;
+            padding: 15px;
+            cursor: pointer;
+            background: white;
+        }
+
+        .post-card:hover {
+            background: #f9f9f9;
+        }
+
+        .post-card:active {
+            background: #eee;
+        }
+
+        .post-meta {
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .post-title {
+            font-size: 1.05rem;
+            font-weight: bold;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+
+        .post-snippet {
+            font-size: 0.85rem;
+            color: #444;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .post-progress {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 6px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            margin-top: 4px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: black;
+        }
+
+        /* HIGHLIGHT CARDS */
+        .book-card {
+            border-bottom: 1px solid #ccc;
+            padding: 15px;
+            background: white;
+        }
+
+        .book-header {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .book-cover {
+            width: 50px;
+            height: 70px;
+            border: 2px solid black;
+            object-fit: cover;
+            flex-shrink: 0;
+            margin-right: 12px;
+            background: #eee;
+        }
+
+        .book-info {
+            flex: 1;
+        }
+
+        .book-title {
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 3px;
+        }
+
+        .book-author {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .book-count {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 3px;
+        }
+
+        .book-expand {
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 0 8px;
+        }
+
+        .highlights-list {
+            display: none;
+            padding: 10px 0 0 62px;
+        }
+
+        .highlights-list.open {
+            display: block;
+        }
+
+        .highlight-item {
+            padding: 10px;
+            border-left: 3px solid black;
+            background: #fafafa;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .highlight-note {
+            font-size: 0.8rem;
+            color: #555;
+            font-style: italic;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #ccc;
+        }
+
+        .highlight-tags {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 6px;
+        }
+
+        /* REVIEW CARDS */
+        .review-card {
+            border-bottom: 1px solid #ccc;
+            padding: 20px;
+            background: white;
+        }
+
+        .review-text {
+            font-family: "Georgia", serif;
+            font-size: 1.05rem;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .review-source {
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* BUTTONS */
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 4px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            font-size: 0.8rem;
+        }
+
+        .sys-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: none;
+            background: black;
+            color: white;
+        }
+
+        /* MODALS */
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 5000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 420px;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 2px solid black;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            margin: 10px 0;
+        }
+
+        .modal-text {
+            text-align: left;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 10px;
+        }
+
+        /* EMPTY STATE */
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+        }
+
+        .empty-state h3 {
+            margin-top: 0;
+        }
+
+        /* LOADING */
+        .loading-msg {
+            text-align: center;
+            padding: 40px;
+            font-style: italic;
+            color: #666;
+        }
+
+        .list-footer {
+            padding: 15px;
+            text-align: center;
+            border-top: 1px solid #ccc;
+        }
+
+        /* FILTER SELECT */
+        select {
+            border: 2px solid black;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            background: white;
+            box-shadow: 2px 2px 0 black;
+            cursor: pointer;
+        }
+
+        select:active {
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        /* READER OVERLAY */
+        #reader-modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 100;
+            flex-direction: column;
+        }
+
+        .reader-toolbar {
+            height: 40px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            justify-content: space-between;
+            background: #eee;
+            flex-shrink: 0;
+        }
+
+        .reader-title {
+            font-weight: bold;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 50%;
+        }
+
+        .reader-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+            font-family: Georgia, serif;
+            font-size: 1.1rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .reader-content img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            display: block;
+        }
+
+        .reader-content h1, .reader-content h2, .reader-content h3 {
+            font-family: "Geneva", "Verdana", sans-serif;
+        }
+
+        .reader-content a {
+            color: black;
+            text-decoration: underline;
+        }
+
+        /* MOBILE */
+        @media (max-width: 600px) {
+            .sidebar {
+                width: 60px;
+                align-items: center;
+            }
+
+            .sidebar .nav-label {
+                display: none;
+            }
+
+            .sidebar .nav-item {
+                justify-content: center;
+                padding: 12px 0;
+                width: 100%;
+            }
+
+            .reader-content {
+                padding: 15px;
+            }
+        }
+    </style>
+    <script src="theme.js?v=18"></script>
+    <script src="time.js"></script>
+    <script src="js/i18n.js"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div class="title-text">Readwise</div>
+            <div class="controls">
+                <button class="icon-btn" onclick="openSettings()" title="Settings" style="margin-right: 5px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                        </path>
+                    </svg>
+                </button>
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"></path>
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="app-container">
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+                <div class="nav-menu">
+                    <div class="nav-item active" onclick="switchView('reader')" id="nav-reader">
+                        <span class="nav-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg>
+                        </span>
+                        <span class="nav-label">Reader</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView('highlights')" id="nav-highlights">
+                        <span class="nav-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="black" stroke="none"/>
+                            </svg>
+                        </span>
+                        <span class="nav-label">Highlights</span>
+                    </div>
+                    <div class="nav-item" onclick="switchView('review')" id="nav-review">
+                        <span class="nav-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </span>
+                        <span class="nav-label">Daily Review</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div class="main-content" id="main-content">
+                <div class="feed-header" id="feed-header">
+                    <div class="feed-title" id="feed-title">Reader</div>
+                    <div class="feed-controls" id="feed-controls">
+                        <select id="location-filter" onchange="filterReader()">
+                            <option value="">All</option>
+                            <option value="new">New</option>
+                            <option value="later">Later</option>
+                            <option value="archive">Archive</option>
+                            <option value="feed">Feed</option>
+                        </select>
+                        <button class="sys-btn" onclick="refreshData()">Refresh</button>
+                    </div>
+                </div>
+                <div id="post-list" class="post-list">
+                    <div class="empty-state">
+                        <h3>Welcome to Readwise</h3>
+                        <p>To access your Reader articles and highlights, connect your Readwise account.</p>
+                        <button class="sys-btn" onclick="openSettings()" style="margin-top:20px;">Connect Account</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- READER OVERLAY -->
+        <div id="reader-modal">
+            <div class="reader-toolbar">
+                <button class="sys-btn" onclick="closeReader()">Back</button>
+                <span class="reader-title" id="reader-title">Article</span>
+                <button class="sys-btn" onclick="openOriginal()">Web</button>
+            </div>
+            <div class="reader-content" id="reader-content">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="margin-top:0;">Connect Readwise</h2>
+            <div class="modal-text">
+                <p>Enter your Readwise API token to access your Reader articles and highlights.</p>
+                <p>You can get your token from:<br><a href="https://readwise.io/access_token" target="_blank" style="color:black;">readwise.io/access_token</a></p>
+            </div>
+            <input type="password" id="token-input" class="modal-input" placeholder="Paste your Readwise token here...">
+            <p id="token-status" style="font-size:0.8rem; color:#666; margin:5px 0;"></p>
+            <div style="display:flex; justify-content:center; margin-top:15px;">
+                <button class="sys-btn" onclick="saveToken()">Save &amp; Connect</button>
+                <button class="sys-btn" onclick="closeModal('settings-modal')" style="margin-left:10px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const WORKER_URL = "https://rekindle-readwise.timjarnott.workers.dev";
+        const READER_WORKER_URL = "https://rekindle-reader.timjarnott.workers.dev";
+        const LS_TOKEN_KEY = "rekindle_readwise_token";
+
+        // --- STATE ---
+        let state = {
+            token: localStorage.getItem(LS_TOKEN_KEY) || "",
+            view: "reader",
+            reader: {
+                documents: [],
+                nextCursor: null,
+                location: "",
+                isLoading: false,
+            },
+            highlights: {
+                books: [],
+                nextCursor: null,
+                isLoading: false,
+            },
+            review: {
+                data: null,
+                isLoading: false,
+            }
+        };
+
+        // --- INIT ---
+        window.onload = function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
+
+            if (state.token) {
+                validateToken().then(valid => {
+                    if (valid) refreshData();
+                    else showTokenError();
+                });
+            }
+        };
+
+        // --- API ---
+        async function apiCall(endpoint, queryParams = {}) {
+            const url = new URL(WORKER_URL + endpoint);
+            Object.entries(queryParams).forEach(([k, v]) => {
+                if (v !== null && v !== undefined && v !== "") url.searchParams.set(k, v);
+            });
+
+            const res = await fetch(url.toString(), {
+                headers: {
+                    "X-Readwise-Token": state.token,
+                }
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                throw new Error("Invalid token. Please check your Readwise API token.");
+            }
+            if (!res.ok) {
+                throw new Error(`API Error ${res.status}`);
+            }
+            // Handle 204 No Content (e.g. auth check)
+            if (res.status === 204) return null;
+            return await res.json();
+        }
+
+        async function validateToken() {
+            try {
+                const res = await fetch(WORKER_URL + "/auth", {
+                    headers: { "X-Readwise-Token": state.token }
+                });
+                return res.status === 204;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // --- VIEWS ---
+        function switchView(view) {
+            state.view = view;
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('nav-' + view).classList.add('active');
+
+            const titleEl = document.getElementById('feed-title');
+            const controlsEl = document.getElementById('feed-controls');
+
+            if (view === 'reader') {
+                titleEl.textContent = 'Reader';
+                controlsEl.innerHTML = `
+                    <select id="location-filter" onchange="filterReader()">
+                        <option value="">All</option>
+                        <option value="new">New</option>
+                        <option value="later">Later</option>
+                        <option value="archive">Archive</option>
+                        <option value="feed">Feed</option>
+                    </select>
+                    <button class="sys-btn" onclick="refreshData()">Refresh</button>
+                `;
+                renderReader();
+            } else if (view === 'highlights') {
+                titleEl.textContent = 'Highlights';
+                controlsEl.innerHTML = `<button class="sys-btn" onclick="refreshData()">Refresh</button>`;
+                renderHighlights();
+            } else if (view === 'review') {
+                titleEl.textContent = 'Daily Review';
+                controlsEl.innerHTML = `<button class="sys-btn" onclick="refreshData()">Refresh</button>`;
+                renderReview();
+            }
+        }
+
+        async function refreshData() {
+            if (!state.token) {
+                openSettings();
+                return;
+            }
+
+            if (state.view === 'reader') {
+                state.reader.documents = [];
+                state.reader.nextCursor = null;
+                await loadReader();
+            } else if (state.view === 'highlights') {
+                state.highlights.books = [];
+                state.highlights.nextCursor = null;
+                await loadHighlights();
+            } else if (state.view === 'review') {
+                await loadReview();
+            }
+        }
+
+        function filterReader() {
+            const select = document.getElementById('location-filter');
+            state.reader.location = select ? select.value : "";
+            state.reader.documents = [];
+            state.reader.nextCursor = null;
+            loadReader();
+        }
+
+        // --- READER ---
+        async function loadReader() {
+            if (state.reader.isLoading) return;
+            state.reader.isLoading = true;
+            showLoading();
+
+            try {
+                const params = {};
+                if (state.reader.nextCursor) params.pageCursor = state.reader.nextCursor;
+                if (state.reader.location) params.location = state.reader.location;
+
+                const data = await apiCall("/reader", params);
+                state.reader.documents.push(...(data.results || []));
+                state.reader.nextCursor = data.nextPageCursor || null;
+                renderReader();
+            } catch (e) {
+                showError(e.message);
+            } finally {
+                state.reader.isLoading = false;
+            }
+        }
+
+        function renderReader() {
+            const container = document.getElementById('post-list');
+            if (!state.token) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Welcome to Readwise</h3>
+                        <p>To access your Reader articles, connect your Readwise account.</p>
+                        <button class="sys-btn" onclick="openSettings()" style="margin-top:20px;">Connect Account</button>
+                    </div>`;
+                return;
+            }
+
+            if (state.reader.documents.length === 0 && !state.reader.isLoading) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No Articles Found</h3>
+                        <p>No articles in this location.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = '';
+            state.reader.documents.forEach((doc, idx) => {
+                const progress = Math.round((doc.reading_progress || 0) * 100);
+                const progressBar = progress > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>` : '';
+                const progressText = progress > 0 ? `${progress}% read` : 'Unread';
+                const meta = [];
+                if (doc.site_name) meta.push(doc.site_name);
+                if (doc.reading_time) meta.push(doc.reading_time);
+                html += `
+                    <div class="post-card" onclick="openReaderByIndex(${idx})">
+                        <div class="post-meta">
+                            <span>${meta.join(' &middot; ') || 'Article'}</span>
+                            <span>${doc.category || ''}</span>
+                        </div>
+                        <div class="post-title">${escapeHtml(doc.title || 'Untitled')}</div>
+                        <div class="post-snippet">${escapeHtml(doc.summary || '')}</div>
+                        <div class="post-progress">${escapeHtml(doc.author || '')} &middot; ${progressText}</div>
+                        ${progressBar}
+                    </div>
+                `;
+            });
+
+            if (state.reader.nextCursor) {
+                html += `
+                    <div class="list-footer">
+                        <button class="sys-btn" onclick="loadReader()">Load More</button>
+                    </div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function openReaderByIndex(idx) {
+            const doc = state.reader.documents[idx];
+            if (doc) openReader(doc);
+        }
+
+        async function openReader(doc) {
+            state.currentDoc = doc;
+            const modal = document.getElementById('reader-modal');
+            const content = document.getElementById('reader-content');
+            const title = document.getElementById('reader-title');
+
+            title.textContent = doc.title || 'Article';
+            content.innerHTML = '<div class="loading-msg">Loading article...</div>';
+            modal.style.display = 'flex';
+
+            // If no source_url, open Readwise directly
+            if (!doc.source_url) {
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No Web Source</h3>
+                        <p>This document doesn't have a public web source.</p>
+                        <button class="sys-btn" onclick="openOriginal()" style="margin-top:15px;">Open in Readwise</button>
+                    </div>`;
+                return;
+            }
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 20000);
+
+                const res = await fetch(`${READER_WORKER_URL}/?url=${encodeURIComponent(doc.source_url)}`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${res.status}`);
+                }
+
+                const article = await res.json();
+
+                let html = '';
+                if (article.title) html += `<h1>${escapeHtml(article.title)}</h1>`;
+                if (article.byline) html += `<p style="font-style:italic; color:#555;">${escapeHtml(article.byline)}</p>`;
+                if (article.siteName) html += `<p style="font-size:0.8rem; color:#888;">${escapeHtml(article.siteName)}</p>`;
+                html += '<hr style="border:1px solid #ccc; margin:15px 0;">';
+                html += article.content || article.textContent || '<p>No readable content found.</p>';
+
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Error Loading Article</h3>
+                        <p>${escapeHtml(e.message)}</p>
+                        <div style="margin-top:20px;">
+                            <button class="sys-btn" onclick="openOriginal()">Open in Readwise</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function closeReader() {
+            document.getElementById('reader-modal').style.display = 'none';
+            document.getElementById('reader-content').innerHTML = '';
+        }
+
+        function openOriginal() {
+            if (state.currentDoc) {
+                const url = state.currentDoc.url || state.currentDoc.source_url;
+                if (url) window.open(url, '_blank');
+            }
+        }
+
+        // --- HIGHLIGHTS ---
+        async function loadHighlights() {
+            if (state.highlights.isLoading) return;
+            state.highlights.isLoading = true;
+            showLoading();
+
+            try {
+                const params = {};
+                if (state.highlights.nextCursor) params.pageCursor = state.highlights.nextCursor;
+
+                const data = await apiCall("/highlights", params);
+                state.highlights.books.push(...(data.results || []));
+                state.highlights.nextCursor = data.nextPageCursor || null;
+                renderHighlights();
+            } catch (e) {
+                showError(e.message);
+            } finally {
+                state.highlights.isLoading = false;
+            }
+        }
+
+        function renderHighlights() {
+            const container = document.getElementById('post-list');
+            if (!state.token) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Welcome to Readwise</h3>
+                        <p>To access your highlights, connect your Readwise account.</p>
+                        <button class="sys-btn" onclick="openSettings()" style="margin-top:20px;">Connect Account</button>
+                    </div>`;
+                return;
+            }
+
+            if (state.highlights.books.length === 0 && !state.highlights.isLoading) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No Highlights Found</h3>
+                        <p>Your highlights library is empty.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = '';
+            state.highlights.books.forEach((book, bookIdx) => {
+                const cover = book.cover_image_url ? `<img src="${book.cover_image_url}" class="book-cover" alt="" loading="lazy">` : `<div class="book-cover" style="display:flex;align-items:center;justify-content:center;font-size:0.7rem;background:#ddd;">No Cover</div>`;
+                const hlCount = book.highlights ? book.highlights.length : 0;
+                html += `
+                    <div class="book-card">
+                        <div class="book-header" onclick="toggleBook(${bookIdx})">
+                            ${cover}
+                            <div class="book-info">
+                                <div class="book-title">${escapeHtml(book.title || 'Untitled')}</div>
+                                <div class="book-author">${escapeHtml(book.author || 'Unknown author')}</div>
+                                <div class="book-count">${hlCount} highlight${hlCount !== 1 ? 's' : ''}</div>
+                            </div>
+                            <div class="book-expand" id="expand-${bookIdx}">+</div>
+                        </div>
+                        <div class="highlights-list" id="highlights-${bookIdx}">
+                            ${(book.highlights || []).map(h => `
+                                <div class="highlight-item">
+                                    <div>${escapeHtml(h.text || '')}</div>
+                                    ${h.note ? `<div class="highlight-note">Note: ${escapeHtml(h.note)}</div>` : ''}
+                                    ${h.tags && h.tags.length ? `<div class="highlight-tags">Tags: ${h.tags.map(t => escapeHtml(t.name)).join(', ')}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (state.highlights.nextCursor) {
+                html += `
+                    <div class="list-footer">
+                        <button class="sys-btn" onclick="loadHighlights()">Load More</button>
+                    </div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function toggleBook(idx) {
+            const el = document.getElementById('highlights-' + idx);
+            const exp = document.getElementById('expand-' + idx);
+            if (el.classList.contains('open')) {
+                el.classList.remove('open');
+                exp.textContent = '+';
+            } else {
+                el.classList.add('open');
+                exp.textContent = '-';
+            }
+        }
+
+        // --- DAILY REVIEW ---
+        async function loadReview() {
+            if (state.review.isLoading) return;
+            state.review.isLoading = true;
+            showLoading();
+
+            try {
+                const data = await apiCall("/review");
+                state.review.data = data;
+                renderReview();
+            } catch (e) {
+                showError(e.message);
+            } finally {
+                state.review.isLoading = false;
+            }
+        }
+
+        function renderReview() {
+            const container = document.getElementById('post-list');
+            if (!state.token) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Welcome to Readwise</h3>
+                        <p>To access your daily review, connect your Readwise account.</p>
+                        <button class="sys-btn" onclick="openSettings()" style="margin-top:20px;">Connect Account</button>
+                    </div>`;
+                return;
+            }
+
+            const data = state.review.data;
+            if (!data || !data.highlights || data.highlights.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No Review Today</h3>
+                        <p>Your daily review is complete or not yet available.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = '';
+            data.highlights.forEach(hl => {
+                html += `
+                    <div class="review-card">
+                        <div class="review-text">${escapeHtml(hl.text || '')}</div>
+                        <div class="review-source">${escapeHtml(hl.title || 'Unknown')} &middot; ${escapeHtml(hl.author || 'Unknown')}</div>
+                        ${hl.note ? `<div class="highlight-note" style="margin-top:8px;">Note: ${escapeHtml(hl.note)}</div>` : ''}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // --- UI HELPERS ---
+        function showLoading() {
+            document.getElementById('post-list').innerHTML = '<div class="loading-msg">Loading...</div>';
+        }
+
+        function showError(msg) {
+            document.getElementById('post-list').innerHTML = `
+                <div class="empty-state">
+                    <h3>Error</h3>
+                    <p>${escapeHtml(msg)}</p>
+                    <button class="sys-btn" onclick="refreshData()" style="margin-top:15px;">Retry</button>
+                </div>`;
+        }
+
+        function showTokenError() {
+            document.getElementById('post-list').innerHTML = `
+                <div class="empty-state">
+                    <h3>Token Invalid</h3>
+                    <p>Your saved Readwise token is no longer valid.</p>
+                    <button class="sys-btn" onclick="openSettings()" style="margin-top:15px;">Update Token</button>
+                </div>`;
+        }
+
+        function openSettings() {
+            document.getElementById('token-input').value = state.token;
+            document.getElementById('token-status').textContent = '';
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        async function saveToken() {
+            const token = document.getElementById('token-input').value.trim();
+            const statusEl = document.getElementById('token-status');
+
+            if (!token) {
+                statusEl.textContent = "Please enter a token.";
+                statusEl.style.color = "#c00";
+                return;
+            }
+
+            statusEl.textContent = "Validating...";
+            statusEl.style.color = "#666";
+
+            // Temporarily set token to validate
+            const oldToken = state.token;
+            state.token = token;
+
+            try {
+                const valid = await validateToken();
+                if (valid) {
+                    localStorage.setItem(LS_TOKEN_KEY, token);
+                    statusEl.textContent = "Connected successfully!";
+                    statusEl.style.color = "#060";
+                    setTimeout(() => {
+                        closeModal('settings-modal');
+                        refreshData();
+                    }, 800);
+                } else {
+                    state.token = oldToken;
+                    statusEl.textContent = "Invalid token. Please check and try again.";
+                    statusEl.style.color = "#c00";
+                }
+            } catch (e) {
+                state.token = oldToken;
+                statusEl.textContent = "Validation failed. Please try again.";
+                statusEl.style.color = "#c00";
+            }
+        }
+
+        function toggleFullScreen() {
+            document.querySelector('.window').classList.toggle('fullscreen');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>

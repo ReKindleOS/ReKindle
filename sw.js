@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rekindle-cache-v20'; // Bumped version to force update
+const CACHE_NAME = 'rekindle-cache-v21'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
