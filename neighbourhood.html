@@ -2625,6 +2625,7 @@
                     `;
                 } else if (isModeratorMode) {
                     if (post.uid && (!currentUser || post.uid !== currentUser.uid)) {
+                        modPostControls += `<button style="background:#8a4800;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:5px;" onclick="timeoutUser('${escapeHtml(post.uid)}', '${escapeHtml(post.uid)}')">Timeout</button>`;
                     }
                     modPostControls += `<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:5px;" onclick="deletePost('${escapeHtml(post.id)}')">Delete</button>`;
                 }
@@ -2782,6 +2783,7 @@
                     </div>`;
                 } else if (isModeratorMode) {
                     if (comment.uid && (!currentUser || comment.uid !== currentUser.uid)) {
+                        modCommentControls += `<button style="background:#8a4800;color:white;border:none;padding:1px 5px;font-size:0.65rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="timeoutUser('${escapeHtml(comment.uid)}', '${escapeHtml(comment.uid)}')">Timeout</button>`;
                     }
                     modCommentControls += `<button style="background:black;color:white;border:none;padding:1px 5px;font-size:0.65rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="deleteComment('${escapeHtml(postId)}', '${escapeHtml(comment.id)}')">Delete</button>`;
                 }
@@ -2812,6 +2814,19 @@
             if (text.length < 2) { showAlertModal("Comment too short."); return; }
             if (text.length > 200) { showAlertModal("Comment too long (max 200 chars)."); return; }
 
+            // Timeout check
+            db.ref('timeouts/' + currentUser.uid).once('value').then(function(snap) {
+                var t = snap.val();
+                if (t && t.until > Date.now()) {
+                    var remaining = Math.ceil((t.until - Date.now()) / 60000);
+                    showAlertModal('You are timed out. Please wait ' + remaining + ' minute(s) before posting.');
+                    return;
+                }
+                doSubmitComment(postId, input, text);
+            }).catch(function() { doSubmitComment(postId, input, text); });
+        }
+
+        function doSubmitComment(postId, input, text) {
             input.disabled = true;
 
             var tokenSource = socialAuth.currentUser || currentUser;
@@ -2902,6 +2917,128 @@
             setTimeout(() => reasonInput.focus(), 50);
         }
 
+        function showModTimeoutModal(targetUid, targetName, onConfirm) {
+            const existing = document.getElementById('mod-timeout-overlay');
+            if (existing) existing.parentNode.removeChild(existing);
+            const overlay = document.createElement('div');
+            overlay.id = 'mod-timeout-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;font-family:Verdana,Geneva,sans-serif;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:white;border:2px solid black;box-shadow:4px 4px 0 black;width:85%;max-width:340px;';
+            const titleBar = document.createElement('div');
+            titleBar.style.cssText = 'border-bottom:2px solid black;padding:8px;font-weight:bold;text-align:center;font-size:0.85rem;';
+            titleBar.textContent = 'Timeout User';
+            const body = document.createElement('div');
+            body.style.cssText = 'padding:15px;';
+            const msg = document.createElement('div');
+            msg.style.cssText = 'font-size:0.85rem;margin-bottom:10px;';
+            msg.textContent = 'Apply a social timeout to ' + (targetName || targetUid) + ' (up to 24 hours).';
+            const durLabel = document.createElement('label');
+            durLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            durLabel.textContent = 'Duration';
+            const durRow = document.createElement('div');
+            durRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:10px;';
+            const durInput = document.createElement('input');
+            durInput.type = 'number';
+            durInput.min = '1';
+            durInput.max = '1440';
+            durInput.value = '1';
+            durInput.style.cssText = 'flex:1;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            const durUnit = document.createElement('select');
+            durUnit.style.cssText = 'border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            const optMin = document.createElement('option');
+            optMin.value = 'minutes';
+            optMin.textContent = 'Minutes';
+            const optHr = document.createElement('option');
+            optHr.value = 'hours';
+            optHr.textContent = 'Hours';
+            durUnit.appendChild(optMin);
+            durUnit.appendChild(optHr);
+            durRow.appendChild(durInput);
+            durRow.appendChild(durUnit);
+            const reasonLabel = document.createElement('label');
+            reasonLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            reasonLabel.textContent = 'Reason';
+            const reasonInput = document.createElement('textarea');
+            reasonInput.maxLength = 200;
+            reasonInput.placeholder = 'e.g. spam, harassment…';
+            reasonInput.style.cssText = 'box-sizing:border-box;width:100%;min-height:60px;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;resize:none;margin-bottom:4px;';
+            const note = document.createElement('div');
+            note.style.cssText = 'font-size:0.75rem;color:#555;font-style:italic;margin-bottom:6px;';
+            note.textContent = '*Moderators cannot timeout other moderators';
+            const errorEl = document.createElement('div');
+            errorEl.style.cssText = 'min-height:16px;color:red;font-size:0.8rem;margin-bottom:8px;';
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            cancelBtn.onclick = () => document.body.removeChild(overlay);
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = 'Timeout';
+            confirmBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:#8a4800;color:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            confirmBtn.onclick = () => {
+                const reason = reasonInput.value.trim();
+                if (!reason) { errorEl.textContent = 'A reason is required.'; return; }
+                const val = parseInt(durInput.value, 10);
+                if (!val || val < 1) { errorEl.textContent = 'Enter a valid duration.'; return; }
+                const unit = durUnit.value;
+                const totalMinutes = unit === 'hours' ? val * 60 : val;
+                if (totalMinutes > 1440) { errorEl.textContent = 'Maximum timeout is 24 hours.'; return; }
+                const hours = totalMinutes / 60;
+                document.body.removeChild(overlay);
+                onConfirm(hours, reason);
+            };
+            btnRow.appendChild(cancelBtn);
+            btnRow.appendChild(confirmBtn);
+            body.appendChild(msg);
+            body.appendChild(durLabel);
+            body.appendChild(durRow);
+            body.appendChild(reasonLabel);
+            body.appendChild(reasonInput);
+            body.appendChild(note);
+            body.appendChild(errorEl);
+            body.appendChild(btnRow);
+            box.appendChild(titleBar);
+            box.appendChild(body);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            setTimeout(() => reasonInput.focus(), 50);
+        }
+
+        function timeoutUser(targetUid, targetName) {
+            if (!currentUser || !isCurrentUserMod || !isModeratorMode) return;
+            if (targetUid === currentUser.uid) return;
+            showModTimeoutModal(targetUid, targetName, function(hours, reason) {
+                const until = Date.now() + (hours * 3600000);
+                const updates = {};
+                const logKey = db.ref('mod_actions').push().key;
+                updates['timeouts/' + targetUid] = {
+                    until: until,
+                    reason: reason,
+                    moderatorUid: currentUser.uid,
+                    moderatorName: getKindleName(myProfile) || currentUser.uid,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP
+                };
+                updates['mod_actions/' + logKey] = {
+                    type: 'timeout',
+                    moderatorUid: currentUser.uid,
+                    moderatorName: getKindleName(myProfile) || currentUser.uid,
+                    targetUid: targetUid,
+                    targetName: targetName || targetUid,
+                    reason: reason,
+                    durationHours: hours,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    undone: false
+                };
+                db.ref().update(updates).then(() => {
+                    showAlertModal('User timed out for ' + hours + ' hour(s).', 'Success');
+                }).catch(e => {
+                    showAlertModal('Timeout failed: ' + (e.message || e), 'Error');
+                });
+            });
+        }
+
         function deleteComment(postId, commentId) {
             const isMod = isCurrentUserMod && isModeratorMode;
             if (isMod) {
@@ -2989,6 +3126,19 @@
                 return;
             }
 
+            // CHECK 5: Timeout
+            db.ref('timeouts/' + currentUser.uid).once('value').then(function(snap) {
+                var t = snap.val();
+                if (t && t.until > Date.now()) {
+                    var remaining = Math.ceil((t.until - Date.now()) / 60000);
+                    showAlertModal('You are timed out. Please wait ' + remaining + ' minute(s) before posting.');
+                    return;
+                }
+                doSubmitPost(input, text);
+            }).catch(function() { doSubmitPost(input, text); });
+        }
+
+        function doSubmitPost(input, text) {
             const btn = document.querySelector('button[onclick="submitPost()"]');
             if (btn) btn.disabled = true;
 

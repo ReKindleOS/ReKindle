@@ -144,6 +144,33 @@ async function rtdbPush(path, data, userToken) {
     return await resp.json();
 }
 
+async function rtdbGet(path, env, accessToken) {
+    const projectId = env.FIREBASE_PROJECT_ID || "rekindle-dd1fa";
+    const url = `https://${projectId}-default-rtdb.firebaseio.com/${path}.json?access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`RTDB get failed (${resp.status}): ${errText}`);
+    }
+    return await resp.json();
+}
+
+async function checkTimeout(uid, env, accessToken) {
+    try {
+        const data = await rtdbGet(`timeouts/${uid}`, env, accessToken);
+        if (data && typeof data.until === "number") {
+            const now = Date.now();
+            if (data.until > now) {
+                const remainingMinutes = Math.ceil((data.until - now) / 60000);
+                return { timedOut: true, remainingMinutes };
+            }
+        }
+    } catch (e) {
+        console.error("[Moderate] Timeout check failed:", e.message);
+    }
+    return { timedOut: false };
+}
+
 /* ------------------------------------------------------------------ */
 /*  FIREBASE TOKEN VERIFICATION                                        */
 /* ------------------------------------------------------------------ */
@@ -619,6 +646,14 @@ export default {
             }
 
             const accessToken = await getCachedAccessToken(env);
+
+            // --- TIMEOUT CHECK ---
+            const timeoutCheck = await checkTimeout(uid, env, accessToken);
+            if (timeoutCheck.timedOut) {
+                return new Response(JSON.stringify({
+                    error: `You are timed out. Please wait ${timeoutCheck.remainingMinutes} minute(s) before posting.`
+                }), { status: 403, headers });
+            }
 
             // --- KINDLECHAT ---
             if (type === "kindlechat") {

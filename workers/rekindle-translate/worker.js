@@ -256,6 +256,31 @@ async function translateToAllLanguages(text) {
     return translations;
 }
 
+async function writeTranslationsByLang(translations, msgId, token) {
+    if (!translations || !msgId) return;
+    const baseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/kindlechat/translations_by_lang";
+    const promises = [];
+    const langEntries = [];
+    for (const [lang, text] of Object.entries(translations)) {
+        const url = `${baseUrl}/${lang}/${msgId}.json` + (token ? `?auth=${token}` : '');
+        promises.push(
+            fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(text)
+            })
+        );
+        langEntries.push(lang);
+    }
+    const results = await Promise.all(promises);
+    for (let i = 0; i < results.length; i++) {
+        if (!results[i].ok) {
+            const errText = await results[i].text();
+            throw new Error(`Firebase translation write failed for ${langEntries[i]} (${results[i].status}): ${errText}`);
+        }
+    }
+}
+
 
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
@@ -317,17 +342,8 @@ async function handleRequest(request) {
             if (app === 'neighbourhood') {
                 await firestorePatch(`neighbourhood_posts/${msgId}`, { translation: translatedText }, token);
             } else {
-                let patchUrl = `${baseFirebaseUrl}/${msgId}/translation.json`;
-                if (token) patchUrl += `?auth=${token}`;
-                const firebaseResp = await fetch(patchUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(translatedText)
-                });
-                if (!firebaseResp.ok) {
-                    const errText = await firebaseResp.text();
-                    throw new Error(`Firebase translation patch failed (${firebaseResp.status}): ${errText}`);
-                }
+                // Write per-language to new path for bandwidth efficiency
+                await writeTranslationsByLang(translatedText, msgId, token);
             }
 
             return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
@@ -343,6 +359,11 @@ async function handleRequest(request) {
                     reprocessedAt: new Date()
                 }, token);
             } else {
+                // Write per-language to new path
+                if (translatedText) {
+                    await writeTranslationsByLang(translatedText, msgId, token);
+                }
+                // Also update inline translation for backward compatibility during transition
                 let updateUrl = `${baseFirebaseUrl}/${msgId}.json`;
                 if (token) updateUrl += `?auth=${token}`;
                 const firebaseResp = await fetch(updateUrl, {
@@ -386,8 +407,7 @@ async function handleRequest(request) {
         } else {
             const dbPayload = {
                 text: text,
-                timestamp: { ".sv": "timestamp" },
-                ...(translatedText && { translation: translatedText })
+                timestamp: { ".sv": "timestamp" }
             };
             dbPayload.uid = uid;
 
@@ -407,6 +427,11 @@ async function handleRequest(request) {
 
             const firebaseData = await firebaseResp.json();
             docId = firebaseData.name;
+
+            // Write per-language translations to new path (not inline)
+            if (translatedText) {
+                await writeTranslationsByLang(translatedText, docId, token);
+            }
         }
 
         return new Response(JSON.stringify({

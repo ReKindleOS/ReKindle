@@ -1463,7 +1463,13 @@
 
                 var delBtn = '';
                 if (isModMode) {
+                    var timeoutUidTp = (t.authorId || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                    var timeoutBtnTp = '';
+                    if (timeoutUidTp && (!currentUser || timeoutUidTp !== currentUser.uid)) {
+                        timeoutBtnTp = '<button style="font-size:0.7rem; cursor:pointer; margin-right:5px; background:#8a4800; color:white; border:none; padding:1px 5px;" onclick="timeoutUser(\'' + timeoutUidTp + '\', \'' + (t.authorName || t.authorId || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\'); event.stopPropagation();">Timeout</button>';
+                    }
                     delBtn = '<div style="float:right; display:flex;">' +
+                        timeoutBtnTp +
                         '<button style="font-size:0.7rem; cursor:pointer; margin-right:5px;" onclick="openTopicModal(\'' + t.id + '\'); event.stopPropagation();">Edit</button>' +
                         '<button style="font-size:0.7rem; color:red; cursor:pointer;" onclick="deleteTopic(\'' + t.id + '\'); event.stopPropagation();">X</button>' +
                         '</div>';
@@ -1907,6 +1913,7 @@
             } else if (isCurrentUserMod && isModeratorMode && msg.id) {
                 var timeoutUid = (msg.authorId || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
                 if (timeoutUid && (!currentUser || timeoutUid !== currentUser.uid)) {
+                    delBtn += '<button style="background:#8a4800;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:5px;" onclick="timeoutUser(\'' + timeoutUid + '\', \'' + (msg.authorName || msg.authorId || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\')">Timeout</button>';
                 }
                 delBtn += '<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:5px;" onclick="deleteComment(\'' + msg.id + '\')">Delete</button>';
             }
@@ -2030,6 +2037,128 @@
             setTimeout(function() { reasonInput.focus(); }, 50);
         }
 
+        function showModTimeoutModal(targetUid, targetName, onConfirm) {
+            var existing = document.getElementById('mod-timeout-overlay');
+            if (existing) existing.parentNode.removeChild(existing);
+            var overlay = document.createElement('div');
+            overlay.id = 'mod-timeout-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;font-family:Verdana,Geneva,sans-serif;';
+            var box = document.createElement('div');
+            box.style.cssText = 'background:white;border:2px solid black;box-shadow:4px 4px 0 black;width:85%;max-width:340px;';
+            var titleBar = document.createElement('div');
+            titleBar.style.cssText = 'border-bottom:2px solid black;padding:8px;font-weight:bold;text-align:center;font-size:0.85rem;';
+            titleBar.textContent = 'Timeout User';
+            var body = document.createElement('div');
+            body.style.cssText = 'padding:15px;';
+            var msg = document.createElement('div');
+            msg.style.cssText = 'font-size:0.85rem;margin-bottom:10px;';
+            msg.textContent = 'Apply a social timeout to ' + (targetName || targetUid) + ' (up to 24 hours).';
+            var durLabel = document.createElement('label');
+            durLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            durLabel.textContent = 'Duration';
+            var durRow = document.createElement('div');
+            durRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:10px;';
+            var durInput = document.createElement('input');
+            durInput.type = 'number';
+            durInput.min = '1';
+            durInput.max = '1440';
+            durInput.value = '1';
+            durInput.style.cssText = 'flex:1;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            var durUnit = document.createElement('select');
+            durUnit.style.cssText = 'border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            var optMin = document.createElement('option');
+            optMin.value = 'minutes';
+            optMin.textContent = 'Minutes';
+            var optHr = document.createElement('option');
+            optHr.value = 'hours';
+            optHr.textContent = 'Hours';
+            durUnit.appendChild(optMin);
+            durUnit.appendChild(optHr);
+            durRow.appendChild(durInput);
+            durRow.appendChild(durUnit);
+            var reasonLabel = document.createElement('label');
+            reasonLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            reasonLabel.textContent = 'Reason';
+            var reasonInput = document.createElement('textarea');
+            reasonInput.maxLength = 200;
+            reasonInput.placeholder = 'e.g. spam, harassment…';
+            reasonInput.style.cssText = 'box-sizing:border-box;width:100%;min-height:60px;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;resize:none;margin-bottom:4px;';
+            var note = document.createElement('div');
+            note.style.cssText = 'font-size:0.75rem;color:#555;font-style:italic;margin-bottom:6px;';
+            note.textContent = '*Moderators cannot timeout other moderators';
+            var errorEl = document.createElement('div');
+            errorEl.style.cssText = 'min-height:16px;color:red;font-size:0.8rem;margin-bottom:8px;';
+            var btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            cancelBtn.onclick = function() { document.body.removeChild(overlay); };
+            var confirmBtn = document.createElement('button');
+            confirmBtn.textContent = 'Timeout';
+            confirmBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:#8a4800;color:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            confirmBtn.onclick = function() {
+                var reason = reasonInput.value.trim();
+                if (!reason) { errorEl.textContent = 'A reason is required.'; return; }
+                var val = parseInt(durInput.value, 10);
+                if (!val || val < 1) { errorEl.textContent = 'Enter a valid duration.'; return; }
+                var unit = durUnit.value;
+                var totalMinutes = unit === 'hours' ? val * 60 : val;
+                if (totalMinutes > 1440) { errorEl.textContent = 'Maximum timeout is 24 hours.'; return; }
+                var hours = totalMinutes / 60;
+                document.body.removeChild(overlay);
+                onConfirm(hours, reason);
+            };
+            btnRow.appendChild(cancelBtn);
+            btnRow.appendChild(confirmBtn);
+            body.appendChild(msg);
+            body.appendChild(durLabel);
+            body.appendChild(durRow);
+            body.appendChild(reasonLabel);
+            body.appendChild(reasonInput);
+            body.appendChild(note);
+            body.appendChild(errorEl);
+            body.appendChild(btnRow);
+            box.appendChild(titleBar);
+            box.appendChild(body);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            setTimeout(function() { reasonInput.focus(); }, 50);
+        }
+
+        function timeoutUser(targetUid, targetName) {
+            if (!currentUser || !isCurrentUserMod || !isModeratorMode) return;
+            if (targetUid === currentUser.uid) return;
+            showModTimeoutModal(targetUid, targetName, function(hours, reason) {
+                var until = Date.now() + (hours * 3600000);
+                var updates = {};
+                var logKey = db.ref('mod_actions').push().key;
+                updates['timeouts/' + targetUid] = {
+                    until: until,
+                    reason: reason,
+                    moderatorUid: currentUser.uid,
+                    moderatorName: currentUserName || currentUser.uid,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP
+                };
+                updates['mod_actions/' + logKey] = {
+                    type: 'timeout',
+                    moderatorUid: currentUser.uid,
+                    moderatorName: currentUserName || currentUser.uid,
+                    targetUid: targetUid,
+                    targetName: targetName || targetUid,
+                    reason: reason,
+                    durationHours: hours,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    undone: false
+                };
+                db.ref().update(updates).then(function() {
+                    showAlertModal('User timed out for ' + hours + ' hour(s).', 'Success');
+                }).catch(function(e) {
+                    showAlertModal('Timeout failed: ' + (e.message || e), 'Error');
+                });
+            });
+        }
+
         function deleteComment(id) {
             if (!currentTopicId) return;
             var isMod = (isCurrentUserMod && isModeratorMode) || isModMode;
@@ -2109,21 +2238,36 @@
                 if (!text || !currentTopicId) return;
                 if (text.length > 1000) { showModal('Messages cannot exceed 1000 characters.'); return; }
 
-                isPostingComment = true;
-                setTimeout(function() { isPostingComment = false; }, 3000); // failsafe unlock
+                // Timeout check
+                db.ref('timeouts/' + currentUser.uid).once('value').then(function(snap) {
+                    var t = snap.val();
+                    if (t && t.until > Date.now()) {
+                        var remaining = Math.ceil((t.until - Date.now()) / 60000);
+                        showAlertModal('You are timed out. Please wait ' + remaining + ' minute(s) before posting.');
+                        return;
+                    }
+                    doPostComment(input, text);
+                }).catch(function() { doPostComment(input, text); });
+            });
+        }
 
-                var btnSend = document.getElementById('btn-send');
-                if (btnSend) {
-                    btnSend.disabled = true;
-                    btnSend.style.opacity = '0.5';
-                }
+        function doPostComment(input, text) {
+            if (isPostingComment) return;
+            isPostingComment = true;
+            setTimeout(function() { isPostingComment = false; }, 3000); // failsafe unlock
 
-                // Clear immediately to prevent UI-bound double submissions
-                input.value = '';
+            var btnSend = document.getElementById('btn-send');
+            if (btnSend) {
+                btnSend.disabled = true;
+                btnSend.style.opacity = '0.5';
+            }
 
-                var postingTopicId = currentTopicId;
-                var tokenSource = socialAuth.currentUser || currentUser;
-                tokenSource.getIdToken(true).then(function (token) {
+            // Clear immediately to prevent UI-bound double submissions
+            input.value = '';
+
+            var postingTopicId = currentTopicId;
+            var tokenSource = socialAuth.currentUser || currentUser;
+            tokenSource.getIdToken(true).then(function (token) {
                     return fetch(MODERATION_WORKER_URL, {
                         method: 'POST',
                         headers: {
@@ -2164,7 +2308,6 @@
                         console.error("Error posting comment:", err);
                     }
                 });
-            });
         }
 
         // CREATE / EDIT MODAL

@@ -1254,6 +1254,10 @@
         var kcChangedHandler = null;      // limitToLast(child_changed) handler ref
         var kcAddedHandler = null;        // limitToLast(child_added) handler ref
         var rulesListenerRef = null;      // accepted_rules listener for cleanup
+        var generalTransRef = null;       // translations_by_lang listener ref
+        var kcTransAddedHandler = null;   // translations child_added handler
+        var kcTransChangedHandler = null; // translations child_changed handler
+        var langTranslations = {};        // Cache for per-language translations from new RTDB path
 
         function markAllAsRead() {
             // No-op: only general chat remains, no sidebar/unread tracking needed.
@@ -1930,10 +1934,17 @@
                 generalListener.off();
                 generalListener = null;
             }
+            if (generalTransRef) {
+                generalTransRef.off();
+                generalTransRef = null;
+            }
             kcAddedHandler = null;
             kcChangedHandler = null;
             kcDeleteHandler = null;
+            kcTransAddedHandler = null;
+            kcTransChangedHandler = null;
             renderedKindlechatIds = {};
+            langTranslations = {};
             generalDomMsgCount = 0;
             // Reset Pixel Cache on reload
             window.pixelGridCache = {};
@@ -2070,6 +2081,38 @@
                 // fire here, but those messages are already falling off the
                 // visible window so removing them from the DOM is correct.
                 generalListener.on('child_removed', kcDeleteHandler);
+
+                // --- Per-language translation listener ---
+                // Each client only downloads translations for their selected language.
+                generalTransRef = socialRtdb.ref('kindlechat/translations_by_lang/' + userLang);
+
+                kcTransAddedHandler = function (childSnap) {
+                    if (currentRoomId !== 'general') return;
+                    var msgId = childSnap.key;
+                    var text = childSnap.val();
+                    if (!text) return;
+                    langTranslations[msgId] = text;
+                    if (renderedKindlechatIds[msgId]) {
+                        generalChatRef.child(msgId).once('value').then(function (msgSnap) {
+                            renderMessage(msgSnap.val(), msgId);
+                        });
+                    }
+                };
+                generalTransRef.on('child_added', kcTransAddedHandler);
+
+                kcTransChangedHandler = function (childSnap) {
+                    if (currentRoomId !== 'general') return;
+                    var msgId = childSnap.key;
+                    var text = childSnap.val();
+                    if (!text) return;
+                    langTranslations[msgId] = text;
+                    if (renderedKindlechatIds[msgId]) {
+                        generalChatRef.child(msgId).once('value').then(function (msgSnap) {
+                            renderMessage(msgSnap.val(), msgId);
+                        });
+                    }
+                };
+                generalTransRef.on('child_changed', kcTransChangedHandler);
             })['catch'](function (error) {
                 var titleEl = document.querySelector('.title-text');
                 if (titleEl) titleEl.innerText = 'KindleChat';
@@ -2355,6 +2398,10 @@
                     adminControlsHtml += '<div class="del-btn" onclick="deleteGeneralMessage(\'' + msgId + '\')">✕</div>';
                 }
             } else if (currentUser && isCurrentUserMod && isModeratorMode && currentRoomId === 'general') {
+                var timeoutUidKc = (msg.uid || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                if (timeoutUidKc && msg.uid !== currentUser.uid) {
+                    modControlsHtml += '<button style="background:#8a4800;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="timeoutUser(\'' + timeoutUidKc + '\', \'' + (msg.user || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\')">Timeout</button>';
+                }
                 modControlsHtml += '<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="deleteGeneralMessage(\'' + msgId + '\')">Delete</button>';
             }
 
@@ -2449,7 +2496,7 @@
                             translationText = msg.translation;
                         }
                     } else if (typeof msg.translation === 'object') {
-                        // New map format
+                        // New map format (legacy inline translations)
                         var langToTry = (typeof userLang !== 'undefined') ? userLang : 'en';
                         if (msg.translation[langToTry] && msg.translation[langToTry].toLowerCase().trim() !== originalTextLowercase) {
                             hasTranslation = true;
@@ -2459,6 +2506,15 @@
                             hasTranslation = true;
                             translationText = msg.translation['en'];
                         }
+                    }
+                }
+
+                // Check new per-language path if no legacy translation found
+                if (!hasTranslation && langTranslations[msgId]) {
+                    var cachedTrans = langTranslations[msgId];
+                    if (typeof cachedTrans === 'string' && cachedTrans.toLowerCase().trim() !== originalTextLowercase) {
+                        hasTranslation = true;
+                        translationText = cachedTrans;
                     }
                 }
 
@@ -2598,7 +2654,6 @@
             if (isSendingMessage) return;
             if (!currentUser) return;
 
-
             var inputEl = document.getElementById('msg-input');
             var text = inputEl.value.trim();
 
@@ -2611,6 +2666,23 @@
             if (text.length > 1000) { showModal('Messages cannot exceed 1000 characters.'); return; }
 
             checkRules(function () {
+                // Timeout check
+                rtdb.ref('timeouts/' + currentUser.uid).once('value').then(function(snap) {
+                    var t = snap.val();
+                    if (t && t.until > Date.now()) {
+                        var remaining = Math.ceil((t.until - Date.now()) / 60000);
+                        showModal('You are timed out. Please wait ' + remaining + ' minute(s) before posting.');
+                        resetSendState();
+                        return;
+                    }
+                    doSendMessage(inputEl, text);
+                }).catch(function() { doSendMessage(inputEl, text); });
+            });
+        }
+
+        function doSendMessage(inputEl, text) {
+            if (isSendingMessage) return;
+            isSendingMessage = true;
                 markSendBusy();
                 setTimeout(function () { isSendingMessage = false; }, 3000); // failsafe unlock
 
@@ -2652,7 +2724,6 @@
                         showModal(msg, false);
                     }
                 });
-            });
         }
 
 
@@ -2820,6 +2891,128 @@
             overlay.appendChild(box);
             document.body.appendChild(overlay);
             setTimeout(function () { reasonInput.focus(); }, 50);
+        }
+
+        function showModTimeoutModal(targetUid, targetName, onConfirm) {
+            var existing = document.getElementById('mod-timeout-overlay');
+            if (existing) existing.parentNode.removeChild(existing);
+            var overlay = document.createElement('div');
+            overlay.id = 'mod-timeout-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;font-family:Verdana,Geneva,sans-serif;';
+            var box = document.createElement('div');
+            box.style.cssText = 'background:white;border:2px solid black;box-shadow:4px 4px 0 black;width:85%;max-width:340px;';
+            var titleBar = document.createElement('div');
+            titleBar.style.cssText = 'border-bottom:2px solid black;padding:8px;font-weight:bold;text-align:center;font-size:0.85rem;';
+            titleBar.textContent = 'Timeout User';
+            var body = document.createElement('div');
+            body.style.cssText = 'padding:15px;';
+            var msg = document.createElement('div');
+            msg.style.cssText = 'font-size:0.85rem;margin-bottom:10px;';
+            msg.textContent = 'Apply a social timeout to ' + (targetName || targetUid) + ' (up to 24 hours).';
+            var durLabel = document.createElement('label');
+            durLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            durLabel.textContent = 'Duration';
+            var durRow = document.createElement('div');
+            durRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:10px;';
+            var durInput = document.createElement('input');
+            durInput.type = 'number';
+            durInput.min = '1';
+            durInput.max = '1440';
+            durInput.value = '1';
+            durInput.style.cssText = 'flex:1;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            var durUnit = document.createElement('select');
+            durUnit.style.cssText = 'border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;';
+            var optMin = document.createElement('option');
+            optMin.value = 'minutes';
+            optMin.textContent = 'Minutes';
+            var optHr = document.createElement('option');
+            optHr.value = 'hours';
+            optHr.textContent = 'Hours';
+            durUnit.appendChild(optMin);
+            durUnit.appendChild(optHr);
+            durRow.appendChild(durInput);
+            durRow.appendChild(durUnit);
+            var reasonLabel = document.createElement('label');
+            reasonLabel.style.cssText = 'display:block;font-weight:bold;font-size:0.8rem;margin-bottom:4px;';
+            reasonLabel.textContent = 'Reason';
+            var reasonInput = document.createElement('textarea');
+            reasonInput.maxLength = 200;
+            reasonInput.placeholder = 'e.g. spam, harassment…';
+            reasonInput.style.cssText = 'box-sizing:border-box;width:100%;min-height:60px;border:2px solid black;border-radius:0;padding:6px;font-family:inherit;font-size:0.8rem;resize:none;margin-bottom:4px;';
+            var note = document.createElement('div');
+            note.style.cssText = 'font-size:0.75rem;color:#555;font-style:italic;margin-bottom:6px;';
+            note.textContent = '*Moderators cannot timeout other moderators';
+            var errorEl = document.createElement('div');
+            errorEl.style.cssText = 'min-height:16px;color:red;font-size:0.8rem;margin-bottom:8px;';
+            var btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            cancelBtn.onclick = function () { document.body.removeChild(overlay); };
+            var confirmBtn = document.createElement('button');
+            confirmBtn.textContent = 'Timeout';
+            confirmBtn.style.cssText = 'font-family:inherit;font-size:0.8rem;border:2px solid black;background:#8a4800;color:white;padding:4px 12px;cursor:pointer;box-shadow:2px 2px 0 black;';
+            confirmBtn.onclick = function () {
+                var reason = reasonInput.value.trim();
+                if (!reason) { errorEl.textContent = 'A reason is required.'; return; }
+                var val = parseInt(durInput.value, 10);
+                if (!val || val < 1) { errorEl.textContent = 'Enter a valid duration.'; return; }
+                var unit = durUnit.value;
+                var totalMinutes = unit === 'hours' ? val * 60 : val;
+                if (totalMinutes > 1440) { errorEl.textContent = 'Maximum timeout is 24 hours.'; return; }
+                var hours = totalMinutes / 60;
+                document.body.removeChild(overlay);
+                onConfirm(hours, reason);
+            };
+            btnRow.appendChild(cancelBtn);
+            btnRow.appendChild(confirmBtn);
+            body.appendChild(msg);
+            body.appendChild(durLabel);
+            body.appendChild(durRow);
+            body.appendChild(reasonLabel);
+            body.appendChild(reasonInput);
+            body.appendChild(note);
+            body.appendChild(errorEl);
+            body.appendChild(btnRow);
+            box.appendChild(titleBar);
+            box.appendChild(body);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            setTimeout(function () { reasonInput.focus(); }, 50);
+        }
+
+        function timeoutUser(targetUid, targetName) {
+            if (!currentUser || !isCurrentUserMod || !isModeratorMode) return;
+            if (targetUid === currentUser.uid) return;
+            showModTimeoutModal(targetUid, targetName, function(hours, reason) {
+                var until = Date.now() + (hours * 3600000);
+                var updates = {};
+                var logKey = rtdb.ref('mod_actions').push().key;
+                updates['timeouts/' + targetUid] = {
+                    until: until,
+                    reason: reason,
+                    moderatorUid: currentUser.uid,
+                    moderatorName: currentUsername || currentUser.uid,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP
+                };
+                updates['mod_actions/' + logKey] = {
+                    type: 'timeout',
+                    moderatorUid: currentUser.uid,
+                    moderatorName: currentUsername || currentUser.uid,
+                    targetUid: targetUid,
+                    targetName: targetName || targetUid,
+                    reason: reason,
+                    durationHours: hours,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    undone: false
+                };
+                rtdb.ref().update(updates).then(function() {
+                    showModal('User timed out for ' + hours + ' hour(s).');
+                }).catch(function(e) {
+                    showModal('Timeout failed: ' + (e.message || e));
+                });
+            });
         }
 
         function deleteGeneralMessage(msgId) {
@@ -3497,10 +3690,14 @@
             try {
                 if (unsubscribeMsg) { unsubscribeMsg(); unsubscribeMsg = null; }
                 if (generalListener) { generalListener.off(); generalListener = null; }
+                if (generalTransRef) { generalTransRef.off(); generalTransRef = null; }
                 if (rulesListenerRef) { rulesListenerRef.off(); rulesListenerRef = null; }
                 kcAddedHandler = null;
                 kcChangedHandler = null;
+                kcTransAddedHandler = null;
+                kcTransChangedHandler = null;
                 renderedKindlechatIds = {};
+                langTranslations = {};
             } catch (e) { /* ignore — page is going away */ }
         }
         window.addEventListener('pagehide', kcDetachAllListeners);
