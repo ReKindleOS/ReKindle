@@ -1266,8 +1266,8 @@
         };
 
         function triggerSettingsSyncSignal() {
-            if (!currentUser || !isFirebaseAvailable || !db) return;
-            db.collection('users').doc(currentUser.uid).set({
+            if (!currentUser || !isFirebaseAvailable || !db) return Promise.resolve();
+            return db.collection('users').doc(currentUser.uid).set({
                 settingsLastUpdated: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true }).catch(err => console.error("Error triggering sync signal:", err));
         }
@@ -1563,18 +1563,21 @@
 
         function saveLanguage() {
             const val = document.getElementById('language-select').value;
-            if (window.rekindleSetLanguage) {
-                window.rekindleSetLanguage(val);
-            } else {
-                localStorage.setItem('rekindle_language', val);
-                location.reload();
-            }
 
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('privateSettings').doc('preferences').set({
                     language: val
-                }, { merge: true });
+                }, { merge: true }).then(function () {
+                    localStorage.setItem('rekindle_language', val);
+                    location.reload();
+                }).catch(function () {
+                    localStorage.setItem('rekindle_language', val);
+                    location.reload();
+                });
                 triggerSettingsSyncSignal();
+            } else {
+                localStorage.setItem('rekindle_language', val);
+                location.reload();
             }
         }
 
@@ -1742,24 +1745,30 @@
             };
             setSecureItem('rekindle_location_manual', JSON.stringify(locData));
 
+            function finish() {
+                updateLocationDisplay();
+                closeLocationModal();
+                var msg = 'Timezone set to UTC' + (offset >= 0 ? '+' : '') + offset + '.';
+                showModal(msg, false, function () {
+                    window.location.href = 'index';
+                });
+            }
+
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('settings').doc('general').set({
                     manualLocation: JSON.parse(JSON.stringify(locData)),
                     timezoneOffset: offset
-                }, { merge: true }).catch(err => console.error("Error saving location:", err));
-                triggerSettingsSyncSignal();
+                }, { merge: true }).then(function () {
+                    return triggerSettingsSyncSignal();
+                }).then(function () {
+                    finish();
+                }).catch(function (err) {
+                    console.error("Error saving location:", err);
+                    finish();
+                });
+            } else {
+                finish();
             }
-
-            updateLocationDisplay();
-            closeLocationModal();
-
-            // Always show modal, wait for click to return home
-            const msg = `Timezone set to UTC${offset >= 0 ? '+' : ''}${offset}.`;
-
-            // Use Generic Signature: (msg, isConfirm, callback)
-            showModal(msg, false, () => {
-                window.location.href = 'index';
-            });
         }
 
 
