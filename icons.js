@@ -377,6 +377,15 @@ const APPS = [
         cat: 'lifestyle',
         icon: '<circle cx="16" cy="16" r="14"/><ellipse cx="16" cy="18" rx="10" ry="7"/><circle cx="12" cy="17" r="2" fill="black"/><circle cx="20" cy="17" r="2" fill="black"/><path d="M16 11 L20 6"/>'
     },
+    /*     {
+            id: 'pinterest',
+            name: 'Pinterest',
+            cat: 'lifestyle',
+            plus: true,
+            beta: true,
+            desc: 'Browse and save ideas.',
+            icon: '<circle cx="16" cy="16" r="12" fill="white" stroke="black" stroke-width="2"/><path d="M10 6 C10 6 14 4 18 6 C22 8 22 14 20 18 C18 22 16 26 16 26 L14 20 C14 20 10 20 8 16 C6 12 10 6 10 6 Z" fill="black"/><circle cx="16" cy="14" r="3" fill="white"/>'
+        }, */
     {
         id: 'rssreader',
         name: 'RSS Reader',
