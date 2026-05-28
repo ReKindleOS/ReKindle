@@ -146,6 +146,22 @@ async function rtdbPush(path, data, userToken) {
     return await resp.json();
 }
 
+async function rtdbPushWithAccessToken(path, data, accessToken) {
+    const url = `https://rekindle-socials-default-rtdb.firebaseio.com/${path}.json?access_token=${encodeURIComponent(accessToken)}`;
+    console.log("[WORKER] rtdbPushWithAccessToken URL:", url.replace(/access_token=([^&]+)/, "access_token=<REDACTED>"));
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    });
+    if (!resp.ok) {
+        const errText = await resp.text();
+        console.error("[WORKER] rtdbPushWithAccessToken failed:", resp.status, errText);
+        throw new Error(`RTDB push failed (${resp.status}): ${errText}`);
+    }
+    return await resp.json();
+}
+
 async function rtdbGetWithUserToken(path, env, userToken) {
     const projectId = env.FIREBASE_PROJECT_ID || "rekindle-dd1fa";
     const url = `https://${projectId}-default-rtdb.firebaseio.com/${path}.json?auth=${encodeURIComponent(userToken)}`;
@@ -311,7 +327,7 @@ async function getGoogleAccessToken(env) {
     const header = { alg: "RS256", typ: "JWT" };
     const claim = {
         iss: clientEmail,
-        scope: "https://www.googleapis.com/auth/cloud-platform",
+        scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email",
         aud: "https://oauth2.googleapis.com/token",
         exp: now + 3600,
         iat: now
@@ -461,7 +477,7 @@ function getGridSize(gridDataStr) {
         if (Array.isArray(grid) && grid.length > 0) {
             return grid.length;
         }
-    } catch (e) {}
+    } catch (e) { }
     return null;
 }
 
@@ -580,7 +596,7 @@ async function logAutomodRejection(uid, contentType, text, categories, accessTok
             timestamp: { ".sv": "timestamp" },
             source: "openai_moderation"
         };
-        await rtdbPush("automod_log", entry, accessToken);
+        await rtdbPushWithAccessToken("automod_log", entry, accessToken);
     } catch (e) {
         console.error("Failed to log automod rejection:", e);
     }
@@ -739,7 +755,7 @@ export default {
                 }
 
                 console.log("[WORKER] kindlechat post — token claims:", { email: payload.email, ageVerified: payload.ageVerified, moderator: payload.moderator, aud: payload.aud });
-                const result = await rtdbPush("kindlechat/messages", msgData, token);
+                const result = await rtdbPushWithAccessToken("kindlechat/messages", msgData, accessToken);
                 return new Response(JSON.stringify({ allowed: true, key: result.name }), { status: 200, headers });
             }
 
