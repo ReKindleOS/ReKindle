@@ -2557,6 +2557,7 @@
         async function fetchDashboardAgenda() {
             const listEl = document.getElementById('db-agenda-list');
             if (!listEl) return;
+            listEl.innerHTML = '<div style="text-align:center; font-style:italic; font-size:0.9rem;">Loading...</div>';
             
             let googleEnabled = localStorage.getItem('rekindle_google_calendar_enabled') === 'true';
             let calDavUrl = localStorage.getItem('rekindle_caldav_url');
@@ -2571,7 +2572,7 @@
             if (d > daysInMonth) d = daysInMonth;
 
             let startOfDay = new Date(y, m, d);
-            let endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+            // endOfDay removed; we now use client-side filtering to avoid timezone boundary issues
             
             let subTitle = document.getElementById('db-agenda-title');
             if (subTitle) {
@@ -2593,19 +2594,39 @@
                         if (!sel.length) sel = ['primary'];
 
                         let hasAuthError = false;
+                        // Fetch a 3-day window to avoid missing events due to timezone boundary mismatches
+                        let queryStart = new Date(y, m, d - 1);
+                        let queryEnd = new Date(y, m, d + 2);
                         for (let calId of sel) {
                             if (hasAuthError) break;
-                            let res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${startOfDay.toISOString()}&timeMax=${endOfDay.toISOString()}&singleEvents=true&orderBy=startTime`, {
+                            let res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${queryStart.toISOString()}&timeMax=${queryEnd.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=250`, {
                                 headers: { 'Authorization': 'Bearer ' + token }
                             });
                             if (res.ok) {
                                 let data = await res.json();
                                 (data.items || []).forEach(i => {
-                                    events.push({
-                                        title: i.summary,
-                                        start: i.start.dateTime || i.start.date,
-                                        isAllDay: !!i.start.date
-                                    });
+                                    let start = i.start.dateTime || i.start.date;
+                                    let eventYear, eventMonth, eventDay;
+                                    if (i.start.date) {
+                                        // All-day event: parse YYYY-MM-DD directly to avoid timezone shifts
+                                        const parts = i.start.date.split('-').map(Number);
+                                        eventYear = parts[0];
+                                        eventMonth = parts[1] - 1;
+                                        eventDay = parts[2];
+                                    } else {
+                                        let dObj = new Date(start);
+                                        if (typeof window.rekindleGetZonedDate === 'function') dObj = window.rekindleGetZonedDate(dObj);
+                                        eventYear = dObj.getFullYear();
+                                        eventMonth = dObj.getMonth();
+                                        eventDay = dObj.getDate();
+                                    }
+                                    if (eventYear === y && eventMonth === m && eventDay === d) {
+                                        events.push({
+                                            title: i.summary,
+                                            start: start,
+                                            isAllDay: !!i.start.date
+                                        });
+                                    }
                                 });
                             } else if (res.status === 401 || res.status === 403) {
                                 hasAuthError = true;
@@ -2628,11 +2649,22 @@
                         if (sumM && startM) {
                             let rawD = startM[1].trim();
                             let isAllDay = rawD.length === 8;
-                            let isoDate = isAllDay ? `${rawD.slice(0, 4)}-${rawD.slice(4, 6)}-${rawD.slice(6, 8)}` : `${rawD.slice(0, 4)}-${rawD.slice(4, 6)}-${rawD.slice(6, 8)}T${rawD.slice(9, 11)}:${rawD.slice(11, 13)}:${rawD.slice(13, 15)}`;
+                            let tzSuffix = rawD.endsWith('Z') ? 'Z' : '';
+                            let isoDate = isAllDay ? `${rawD.slice(0, 4)}-${rawD.slice(4, 6)}-${rawD.slice(6, 8)}` : `${rawD.slice(0, 4)}-${rawD.slice(4, 6)}-${rawD.slice(6, 8)}T${rawD.slice(9, 11)}:${rawD.slice(11, 13)}:${rawD.slice(13, 15)}${tzSuffix}`;
                             
-                            // Check if intersects today manually (simple check)
-                            let dObj = new Date(isoDate);
-                            if (dObj >= startOfDay && dObj < endOfDay || isAllDay && new Date(isoDate).getDate() === d) {
+                            // Filter for the selected day using timezone-aware logic
+                            let includeEvent = false;
+                            if (isAllDay) {
+                                const evtYear = parseInt(rawD.slice(0, 4), 10);
+                                const evtMonth = parseInt(rawD.slice(4, 6), 10) - 1;
+                                const evtDay = parseInt(rawD.slice(6, 8), 10);
+                                includeEvent = (evtYear === y && evtMonth === m && evtDay === d);
+                            } else {
+                                let dObj = new Date(isoDate);
+                                if (typeof window.rekindleGetZonedDate === 'function') dObj = window.rekindleGetZonedDate(dObj);
+                                includeEvent = (dObj.getFullYear() === y && dObj.getMonth() === m && dObj.getDate() === d);
+                            }
+                            if (includeEvent) {
                                 events.push({ title: sumM[1].trim(), start: isoDate, isAllDay: isAllDay });
                             }
                         }
@@ -2693,22 +2725,23 @@
         let dashboardLoaded = false;
         let dashboardClockInterval = null;
         function loadDashboard() {
-            if (dashboardLoaded) return;
-            dashboardLoaded = true;
-            updateDashboardTime();
-            fetchDashboardWeather();
+            if (!dashboardLoaded) {
+                dashboardLoaded = true;
+                updateDashboardTime();
+                fetchDashboardWeather();
+                dashboardClockInterval = setInterval(updateDashboardTime, 60000);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        clearInterval(dashboardClockInterval);
+                        dashboardClockInterval = null;
+                    } else {
+                        updateDashboardTime();
+                        dashboardClockInterval = setInterval(updateDashboardTime, 60000);
+                    }
+                });
+            }
             renderDashboardCalendar();
             fetchDashboardAgenda();
-            dashboardClockInterval = setInterval(updateDashboardTime, 60000);
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    clearInterval(dashboardClockInterval);
-                    dashboardClockInterval = null;
-                } else if (!dashboardClockInterval) {
-                    updateDashboardTime();
-                    dashboardClockInterval = setInterval(updateDashboardTime, 60000);
-                }
-            });
         }
 
         // Expose functions needed by inline HTML handlers
