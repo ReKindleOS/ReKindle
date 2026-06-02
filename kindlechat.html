@@ -1097,6 +1097,26 @@
                         General chat.</div>
                 </div>
 
+                <div style="margin: 15px 0;">
+                    <label style="display:block; font-size:0.9rem; font-weight:bold; margin-bottom:4px;"
+                        data-i18n="kindlechat.settings.trans_lang">Translation Language</label>
+                    <select id="setting-translation-lang" style="width:100%; border:2px solid black; border-radius:0; padding:6px; font-family:inherit; font-size:0.9rem; background:white;">
+                        <option value="auto" data-i18n="kindlechat.settings.trans_lang_auto">Auto (System Language)</option>
+                        <option value="en">English</option>
+                        <option value="es">Español</option>
+                        <option value="pt">Português</option>
+                        <option value="pl">Polski</option>
+                        <option value="de">Deutsch</option>
+                        <option value="it">Italiano</option>
+                        <option value="fr">Français</option>
+                        <option value="ru">Русский</option>
+                        <option value="zh">中文</option>
+                        <option value="vi">Tiếng Việt</option>
+                    </select>
+                    <div style="font-size:0.8rem; color:#666; margin-top:4px;" data-i18n="kindlechat.settings.trans_lang_desc">
+                        Choose an alternative language for translations. "Auto" matches your system language.</div>
+                </div>
+
                 <div id="admin-tools-setting" style="margin: 15px 0; display:none;">
                     <label style="display:flex; align-items:center; cursor:pointer;">
                         <input type="checkbox" id="setting-show-admin-tools"
@@ -1292,9 +1312,18 @@
         }
 
         var userLang = resolveUserLanguage();
+
+        function getEffectiveTranslationLang() {
+            if (settings.translationLang && settings.translationLang !== 'auto') {
+                return settings.translationLang;
+            }
+            return userLang;
+        }
+
         var settings = {
             showTranslations: true, // Default to true for all users to see translations
-            showAdminTools: false
+            showAdminTools: false,
+            translationLang: 'auto'
         };
         var isCurrentUserMod = false;
         var isModeratorMode = false;
@@ -1521,6 +1550,7 @@
             document.getElementById('setting-enter-to-send').checked = (localStorage.getItem('rekindle_enter_to_send_chat') !== 'false');
             document.getElementById('setting-show-translations').checked = settings.showTranslations;
             document.getElementById('setting-show-admin-tools').checked = settings.showAdminTools;
+            document.getElementById('setting-translation-lang').value = settings.translationLang || 'auto';
 
             // Admin check
             if (currentUser && currentUser.email === 'ukiyo@rekindle.ink') {
@@ -2102,7 +2132,7 @@
 
                 // --- Per-language translation listener ---
                 // Each client only downloads translations for their selected language.
-                generalTransRef = socialRtdb.ref('kindlechat/translations_by_lang/' + userLang);
+                generalTransRef = socialRtdb.ref('kindlechat/translations_by_lang/' + getEffectiveTranslationLang());
 
                 kcTransAddedHandler = function (childSnap) {
                     if (currentRoomId !== 'general') return;
@@ -2515,7 +2545,7 @@
                         }
                     } else if (typeof msg.translation === 'object') {
                         // New map format (legacy inline translations)
-                        var langToTry = (typeof userLang !== 'undefined') ? userLang : 'en';
+                        var langToTry = getEffectiveTranslationLang();
                         if (msg.translation[langToTry] && msg.translation[langToTry].toLowerCase().trim() !== originalTextLowercase) {
                             hasTranslation = true;
                             translationText = msg.translation[langToTry];
@@ -2751,6 +2781,7 @@
 
         function saveSettings() {
             settings.showTranslations = document.getElementById('setting-show-translations').checked;
+            settings.translationLang = document.getElementById('setting-translation-lang').value || 'auto';
             var enterToSend = document.getElementById('setting-enter-to-send').checked;
 
             if (currentUsername === 'ukiyo') {
@@ -2778,6 +2809,7 @@
                     var parsed = JSON.parse(saved);
                     settings.showTranslations = parsed.showTranslations !== undefined ? parsed.showTranslations : settings.showTranslations;
                     settings.showAdminTools = parsed.showAdminTools !== undefined ? parsed.showAdminTools : false;
+                    settings.translationLang = parsed.translationLang || 'auto';
                 } catch (e) { }
             }
 

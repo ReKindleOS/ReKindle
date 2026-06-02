@@ -5,11 +5,184 @@
  * Functionality:
  * 1. Receives chat message payload via POST
  * 2. Checks if message is an ASCII emoji (skips translation if so)
- * 3. Translates text to English using MyMemory API if needed
- * 4. Writes final record (original + translation) to Firebase RTDB or Firestore
+ * 3. Translates text to all supported languages using Google Translate
+ * 4. Writes translations to Firebase RTDB or Firestore using service account auth
  */
 
-// FIRESTORE helpers for Neighbourhood (migrated from RTDB to Firestore)
+/* ------------------------------------------------------------------ */
+/*  SERVICE ACCOUNT AUTH (copied from rekindle-moderate worker)       */
+/* ------------------------------------------------------------------ */
+let cachedAccessToken = null;
+let cachedTokenExpiry = 0;
+
+function resolveServiceAccount(env) {
+    if (env.SOCIAL_SERVICE_ACCOUNT_JSON) {
+        try {
+            const sa = JSON.parse(env.SOCIAL_SERVICE_ACCOUNT_JSON);
+            if (!sa.client_email || !sa.private_key) {
+                throw new Error("SOCIAL_SERVICE_ACCOUNT_JSON missing client_email or private_key");
+            }
+            return {
+                clientEmail: sa.client_email,
+                privateKey: sa.private_key,
+                projectId: sa.project_id || null
+            };
+        } catch (e) {
+            throw new Error("Failed to parse SOCIAL_SERVICE_ACCOUNT_JSON: " + e.message);
+        }
+    }
+    if (env.SOCIAL_CLIENT_EMAIL && env.SOCIAL_PRIVATE_KEY) {
+        return {
+            clientEmail: env.SOCIAL_CLIENT_EMAIL,
+            privateKey: env.SOCIAL_PRIVATE_KEY,
+            projectId: null
+        };
+    }
+    throw new Error("Missing service account credentials. Set either SOCIAL_SERVICE_ACCOUNT_JSON or both SOCIAL_CLIENT_EMAIL + SOCIAL_PRIVATE_KEY.");
+}
+
+async function getCachedAccessToken(env) {
+    const now = Date.now();
+    if (cachedAccessToken && cachedTokenExpiry > now + 60000) {
+        return cachedAccessToken;
+    }
+    const token = await getGoogleAccessToken(env);
+    cachedAccessToken = token;
+    cachedTokenExpiry = now + 3600000;
+    return token;
+}
+
+async function getGoogleAccessToken(env) {
+    const sa = resolveServiceAccount(env);
+    const clientEmail = sa.clientEmail;
+    const privateKeyPEM = sa.privateKey;
+    let normalizedPem = privateKeyPEM.replace(/\\n/g, "\n");
+    const match = normalizedPem.match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
+    let privateKeyBody = match ? match[1] : normalizedPem
+        .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+        .replace(/-----END PRIVATE KEY-----/g, "");
+    privateKeyBody = privateKeyBody.replace(/\s+/g, "");
+    if (!privateKeyBody) throw new Error("Could not extract private key body from PEM");
+    let binaryKey;
+    try {
+        binaryKey = str2ab(atob(privateKeyBody));
+    } catch (e) {
+        throw new Error("Failed to base64-decode private key: " + e.message);
+    }
+    let key;
+    try {
+        key = await crypto.subtle.importKey(
+            "pkcs8",
+            binaryKey,
+            { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+            false,
+            ["sign"]
+        );
+    } catch (e) {
+        throw new Error(`ImportKey failed. Key size: ${binaryKey.byteLength} bytes. Error: ${e.message}`);
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: "RS256", typ: "JWT" };
+    const claim = {
+        iss: clientEmail,
+        scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email",
+        aud: "https://oauth2.googleapis.com/token",
+        exp: now + 3600,
+        iat: now
+    };
+    const encodedHeader = b64url(JSON.stringify(header));
+    const encodedClaim = b64url(JSON.stringify(claim));
+    const unsignedToken = `${encodedHeader}.${encodedClaim}`;
+    const signature = await crypto.subtle.sign(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        new TextEncoder().encode(unsignedToken)
+    );
+    const signedToken = `${unsignedToken}.${b64urlEncode(signature)}`;
+    const params = new URLSearchParams();
+    params.append("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+    params.append("assertion", signedToken);
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params
+    });
+    const tokenData = await tokenRes.json();
+    if (tokenData.error) {
+        throw new Error("Google OAuth2 Error: " + JSON.stringify(tokenData));
+    }
+    return tokenData.access_token;
+}
+
+function str2ab(str) {
+    const buf = new ArrayBuffer(str.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < str.length; i++) view[i] = str.charCodeAt(i);
+    return buf;
+}
+
+function b64url(str) {
+    return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlEncode(buffer) {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/* ------------------------------------------------------------------ */
+/*  FIREBASE TOKEN VERIFICATION (copied from rekindle-moderate)       */
+/* ------------------------------------------------------------------ */
+async function verifyFirebaseToken(token, env) {
+    const parts = token.split(".");
+    if (parts.length !== 3) throw new Error("Malformed token: expected 3 parts");
+    const b64decode = (base64) => {
+        const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
+        return JSON.parse(atob(padded));
+    };
+    let header, payload;
+    try {
+        header = b64decode(parts[0]);
+        payload = b64decode(parts[1]);
+    } catch (e) {
+        throw new Error("Failed to decode token payload: " + e.message);
+    }
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp < now) throw new Error("Token expired");
+    const sa = resolveServiceAccount(env);
+    const allowedAuds = [env.FIREBASE_PROJECT_ID, sa.projectId].filter(Boolean);
+    if (allowedAuds.length === 0) {
+        throw new Error("No Firebase project IDs configured. Set FIREBASE_PROJECT_ID or SOCIAL_SERVICE_ACCOUNT_JSON with a project_id.");
+    }
+    if (!allowedAuds.includes(payload.aud)) {
+        throw new Error(`Invalid audience: token aud="${payload.aud}" not in allowed=[${allowedAuds.join(", ")}]`);
+    }
+    const validIss = allowedAuds.map(id => `https://securetoken.google.com/${id}`);
+    if (!validIss.includes(payload.iss)) {
+        throw new Error(`Invalid issuer: token iss="${payload.iss}" not in allowed=[${validIss.join(", ")}]`);
+    }
+    const keysRes = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
+    if (!keysRes.ok) throw new Error("Could not fetch Google public keys: " + keysRes.status);
+    const keys = await keysRes.json();
+    const jwk = keys.keys.find(k => k.kid === header.kid);
+    if (!jwk) throw new Error("Unknown signing key: kid=" + header.kid);
+    const cryptoKey = await crypto.subtle.importKey(
+        "jwk", jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false, ["verify"]
+    );
+    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cryptoKey, sig, data);
+    if (!valid) throw new Error("Invalid token signature");
+    return payload;
+}
+
+/* ------------------------------------------------------------------ */
+/*  FIRESTORE HELPERS                                                  */
+/* ------------------------------------------------------------------ */
 function toFirestoreValue(value) {
     if (value === null || value === undefined) return { nullValue: null };
     if (typeof value === 'string') return { stringValue: value };
@@ -28,7 +201,7 @@ function toFirestoreValue(value) {
     return { stringValue: String(value) };
 }
 
-async function firestorePatch(docPath, data, idToken) {
+async function firestorePatch(docPath, data, accessToken) {
     const mask = Object.keys(data).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
     const url = `https://firestore.googleapis.com/v1/projects/rekindle-socials/databases/(default)/documents/${docPath}?${mask}`;
     const fields = {};
@@ -37,7 +210,7 @@ async function firestorePatch(docPath, data, idToken) {
         method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
+            'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({ fields })
     });
@@ -47,7 +220,7 @@ async function firestorePatch(docPath, data, idToken) {
     }
 }
 
-async function firestoreCreate(collectionPath, data, idToken) {
+async function firestoreCreate(collectionPath, data, accessToken) {
     const url = `https://firestore.googleapis.com/v1/projects/rekindle-socials/databases/(default)/documents/${collectionPath}`;
     const fields = {};
     for (const [key, value] of Object.entries(data)) fields[key] = toFirestoreValue(value);
@@ -55,7 +228,7 @@ async function firestoreCreate(collectionPath, data, idToken) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
+            'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({ fields })
     });
@@ -64,12 +237,43 @@ async function firestoreCreate(collectionPath, data, idToken) {
         throw new Error(`Firestore create failed (${resp.status}): ${errText}`);
     }
     const json = await resp.json();
-    // Extract document ID from name like "projects/.../documents/collection/docId"
     const parts = (json.name || '').split('/');
     return parts[parts.length - 1];
 }
 
-// EMBEDDED EMOJI DATABASE (From emojis.js)
+/* ------------------------------------------------------------------ */
+/*  RTDB HELPERS                                                       */
+/* ------------------------------------------------------------------ */
+async function rtdbPushWithAccessToken(path, data, accessToken) {
+    const url = `https://rekindle-socials-default-rtdb.firebaseio.com/${path}.json?access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    });
+    if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`RTDB push failed (${resp.status}): ${errText}`);
+    }
+    return await resp.json();
+}
+
+async function rtdbPatchWithAccessToken(path, data, accessToken) {
+    const url = `https://rekindle-socials-default-rtdb.firebaseio.com/${path}.json?access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    });
+    if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`RTDB patch failed (${resp.status}): ${errText}`);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/*  EMOJI & TRANSLATION LOGIC                                          */
+/* ------------------------------------------------------------------ */
 const ASCII_EMOJIS = {
     "ʘ‿ʘ": [
         { art: "\\˚ㄥ˚\\", name: "Quirky" },
@@ -142,7 +346,7 @@ const ASCII_EMOJIS = {
         { art: "{•̃_•̃}", name: "Robot" },
         { art: "(ᵔᴥᵔ)", name: "Seal" },
         { art: "[¬º-°]¬", name: "Zombie" },
-        { art: "ƪ(ړײ)‎ƪ​​", name: "Creeper" },
+        { art: "ƪ(ړײ)‎ƪ​​", name: "Creeper" }
     ],
     "⊙﹏⊙": [
         { art: "¯\\(°_o)/¯", name: "Meh" },
@@ -160,7 +364,6 @@ const ASCII_EMOJIS = {
     ]
 };
 
-// Flatten to Set for fast lookup
 const KNOWN_EMOJI_SET = new Set();
 Object.values(ASCII_EMOJIS).forEach(list => {
     list.forEach(item => KNOWN_EMOJI_SET.add(item.art));
@@ -170,14 +373,11 @@ function isAsciiEmoji(text) {
     if (!text) return false;
     const trimmed = text.trim();
     if (KNOWN_EMOJI_SET.has(trimmed)) return true;
-
-    // Heuristics
     const letterMatch = trimmed.match(/[\p{L}\p{N}]/gu);
     const letters = letterMatch ? letterMatch.length : 0;
     const symbols = trimmed.length - letters;
     if (trimmed.length < 15 && symbols > letters) return true;
     if (/^[()0-9^>.<_ \-*\\/|]+$/.test(trimmed)) return true;
-
     return false;
 }
 
@@ -185,49 +385,33 @@ async function translateWithGoogle(text, targetLang = 'en') {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
         return { text: null, error: "Skipped: Emoji or Empty" };
     }
-
-    // 1. Mask mentions
     const mentions = [];
     const maskedText = text.replace(/@(\w+)/g, (match) => {
         mentions.push(match);
         return `__MENTION_${mentions.length - 1}__`;
     });
-
     try {
         const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
-
         const response = await fetch(url);
-
         if (!response.ok) {
             throw new Error(`Google API Error: ${response.status} ${await response.text()}`);
         }
-
         const data = await response.json();
-
-        // Data structure: [[["Translated","Original",...], ...], null, "detected_lang"]
         if (!data || !data[0]) {
             throw new Error("Invalid response format from Google");
         }
-
         let translatedText = data[0].map(chunk => chunk[0]).join('');
-        const detectedLang = data[2]; // e.g. "fr"
-
-        // 2. Restore mentions
+        const detectedLang = data[2];
         mentions.forEach((mention, index) => {
             translatedText = translatedText.replace(`__MENTION_${index}__`, mention);
         });
-
-        // 3. Validation
         if (detectedLang === targetLang) {
             return { text: null, error: `Skipped: Detected language is same as target (${targetLang})` };
         }
-
         if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
             return { text: translatedText, error: null };
         }
-
         return { text: null, error: "Suppressed: Identical translation" };
-
     } catch (err) {
         console.error(`Translation to ${targetLang} failed:`, err);
         return { text: null, error: `Failed: ${err.message}` };
@@ -236,33 +420,26 @@ async function translateWithGoogle(text, targetLang = 'en') {
 
 async function translateToAllLanguages(text) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) return null;
-
-    // Supported languages in ReKindle based on user settings
     const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
     const translations = {};
-
-    // Process sequentially to avoid Google Translate 429 Too Many Requests
     for (const lang of targetLangs) {
         const result = await translateWithGoogle(text, lang);
         if (result.text) {
             translations[lang] = result.text;
         }
-        // Brief pause to prevent rate limiting
         await new Promise(r => setTimeout(r, 50));
     }
-
-    // If no unique translations generated, return null
     if (Object.keys(translations).length === 0) return null;
     return translations;
 }
 
-async function writeTranslationsByLang(translations, msgId, token) {
+async function writeTranslationsByLang(translations, msgId, accessToken) {
     if (!translations || !msgId) return;
     const baseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/kindlechat/translations_by_lang";
     const promises = [];
     const langEntries = [];
     for (const [lang, text] of Object.entries(translations)) {
-        const url = `${baseUrl}/${lang}/${msgId}.json` + (token ? `?auth=${token}` : '');
+        const url = `${baseUrl}/${lang}/${msgId}.json?access_token=${encodeURIComponent(accessToken)}`;
         promises.push(
             fetch(url, {
                 method: 'PUT',
@@ -281,167 +458,144 @@ async function writeTranslationsByLang(translations, msgId, token) {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/*  MAIN HANDLER                                                       */
+/* ------------------------------------------------------------------ */
+export default {
+    async fetch(request, env) {
+        const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("x-forwarded-for") || "127.0.0.1";
 
-addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request));
-});
+        const allowedOrigins = [
+            "https://beta.rekindle.ink",
+            "https://rekindle.ink",
+            "https://lite.rekindle.ink",
+            "https://legacy.rekindle.ink",
+        ];
+        const origin = request.headers.get("Origin");
+        const isAllowed = allowedOrigins.indexOf(origin) !== -1;
 
-async function handleRequest(request) {
-    // Extract Client IP (Cloudflare Header)
-    const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("x-forwarded-for") || "127.0.0.1";
+        const headers = {
+            'Access-Control-Allow-Origin': isAllowed ? origin : allowedOrigins[1],
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Content-Type': 'application/json'
+        };
 
-    const allowedOrigins = [
-        "https://beta.rekindle.ink",
-        "https://rekindle.ink",
-        "https://lite.rekindle.ink",
-        "https://legacy.rekindle.ink",
-    ];
-    const origin = request.headers.get("Origin");
-    const isAllowed = allowedOrigins.indexOf(origin) !== -1;
-
-    const headers = {
-        'Access-Control-Allow-Origin': isAllowed ? origin : allowedOrigins[1],
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Content-Type': 'application/json'
-    };
-
-    if (request.method === 'OPTIONS') {
-        return new Response(null, { headers });
-    }
-
-    if (!isAllowed && origin !== null) {
-        return new Response(JSON.stringify({ error: "Forbidden: Origin not allowed" }), { status: 403, headers });
-    }
-
-    if (request.method !== 'POST') {
-        return new Response('Method Not Allowed', { status: 405, headers });
-    }
-
-    const authHeader = request.headers.get('Authorization');
-    const token = authHeader ? authHeader.split(' ')[1] : null;
-
-    try {
-        const payload = await request.json();
-        const { user, uid, text, msgId, reprocess, translateOnly, app } = payload;
-
-        console.log("Worker received payload:", JSON.stringify(payload));
-
-        let baseFirebaseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/kindlechat/messages";
-        if (app === 'neighbourhood') {
-            baseFirebaseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/neighbourhood_posts";
+        if (request.method === 'OPTIONS') {
+            return new Response(null, { headers });
         }
 
-        if (translateOnly && msgId) {
-            // TRANSLATE-ONLY: patch translation onto an already-written message
-            const translatedText = await translateToAllLanguages(text);
-            if (!translatedText) {
-                return new Response(JSON.stringify({ success: true, skipped: true }), { status: 200, headers });
-            }
-
-            if (app === 'neighbourhood') {
-                await firestorePatch(`neighbourhood_posts/${msgId}`, { translation: translatedText }, token);
-            } else {
-                // Write per-language to new path for bandwidth efficiency
-                await writeTranslationsByLang(translatedText, msgId, token);
-            }
-
-            return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
+        if (!isAllowed && origin !== null) {
+            return new Response(JSON.stringify({ error: "Forbidden: Origin not allowed" }), { status: 403, headers });
         }
 
-        if (reprocess && msgId) {
-            // REPROCESS LOGIC (admin only)
-            let translatedText = await translateToAllLanguages(text);
+        if (request.method !== 'POST') {
+            return new Response('Method Not Allowed', { status: 405, headers });
+        }
 
+        const authHeader = request.headers.get('Authorization');
+        const userToken = authHeader ? authHeader.split(' ')[1] : null;
+
+        try {
+            // Verify caller is authenticated (same as moderation worker)
+            if (!userToken) {
+                return new Response(JSON.stringify({ error: "Missing authorization token" }), { status: 401, headers });
+            }
+            await verifyFirebaseToken(userToken, env);
+
+            // Use service account for all Firebase writes (fixes permission issues)
+            const accessToken = await getCachedAccessToken(env);
+
+            const payload = await request.json();
+            const { user, uid, text, msgId, reprocess, translateOnly, app } = payload;
+
+            console.log("Worker received payload:", JSON.stringify(payload));
+
+            let baseFirebaseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/kindlechat/messages";
             if (app === 'neighbourhood') {
-                await firestorePatch(`neighbourhood_posts/${msgId}`, {
-                    translation: translatedText || null,
-                    reprocessedAt: new Date()
-                }, token);
-            } else {
-                // Write per-language to new path
-                if (translatedText) {
-                    await writeTranslationsByLang(translatedText, msgId, token);
+                baseFirebaseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/neighbourhood_posts";
+            }
+
+            if (translateOnly && msgId) {
+                const translatedText = await translateToAllLanguages(text);
+                if (!translatedText) {
+                    return new Response(JSON.stringify({ success: true, skipped: true }), { status: 200, headers });
                 }
-                // Also update inline translation for backward compatibility during transition
-                let updateUrl = `${baseFirebaseUrl}/${msgId}.json`;
-                if (token) updateUrl += `?auth=${token}`;
-                const firebaseResp = await fetch(updateUrl, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+
+                if (app === 'neighbourhood') {
+                    await firestorePatch(`neighbourhood_posts/${msgId}`, { translation: translatedText }, accessToken);
+                } else {
+                    await writeTranslationsByLang(translatedText, msgId, accessToken);
+                }
+
+                return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
+            }
+
+            if (reprocess && msgId) {
+                let translatedText = await translateToAllLanguages(text);
+
+                if (app === 'neighbourhood') {
+                    await firestorePatch(`neighbourhood_posts/${msgId}`, {
+                        translation: translatedText || null,
+                        reprocessedAt: new Date()
+                    }, accessToken);
+                } else {
+                    if (translatedText) {
+                        await writeTranslationsByLang(translatedText, msgId, accessToken);
+                    }
+                    await rtdbPatchWithAccessToken(`kindlechat/messages/${msgId}`, {
                         translation: translatedText || null,
                         reprocessedAt: { ".sv": "timestamp" }
-                    })
-                });
-                if (!firebaseResp.ok) {
-                    const errText = await firebaseResp.text();
-                    throw new Error(`Firebase update failed (${firebaseResp.status}): ${errText}`);
+                    }, accessToken);
+                }
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    msgId,
+                    translation: translatedText
+                }), { status: 200, headers });
+            }
+
+            // NORMAL SEND LOGIC
+            if (!uid || (!text && text !== "")) {
+                return new Response(JSON.stringify({ error: "Missing uid or text" }), { status: 400, headers });
+            }
+
+            let translatedText = await translateToAllLanguages(text);
+
+            let docId;
+            if (app === 'neighbourhood') {
+                const dbPayload = {
+                    text: text,
+                    timestamp: new Date(),
+                    uid: uid,
+                    ...(translatedText && { translation: translatedText })
+                };
+                docId = await firestoreCreate('neighbourhood_posts', dbPayload, accessToken);
+            } else {
+                const dbPayload = {
+                    text: text,
+                    timestamp: { ".sv": "timestamp" },
+                    uid: uid
+                };
+
+                const firebaseData = await rtdbPushWithAccessToken("kindlechat/messages", dbPayload, accessToken);
+                docId = firebaseData.name;
+
+                if (translatedText) {
+                    await writeTranslationsByLang(translatedText, docId, accessToken);
                 }
             }
 
             return new Response(JSON.stringify({
                 success: true,
-                msgId,
+                id: docId,
                 translation: translatedText
             }), { status: 200, headers });
+
+        } catch (err) {
+            console.error("Worker Catch:", err.message);
+            return new Response(JSON.stringify({ error: err.message }), { status: 500, headers });
         }
-
-        // NORMAL SEND LOGIC
-        if (!uid || (!text && text !== "")) {
-            return new Response(JSON.stringify({ error: "Missing uid or text" }), { status: 400, headers });
-        }
-
-        // SKIP EMOJIS AND TRANSLATE
-        let translatedText = await translateToAllLanguages(text);
-
-        let docId;
-        if (app === 'neighbourhood') {
-            const dbPayload = {
-                text: text,
-                timestamp: new Date(),
-                uid: uid,
-                ...(translatedText && { translation: translatedText })
-            };
-            docId = await firestoreCreate('neighbourhood_posts', dbPayload, token);
-        } else {
-            const dbPayload = {
-                text: text,
-                timestamp: { ".sv": "timestamp" }
-            };
-            dbPayload.uid = uid;
-
-            let postUrl = `${baseFirebaseUrl}.json`;
-            if (token) postUrl += `?auth=${token}`;
-
-            const firebaseResp = await fetch(postUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dbPayload)
-            });
-
-            if (!firebaseResp.ok) {
-                const errText = await firebaseResp.text();
-                throw new Error(`Firebase write failed (${firebaseResp.status}): ${errText}`);
-            }
-
-            const firebaseData = await firebaseResp.json();
-            docId = firebaseData.name;
-
-            // Write per-language translations to new path (not inline)
-            if (translatedText) {
-                await writeTranslationsByLang(translatedText, docId, token);
-            }
-        }
-
-        return new Response(JSON.stringify({
-            success: true,
-            id: docId,
-            translation: translatedText
-        }), { status: 200, headers });
-
-    } catch (err) {
-        console.error("Worker Catch:", err.message);
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers });
     }
-}
+};
