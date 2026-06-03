@@ -2,6 +2,12 @@
 
 **CRITICAL:** When developing for this project, you must adhere to the following constraints to ensure compatibility with Kindle and E-ink browsers.
 
+## 📝 Agent Documentation Rule
+
+**This file is a living document.** Whenever you fix an issue, discover a gotcha, uncover a cross-page CSS leak, or learn anything about this codebase that isn't already written here, **add it immediately**.
+
+Future agents (including yourself in a new session) will not have access to your working context. If you don't write it down, the knowledge is lost. Be generous with details, code snippets, and file paths. A few minutes of documentation now saves hours of re-discovery later.
+
 ## 🚫 Restrictions (Target: Chromium 75)
 
 ### 1. No Flexbox Gap (`gap`)
@@ -143,6 +149,10 @@ The main container for every app.
     font-weight: bold;
     font-size: 1.1rem;
     z-index: 1; /* Sits above stripes */
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 /* Standard Close Button */
@@ -177,7 +187,31 @@ Strict layering constants to prevent overlap issues.
 | `close-box` | `2` | Interactive top layer |
 | `modal-overlay` | `10000` | Always top-most |
 
-### 6. Branding & Badges
+### 6. Injected UI from Shared Scripts
+When creating modals or popups dynamically from shared JavaScript (e.g., `time.js`, `theme.js`), you should reuse the standard System 7 class names (`.window`, `.title-bar`, `.title-text`, etc.) to maintain the retro aesthetic. **However**, the 120+ HTML files in this project each have their own styles for these classes, and some add properties that are **not** part of the canonical pattern above (e.g., `index.html` adds `border: 2px solid black` to `.title-text`).
+
+**Rule:** Always scope your injected selectors and explicitly reset any property that isn't defined in the canonical pattern:
+
+```css
+#my-modal .title-text {
+    /* Canonical properties from section 3 */
+    background: white;
+    padding: 0 15px;
+    font-weight: bold;
+    font-size: 1.1rem;
+    z-index: 1;
+    /* Explicit resets for page-level overrides */
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    box-sizing: border-box;
+}
+```
+
+Without these resets, host-page styles will leak into your injected modal.
+
+### 7. Branding & Badges
 Standardized "Beta" or status badges.
 
 **Beta Badge:**
@@ -245,8 +279,46 @@ Icons are stored as raw SVG strings in `icons.js`.
     *   Avoid relying on `Intl.DateTimeFormat` for timezone shifting.
     *   Use a **Manual Offset** strategy: Store a numeric offset (e.g., `+11`) and mathematically shift the timestamp before displaying.
     *   Use the `time.js` helper `rekindleGetZonedDate()` which handles this shim.
+*   **Timezone Setting Modal (`time.js`):**
+    *   `time.js` injects a lazy System 7 modal (`checkTimezoneOffset()`) when the user has not saved a timezone offset.
+    *   It triggers **only** when local-time helpers are actually called (`rekindleGetZonedDate()`, `rekindleFormatTime()`, `getDateInZone()` without an explicit zone) — it does **not** run automatically on every page load.
+    *   The modal searches the Open-Meteo geocoding API, fetches the UTC offset, saves it to `localStorage` (`rekindle_location_manual` + `rekindle_timezone_offset`), and **reloads the page** on success.
+    *   It has **no dismiss button** — the user must set their timezone or leave the popup open.
+    *   Because this modal is injected into arbitrary host pages, it is subject to the class-name leakage warning in section 6 above.
 
-### 6. Firebase Architecture
+### 6. Canvas / Touch Coordinate Bug with CSS `zoom`
+
+**Context:** `theme.js` can apply a CSS `zoom` scale to `.window` elements via user settings (`rekindle_scale`).
+
+**Kindle Bug:** On the Kindle experimental browser, when `zoom` is active on an ancestor, `getBoundingClientRect()` returns **pre-zoom layout coordinates** while `TouchEvent`/`MouseEvent` `clientX`/`clientY` are in **post-zoom viewport coordinates**. This causes a massive touch offset (often several centimeters) for any canvas-based drawing or click-target game.
+
+**Solution — Exempt the Game Window from Scaling:**
+Games that rely on precise canvas coordinates (drawing, drag-and-drop, grid clicks, etc.) must override the global scaling rule so the `.window` renders at `zoom: 1`, while still allowing the title-bar to scale for readability.
+
+Add this CSS block **after** your existing `.window` / `.title-bar` rules and **before** `</style>`:
+
+```css
+/* Override global scaling - only scale title-bar */
+.window {
+    zoom: 1 !important;
+    transform: none !important;
+}
+
+.title-bar {
+    zoom: var(--rekindle-scale, 1);
+}
+
+@supports not (zoom: 1) {
+    .title-bar {
+        transform: scale(var(--rekindle-scale, 1));
+        transform-origin: top center;
+    }
+}
+```
+
+**Apps already using this fix:** `pool.html`, `pool2p.html`, `circle.html`, `blockblast.html`.
+
+### 7. Firebase Architecture
 The project uses **two separate Firebase projects**. You must know which one your feature targets and update the correct rules file.
 
 #### Project 1: Primary (`rekindle-dd1fa`)
@@ -280,3 +352,5 @@ Without matching rules, writes will be **silently rejected** by security rules. 
 ## ✅ Best Practices
 -   **Images:** Use **WebP** or **SVG**. They are fully supported and perform best.
 -   **Modals:** Always stick to the `.modal-overlay` / `.modal-box` DOM structure found in `weather.html`.
+-   **Update this file:** When you discover a cross-cutting concern, gotcha, or project-wide pattern during implementation, update `AGENTS.md` immediately so future agents don't relearn it the hard way.
+-   **`.title-text` height:** All 122 HTML files standardize `.title-text` with `display: inline-flex; align-items: center; height: 100%; box-sizing: border-box;` so the white background fully covers the title-bar stripes. Do not remove these properties.
