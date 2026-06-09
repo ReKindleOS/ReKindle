@@ -796,6 +796,32 @@
     </div>
 </div>
 
+<div class="mod-actions-window" id="reports-window">
+    <div class="title-bar">
+        <div class="title-bar-btn"></div>
+        <div class="title-bar-text">User Reports</div>
+        <div class="title-bar-btn"></div>
+    </div>
+    <div class="content">
+        <div class="automod-controls">
+            <label for="reports-filter">Status:</label>
+            <select id="reports-filter">
+                <option value="pending" selected>Pending</option>
+                <option value="resolved">Resolved</option>
+                <option value="dismissed">Dismissed</option>
+                <option value="all">All</option>
+            </select>
+            <button class="btn-primary" onclick="fetchReports()">Refresh</button>
+        </div>
+
+        <div>
+            <div style="font-size:12px;font-weight:bold;margin-bottom:6px;">Reports</div>
+            <div class="status-bar" id="reports-status">Loading...</div>
+            <div id="reports-entries"><div class="no-data">Loading...</div></div>
+        </div>
+    </div>
+</div>
+
 <div class="banned-ips-window" id="banned-ips-window">
     <div class="title-bar">
         <div class="title-bar-btn"></div>
@@ -967,11 +993,13 @@
         }
         document.getElementById('banned-ips-window').style.display = 'flex';
         document.getElementById('mod-actions-window').style.display = 'flex';
+        document.getElementById('reports-window').style.display = 'flex';
         if (isModerator) {
             document.getElementById('clear-log-btn').style.display = 'none';
         }
         fetchBannedIps();
         fetchModActions();
+        fetchReports();
     });
 
     function setStatus(msg) {
@@ -1628,6 +1656,105 @@
         } catch (err) {
             console.error(err);
             statusEl.textContent = 'Error: ' + (err.message || err);
+        }
+    }
+
+    // ── Reports System ────────────────────────────────────────────────────────
+
+    var REPORT_REASON_LABELS = {
+        'spam': 'Spam',
+        'harassment': 'Harassment',
+        'inappropriate': 'Inappropriate content',
+        'hate_speech': 'Hate speech',
+        'self_harm': 'Self-harm',
+        'violence': 'Violence',
+        'other': 'Other'
+    };
+
+    async function fetchReports() {
+        var statusEl = document.getElementById('reports-status');
+        var entriesEl = document.getElementById('reports-entries');
+        statusEl.textContent = 'Loading reports...';
+
+        var filter = document.getElementById('reports-filter').value;
+
+        try {
+            var query = socialDb.collection('reports').orderBy('createdAt', 'desc').limit(50);
+            
+            if (filter !== 'all') {
+                query = query.where('status', '==', filter);
+            }
+
+            var snapshot = await query.get();
+
+            if (snapshot.empty) {
+                entriesEl.innerHTML = '<div class="no-data">No reports found.</div>';
+                statusEl.textContent = 'No reports found.';
+                return;
+            }
+
+            var html = '';
+            snapshot.forEach(function(doc) {
+                var r = doc.data();
+                var date = r.createdAt ? formatDate(r.createdAt.toDate ? r.createdAt.toDate() : r.createdAt) : 'Unknown';
+                var reasonLabel = REPORT_REASON_LABELS[r.reason] || r.reason || '?';
+                var statusBadge = '';
+                if (r.status === 'pending') statusBadge = '<span class="badge badge-timeout-mod">PENDING</span>';
+                else if (r.status === 'resolved') statusBadge = '<span class="badge" style="border-color:#080;background:#d4edda;">RESOLVED</span>';
+                else if (r.status === 'dismissed') statusBadge = '<span class="badge badge-undone">DISMISSED</span>';
+
+                html += '<div class="mod-action-entry">'
+                    + '<div class="mod-action-header">'
+                    + '<span class="mod-action-time">' + date + '</span>'
+                    + statusBadge
+                    + '<span class="badge">' + escapeHtml(r.contentType) + '</span>'
+                    + '<span>Reason: <strong>' + escapeHtml(reasonLabel) + '</strong></span>'
+                    + '<span>Reporter: <strong>' + escapeHtml(r.reporterName || r.reporterId) + '</strong></span>'
+                    + '<span>-&gt; <strong>' + escapeHtml(r.reportedUserName || r.reportedUserId) + '</strong></span>'
+                    + '</div>'
+                    + '<div class="mod-action-preview">'
+                    + '<strong>Comment:</strong> ' + escapeHtml(r.comment || 'None') + '<br>'
+                    + '<strong>Preview:</strong> ' + escapeHtml((r.contentSnapshot || '').substring(0, 200)) + '</div>';
+
+                if (r.status === 'pending') {
+                    html += '<div style="margin-top:6px;">'
+                        + '<button class="undo-btn" onclick="resolveReport(\'' + doc.id + '\', \'resolved\', this)">Resolve</button>'
+                        + '<button class="undo-btn" style="margin-left:5px;" onclick="resolveReport(\'' + doc.id + '\', \'dismissed\', this)">Dismiss</button>'
+                        + '</div>';
+                }
+
+                html += '</div>';
+            });
+
+            entriesEl.innerHTML = html;
+            statusEl.textContent = snapshot.size + ' report(s) loaded.';
+        } catch (err) {
+            console.error(err);
+            statusEl.textContent = 'Error: ' + (err.message || err);
+        }
+    }
+
+    async function resolveReport(reportId, status, btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Updating...';
+        }
+        
+        try {
+            await socialDb.collection('reports').doc(reportId).update({
+                status: status,
+                resolvedAt: new Date(),
+                resolvedBy: currentUser ? currentUser.uid : '',
+                resolutionNote: ''
+            });
+            fetchReports();
+        } catch (err) {
+            console.error(err);
+            alert('Failed to update report: ' + (err.message || err));
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = status === 'resolved' ? 'Resolve' : 'Dismiss';
+            }
         }
     }
 

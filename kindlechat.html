@@ -7,6 +7,7 @@
     <meta charset="UTF-8">
 
     <title>KindleChat</title>
+    <script src="js/reports.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -411,6 +412,34 @@
         }
 
         .del-btn:hover {
+            opacity: 1.0;
+            background: #ffe6e6;
+        }
+
+        /* REPORT BUTTON - matches reaction button style */
+        .report-btn {
+            width: 20px;
+            height: 20px;
+            border: 1px solid black;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            line-height: 18px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            box-shadow: 1px 1px 0 #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            flex-shrink: 0;
+            opacity: 0.5;
+            color: #cc0000;
+            margin-left: 4px;
+        }
+
+        .report-btn:hover {
             opacity: 1.0;
             background: #ffe6e6;
         }
@@ -1607,7 +1636,17 @@
 
         function containsUrl(text) {
             if (!text) return false;
-            return /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my)\b/i.test(text);
+            var t = String(text).toLowerCase();
+            var protocolLike = /h\s*t\s*t\s*p\s*s?\s*[:/]{1,4}/.test(t);
+            var wwwLike = /\bwww\./.test(t);
+            var domainLike = /\b[a-z0-9-]+\s*\.\s*(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link)\b/.test(t);
+            var ipLike = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(t);
+            return protocolLike || wwwLike || domainLike || ipLike;
+        }
+
+        function containsPromotedTerm(text) {
+            if (!text) return false;
+            return /\b(?:unreader|un-reader|inkchat|kindlehub)\b/i.test(String(text));
         }
 
         // --- ASCII PICKER LOGIC ---
@@ -2473,6 +2512,30 @@
                 modControlsHtml += '<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:4px;" onclick="deleteGeneralMessage(\'' + msgId + '\')">Delete</button>';
             }
 
+            // REPORT BUTTON (visible to all authenticated users) - circular button like react-btn
+            var reportButton = '';
+            if (currentUser && msg.uid && msg.uid !== currentUser.uid) {
+                var safeMsgId = msgId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                var safeReportedUid = (msg.uid || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                var msgSnapshot = msg.text || '';
+                if (msg.is_pixel_art && msg.pixel_art) {
+                    msgSnapshot = '[Pixel Art] ' + msgSnapshot;
+                }
+                if (msg.is_flipnote && msg.flipnote_data) {
+                    msgSnapshot = '[Flipbook] ' + msgSnapshot;
+                }
+                var safeSnapshot = msgSnapshot
+                    .replace(/\\/g, '\\\\\\\\')
+                    .replace(/'/g, "\\'")
+                    .replace(/\n/g, '\\n')
+                    .replace(/\r/g, '\\r')
+                    .replace(/\u0026/g, '\u0026amp;')
+                    .replace(/\u003c/g, '\u0026lt;')
+                    .replace(/\u003e/g, '\u0026gt;')
+                    .replace(/"/g, '\u0026quot;');
+                reportButton = '<div class="report-btn" onclick="rekindleOpenReportModal({contentType:\'kindlechat\',contentId:\'' + safeMsgId + '\',contentPath:\'kindlechat/messages/' + safeMsgId + '\',reportedUserId:\'' + safeReportedUid + '\',contentSnapshot:\'' + safeSnapshot + '\'})" title="Report">!</div>';
+            }
+
             var bubbleContent = '';
             var isSpecialMessage = false;
             var messageText = msg.text || '';
@@ -2628,9 +2691,9 @@
                 '<div class="msg-row">' +
                 '<canvas id="' + avatarId + '" class="msg-avatar" width="32" height="32" onclick="openUserProfile(\'' + safeUid + '\', \'' + safeUser + '\')"></canvas>' +
                 '<div style="display:flex; align-items:center; min-width: 0;">' +
-                (isSelf ? reactButton + saveButton + adminControlsHtml : '') +
+                (isSelf ? reactButton + reportButton + saveButton + adminControlsHtml : '') +
                 bubbleContent +
-                (isSelf ? '' : reactButton + saveButton + adminControlsHtml) +
+                (isSelf ? '' : reactButton + reportButton + saveButton + adminControlsHtml) +
                 '</div>' +
                 '</div>';
 
@@ -2735,6 +2798,7 @@
             if (!text) return;
             if (text.length > 1000) { showModal('Messages cannot exceed 1000 characters.'); return; }
             if (containsUrl(text)) { showModal('Links and URLs are not allowed.'); return; }
+            if (containsPromotedTerm(text)) { showModal('Promotional content is not allowed.'); return; }
 
             checkRules(function () {
                 // Timeout check
@@ -3189,6 +3253,7 @@
                 return;
             }
             if (containsUrl(text)) { showModal('Links and URLs are not allowed.'); return; }
+            if (containsPromotedTerm(text)) { showModal('Promotional content is not allowed.'); return; }
 
             // Write message immediately so it appears at once, then translate in background
             var messageData = {

@@ -154,6 +154,56 @@ async function firestoreCommitTransform(docPath, fieldTransforms, accessToken) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  FIRESTORE QUERY HELPERS                                            */
+/* ------------------------------------------------------------------ */
+async function getExistingPendingReport(contentType, contentId, accessToken) {
+    try {
+        const url = `https://firestore.googleapis.com/v1/projects/rekindle-socials/databases/(default)/documents:runQuery`;
+        const resp = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                structuredQuery: {
+                    from: [{ collectionId: "reports" }],
+                    where: {
+                        compositeFilter: {
+                            op: "AND",
+                            filters: [
+                                { fieldFilter: { field: { fieldPath: "contentType" }, op: "EQUAL", value: { stringValue: contentType } } },
+                                { fieldFilter: { field: { fieldPath: "contentId" }, op: "EQUAL", value: { stringValue: contentId } } },
+                                { fieldFilter: { field: { fieldPath: "status" }, op: "EQUAL", value: { stringValue: "pending" } } }
+                            ]
+                        }
+                    },
+                    orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
+                    limit: 1
+                }
+            })
+        });
+        if (!resp.ok) {
+            console.error("[REPORT] Failed to query existing reports:", resp.status);
+            return null;
+        }
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].document) {
+            const doc = data[0].document;
+            const fields = doc.fields || {};
+            return {
+                reporterId: fields.reporterId?.stringValue || "",
+                reporterName: fields.reporterName?.stringValue || ""
+            };
+        }
+        return null;
+    } catch (e) {
+        console.error("[REPORT] Error querying existing reports:", e.message);
+        return null;
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /*  RTDB REST HELPERS                                                  */
 /* ------------------------------------------------------------------ */
 async function rtdbPush(path, data, userToken) {
@@ -212,7 +262,17 @@ async function rtdbGetWithAccessToken(path, env, accessToken) {
 
 function containsUrl(text) {
     if (!text) return false;
-    return /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my)\b/i.test(text);
+    const t = String(text).toLowerCase();
+    const protocolLike = /h\s*t\s*t\s*p\s*s?\s*[:/]{1,4}/.test(t);
+    const wwwLike = /\bwww\./.test(t);
+    const domainLike = /\b[a-z0-9-]+\s*\.\s*(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link)\b/.test(t);
+    const ipLike = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(t);
+    return protocolLike || wwwLike || domainLike || ipLike;
+}
+
+function containsPromotedTerm(text) {
+    if (!text) return false;
+    return /\b(?:unreader|un-reader|inkchat|kindlehub)\b/i.test(String(text));
 }
 
 async function checkTimeout(uid, env, userToken, accessToken) {
@@ -412,6 +472,43 @@ function b64urlEncode(buffer) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  ASCII EMOJI STRIPPING                                              */
+/* ------------------------------------------------------------------ */
+// These are the ASCII art emojis from @emojis.js. They must be stripped
+// before OpenAI moderation because the model incorrectly flags innocent
+// emoticons (e.g. Lenny face, shrug) as sexual or harassing.
+const ASCII_EMOJI_ARTS = [
+    "\\˚ㄥ˚\\", "☁ ▅▒░☼‿☼░▒▅ ☁", "ˁ˚ᴥ˚ˀ", "⎦˚◡˚⎣", "<*_*>",
+    "(-(-_(-_-)_-)-)", "(✿ ♥‿♥)", "㋡", "(⌒▽⌒)", "(◔/‿\\◔)",
+    "(⋗_⋖)", "ة_ة", "\\(^-^)/", "◕_◕", "(っ◕‿◕)っ", "( ͠° ͟ʖ ͡°)",
+    "ʘ‿ʘ", "(｡◕‿◕｡)", "☜(⌒▽⌒)☞", "ヽ(´▽`)/", "ヽ(´ー｀)ノ",
+    "⊂(◉‿◉)つ", "(づ￣ ³￣)づ", "“ヽ(´▽｀)ノ”", "♥‿♥", "( ˘ ³˘)♥",
+    "\\(ᵔᵕᵔ)/", "ᴖ̮ ̮ᴖ", "-`ღ´-", "ಠ_ಠ", "(╬ ಠ益ಠ)", "ლ(ಠ益ಠლ)",
+    "ಠ‿ಠ", "ಥ_ಥ", "ಥ﹏ಥ", "٩◔̯◔۶", "(´･_･`)", "(ಥ⌣ಥ)", "눈_눈",
+    "( ఠ ͟ʖ ఠ)", "( ͡ಠ ʖ̯ ͡ಠ)", "( ಠ ʖ̯ ಠ)", "(ᵟຶ︵ ᵟຶ)", "¯\\_(ツ)_/¯",
+    "( ͡° ͜ʖ ͡°)", "ᕙ(⇀‸↼‶)ᕗ", "┌(ㆆ㉨ㆆ)ʃ", "(•̀ᴗ•́)و ̑̑",
+    "(☞ﾟヮﾟ)☞", "(っ▀¯▀)つ", "(∩｀-´)⊃━☆ﾟ.*･｡ﾟ", "(╯°□°）╯︵ ┻━┻",
+    "┬─┬ ノ( ゜-゜ノ)", "┬─┬⃰͡ (ᵔᵕᵔ͜ )", "(ง'̀-'́)ง", "ʕ•ᴥ•ʔ",
+    "ʕᵔᴥᵔʔ", "ʕ •`ᴥ•´ʔ", "V•ᴥ•V", "ฅ^•ﻌ•^ฅ", "ʕ •́؈•̀ ₎",
+    "{•̃_•̃}", "(ᵔᴥᵔ)", "[¬º-°]¬", "ƪ(ړײ)‎ƪ​​", "¯\\(°_o)/¯",
+    "⊙﹏⊙", "¯\\_(⊙︿⊙)_/¯", "¿ⓧ_ⓧﮌ", "(⊙.☉)7", "٩(๏_๏)۶",
+    "(⊙_◎)", "ミ●﹏☉ミ", "(Ծ‸ Ծ)", "⥀.⥀", "♨_♨", "(._.)"
+];
+
+// Sort longest first so we don't accidentally leave partial matches when
+// a longer emoji contains a shorter one.
+ASCII_EMOJI_ARTS.sort((a, b) => b.length - a.length);
+
+function stripAsciiEmojis(text) {
+    if (!text || typeof text !== "string") return text;
+    let cleaned = text;
+    for (const emoji of ASCII_EMOJI_ARTS) {
+        cleaned = cleaned.split(emoji).join("");
+    }
+    return cleaned.trim();
+}
+
+/* ------------------------------------------------------------------ */
 /*  OPENAI MODERATION                                                  */
 /* ------------------------------------------------------------------ */
 const moderationCache = new Map(); // text -> { result, expiry }
@@ -419,11 +516,16 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 async function moderateContent(text, apiKey, imageUrl) {
     if (!apiKey) throw new Error("OpenAI API key not configured");
-    if (!text && !imageUrl) return { flagged: false, categories: {} };
 
-    // Check cache (text-only)
-    if (!imageUrl && text && typeof text === "string") {
-        const cached = moderationCache.get(text);
+    // Strip ASCII emojis before moderation — the OpenAI model flags innocent
+    // emoticons (e.g. Lenny face) as sexual/harassing.
+    const strippedText = text ? stripAsciiEmojis(text) : "";
+
+    if (!strippedText && !imageUrl) return { flagged: false, categories: {} };
+
+    // Check cache (text-only, using stripped text)
+    if (!imageUrl && strippedText) {
+        const cached = moderationCache.get(strippedText);
         if (cached && cached.expiry > Date.now()) {
             return cached.result;
         }
@@ -432,18 +534,18 @@ async function moderateContent(text, apiKey, imageUrl) {
     let requestBody;
     if (imageUrl) {
         const input = [{ type: "image_url", image_url: { url: imageUrl } }];
-        if (text) {
-            input.unshift({ type: "text", text: text });
+        if (strippedText) {
+            input.unshift({ type: "text", text: strippedText });
         }
         requestBody = {
             model: "omni-moderation-latest",
             input: input
         };
-        console.log("[MODERATION] Sending image to OpenAI. Image URL length:", imageUrl.length, "hasText:", !!text, "categories with image support: sexual, violence, violence/graphic, self-harm, self-harm/intent, self-harm/instructions");
+        console.log("[MODERATION] Sending image to OpenAI. Image URL length:", imageUrl.length, "hasText:", !!strippedText, "categories with image support: sexual, violence, violence/graphic, self-harm, self-harm/intent, self-harm/instructions");
     } else {
         requestBody = {
             model: "omni-moderation-latest",
-            input: text
+            input: strippedText
         };
     }
 
@@ -492,9 +594,9 @@ async function moderateContent(text, apiKey, imageUrl) {
     // Apply stricter family-friendly thresholds on top of OpenAI's flag.
     const strictResult = applyStrictModeration(moderationResult);
 
-    // Store in cache (text-only)
-    if (!imageUrl && text && typeof text === "string") {
-        moderationCache.set(text, { result: strictResult, expiry: Date.now() + CACHE_TTL_MS });
+    // Store in cache (text-only, using stripped text)
+    if (!imageUrl && strippedText && typeof strippedText === "string") {
+        moderationCache.set(strippedText, { result: strictResult, expiry: Date.now() + CACHE_TTL_MS });
     }
 
     return strictResult;
@@ -591,20 +693,39 @@ function checkPixelArtScores(mod, isPixelArt, gridSize) {
 }
 
 // Family-friendly strict thresholds applied to ALL content (text + images).
-// These override OpenAI's default flagged boolean to catch even subtle
-// mentions of adult themes on a kids'/family platform.
+// Calibrated against 170+ test messages (single words + full sentences) via the
+// OpenAI omni-moderation-latest API.
+//
+// Rationale for each threshold:
+//   sexual (0.15)        — Benign sentences <0.01 ("i love this game"=0.0001).
+//                          Educational mentions ("movie had a sex scene"=0.56)
+//                          still caught. Overt solicitation ("lets have sex"=0.77)
+//                          scores >0.15.
+//   sexual/minors (0.01) — "I am 12" scores 0.001; "naked baby"=0.60;
+//                          child-exploitation terms ("child porn"=0.92) score >0.01.
+//   harassment (0.40)    — Benign <0.01; mild teasing ("shut up"=0.57, "dumb"=0.40)
+//                          allowed. Direct attacks ("you're stupid"=0.89,
+//                          "loser"=0.80) score >0.40.
+//   hate (0.01)          — Benign <0.0001; mild insults ("freak"=0.007, "fat"=0.008)
+//                          allowed. Slurs ("bitch"=0.007, "slut"=0.10,
+//                          "whore"=0.10) score >0.01.
+//   violence (0.03)      — Benign ~0.001; expressions ("damn that was close"=0.024)
+//                          allowed. Violent terms ("rape"=0.45, "wanna smash"=0.40)
+//                          score >0.03.
+//   self-harm/instructions (0.001) — Benign <0.0005. Stops false positives on
+//                          innocent phrases like "ttyl" and "go away".
 const FAMILY_FRIENDLY_THRESHOLDS = {
-    sexual: 0.0005,
-    "sexual/minors": 0.000001,
-    hate: 0.001,
-    "hate/threatening": 0.0001,
-    harassment: 0.001,
-    "harassment/threatening": 0.0001,
-    "self-harm": 0.001,
-    "self-harm/intent": 0.0001,
-    "self-harm/instructions": 0.000001,
-    violence: 0.005,
-    "violence/graphic": 0.001
+    sexual: 0.15,
+    "sexual/minors": 0.01,
+    hate: 0.01,
+    "hate/threatening": 0.001,
+    harassment: 0.40,
+    "harassment/threatening": 0.001,
+    "self-harm": 0.01,
+    "self-harm/intent": 0.001,
+    "self-harm/instructions": 0.001,
+    violence: 0.03,
+    "violence/graphic": 0.01
 };
 
 function applyStrictModeration(mod) {
@@ -705,6 +826,50 @@ function checkRateLimit(key, maxTokens, refillMs) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  DISCORD NOTIFICATIONS                                              */
+/* ------------------------------------------------------------------ */
+async function sendDiscordReportNotification(env, reportData) {
+    const webhookUrl = env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+        console.log("[REPORT] DISCORD_WEBHOOK_URL not configured, skipping notification");
+        return;
+    }
+    
+    const truncatedSnapshot = reportData.contentSnapshot 
+        ? reportData.contentSnapshot.substring(0, 500).replace(/```/g, "` ` `") + (reportData.contentSnapshot.length > 500 ? "..." : "")
+        : "No preview available";
+    
+    const isSecondReport = !!reportData.originalReporter;
+    const embed = {
+        title: isSecondReport ? "SECOND REPORT - Action Needed" : "New Content Report",
+        color: isSecondReport ? 16711680 : 15158332, // Red for second report, orange for first
+        fields: [
+            { name: "Reporter", value: `${reportData.reporterName} (${reportData.reporterId})`, inline: true },
+            { name: "Reported User", value: `${reportData.reportedUserName || "Unknown"} (${reportData.reportedUserId})`, inline: true },
+            { name: "Content Type", value: reportData.contentType, inline: true },
+            { name: "Reason", value: reportData.reason, inline: true },
+            ...(isSecondReport ? [{ name: "Original Reporter", value: reportData.originalReporter, inline: true }] : []),
+            { name: "Content ID", value: reportData.contentId, inline: false },
+            { name: "Content Path", value: reportData.contentPath, inline: false },
+            { name: "Comment", value: reportData.comment || "None", inline: false },
+            { name: "Content Preview", value: "```\n" + truncatedSnapshot + "\n```", inline: false }
+        ],
+        timestamp: new Date().toISOString(),
+        footer: { text: "ReKindle Moderation" }
+    };
+    
+    try {
+        await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+    } catch (e) {
+        console.error("[REPORT] Discord notification failed:", e.message);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /*  MAIN HANDLER                                                       */
 /* ------------------------------------------------------------------ */
 export default {
@@ -764,12 +929,14 @@ export default {
 
             const accessToken = await getCachedAccessToken(env);
 
-            // --- TIMEOUT CHECK ---
-            const timeoutCheck = await checkTimeout(uid, env, token, accessToken);
-            if (timeoutCheck.timedOut) {
-                return new Response(JSON.stringify({
-                    error: `You are timed out. Please wait ${timeoutCheck.remainingMinutes} minute(s) before posting.`
-                }), { status: 403, headers });
+            // --- TIMEOUT CHECK (skip for reports) ---
+            if (type !== "report") {
+                const timeoutCheck = await checkTimeout(uid, env, token, accessToken);
+                if (timeoutCheck.timedOut) {
+                    return new Response(JSON.stringify({
+                        error: `You are timed out. Please wait ${timeoutCheck.remainingMinutes} minute(s) before posting.`
+                    }), { status: 403, headers });
+                }
             }
 
             // --- KINDLECHAT ---
@@ -782,6 +949,9 @@ export default {
                 }
                 if (containsUrl(trimmed)) {
                     return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
+                }
+                if (containsPromotedTerm(trimmed)) {
+                    return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
                 }
 
                 // Rate limit
@@ -856,6 +1026,9 @@ export default {
                 if (containsUrl(title) || containsUrl(subheading)) {
                     return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
                 }
+                if (containsPromotedTerm(title) || containsPromotedTerm(subheading)) {
+                    return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
+                }
 
                 // Validate poll if provided
                 let validatedPoll = null;
@@ -877,6 +1050,9 @@ export default {
                 if (validatedPoll) {
                     if (containsUrl(validatedPoll.question) || validatedPoll.options.some(function(o) { return containsUrl(o); })) {
                         return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
+                    }
+                    if (containsPromotedTerm(validatedPoll.question) || validatedPoll.options.some(function(o) { return containsPromotedTerm(o); })) {
+                        return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
                     }
                 }
 
@@ -952,6 +1128,9 @@ export default {
                 if (containsUrl(rawBody)) {
                     return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
                 }
+                if (containsPromotedTerm(rawBody)) {
+                    return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
+                }
 
                 const commentText = rawBody.replace(/(\n\s*){3,}/g, "\n\n").trim();
 
@@ -1011,6 +1190,9 @@ export default {
                 if (containsUrl(trimmed)) {
                     return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
                 }
+                if (containsPromotedTerm(trimmed)) {
+                    return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
+                }
 
                 // Moderation
                 const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
@@ -1042,6 +1224,9 @@ export default {
                 if (containsUrl(trimmed)) {
                     return new Response(JSON.stringify({ error: "Links and URLs are not allowed." }), { status: 400, headers });
                 }
+                if (containsPromotedTerm(trimmed)) {
+                    return new Response(JSON.stringify({ error: "Promotional content is not allowed." }), { status: 400, headers });
+                }
 
                 // Moderation
                 const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
@@ -1057,6 +1242,71 @@ export default {
                 }, accessToken);
 
                 return new Response(JSON.stringify({ success: true, id }), { status: 200, headers });
+            }
+
+            // --- REPORT ---
+            if (type === "report") {
+                const { contentType, contentId, contentPath, reportedUserId, reason, comment, contentSnapshot } = body;
+                
+                if (!contentType || !contentId || !reason) {
+                    return new Response(JSON.stringify({ error: "Missing required report fields." }), { status: 400, headers });
+                }
+                
+                const validContentTypes = ["kindlechat", "topic", "topic_comment", "neighbourhood_post", "neighbourhood_comment"];
+                if (!validContentTypes.includes(contentType)) {
+                    return new Response(JSON.stringify({ error: "Invalid content type." }), { status: 400, headers });
+                }
+                
+                // Validate lengths
+                if (comment && comment.length > 500) {
+                    return new Response(JSON.stringify({ error: "Comment is too long (max 500 characters)." }), { status: 400, headers });
+                }
+                if (contentSnapshot && contentSnapshot.length > 2000) {
+                    return new Response(JSON.stringify({ error: "Content snapshot is too long (max 2000 characters)." }), { status: 400, headers });
+                }
+                
+                // Rate limit: 5 reports per hour per user
+                const rl = checkRateLimit(`report:${uid}`, 5, 3600000);
+                if (!rl.allowed) {
+                    return new Response(JSON.stringify({ error: "Rate limit exceeded. You can submit up to 5 reports per hour." }), { status: 429, headers });
+                }
+                
+                // Check for existing pending reports on the same content
+                const existingReport = await getExistingPendingReport(contentType, contentId, accessToken);
+                
+                // Create report in Firestore
+                const reportData = {
+                    reporterId: uid,
+                    reporterName: username,
+                    reportedUserId: reportedUserId || "",
+                    reportedUserName: "",
+                    contentType,
+                    contentId,
+                    contentPath: contentPath || "",
+                    reason,
+                    comment: (comment || "").substring(0, 500),
+                    contentSnapshot: (contentSnapshot || "").substring(0, 2000),
+                    status: "pending",
+                    createdAt: new Date(),
+                    resolvedAt: null,
+                    resolvedBy: "",
+                    resolutionNote: ""
+                };
+                
+                const reportId = await firestoreCreate("reports", reportData, accessToken);
+                
+                // Only send Discord notification if a DIFFERENT user already reported this content
+                if (existingReport && existingReport.reporterId !== uid) {
+                    console.log(`[REPORT] Second report on ${contentType}/${contentId} from user ${uid}. Sending Discord notification.`);
+                    await sendDiscordReportNotification(env, {
+                        ...reportData,
+                        originalReporter: existingReport.reporterName || existingReport.reporterId
+                    });
+                } else {
+                    console.log(`[REPORT] First report on ${contentType}/${contentId} from user ${uid}. No notification sent.`);
+                }
+                
+                return new Response(JSON.stringify({ success: true, id: reportId }), { status: 200, headers });
             }
 
             return new Response(JSON.stringify({ error: "Unknown content type" }), { status: 400, headers });

@@ -356,7 +356,12 @@ All social apps (KindleChat, Neighbourhood, Topics) block users from posting URL
 ```javascript
 function containsUrl(text) {
     if (!text) return false;
-    return /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my)\b/i.test(text);
+    var t = String(text).toLowerCase();
+    var protocolLike = /h\s*t\s*t\s*p\s*s?\s*[:/]{1,4}/.test(t);
+    var wwwLike = /\bwww\./.test(t);
+    var domainLike = /\b[a-z0-9-]+\s*\.\s*(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link)\b/.test(t);
+    var ipLike = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(t);
+    return protocolLike || wwwLike || domainLike || ipLike;
 }
 ```
 
@@ -366,10 +371,104 @@ function containsUrl(text) {
 *   **Topics:** `submitTopic()` (title, subheading, poll options) and `postComment()` in `topics.html`
 *   **Moderation Worker:** `workers/rekindle-moderate/worker.js` — checks for each `type` handler (`kindlechat`, `topic`, `topic_comment`, `neighbourhood_post`, `neighbourhood_comment`)
 
-**Error message:** Use `"Links and URLs are not allowed."` consistently across all apps.
+**Error message (URL):** Use `"Links and URLs are not allowed."` consistently across all apps.
+
+### 9. Promotional Term Blocking in Social Apps
+The following competing-service names are banned from mention in social apps as promotional content: **Unreader**, **un-reader**, **Inkchat**, **kindlehub**. This is enforced **both client-side and server-side** (moderation worker).
+
+**Client-side helper** (add to each social app HTML next to `containsUrl`):
+```javascript
+function containsPromotedTerm(text) {
+    if (!text) return false;
+    return /\b(?:unreader|un-reader|inkchat|kindlehub)\b/i.test(String(text));
+}
+```
+
+**Where to block:** Same locations as URL blocking. Apply `containsPromotedTerm()` to message text, topic titles/subheadings, poll questions/options, post text, and comment text.
+
+**Error message (promotion):** Use `"Promotional content is not allowed."` consistently across all apps.
+
+### 10. ASCII Emoji Stripping Before Moderation
+The OpenAI `omni-moderation-latest` model incorrectly flags innocent ASCII art emoticons (e.g. `¯\_(ツ)_/¯`, `( ͡° ͜ʖ ͡°)`, `(っ◕‿◕)っ`) as sexual or harassing content.
+
+**Rule:** All ASCII emojis from `emojis.js` must be stripped from message text **before** it is sent to the OpenAI moderation API.
+
+**Implementation:** `workers/rekindle-moderate/worker.js` maintains a hard-coded list of every `art` value from `ASCII_EMOJIS` and removes them via `stripAsciiEmojis(text)` inside `moderateContent()`. If the text is empty after stripping (emoji-only messages), moderation is skipped entirely and the message is allowed.
+
+**If you add new emojis to `emojis.js`, you must also add their `art` strings to the `ASCII_EMOJI_ARTS` array in `worker.js`.**
 
 ## ✅ Best Practices
 -   **Images:** Use **WebP** or **SVG**. They are fully supported and perform best.
 -   **Modals:** Always stick to the `.modal-overlay` / `.modal-box` DOM structure found in `weather.html`.
 -   **Update this file:** When you discover a cross-cutting concern, gotcha, or project-wide pattern during implementation, update `AGENTS.md` immediately so future agents don't relearn it the hard way.
 -   **`.title-text` height:** All 122 HTML files standardize `.title-text` with `display: inline-flex; align-items: center; height: 100%; box-sizing: border-box;` so the white background fully covers the title-bar stripes. Do not remove these properties.
+
+## 📋 Reporting System
+
+Users can report content across all social apps. Reports are stored in Firestore and trigger Discord notifications.
+
+### Architecture
+- **Client Module:** `js/reports.js` — provides `rekindleOpenReportModal()` with System 7 styling
+- **Backend Handler:** `workers/rekindle-moderate/worker.js` handles `type: "report"` requests
+- **Storage:** Firestore `reports` collection (social project: `rekindle-socials`)
+- **Notifications:** Discord webhook via `DISCORD_WEBHOOK_URL` environment variable. Only fires when 2+ different users report the same content.
+
+### Data Model (`reports` collection)
+```javascript
+{
+  reporterId, reporterName,
+  reportedUserId, reportedUserName,
+  contentType, contentId, contentPath,
+  reason, comment, contentSnapshot,
+  status: "pending" | "resolved" | "dismissed",
+  createdAt, resolvedAt, resolvedBy, resolutionNote
+}
+```
+
+### Rate Limits
+- 5 reports per hour per user (enforced in moderation worker)
+
+### Adding Report Buttons to New Social Apps
+1. Include `\u003cscript src="js/reports.js"\u003e\u003c/script\u003e` in the HTML `\u003chead\u003e`
+2. Call `rekindleOpenReportModal({contentType, contentId, contentPath, reportedUserId, contentSnapshot})`
+
+### Files Modified
+- `js/reports.js` (new)
+- `workers/rekindle-moderate/worker.js` — added report handler + Discord notification
+- `kindlechat.html` — report buttons on messages
+- `neighbourhood.html` — report buttons on posts and comments
+- `topics.html` — report buttons on topics and comments
+- `moderation.html` — added "User Reports" panel with pending/resolved/dismissed filters
+- `firestore-social.rules` — added `reports` collection rules
+
+### Discord Webhook
+Set `DISCORD_WEBHOOK_URL` as a Cloudflare Worker environment variable. **No fallback** — if not set, notifications are silently skipped. Never commit the webhook URL to the repository — use environment variables.
+
+**Notification Logic:** Discord notifications are sent **only when two different users report the same content** (same `contentType` + `contentId`). The first report is stored silently; the second report triggers the webhook with a red "SECOND REPORT" embed that includes the original reporter's name.
+
+### Firestore Indexes Required
+The moderation dashboard and report deduplication both require composite indexes. Create these in the Firebase Console:
+
+1. **Dashboard queries:**
+   - **Collection:** `reports`
+   - **Fields:** `status` (Ascending), `createdAt` (Descending)
+
+2. **Report deduplication (worker checks for existing reports):**
+   - **Collection:** `reports`
+   - **Fields:** `contentType` (Ascending), `contentId` (Ascending), `status` (Ascending), `createdAt` (Descending)
+
+### Security: Escaping for JS String Literals
+When passing user-generated text into `onclick` HTML attributes, **never rely solely on `escapeHtml()`**. HTML entity decoding happens before JS execution, so `&#039;` becomes `'` and breaks out of the string literal.
+
+**Correct pattern** (used in all report buttons):
+```javascript
+var safeText = userText
+    .replace(/\\/g, '\\\\\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u0026/g, '\u0026amp;')
+    .replace(/\u003c/g, '\u0026lt;')
+    .replace(/\u003e/g, '\u0026gt;')
+    .replace(/"/g, '\u0026quot;');
+```

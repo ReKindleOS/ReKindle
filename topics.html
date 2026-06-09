@@ -7,6 +7,7 @@
     <meta charset="UTF-8">
 
     <title>Topics</title>
+    <script src="js/reports.js"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -320,6 +321,34 @@
             width: 24px;
             height: 24px;
             fill: black;
+        }
+
+        /* Report button - matches kindlechat circular style */
+        .report-btn {
+            width: 20px;
+            height: 20px;
+            border: 1px solid black;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            line-height: 18px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            box-shadow: 1px 1px 0 #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            flex-shrink: 0;
+            opacity: 0.5;
+            color: #cc0000;
+            margin-left: 4px;
+        }
+
+        .report-btn:hover {
+            opacity: 1.0;
+            background: #ffe6e6;
         }
 
         /* Topic Cover Image */
@@ -837,11 +866,11 @@
                             <div id="current-topic-subheading" class="current-topic-subheading"></div>
                         </div>
                     </div>
-                    <div>
+                    <div style="display:flex; align-items:center;">
+                        <div id="header-report-btn" class="report-btn" style="display:none;" title="Report">!</div>
                         <button id="header-edit-btn" class="sys-btn"
-                            style="display:none; margin-right:5px; padding:2px 8px; font-size:0.7rem;"
+                            style="display:none; margin-left:8px; padding:2px 8px; font-size:0.7rem;"
                             onclick="openTopicModal(currentTopicId)">Edit</button>
-
                     </div>
                 </div>
                 <div id="chat-history">
@@ -1428,7 +1457,17 @@
 
         function containsUrl(text) {
             if (!text) return false;
-            return /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my)\b/i.test(text);
+            var t = String(text).toLowerCase();
+            var protocolLike = /h\s*t\s*t\s*p\s*s?\s*[:/]{1,4}/.test(t);
+            var wwwLike = /\bwww\./.test(t);
+            var domainLike = /\b[a-z0-9-]+\s*\.\s*(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link)\b/.test(t);
+            var ipLike = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(t);
+            return protocolLike || wwwLike || domainLike || ipLike;
+        }
+
+        function containsPromotedTerm(text) {
+            if (!text) return false;
+            return /\b(?:unreader|un-reader|inkchat|kindlehub)\b/i.test(String(text));
         }
 
         function loadTopicStates() {
@@ -1696,6 +1735,27 @@
                 editBtn.style.display = 'inline-block';
             } else {
                 editBtn.style.display = 'none';
+            }
+
+            // Show Report button for non-authors
+            var reportBtn = document.getElementById('header-report-btn');
+            if (currentUser && topic.authorId && topic.authorId !== currentUser.uid) {
+                var safeTopicId = topic.id.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                var safeReportedTopicUid = (topic.authorId || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+                var topicSnapshot = ((topic.title || '') + ' - ' + (topic.subheading || ''))
+                    .replace(/\\/g, '\\\\\\\\')
+                    .replace(/'/g, "\\'")
+                    .replace(/\n/g, '\\n')
+                    .replace(/\r/g, '\\r')
+                    .replace(/\u0026/g, '\u0026amp;')
+                    .replace(/\u003c/g, '\u0026lt;')
+                    .replace(/\u003e/g, '\u0026gt;')
+                    .replace(/"/g, '\u0026quot;');
+                reportBtn.setAttribute('onclick', "rekindleOpenReportModal({contentType:'topic',contentId:'" + safeTopicId + "',contentPath:'topics/" + safeTopicId + "',reportedUserId:'" + safeReportedTopicUid + "',contentSnapshot:'" + topicSnapshot + "'})");
+                reportBtn.style.display = 'flex';
+            } else {
+                reportBtn.style.display = 'none';
+                reportBtn.removeAttribute('onclick');
             }
 
             // Clear and load comments
@@ -2164,6 +2224,23 @@
                 delBtn += '<button style="background:black;color:white;border:none;padding:1px 6px;font-size:0.7rem;cursor:pointer;font-family:inherit;margin-left:5px;" onclick="deleteComment(\'' + msg.id + '\')">Delete</button>';
             }
 
+            // Report button for topic comments (visible to all authenticated users) - circular ! style
+            var reportCommentBtn = '';
+            if (currentUser && msg.authorId && msg.authorId !== currentUser.uid) {
+                var safeTopicCommentId = escapeHtml(msg.id);
+                var safeReportedCommentUid = escapeHtml(msg.authorId);
+                var commentSnapshot = (msg.body || '')
+                    .replace(/\\/g, '\\\\\\\\')
+                    .replace(/'/g, "\\'")
+                    .replace(/\n/g, '\\n')
+                    .replace(/\r/g, '\\r')
+                    .replace(/\u0026/g, '\u0026amp;')
+                    .replace(/\u003c/g, '\u0026lt;')
+                    .replace(/\u003e/g, '\u0026gt;')
+                    .replace(/"/g, '\u0026quot;');
+                reportCommentBtn = '<div class="report-btn" onclick="rekindleOpenReportModal({contentType:\'topic_comment\',contentId:\'' + safeTopicCommentId + '\',contentPath:\'topics/' + escapeHtml(currentTopicId) + '/comments/' + safeTopicCommentId + '\',reportedUserId:\'' + safeReportedCommentUid + '\',contentSnapshot:\'' + commentSnapshot + '\'})" title="Report">!</div>';
+            }
+
             var authorNameSpanId = 'author-name-' + msg.id;
 
             // Profanity Filter (Always enforced)
@@ -2202,7 +2279,10 @@
                 '</div>' +
                 '<div class="msg-row">' +
                 '<canvas id="' + avatarId + '" class="msg-avatar" width="32" height="32" onclick="openUserProfile(\'' + escapeHtml(msg.authorId) + '\')"></canvas>' +
+                '<div style="display:flex; align-items:center; min-width: 0;">' +
                 '<div class="msg-bubble ' + bubbleClass + '">' + escapeHtml(displayBody) + '</div>' +
+                reportCommentBtn +
+                '</div>' +
                 '</div>';
             if (prepend && historyEl.firstChild) {
                 historyEl.insertBefore(msgEl, historyEl.firstChild);
@@ -2496,6 +2576,7 @@
                 if (!text || !currentTopicId) return;
                 if (text.length > 1000) { showModal('Messages cannot exceed 1000 characters.'); return; }
                 if (containsUrl(text)) { showAlertModal('Links and URLs are not allowed.'); return; }
+                if (containsPromotedTerm(text)) { showAlertModal('Promotional content is not allowed.'); return; }
 
                 // Timeout check
                 db.ref('timeouts/' + currentUser.uid).once('value').then(function(snap) {
@@ -2831,14 +2912,26 @@
                 showAlertModal("Links and URLs are not allowed.");
                 return;
             }
+            if (containsPromotedTerm(title) || containsPromotedTerm(subheading)) {
+                showAlertModal("Promotional content is not allowed.");
+                return;
+            }
             if (pollData) {
                 if (containsUrl(pollData.question)) {
                     showAlertModal("Links and URLs are not allowed.");
                     return;
                 }
+                if (containsPromotedTerm(pollData.question)) {
+                    showAlertModal("Promotional content is not allowed.");
+                    return;
+                }
                 for (var urlIdx = 0; urlIdx < pollData.options.length; urlIdx++) {
                     if (containsUrl(pollData.options[urlIdx])) {
                         showAlertModal("Links and URLs are not allowed.");
+                        return;
+                    }
+                    if (containsPromotedTerm(pollData.options[urlIdx])) {
+                        showAlertModal("Promotional content is not allowed.");
                         return;
                     }
                 }
