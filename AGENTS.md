@@ -411,7 +411,7 @@ Users can report content across all social apps. Reports are stored in Firestore
 - **Client Module:** `js/reports.js` — provides `rekindleOpenReportModal()` with System 7 styling
 - **Backend Handler:** `workers/rekindle-moderate/worker.js` handles `type: "report"` requests
 - **Storage:** Firestore `reports` collection (social project: `rekindle-socials`)
-- **Notifications:** Discord webhook via `DISCORD_WEBHOOK_URL` environment variable. Only fires when 2+ different users report the same content.
+- **Notifications:** Discord webhook via `DISCORD_WEBHOOK_URL` environment variable. Fires on every report submission.
 
 ### Data Model (`reports` collection)
 ```javascript
@@ -444,18 +444,11 @@ Users can report content across all social apps. Reports are stored in Firestore
 ### Discord Webhook
 Set `DISCORD_WEBHOOK_URL` as a Cloudflare Worker environment variable. **No fallback** — if not set, notifications are silently skipped. Never commit the webhook URL to the repository — use environment variables.
 
-**Notification Logic:** Discord notifications are sent **only when two different users report the same content** (same `contentType` + `contentId`). The first report is stored silently; the second report triggers the webhook with a red "SECOND REPORT" embed that includes the original reporter's name.
+### Firestore Index Required
+The moderation dashboard requires a composite index. Create it in the Firebase Console:
 
-### Firestore Indexes Required
-The moderation dashboard and report deduplication both require composite indexes. Create these in the Firebase Console:
-
-1. **Dashboard queries:**
-   - **Collection:** `reports`
-   - **Fields:** `status` (Ascending), `createdAt` (Descending)
-
-2. **Report deduplication (worker checks for existing reports):**
-   - **Collection:** `reports`
-   - **Fields:** `contentType` (Ascending), `contentId` (Ascending), `status` (Ascending), `createdAt` (Descending)
+- **Collection:** `reports`
+- **Fields:** `status` (Ascending), `createdAt` (Descending)
 
 ### Security: Escaping for JS String Literals
 When passing user-generated text into `onclick` HTML attributes, **never rely solely on `escapeHtml()`**. HTML entity decoding happens before JS execution, so `&#039;` becomes `'` and breaks out of the string literal.

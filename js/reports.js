@@ -233,6 +233,11 @@
             body.appendChild(preview);
         }
 
+        var warningEl = document.createElement('div');
+        warningEl.style.cssText = 'background:#fff3cd;border:1px solid #ffc107;padding:8px;margin-top:10px;font-size:0.75rem;color:#856404;';
+        warningEl.innerHTML = '<strong>Warning:</strong> Misuse of the report system will lead to a permanent ban.';
+        body.appendChild(warningEl);
+
         var errorEl = document.createElement('div');
         errorEl.id = 'report-error';
         errorEl.style.cssText = 'color:red;font-size:0.8rem;margin-top:8px;min-height:16px;';

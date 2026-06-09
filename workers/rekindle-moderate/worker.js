@@ -154,56 +154,6 @@ async function firestoreCommitTransform(docPath, fieldTransforms, accessToken) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  FIRESTORE QUERY HELPERS                                            */
-/* ------------------------------------------------------------------ */
-async function getExistingPendingReport(contentType, contentId, accessToken) {
-    try {
-        const url = `https://firestore.googleapis.com/v1/projects/rekindle-socials/databases/(default)/documents:runQuery`;
-        const resp = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                structuredQuery: {
-                    from: [{ collectionId: "reports" }],
-                    where: {
-                        compositeFilter: {
-                            op: "AND",
-                            filters: [
-                                { fieldFilter: { field: { fieldPath: "contentType" }, op: "EQUAL", value: { stringValue: contentType } } },
-                                { fieldFilter: { field: { fieldPath: "contentId" }, op: "EQUAL", value: { stringValue: contentId } } },
-                                { fieldFilter: { field: { fieldPath: "status" }, op: "EQUAL", value: { stringValue: "pending" } } }
-                            ]
-                        }
-                    },
-                    orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
-                    limit: 1
-                }
-            })
-        });
-        if (!resp.ok) {
-            console.error("[REPORT] Failed to query existing reports:", resp.status);
-            return null;
-        }
-        const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0 && data[0].document) {
-            const doc = data[0].document;
-            const fields = doc.fields || {};
-            return {
-                reporterId: fields.reporterId?.stringValue || "",
-                reporterName: fields.reporterName?.stringValue || ""
-            };
-        }
-        return null;
-    } catch (e) {
-        console.error("[REPORT] Error querying existing reports:", e.message);
-        return null;
-    }
-}
-
-/* ------------------------------------------------------------------ */
 /*  RTDB REST HELPERS                                                  */
 /* ------------------------------------------------------------------ */
 async function rtdbPush(path, data, userToken) {
@@ -839,16 +789,14 @@ async function sendDiscordReportNotification(env, reportData) {
         ? reportData.contentSnapshot.substring(0, 500).replace(/```/g, "` ` `") + (reportData.contentSnapshot.length > 500 ? "..." : "")
         : "No preview available";
     
-    const isSecondReport = !!reportData.originalReporter;
     const embed = {
-        title: isSecondReport ? "SECOND REPORT - Action Needed" : "New Content Report",
-        color: isSecondReport ? 16711680 : 15158332, // Red for second report, orange for first
+        title: "New Content Report",
+        color: 15158332,
         fields: [
             { name: "Reporter", value: `${reportData.reporterName} (${reportData.reporterId})`, inline: true },
             { name: "Reported User", value: `${reportData.reportedUserName || "Unknown"} (${reportData.reportedUserId})`, inline: true },
             { name: "Content Type", value: reportData.contentType, inline: true },
             { name: "Reason", value: reportData.reason, inline: true },
-            ...(isSecondReport ? [{ name: "Original Reporter", value: reportData.originalReporter, inline: true }] : []),
             { name: "Content ID", value: reportData.contentId, inline: false },
             { name: "Content Path", value: reportData.contentPath, inline: false },
             { name: "Comment", value: reportData.comment || "None", inline: false },
@@ -1271,9 +1219,6 @@ export default {
                     return new Response(JSON.stringify({ error: "Rate limit exceeded. You can submit up to 5 reports per hour." }), { status: 429, headers });
                 }
                 
-                // Check for existing pending reports on the same content
-                const existingReport = await getExistingPendingReport(contentType, contentId, accessToken);
-                
                 // Create report in Firestore
                 const reportData = {
                     reporterId: uid,
@@ -1295,16 +1240,8 @@ export default {
                 
                 const reportId = await firestoreCreate("reports", reportData, accessToken);
                 
-                // Only send Discord notification if a DIFFERENT user already reported this content
-                if (existingReport && existingReport.reporterId !== uid) {
-                    console.log(`[REPORT] Second report on ${contentType}/${contentId} from user ${uid}. Sending Discord notification.`);
-                    await sendDiscordReportNotification(env, {
-                        ...reportData,
-                        originalReporter: existingReport.reporterName || existingReport.reporterId
-                    });
-                } else {
-                    console.log(`[REPORT] First report on ${contentType}/${contentId} from user ${uid}. No notification sent.`);
-                }
+                // Send Discord notification
+                await sendDiscordReportNotification(env, reportData);
                 
                 return new Response(JSON.stringify({ success: true, id: reportId }), { status: 200, headers });
             }
