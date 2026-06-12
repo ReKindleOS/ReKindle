@@ -2751,7 +2751,25 @@
             } else if (beforeNode) {
                 history.insertBefore(div, beforeNode);
             } else {
-                history.appendChild(div);
+                // Insert in timestamp order instead of blindly appending.
+                // Firebase's limitToLast(50) listener fires child_added for the
+                // next older message when a newer one is deleted; appending it
+                // would make it look like a brand new message at the bottom.
+                var inserted = false;
+                if (typeof msg.timestamp === 'number') {
+                    var existingMsgs = history.querySelectorAll('.msg[data-ts]');
+                    for (var i = 0; i < existingMsgs.length; i++) {
+                        var ts = parseFloat(existingMsgs[i].dataset.ts);
+                        if (!isNaN(ts) && ts > msg.timestamp) {
+                            history.insertBefore(div, existingMsgs[i]);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                }
+                if (!inserted) {
+                    history.appendChild(div);
+                }
             }
 
             renderEmojis(div);
