@@ -566,8 +566,33 @@
         // --- API CLIENT ---
         const api = {
             baseUrl: 'https://www.reddit.com',
+            currentRequestId: 0,
+
+            sleep(ms) {
+                return new Promise(function(resolve) { setTimeout(resolve, ms); });
+            },
+
+            retryDelay(response, attempt) {
+                if (response && response.headers) {
+                    var ra = response.headers.get('Retry-After');
+                    if (ra) {
+                        var seconds = parseInt(ra, 10);
+                        if (!isNaN(seconds) && seconds > 0) {
+                            return Math.min(seconds * 1000, 10000);
+                        }
+                    }
+                }
+                return Math.min(1000 * Math.pow(2, attempt), 8000);
+            },
+
+            showRetryStatus(ms) {
+                var indicator = document.getElementById('loading-indicator');
+                if (indicator) indicator.innerText = 'Retrying in ' + Math.ceil(ms / 1000) + 's...';
+            },
 
             async request(endpoint) {
+                document.getElementById('loading-indicator').innerText = 'Loading...';
+                const requestId = ++this.currentRequestId;
                 let path = endpoint;
                 let query = "";
 
@@ -585,23 +610,60 @@
                 console.log("Fetching URL:", publicUrl);
 
                 let lastError = null;
+                let lastStatus = null;
                 for (let proxy of PROXIES) {
-                    try {
-                        const target = proxy + encodeURIComponent(publicUrl);
+                    let lastProxyResponse = null;
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        if (attempt > 0) {
+                            const delay = this.retryDelay(lastProxyResponse, attempt);
+                            this.showRetryStatus(delay);
+                            await this.sleep(delay);
+                        }
 
-                        document.getElementById('loading-indicator').style.display = 'inline';
-                        const res = await fetch(target);
-                        document.getElementById('loading-indicator').style.display = 'none';
+                        try {
+                            const target = proxy + encodeURIComponent(publicUrl);
 
-                        if (!res.ok) throw new Error(`Status ${res.status}`);
-                        return await res.text();
-                    } catch (e) {
-                        console.warn(`Proxy ${proxy} failed:`, e);
-                        lastError = e;
+                            if (requestId !== this.currentRequestId) {
+                                throw new Error('Request superseded');
+                            }
+
+                            document.getElementById('loading-indicator').style.display = 'inline';
+                            const res = await fetch(target);
+                            document.getElementById('loading-indicator').style.display = 'none';
+
+                            if (requestId !== this.currentRequestId) {
+                                throw new Error('Request superseded');
+                            }
+
+                            if (res.ok) {
+                                return await res.text();
+                            }
+
+                            lastProxyResponse = res;
+                            lastStatus = res.status;
+
+                            if (res.status === 429 || res.status >= 500) {
+                                console.warn('Proxy returned ' + res.status + ', retrying...');
+                                continue;
+                            }
+
+                            throw new Error('Status ' + res.status);
+                        } catch (e) {
+                            console.warn('Proxy ' + proxy + ' attempt ' + (attempt + 1) + ' failed:', e);
+                            lastError = e;
+                            if (e.message && e.message.indexOf('superseded') !== -1) {
+                                document.getElementById('loading-indicator').style.display = 'none';
+                                throw e;
+                            }
+                        }
                     }
                 }
+
                 document.getElementById('loading-indicator').style.display = 'none';
-                throw lastError || new Error("Connection Failed: All proxies blocked.");
+                let msg = "Connection Failed: All proxies blocked.";
+                if (lastStatus) msg += " (last status " + lastStatus + ")";
+                if (lastError) msg += " - " + lastError.message;
+                throw new Error(msg);
             },
 
             async getSubreddit(sub, after) {
@@ -709,6 +771,7 @@
             subToDelete: null,
             afterToken: null,
             isLoadingMore: false,
+            scrollTimeout: null,
 
             init() {
                 if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
@@ -827,14 +890,42 @@
                 this.closeModal('delete-modal');
             },
 
+            renderPostList(posts, sub, stale) {
+                const content = document.getElementById('content-area');
+                content.innerHTML = '';
+                if (stale) {
+                    content.innerHTML = '<div class="loading" style="color:#a60;">Showing cached posts for r/' + escapeHtml(sub) + ' because Reddit is busy.<br>Pull to refresh or try again shortly.</div>';
+                }
+                if (posts.length === 0) {
+                    if (!stale) content.innerHTML = '<div class="loading">No posts found.</div>';
+                    return;
+                }
+                posts.forEach(function(p) {
+                    const el = document.createElement('div');
+                    el.className = 'post-item';
+                    const safeTitle = escapeHtml(p.title);
+                    el.innerHTML = `
+                        <div class="post-meta">r/${escapeHtml(p.subreddit)} • u/${escapeHtml(p.author)}</div>
+                        <div class="post-title">${safeTitle}</div>
+                    `;
+                    el.onclick = function() { ui.loadThread(p.permalink); };
+                    content.appendChild(el);
+                });
+                this.afterToken = posts[posts.length - 1].id;
+            },
+
             initScrollListener() {
                 const el = document.getElementById('content-area');
                 el.addEventListener('scroll', function() {
-                    if (ui.isLoadingMore || !ui.afterToken) return;
-                    const scrollBottom = el.scrollTop + el.clientHeight;
-                    if (scrollBottom >= el.scrollHeight - 300) {
-                        ui.loadMorePosts();
-                    }
+                    if (ui.scrollTimeout) clearTimeout(ui.scrollTimeout);
+                    ui.scrollTimeout = setTimeout(function() {
+                        ui.scrollTimeout = null;
+                        if (ui.isLoadingMore || !ui.afterToken) return;
+                        const scrollBottom = el.scrollTop + el.clientHeight;
+                        if (scrollBottom >= el.scrollHeight - 300) {
+                            ui.loadMorePosts();
+                        }
+                    }, 200);
                 });
             },
 
@@ -871,6 +962,7 @@
                         this.afterToken = null;
                     }
                 } catch (e) {
+                    if (e.message && e.message.indexOf('superseded') !== -1) return;
                     console.error("Load more failed:", e);
                 } finally {
                     this.isLoadingMore = false;
@@ -895,31 +987,23 @@
 
                 try {
                     const xmlText = await api.getSubreddit(sub);
-                    const posts = parseRssPosts(xmlText);
-
-                    content.innerHTML = '';
-                    if (posts.length === 0) {
-                        content.innerHTML = '<div class="loading">No posts found.</div>';
-                        return;
+                    try {
+                        localStorage.setItem('reddit_feed_xml_' + sub, xmlText);
+                    } catch (e) {
+                        console.warn('Failed to cache feed:', e);
                     }
-
-                    posts.forEach(function(p) {
-                        const el = document.createElement('div');
-                        el.className = 'post-item';
-                        const safeTitle = escapeHtml(p.title);
-
-                        el.innerHTML = `
-                            <div class="post-meta">r/${escapeHtml(p.subreddit)} • u/${escapeHtml(p.author)}</div>
-                            <div class="post-title">${safeTitle}</div>
-                        `;
-                        el.onclick = function() { ui.loadThread(p.permalink); };
-                        content.appendChild(el);
-                    });
-
-                    this.afterToken = posts[posts.length - 1].id;
+                    const posts = parseRssPosts(xmlText);
+                    this.renderPostList(posts, sub, false);
 
                 } catch (e) {
-                    content.innerHTML = `<div class="loading" style="color:red">Error loading r/${escapeHtml(sub)}<br>${escapeHtml(e.message)}<br><small>If proxy issues persist, try reloading.</small></div>`;
+                    if (e.message && e.message.indexOf('superseded') !== -1) return;
+                    const cached = localStorage.getItem('reddit_feed_xml_' + sub);
+                    if (cached) {
+                        const posts = parseRssPosts(cached);
+                        this.renderPostList(posts, sub, true);
+                    } else {
+                        content.innerHTML = `<div class="loading" style="color:red">Error loading r/${escapeHtml(sub)}<br>${escapeHtml(e.message)}<br><small>If proxy issues persist, try reloading.</small></div>`;
+                    }
                 }
             },
 
@@ -979,6 +1063,7 @@
                     content.innerHTML = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
                 } catch (e) {
+                    if (e.message && e.message.indexOf('superseded') !== -1) return;
                     content.innerHTML = `<div class="loading" style="color:red">Error loading thread<br>${e.message}</div>`;
                 }
             },

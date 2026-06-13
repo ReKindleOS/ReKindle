@@ -435,6 +435,16 @@ The OpenAI `omni-moderation-latest` model incorrectly flags innocent ASCII art e
 -   **Update this file:** When you discover a cross-cutting concern, gotcha, or project-wide pattern during implementation, update `AGENTS.md` immediately so future agents don't relearn it the hard way.
 -   **`.title-text` height:** All 122 HTML files standardize `.title-text` with `display: inline-flex; align-items: center; height: 100%; box-sizing: border-box;` so the white background fully covers the title-bar stripes. Do not remove these properties.
 
+## 🌐 External API Proxies (Rate-limiting)
+External APIs such as Reddit aggressively rate-limit shared cloud egress IPs (e.g., Cloudflare Pages/Workers). Any proxy under `functions/api/` or `workers/` that calls an external API should:
+
+- Cache successful GET responses using `caches.default` so all users share the same cached copy.
+- Retry on `429 Too Many Requests` and `5xx` errors with exponential backoff, respecting any `Retry-After` header.
+- Return stale cached data to the client when the upstream is rate-limiting, so the UI doesn't appear broken.
+- Use different cache TTLs by content type (e.g., 60 s for RSS feeds, 5 min for images).
+
+Example pattern: `functions/api/reddit.js`.
+
 ## 📋 Reporting System
 
 Users can report content across all social apps. Reports are stored in Firestore and trigger Discord notifications.
