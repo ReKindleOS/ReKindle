@@ -178,13 +178,16 @@
             text-align: left;
             display: flex;
             justify-content: space-between;
-            transition: transform 0.1s;
         }
 
-        .menu-btn span {
+        .menu-btn .btn-status {
             font-size: 0.9rem;
             color: #666;
             font-weight: normal;
+        }
+
+        .menu-btn span:not(.btn-status) {
+            font-weight: bold;
         }
 
         .menu-btn:active {
@@ -254,6 +257,7 @@
         /* Prevent canvas from interfering with click */
         .level-preview {
             width: 100%;
+            height: auto;
             aspect-ratio: 1/1;
             image-rendering: pixelated;
             border: 1px solid #ccc;
@@ -559,22 +563,22 @@
         <!-- MENU SCREEN -->
         <div id="screen-menu" class="screen active">
             <div class="logo-area">
-                <h1 data-i18n="nonograms.logo.title">Picross</h1>
+                <h1 data-i18n="nonograms.logo.title">Nonograms</h1>
                 <p data-i18n="nonograms.logo.subtitle">Logical Painting</p>
             </div>
 
             <div class="difficulty-container">
                 <button class="menu-btn" id="btn-easy" onclick="openLevelSelect('easy')" disabled="">
-                    <span data-i18n="nonograms.diff.easy">Easy</span> <span data-i18n="nonograms.status.loading">Loading...</span>
+                    <span data-i18n="nonograms.diff.easy">Easy</span> <span class="btn-status">Loading...</span>
                 </button>
                 <button class="menu-btn" id="btn-medium" onclick="openLevelSelect('medium')" disabled="">
-                    <span data-i18n="nonograms.diff.medium">Medium</span> <span data-i18n="nonograms.status.loading">Loading...</span>
+                    <span data-i18n="nonograms.diff.medium">Medium</span> <span class="btn-status">Loading...</span>
                 </button>
                 <button class="menu-btn" id="btn-hard" onclick="openLevelSelect('hard')" disabled="">
-                    <span data-i18n="nonograms.diff.hard">Hard</span> <span data-i18n="nonograms.status.loading">Loading...</span>
+                    <span data-i18n="nonograms.diff.hard">Hard</span> <span class="btn-status">Loading...</span>
                 </button>
                 <button class="menu-btn" id="btn-expert" onclick="openLevelSelect('expert')" disabled="">
-                    <span data-i18n="nonograms.diff.expert">Expert</span> <span data-i18n="nonograms.status.loading">Loading...</span>
+                    <span data-i18n="nonograms.diff.expert">Expert</span> <span class="btn-status">Loading...</span>
                 </button>
             </div>
 
@@ -664,9 +668,13 @@
             appId: "1:748026882518:web:6877dd4329318070c11c77"
         };
 
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        let auth = null;
+        let db = null;
+        if (typeof firebase !== 'undefined' && typeof firebase.auth === 'function' && typeof firebase.firestore === 'function') {
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+        }
 
 
 
@@ -704,19 +712,25 @@
                 }
             });
 
-            auth.onAuthStateChanged(user => {
-                const authStatus = document.getElementById('auth-status');
-                if (user) {
-                    currentUser = user;
-                    authStatus.innerText = window.t ? window.t('nonograms.status.synced').replace('${email}', user.email) : "Synced: " + user.email;
-                    authStatus.removeAttribute('data-i18n');
-                    loadCloudProgress();
-                } else {
-                    authStatus.innerText = window.t ? window.t('nonograms.status.guest') : "Guest Mode";
-                    authStatus.removeAttribute('data-i18n');
-                    loadLocalProgress();
-                }
-            });
+            const authStatus = document.getElementById('auth-status');
+            if (auth) {
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        currentUser = user;
+                        authStatus.innerText = window.t ? window.t('nonograms.status.synced').replace('${email}', user.email) : "Synced: " + user.email;
+                        authStatus.removeAttribute('data-i18n');
+                        loadCloudProgress();
+                    } else {
+                        authStatus.innerText = window.t ? window.t('nonograms.status.guest') : "Guest Mode";
+                        authStatus.removeAttribute('data-i18n');
+                        loadLocalProgress();
+                    }
+                });
+            } else {
+                authStatus.innerText = window.t ? window.t('nonograms.status.local') : "Local Mode";
+                authStatus.removeAttribute('data-i18n');
+                loadLocalProgress();
+            }
         };
 
         // Helper to HTML-escape text
@@ -750,6 +764,8 @@
                     ...p,
                     rows: p.rows || p.row_clues || [],
                     columns: p.columns || p.col_clues || p.cols || [],
+                    width: p.width || (p.columns ? p.columns.length : 0),
+                    height: p.height || (p.rows ? p.rows.length : 0),
                     id: p.filename || `puzzle_${index}`
                 }));
 
@@ -786,16 +802,18 @@
         function updateMenuButtons() {
             for (const [cat, list] of Object.entries(categories)) {
                 const btn = document.getElementById(`btn-${cat}`);
-                const span = btn.querySelector('span');
+                if (!btn) continue;
+                const statusSpan = btn.querySelector('.btn-status');
+                const diffSpan = btn.querySelector('span:not(.btn-status)');
 
                 if (list.length === 0) {
                     btn.disabled = true;
-                    span.innerText = window.t ? window.t('nonograms.status.zero_found') : "(0 Found)";
+                    if (statusSpan) statusSpan.innerText = window.t ? window.t('nonograms.status.zero_found') : "(0 Found)";
                 } else {
                     btn.disabled = false;
-                    span.innerText = window.t ? window.t('nonograms.status.puzzles_found').replace('${n}', list.length) : `(${list.length} Puzzles)`;
+                    if (statusSpan) statusSpan.innerText = window.t ? window.t('nonograms.status.puzzles_found').replace('${n}', list.length) : `(${list.length} Puzzles)`;
                 }
-                span.removeAttribute('data-i18n');
+                if (statusSpan) statusSpan.removeAttribute('data-i18n');
             }
         }
 
@@ -1163,6 +1181,10 @@
         }
 
         function loadCloudProgress() {
+            if (!db || !currentUser) {
+                loadLocalProgress();
+                return;
+            }
             db.collection('users').doc(currentUser.uid).collection('apps').doc('picross')
                 .get().then((doc) => {
                     if (doc.exists) progress = doc.data().progress || {};
@@ -1181,7 +1203,7 @@
             }
             localStorage.setItem('rekindle_picross_progress', JSON.stringify(progress));
 
-            if (currentUser) {
+            if (currentUser && db) {
                 clearTimeout(saveTimer);
                 saveTimer = setTimeout(() => {
                     db.collection('users').doc(currentUser.uid).collection('apps').doc('picross').set({
