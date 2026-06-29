@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokédex</title>
+    <style>
+        body {
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #e5e5e5;
+            background-image: repeating-linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), repeating-linear-gradient(45deg, #e5e5e5 25%, white 25%, white 75%, #e5e5e5 75%, #e5e5e5);
+            background-position: 0 0, 2px 2px;
+            background-size: 4px 4px;
+        }
+        .pokedex-container {
+            width: 90%;
+            max-width: 500px;
+            background-color: #fff;
+            border: 2px solid #000;
+            box-shadow: 4px 4px 0px #000;
+            padding: 20px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            box-sizing: border-box;
+        }
+        .search-bar {
+            margin-bottom: 15px;
+        }
+        .search-bar input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #000;
+            font-size: 16px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        .close-button {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            text-decoration: none;
+            color: #000;
+            background: #fff;
+            border: 2px solid #000;
+            font-weight: bold;
+            font-size: 18px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 2px 2px 0px #000;
+        }
+        .close-button:active {
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0px #000;
+        }
+        #pokemon-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto;
+            flex-grow: 1;
+            border: 2px solid #000;
+        }
+        #pokemon-list li {
+            padding: 10px;
+            border-bottom: 2px solid #000;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+        #pokemon-list li:last-child {
+            border-bottom: none;
+        }
+        #pokemon-list li:hover, #pokemon-list li.selected-row {
+            background-color: #000;
+            color: #fff;
+        }
+        .pkmn-thumb {
+            width: 50px;
+            height: 50px;
+            margin-right: 15px;
+            border: 1px solid #000;
+            background: #fafafa;
+            image-rendering: pixelated;
+            object-fit: contain;
+        }
+        #pokemon-list li:hover .pkmn-thumb, #pokemon-list li.selected-row .pkmn-thumb {
+            border-color: #fff;
+            background: #333;
+        }
+        .pokemon-info {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+        .pokemon-name {
+            font-weight: bold;
+            text-transform: capitalize;
+            font-size: 1rem;
+        }
+        .pokemon-id {
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+        .status-msg {
+            text-align: center;
+            padding: 20px;
+            font-weight: bold;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="pokedex-container">
+        <a href="index.html" class="close-button">&times;</a>
+        
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Enter Name or National ID...">
+        </div>
+
+        <ul id="pokemon-list">
+            <div class="status-msg" id="status-field">Loading National Pokédex entries...</div>
+        </ul>
+    </div>
+
+    <script>
+        let nationalDex = [];
+
+        async function fetchNationalPokedex() {
+            const statusField = document.getElementById('status-field');
+            try {
+                // Fetch first 898 canonical National Pokédex entries (Generations 1-8)
+                const response = await fetch('https://pokeapi.co/api/v2/pokemon?limit=898');
+                if (!response.ok) throw new Error("Network issue");
+                const data = await response.json();
+                
+                nationalDex = data.results.map((pokemon, index) => {
+                    const id = index + 1;
+                    return {
+                        id: id,
+                        name: pokemon.name,
+                        image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`
+                    };
+                });
+                
+                renderPokemons(nationalDex);
+            } catch (error) {
+                statusField.textContent = "Failed to query PokéAPI. Please check your connection.";
+            }
+        }
+
+        function renderPokemons(pokemonArray) {
+            const pokemonList = document.getElementById('pokemon-list');
+            pokemonList.innerHTML = '';
+
+            if (pokemonArray.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'status-msg';
+                emptyMsg.textContent = "No entries found.";
+                pokemonList.appendChild(emptyMsg);
+                return;
+            }
+
+            pokemonArray.forEach(pokemon => {
+                const li = document.createElement('li');
+                
+                const img = document.createElement('img');
+                img.className = 'pkmn-thumb';
+                img.src = pokemon.image;
+                img.alt = pokemon.name;
+                // Handle image load error seamlessly
+                img.onerror = () => { img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="black" fill="none"/></svg>'; };
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'pokemon-info';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'pokemon-name';
+                nameSpan.textContent = pokemon.name.replace('-', ' ');
+
+                const idSpan = document.createElement('span');
+                idSpan.className = 'pokemon-id';
+                idSpan.textContent = `#${String(pokemon.id).padStart(3, '0')}`;
+
+                infoDiv.appendChild(nameSpan);
+                infoDiv.appendChild(idSpan);
+                
+                li.appendChild(img);
+                li.appendChild(infoDiv);
+                pokemonList.appendChild(li);
+            });
+        }
+
+        function initPokedex() {
+            fetchNationalPokedex();
+
+            const searchInput = document.getElementById('search-input');
+            const pokemonList = document.getElementById('pokemon-list');
+
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.toLowerCase().trim();
+                const filtered = nationalDex.filter(pokemon => 
+                    pokemon.name.toLowerCase().includes(query) || 
+                    String(pokemon.id).includes(query)
+                );
+                renderPokemons(filtered);
+            });
+
+            pokemonList.addEventListener('click', (event) => {
+                const item = event.target.closest('li');
+                if (!item) return;
+
+                document.querySelectorAll('#pokemon-list li').forEach(el => el.classList.remove('selected-row'));
+                item.classList.add('selected-row');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initPokedex);
+    </script>
+</body>
+</html>
