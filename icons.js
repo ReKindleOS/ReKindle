@@ -10,6 +10,12 @@ const APPS = [
         icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><path d="M16 3 C22 10 22 22 16 29"/><path d="M16 3 C10 10 10 22 16 29"/>'
     },
     {
+        id: 'pokedex',
+        name: 'Pokedex',
+        cat: 'essentials',
+        icon: '<circle cx="16" cy="16" r="14"/><path d="M2 16 H30"/><circle cx="16" cy="16" r="4.5" fill="white" stroke="black" stroke-width="2"/><circle cx="16" cy="16" r="1.5" fill="black"/>'
+    },
+    {
         id: 'calendar',
         name: 'Calendar',
         cat: 'essentials',
