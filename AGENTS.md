@@ -187,6 +187,8 @@ Strict layering constants to prevent overlap issues.
 | `close-box` | `2` | Interactive top layer |
 | `modal-overlay` | `10000` | Always top-most |
 
+**Stacking-context trap:** A modal overlay must be a direct child of `<body>` (or outside any ancestor with `position: relative` + `z-index`) to actually reach `10000`. In `index.html`, `.desktop-wrapper` has `position: relative; z-index: 1`, which creates a stacking context. An overlay inside it cannot rise above the top menu bar (`.sys-menu-bar`, `z-index: 1000`), so the dim background only covers the dashboard. If the overlay is trapped, move the modal nodes to `<body>` or remove the ancestor's `z-index`.
+
 ### 6. Injected UI from Shared Scripts
 When creating modals or popups dynamically from shared JavaScript (e.g., `time.js`, `theme.js`), you should reuse the standard System 7 class names (`.window`, `.title-bar`, `.title-text`, etc.) to maintain the retro aesthetic. **However**, the 120+ HTML files in this project each have their own styles for these classes, and some add properties that are **not** part of the canonical pattern above (e.g., `index.html` adds `border: 2px solid black` to `.title-text`).
 
@@ -446,6 +448,20 @@ afkTimer = setTimeout(performAfkAction, remaining);
 ```
 
 This pattern is used in `liveuno.html` for the 30-second AFK auto-skip timer.
+
+**Clock skew:** `Date.now()` on the Kindle experimental browser can be minutes or hours off from the Firebase RTDB server clock. Always use `rtdb.ref('.info/serverTimeOffset')` to compute a client-side estimate of the server time before comparing against a `ServerValue.TIMESTAMP` value. If you set turn deadlines (e.g., `roundEndsAt`) from the client, set them with the server-time estimate so every client/host evaluates them consistently.
+
+```javascript
+let serverTimeOffset = 0;
+rtdb.ref('.info/serverTimeOffset').on('value', snap => { serverTimeOffset = snap.val() || 0; });
+function serverTime() { return Date.now() + serverTimeOffset; }
+
+// Reading
+const elapsed = serverTime() - gameState.turnStartedAt;
+
+// Writing
+matchRef.update({ roundEndsAt: serverTime() + 80000 });
+```
 
 ### 12. Host Migration in RTDB Multiplayer Games
 Do **not** remove the entire game node when the host disconnects. A brief network hiccup would destroy the match and kick every player out.
