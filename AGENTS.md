@@ -106,6 +106,8 @@ The main container for every app.
 }
 ```
 
+**Content-area gotcha:** `theme.js` injects `.window { max-height: 95vh !important; }` (scaled down at higher zoom levels). Use `height: 90vh` when you want a fixed-height window with a viewport gap; if you use `min-height: 90vh` instead, the window can grow to the theme.js `max-height` and lose the gap. For content pages that should shrink to their content and only scroll when content is long, use `height: fit-content` and `flex: 0 1 auto; min-height: 0;` on the scrollable child instead of `flex-grow: 1`.
+
 ### 3. The Title Bar (`.title-bar`)
 **Mandatory Structure:** The title bar uses a specific layered technique to achieve the "text on stripes" look.
 
