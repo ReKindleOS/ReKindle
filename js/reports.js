@@ -235,7 +235,7 @@
 
         var warningEl = document.createElement('div');
         warningEl.style.cssText = 'background:#fff3cd;border:1px solid #ffc107;padding:8px;margin-top:10px;font-size:0.75rem;color:#856404;';
-        warningEl.innerHTML = '<strong>Warning:</strong> Misuse of the report system will lead to a permanent ban. Content that receives 2 reports from different users is automatically deleted.';
+        warningEl.innerHTML = '<strong>Warning:</strong> Misuse of the report system will lead to a permanent ban. KindleChat messages, comments and replies are removed immediately when reported. Topics and posts require 2 reports from different users before they are automatically deleted.';
         body.appendChild(warningEl);
 
         var errorEl = document.createElement('div');

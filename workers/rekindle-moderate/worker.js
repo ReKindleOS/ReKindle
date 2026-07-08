@@ -658,22 +658,19 @@ async function moderateContent(text, apiKey, imageUrl) {
 
     console.log("[MODERATION] OpenAI result — flagged:", moderationResult.flagged, "categories:", JSON.stringify(moderationResult.categories), "scores:", JSON.stringify(moderationResult.categoryScores), "appliedInputTypes:", JSON.stringify(moderationResult.appliedInputTypes));
 
-    // Apply stricter family-friendly thresholds on top of OpenAI's flag.
-    const strictResult = applyStrictModeration(moderationResult);
-
     // Store in cache (text-only, using stripped text)
     if (!imageUrl && strippedText && typeof strippedText === "string") {
-        moderationCache.set(strippedText, { result: strictResult, expiry: Date.now() + CACHE_TTL_MS });
+        moderationCache.set(strippedText, { result: moderationResult, expiry: Date.now() + CACHE_TTL_MS });
     }
 
-    return strictResult;
+    return moderationResult;
 }
 
 /* ------------------------------------------------------------------ */
-/*  PIXEL ART MODERATION HELPERS                                       */
+/*  PIXEL ART GRID SIZE HELPER                                         */
 /* ------------------------------------------------------------------ */
 
-// Infer grid size from grid_data so we can tune thresholds per canvas size
+// Infer grid size from grid_data so we can reject unsupported sizes.
 function getGridSize(gridDataStr) {
     try {
         const grid = JSON.parse(gridDataStr);
@@ -682,141 +679,6 @@ function getGridSize(gridDataStr) {
         }
     } catch (e) { }
     return null;
-}
-
-// Thresholds tuned against a 32x32 test set (smiley, plane, penis, swastika).
-// The penis is caught by the low sexual threshold.
-// Hate thresholds are set low to catch swastikas if the model ever returns
-// a non-zero hate score for them.
-// A heuristic is also used for swastikas because the model currently returns
-// hate=0 for 32x32 pixel art swastikas.
-function getPixelArtThresholds(gridSize) {
-    if (gridSize === 32) {
-        return {
-            sexual: 0.000055,           // penis scored 0.000088; benign scored ~0.000040
-            violence: 0.008,
-            "violence/graphic": 0.008,
-            "self-harm": 0.008,
-            "self-harm/intent": 0.008,
-            "self-harm/instructions": 0.008,
-            hate: 0.000010,
-            "hate/threatening": 0.000010
-        };
-    }
-
-    // Fallback for 16x16 or anything else
-    return {
-        sexual: 0.004,
-        violence: 0.004,
-        "violence/graphic": 0.004,
-        "self-harm": 0.004,
-        "self-harm/intent": 0.004,
-        "self-harm/instructions": 0.004,
-        hate: 0.004,
-        "hate/threatening": 0.004
-    };
-}
-
-function checkPixelArtScores(mod, isPixelArt, gridSize) {
-    if (!isPixelArt || mod.flagged) return mod;
-
-    const thresholds = getPixelArtThresholds(gridSize);
-    const flaggedCategories = {};
-    let anyFlagged = false;
-
-    for (const [category, threshold] of Object.entries(thresholds)) {
-        const score = mod.categoryScores[category] || 0;
-        if (score >= threshold) {
-            flaggedCategories[category] = true;
-            anyFlagged = true;
-        }
-    }
-
-    // Experimental heuristic for 32x32 hate symbols (e.g. swastika).
-    // The model often returns near-zero hate scores for small pixel art,
-    // but hate symbols tend to have moderate violence with very low
-    // self-harm/intent compared to benign curved shapes.
-    // Test data: swastika violence=0.000510, self-harm/intent=0.000005.
-    if (gridSize === 32 && !anyFlagged) {
-        const violenceScore = mod.categoryScores["violence"] || 0;
-        const selfHarmIntentScore = mod.categoryScores["self-harm/intent"] || 0;
-        if (violenceScore >= 0.000500 && selfHarmIntentScore <= 0.000050) {
-            flaggedCategories["hate"] = true;
-            anyFlagged = true;
-            console.log("[MODERATION] Pixel art flagged by 32x32 hate-symbol heuristic:", JSON.stringify(flaggedCategories));
-        }
-    }
-
-    if (anyFlagged) {
-        console.log("[MODERATION] Pixel art flagged by custom thresholds (gridSize:", gridSize, "):", JSON.stringify(flaggedCategories));
-        return {
-            ...mod,
-            flagged: true,
-            categories: { ...mod.categories, ...flaggedCategories }
-        };
-    }
-
-    return mod;
-}
-
-// Family-friendly strict thresholds applied to ALL content (text + images).
-// Calibrated against 170+ test messages (single words + full sentences) via the
-// OpenAI omni-moderation-latest API.
-//
-// Rationale for each threshold:
-//   sexual (0.15)        — Benign sentences <0.01 ("i love this game"=0.0001).
-//                          Educational mentions ("movie had a sex scene"=0.56)
-//                          still caught. Overt solicitation ("lets have sex"=0.77)
-//                          scores >0.15.
-//   sexual/minors (0.01) — "I am 12" scores 0.001; "naked baby"=0.60;
-//                          child-exploitation terms ("child porn"=0.92) score >0.01.
-//   harassment (0.40)    — Benign <0.01; mild teasing ("shut up"=0.57, "dumb"=0.40)
-//                          allowed. Direct attacks ("you're stupid"=0.89,
-//                          "loser"=0.80) score >0.40.
-//   hate (0.01)          — Benign <0.0001; mild insults ("freak"=0.007, "fat"=0.008)
-//                          allowed. Slurs ("bitch"=0.007, "slut"=0.10,
-//                          "whore"=0.10) score >0.01.
-//   violence (0.03)      — Benign ~0.001; expressions ("damn that was close"=0.024)
-//                          allowed. Violent terms ("rape"=0.45, "wanna smash"=0.40)
-//                          score >0.03.
-//   self-harm/instructions (0.001) — Benign <0.0005. Stops false positives on
-//                          innocent phrases like "ttyl" and "go away".
-const FAMILY_FRIENDLY_THRESHOLDS = {
-    sexual: 0.15,
-    "sexual/minors": 0.01,
-    hate: 0.01,
-    "hate/threatening": 0.001,
-    harassment: 0.40,
-    "harassment/threatening": 0.001,
-    "self-harm": 0.01,
-    "self-harm/intent": 0.001,
-    "self-harm/instructions": 0.001,
-    violence: 0.03,
-    "violence/graphic": 0.01
-};
-
-function applyStrictModeration(mod) {
-    const flaggedCategories = {};
-    let anyFlagged = false;
-
-    for (const [category, threshold] of Object.entries(FAMILY_FRIENDLY_THRESHOLDS)) {
-        const score = mod.categoryScores[category] || 0;
-        if (score >= threshold) {
-            flaggedCategories[category] = true;
-            anyFlagged = true;
-        }
-    }
-
-    if (anyFlagged) {
-        console.log("[MODERATION] Strict family threshold triggered:", JSON.stringify(flaggedCategories), "scores:", JSON.stringify(mod.categoryScores));
-        return {
-            ...mod,
-            flagged: true,
-            categories: { ...mod.categories, ...flaggedCategories }
-        };
-    }
-
-    return mod;
 }
 
 function formatFlaggedCategories(categories) {
@@ -1107,7 +969,7 @@ async function sendDiscordReportNotification(env, reportData) {
     ];
     
     if (isAutoDeleted) {
-        fields.push({ name: "Auto-Delete", value: reportData.deleteSuccess ? "Content was automatically deleted after 2 reports" : "Auto-delete failed, manual action required", inline: false });
+        fields.push({ name: "Auto-Delete", value: reportData.deleteSuccess ? (reportData.resolutionNote || "Content was automatically deleted") : "Auto-delete failed, manual action required", inline: false });
     }
     
     fields.push(
@@ -1394,11 +1256,17 @@ export default {
                     return new Response(JSON.stringify({ allowed: false, error: "You already sent this recently. Please wait a few minutes.", retryAfter: dupCheck.retryAfter }), { status: 429, headers });
                 }
 
-                // Moderation
-                const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
-                if (mod.flagged) {
-                    await logAutomodRejection(uid, "kindlechat", trimmed, mod.categories, accessToken);
-                    return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
+                const isFlipnote = body.is_flipnote === true;
+                const isPixelArt = body.is_pixel_art === true;
+                const skipOpenAIModeration = isFlipnote || isPixelArt;
+
+                // Moderation: text-only messages are checked; pixel art / flipbook bypass OpenAI.
+                if (!skipOpenAIModeration && trimmed) {
+                    const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
+                    if (mod.flagged) {
+                        await logAutomodRejection(uid, "kindlechat", trimmed, mod.categories, accessToken);
+                        return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
+                    }
                 }
 
                 const msgData = {
@@ -1407,33 +1275,17 @@ export default {
                     text: trimmed
                 };
                 // Allow known extra fields from client
-                const allowedExtras = ["pixel_art", "grid_data", "is_pixel_art", "is_flipnote", "flipnote_data"];
+                const allowedExtras = ["pixel_art", "grid_data", "is_pixel_art", "is_flipnote", "flipnote_data", "replyTo"];
                 for (const key of allowedExtras) {
                     if (key in body) msgData[key] = body[key];
                 }
 
-                // Flipbook bypasses moderation (animation data, not images)
-                const isFlipnote = body.is_flipnote === true;
-                // Pixel art sends image for moderation
                 const pixelArt = body.pixel_art || null;
                 const gridSize = getGridSize(body.grid_data);
-                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "hasPixelArt:", !!pixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "pixelArtIsBase64:", pixelArt ? pixelArt.startsWith("data:image") : false, "gridSize:", gridSize);
+                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "isPixelArt:", isPixelArt, "hasPixelArt:", !!pixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "pixelArtIsBase64:", pixelArt ? pixelArt.startsWith("data:image") : false, "gridSize:", gridSize, "skipOpenAIModeration:", skipOpenAIModeration);
 
                 if (gridSize === 64) {
                     return new Response(JSON.stringify({ error: "64× pixel art is not supported in chat." }), { status: 400, headers });
-                }
-
-                if (!isFlipnote) {
-                    // Send pixel art images without text so image-category scores aren't
-                    // diluted by innocent text context.
-                    const isPixelArt = body.is_pixel_art === true;
-                    const imageText = isPixelArt ? null : trimmed;
-                    let mod = await moderateContent(imageText, env.OPENAI_API_KEY, pixelArt);
-                    mod = checkPixelArtScores(mod, isPixelArt, gridSize);
-                    if (mod.flagged) {
-                        await logAutomodRejection(uid, "kindlechat", trimmed, mod.categories, accessToken);
-                        return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
-                    }
                 }
 
                 console.log("[WORKER] kindlechat post — token claims:", { email: payload.email, ageVerified: payload.ageVerified, moderator: payload.moderator, aud: payload.aud });
@@ -1717,6 +1569,12 @@ export default {
                     return new Response(JSON.stringify({ error: "Invalid content type." }), { status: 400, headers });
                 }
                 
+                // Content removed on the first report
+                const IMMEDIATE_DELETE_TYPES = ["kindlechat", "topic_comment", "neighbourhood_comment"];
+                // Content that requires two reports from different users
+                const TWO_REPORT_DELETE_TYPES = ["topic", "neighbourhood_post"];
+                const shouldDeleteImmediately = IMMEDIATE_DELETE_TYPES.includes(contentType);
+                
                 // Validate lengths
                 if (comment && comment.length > 500) {
                     return new Response(JSON.stringify({ error: "Comment is too long (max 500 characters)." }), { status: 400, headers });
@@ -1731,7 +1589,7 @@ export default {
                     return new Response(JSON.stringify({ error: `Rate limit exceeded. You can submit up to ${RATE_LIMIT_CONFIG.report.capacity} reports per hour. Please wait ${rl.retryAfter} second(s).`, retryAfter: rl.retryAfter }), { status: 429, headers });
                 }
                 
-                // Check if another user already reported this content
+                // Check if another user already reported this content (used for 2-report types)
                 const existingReport = await getExistingPendingReport(contentType, contentId, accessToken);
                 const isSecondReport = existingReport && existingReport.reporterId !== uid;
                 
@@ -1754,27 +1612,40 @@ export default {
                 const reportId = await rtdbPushWithAccessToken(REPORTS_PATH, reportData, accessToken);
                 reportData.reportId = reportId;
                 
-                // If second report from different user, auto-delete content
-                if (isSecondReport) {
-                    console.log(`[REPORT] Second report on ${contentType}/${contentId}. Auto-deleting...`);
+                // Decide whether to auto-delete now
+                let shouldAutoDelete = false;
+                let deleteNote = "";
+                if (shouldDeleteImmediately) {
+                    shouldAutoDelete = true;
+                    deleteNote = "Auto-deleted after 1 report";
+                } else if (TWO_REPORT_DELETE_TYPES.includes(contentType) && isSecondReport) {
+                    shouldAutoDelete = true;
+                    deleteNote = "Auto-deleted after 2 reports";
+                }
+                
+                if (shouldAutoDelete) {
+                    console.log(`[REPORT] ${shouldDeleteImmediately ? 'Immediate' : 'Second'} report on ${contentType}/${contentId}. Auto-deleting...`);
                     const deleted = await autoDeleteContent(contentType, contentId, contentPath, accessToken);
                     
                     if (deleted) {
-                        // Mark both reports as resolved only when deletion succeeds
+                        // Mark reports as resolved only when deletion succeeds
                         try {
-                            await rtdbUpdateReport(existingReport.reportId, {
-                                status: "resolved",
-                                resolvedAt: Date.now(),
-                                resolvedBy: "system",
-                                resolutionNote: "Auto-deleted after 2 reports"
-                            }, accessToken);
+                            if (existingReport) {
+                                await rtdbUpdateReport(existingReport.reportId, {
+                                    status: "resolved",
+                                    resolvedAt: Date.now(),
+                                    resolvedBy: "system",
+                                    resolutionNote: deleteNote
+                                }, accessToken);
+                            }
                             await rtdbUpdateReport(reportId, {
                                 status: "resolved",
                                 resolvedAt: Date.now(),
                                 resolvedBy: "system",
-                                resolutionNote: "Auto-deleted after 2 reports"
+                                resolutionNote: deleteNote
                             }, accessToken);
                             reportData.status = "resolved";
+                            reportData.resolutionNote = deleteNote;
                         } catch (e) {
                             console.error("[REPORT] Failed to update reports after auto-delete:", e.message);
                         }
