@@ -247,6 +247,17 @@ The project uses a custom `i18n.js` loader.
 | `data-i18n-title="key"` | Sets element `title` tooltip |
 | `data-i18n-only="lang"` | Shows element **only** for specific lang code (e.g., "en") |
 
+### Variable Interpolation
+
+The `i18n.js` loader only does simple key lookup; **it does NOT interpolate variables**. Locale values use `${key}` placeholders (e.g. `"${pName}: Place ${ship} (${size})"`), but calling `window.t('key', { pName: ... })` will return the raw placeholder string unchanged. In dynamic code, fetch the template first and then replace placeholders manually:
+
+```javascript
+var template = window.t ? window.t('battleship.setup.msg') : '${pName}: Place ${ship} (${size})';
+var text = template.replace('${pName}', 'You').replace('${ship}', shipName).replace('${size}', shipDef.size);
+```
+
+Or use a small helper that replaces all `${key}` occurrences. Many existing HTML files incorrectly pass a variables object as the second argument to `window.t()`, which silently fails on the Kindle browser.
+
 ### Icons (SVG)
 Icons are stored as raw SVG strings in `icons.js`.
 *   **Size:** Designed for **32x32** pixel grid.
@@ -544,7 +555,7 @@ Add this index in the Firebase Console under the social RTDB for the `/reports` 
 - `createdAt`
 
 ### Rate Limits
-- 5 reports per hour per user (enforced in moderation worker)
+- 60 reports per hour per user (enforced in moderation worker)
 
 ### Adding Report Buttons to New Social Apps
 1. Include `<script src="js/reports.js"></script>` in the HTML `<head>`
@@ -617,4 +628,100 @@ ESPN's JSON scoreboard API (`site.api.espn.com/apis/site/v2/sports/{sport}/{leag
 *   Only games where both teams are in the known NRL team list are returned (filters out State of Origin / Tests).
 *   The response is cached for 2 minutes via `caches.default`, but only when games are successfully parsed.
 *   In `scores.html`, NRL is added to `LEAGUES` with `source: "nrl-scores"`, and `fetchFromAPI()` routes it to `/api/nrl-scores` instead of the ESPN proxy.
+
+## KindleChat Art Gallery & `kindlechat/art_index`
+
+The KindleChat gallery (`kindlechat.html`) shows only pixel art and flipbooks. To avoid downloading every chat message, the gallery reads from a dedicated RTDB index at `kindlechat/art_index`.
+
+### Architecture
+
+- `kindlechat/art_index/{messageId}` stores a lightweight record for every art post:
+  - `type`: `"pixel_art"` or `"flipbook"`
+  - `uid`: author UID
+  - `timestamp`: server timestamp
+  - `thumbnail`: data URL (pixel art image or first flipbook frame)
+  - `text`: caption text
+- The gallery queries `art_index` ordered by `timestamp` and paginates with `limitToLast` + `endAt`.
+- Clicking a gallery item fetches the full message from `kindlechat/messages/{messageId}` to show the large pixel art or play the full flipbook.
+- The moderation worker automatically writes the index entry when a pixel art or flipbook message is posted, and deletes it when a message is auto-deleted from a report.
+
+### Files involved
+- `workers/rekindle-moderate/worker.js` — writes/deletes index entries.
+- `rtdb-social-rules.json` — security rules for `kindlechat/art_index`.
+- `kindlechat.html` — gallery view reads from `art_index`.
+- `scripts/backfill-art-index.js` — one-time migration to populate the index for existing art posts.
+
+### Backfill
+
+Existing pixel art and flipbook posts do not automatically appear in the index. Run the migration once:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/rekindle-socials-service-account.json
+node scripts/backfill-art-index.js
+```
+
+### Important rule for future art features
+
+Any new feature that posts pixel art or flipbooks to KindleChat must also write an entry to `kindlechat/art_index/{messageId}` with the same shape, or update the moderation worker to do it on the feature's behalf. Otherwise the gallery will not show those posts.
+
+
+## KindleChat Pixel Art Duplicate Prevention
+
+To stop users from reposting the exact same pixel art repeatedly in KindleChat, duplicate prevention is enforced both client-side and server-side.
+
+### Client-side `postedToKindleChat` flag (`pixel.html`)
+
+Each drawing in the user's manifest can carry a `postedToKindleChat: true` flag.
+
+*   When a drawing is successfully posted to KindleChat, `postToPixelChat()` sets `item.postedToKindleChat = true` on the current manifest item and saves the manifest.
+*   Before posting, `postToPixelChat()` checks the flag and shows a modal if the drawing has already been posted unchanged.
+*   Any modification to the drawing (saved via `performSave()`) clears the flag to `false`, so the edited drawing can be posted again.
+*   Translation key: `pixel.status.already_posted` — "This pixel art has already been posted to KindleChat. Modify it to post again."
+*   Blank (all-white) pixel art is also blocked from posting. Use `pixel.status.blank` — "Blank pixel art cannot be posted."
+
+### Server-side duplicate detection (`workers/rekindle-moderate/worker.js`)
+
+*   Pixel art posts skip the text-only duplicate check (the placeholder text `"Shared a pixel art!"` would otherwise block different pixel art).
+*   Instead, the worker hashes `body.grid_data` and checks `kindlechat/user_recent/{uid}/kindlechat_pixel_art/{hash}` for a 5-minute duplicate window.
+*   After a successful post, the grid data hash is recorded under `kindlechat_pixel_art` for duplicate detection.
+*   No RTDB rule changes are required: `kindlechat/user_recent/{uid}` is already writable by the social service account for any child path.
+
+
+## 🎮 Single-Player Games Catalog
+
+The dashboard (`index.html`) reads the app registry from `icons.js`. Games are grouped by the `cat` property:
+
+| Category | Purpose |
+| :--- | :--- |
+| `games` | Single-player / solitaire games |
+| `two_player` | Local pass-and-play multiplayer |
+| `live_game` | Firebase real-time online multiplayer |
+
+### Single-player vs multiplayer split
+
+Several games exist as both a single-player file and a multiplayer file. The single-player version is the canonical game name (e.g. `chess.html`), and the local/online variants add a prefix (`2pchess.html`, `livechess.html`). Following this convention keeps the catalog consistent and avoids confusing users.
+
+### Single-player games added
+
+*   **Tic-Tac-Toe** — `tictactoe.html` (vs CPU with Easy/Hard). Based on `2ptictactoe.html`; uses a minimax AI on Hard and random on Easy.
+*   **Connect 4** — `connect4.html` (vs CPU with Easy/Hard). Based on `2pconnect4.html`; supports the same 4-in-a-row and 5-in-a-row toggle. Hard mode uses minimax with alpha-beta pruning to depth 4 plus a heuristic window evaluation.
+*   **Dots & Boxes** — `dotsandboxes.html` (vs CPU with Easy/Hard). Based on `2pdotsandboxes.html`. Easy is greedy-box. Hard completes boxes, avoids giving the opponent a 3-sided box, and prefers moves that set up future boxes.
+*   **Battleship** — `battleship.html` (vs CPU). Based on `2pbattleships.html`. Player places ships manually or with Auto; CPU places ships randomly and fires using hunt/target mode after a hit.
+*   **Uno** — `uno.html` (solo vs bots). A wrapper that launches `liveuno.html?single=1`. The live game detects the `single=1` parameter and automatically hosts a 4-player match with 3 bots, starting immediately. The `liveuno.html` menu also has a "Play Solo vs Bots" button for the same mode.
+
+All new single-player files disable CSS animations/transitions (`* { transition: none !important; animation: none !important; }`) and reuse the same System 7 window/title-bar patterns as their 2-player counterparts.
+
+### Game mode badges and folder grouping
+
+Games that exist in multiple modes are grouped by name in the dashboard (`index.html` → `getGroupedApps()`). The folder modal uses mode badges instead of mode names as the icon labels:
+
+| Mode | Property | Badge |
+| :--- | :--- | :--- |
+| Single-player | `single: true` in `icons.js` | `1P` (`one-p-label`) |
+| Local 2-player | `cat: 'two_player'` | `2P` (`two-p-label`) |
+| Live online | `live: true` | `LIVE` (`live-label`) |
+
+Single-player entries that have a multiplayer counterpart (e.g. `chess`, `checkers`, `pool`, `yahtzee`, `battleship`, `connect4`, `dotsandboxes`, `tictactoe`, `uno`) should set `single: true` so the folder items are labeled with the game name and the correct badge.
+
+**Important:** Do **not** add `single: true` to games that are single-player-only and have no multiplayer variant in the project (e.g. `crossy`, `dino`). That flag is only for the folder-grouping badge system. For solid pixel-art icons, use `filled: true` instead.
 
