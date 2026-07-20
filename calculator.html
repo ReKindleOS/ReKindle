@@ -211,6 +211,26 @@
         .btn-zero {
             grid-column: span 2;
         }
+
+        #mode-btn {
+            font-size: 1.1rem;
+        }
+
+        /* SCIENTIFIC PAD */
+        .sci-pad {
+            display: none;
+            grid-template-columns: repeat(5, 1fr);
+            grid-auto-rows: 55px;
+            gap: 10px;
+        }
+
+        .sci-pad.visible {
+            display: grid;
+        }
+
+        .sci-pad button {
+            font-size: 1.1rem;
+        }
     </style>
     
     <script src="js/i18n.js"></script>
@@ -229,6 +249,32 @@
 
         <div class="window-content">
             <div id="display">0</div>
+
+            <div class="sci-pad" id="sci-pad">
+                <button class="btn-op" onclick="applyFunction('sin')">sin</button>
+                <button class="btn-op" onclick="applyFunction('cos')">cos</button>
+                <button class="btn-op" onclick="applyFunction('tan')">tan</button>
+                <button class="btn-op" onclick="applyFunction('ln')">ln</button>
+                <button class="btn-op" onclick="applyFunction('log')">log</button>
+
+                <button class="btn-op" onclick="applyFunction('asin')">sin⁻¹</button>
+                <button class="btn-op" onclick="applyFunction('acos')">cos⁻¹</button>
+                <button class="btn-op" onclick="applyFunction('atan')">tan⁻¹</button>
+                <button class="btn-op" onclick="applyFunction('pow10')">10ˣ</button>
+                <button class="btn-op" onclick="applyFunction('exp')">eˣ</button>
+
+                <button class="btn-op" onclick="applyFunction('sqrt')">√</button>
+                <button class="btn-op" onclick="applyFunction('square')">x²</button>
+                <button class="btn-op" onclick="applyFunction('cube')">x³</button>
+                <button class="btn-op" onclick="applyFunction('inv')">1/x</button>
+                <button class="btn-op" onclick="applyFunction('fact')">n!</button>
+
+                <button class="btn-op" onclick="insertConstant('pi')">π</button>
+                <button class="btn-op" onclick="insertConstant('e')">e</button>
+                <button class="btn-op" onclick="applyFunction('percent')">%</button>
+                <button class="btn-op" onclick="applyFunction('negate')">±</button>
+                <button class="btn-op" onclick="appendOperator('^')">xʸ</button>
+            </div>
 
             <div class="keypad">
                 <button class="btn-clear" onclick="clearDisplay()">C</button>
@@ -253,6 +299,7 @@
 
                 <button class="btn-zero" onclick="appendNumber('0')">0</button>
                 <button onclick="appendNumber('.')">.</button>
+                <button id="mode-btn" class="btn-op" onclick="toggleMode()" data-i18n="calculator.mode.sci">SCI</button>
             </div>
         </div>
     </div>
@@ -262,8 +309,19 @@
         let operator = null;
         let previousInput = null;
         let newNumber = false;
+        let sciMode = false;
 
         const display = document.getElementById('display');
+
+        function toggleMode() {
+            sciMode = !sciMode;
+            document.getElementById('sci-pad').className = sciMode ? 'sci-pad visible' : 'sci-pad';
+            var btn = document.getElementById('mode-btn');
+            var key = sciMode ? 'calculator.mode.std' : 'calculator.mode.sci';
+            var fallback = sciMode ? 'STD' : 'SCI';
+            btn.innerText = (typeof window.t === 'function') ? window.t(key, fallback) : fallback;
+            btn.setAttribute('data-i18n', key);
+        }
 
         window.onload = function () {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
@@ -273,9 +331,15 @@
 
         function updateDisplay() {
             let text = currentInput;
-            if (text.length > 10) {
-                text = text.substring(0, 10);
+            if (text.length > 14) {
+                var num = parseFloat(text);
+                if (isFinite(num) && !isNaN(num)) {
+                    text = num.toExponential(6);
+                } else {
+                    text = text.substring(0, 14);
+                }
             }
+            display.style.fontSize = text.length > 10 ? '2rem' : '3rem';
             display.innerText = text;
         }
 
@@ -316,6 +380,76 @@
             updateDisplay();
         }
 
+        function showError() {
+            currentInput = window.t('calculator.error', "Error");
+            updateDisplay();
+            newNumber = true;
+        }
+
+        function formatResult(result) {
+            if (!isFinite(result) || isNaN(result)) return null;
+            if (!Number.isInteger(result)) {
+                result = parseFloat(result.toPrecision(10));
+            }
+            return result.toString();
+        }
+
+        function insertConstant(name) {
+            var val = (name === 'pi') ? Math.PI : Math.E;
+            currentInput = formatResult(val);
+            newNumber = false;
+            updateDisplay();
+        }
+
+        function applyFunction(fn) {
+            var x = parseFloat(currentInput);
+            if (isNaN(x)) return;
+            var result;
+
+            switch (fn) {
+                case 'sin': result = Math.sin(x * Math.PI / 180); break;
+                case 'cos': result = Math.cos(x * Math.PI / 180); break;
+                case 'tan': result = Math.tan(x * Math.PI / 180); break;
+                case 'asin':
+                    if (x < -1 || x > 1) { showError(); return; }
+                    result = Math.asin(x) * 180 / Math.PI; break;
+                case 'acos':
+                    if (x < -1 || x > 1) { showError(); return; }
+                    result = Math.acos(x) * 180 / Math.PI; break;
+                case 'atan': result = Math.atan(x) * 180 / Math.PI; break;
+                case 'ln':
+                    if (x <= 0) { showError(); return; }
+                    result = Math.log(x); break;
+                case 'log':
+                    if (x <= 0) { showError(); return; }
+                    result = Math.log10(x); break;
+                case 'pow10': result = Math.pow(10, x); break;
+                case 'exp': result = Math.exp(x); break;
+                case 'sqrt':
+                    if (x < 0) { showError(); return; }
+                    result = Math.sqrt(x); break;
+                case 'square': result = x * x; break;
+                case 'cube': result = x * x * x; break;
+                case 'inv':
+                    if (x === 0) { showError(); return; }
+                    result = 1 / x; break;
+                case 'fact':
+                    if (x < 0 || !Number.isInteger(x) || x > 170) { showError(); return; }
+                    result = 1;
+                    for (var i = 2; i <= x; i++) result *= i;
+                    break;
+                case 'percent': result = x / 100; break;
+                case 'negate': result = -x; break;
+                default: return;
+            }
+
+            var out = formatResult(result);
+            if (out === null) { showError(); return; }
+            currentInput = out;
+            newNumber = true;
+            updateDisplay();
+        }
+
         function calculate() {
             if (operator === null || newNumber) return;
 
@@ -329,20 +463,21 @@
                 case '*': result = prev * current; break;
                 case '/':
                     if (current === 0) {
-                        currentInput = window.t('calculator.error', "Error");
-                        updateDisplay();
-                        newNumber = true;
+                        showError();
                         return;
                     }
                     result = prev / current;
                     break;
+                case '^': result = Math.pow(prev, current); break;
             }
 
-            if (!Number.isInteger(result)) {
-                result = parseFloat(result.toFixed(6));
+            var out = formatResult(result);
+            if (out === null) {
+                showError();
+                return;
             }
 
-            currentInput = result.toString();
+            currentInput = out;
             operator = null;
             newNumber = true;
             updateDisplay();
