@@ -69,6 +69,21 @@ export default {
                 }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
             }
 
+            if (path.endsWith("/debug-start")) {
+                const startBody = "cm=" + (childMode ? "true" : "false") + "&sid=" + sid;
+                const res = await fetch(baseUrl + "/game", {
+                    method: "POST",
+                    headers: akiHeaders,
+                    body: startBody
+                });
+                const html = await res.text();
+                return new Response(JSON.stringify({
+                    status: res.status,
+                    length: html.length,
+                    html: html
+                }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+            }
+
             if (path.endsWith("/start")) {
                 const startBody = "cm=" + (childMode ? "true" : "false") + "&sid=" + sid;
                 const res = await fetch(baseUrl + "/game", {
@@ -84,11 +99,14 @@ export default {
                 const html = await res.text();
                 const session = extractFirst(html, [
                     /session:\s*'([^']+)'/,
+                    /session\s*[:=]\s*"([^"]+)"/,
+                    /uid_ext_session\s*=\s*'([^']+)'/,
                     /id=["']session["'][^>]*value=["']([^"']+)["']/i,
                     /value=["']([^"']+)["'][^>]*id=["']session["']/i
                 ]);
                 const signature = extractFirst(html, [
                     /signature:\s*'([^']+)'/,
+                    /signature\s*[:=]\s*"([^"]+)"/,
                     /id=["']signature["'][^>]*value=["']([^"']+)["']/i,
                     /value=["']([^"']+)["'][^>]*id=["']signature["']/i
                 ]);
@@ -183,7 +201,8 @@ export default {
                     sid: sid,
                     cm: childMode ? "true" : "false",
                     session: body.session,
-                    signature: body.signature
+                    signature: body.signature,
+                    step_last_proposition: body.stepLast || ""
                 });
 
                 const res = await fetch(baseUrl + "/exclude", {
@@ -209,22 +228,28 @@ export default {
 };
 
 function extractFirst(text, patterns) {
+    let best = null;
     for (let i = 0; i < patterns.length; i++) {
-        const match = text.match(patterns[i]);
-        if (match && match[1]) {
-            return match[1];
+        const regex = new RegExp(patterns[i].source, patterns[i].flags.includes("g") ? patterns[i].flags : patterns[i].flags + "g");
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            if (match[1] && (!best || match[1].length > best.length)) {
+                best = match[1];
+            }
+            if (match.index === regex.lastIndex) regex.lastIndex++;
         }
     }
-    return null;
+    return best;
 }
 
 function parseAnswerLabels(html) {
     const ids = ["a_yes", "a_no", "a_dont_know", "a_probably", "a_probaly_not"];
     const answers = [];
     for (let i = 0; i < ids.length; i++) {
-        const regex = new RegExp("<a[^>]*id=[\"']" + ids[i] + "[\"'][^>]*onclick=[\"']chooseAnswer\\(" + i + "\\)[\"'][^>]*>([\\s\\S]*?)<\\/a>", "i");
+        const regex = new RegExp("<a[^>]*id=[\"']" + ids[i] + "[\"'][^>]*>([\\s\\S]*?)<\\/a>", "i");
         const match = html.match(regex);
-        answers.push(match && match[1] ? match[1].trim() : null);
+        let label = match && match[1] ? match[1].replace(/<[^>]*>/g, "").trim() : null;
+        answers.push(label || null);
     }
     return answers;
 }

@@ -558,6 +558,11 @@ Important notes:
   - Answer labels from `<a class="li-game" href="#" id="a_yes" onclick="chooseAnswer(0)">...</a>` (and `a_no`, `a_dont_know`, `a_probably`, `a_probaly_not`).
 - Action endpoints: `/answer` (send 0-4), `/cancel_answer` (back), `/exclude` (continue after wrong guess).
 - Supported regions and theme `sid` values: characters=1, objects=2, animals=14.
+- The worker has a `/debug-start` endpoint (added 2026-07) that returns the raw `/game` HTML (`{status, length, html}`) for diagnosing scrape-pattern drift. Remove it once parsing is confirmed stable.
+- `extractFirst()` picks the **longest** match across all patterns, not the first — the page contains short decoy matches (e.g. `session: '555'`) before the real session/signature values.
+- `/continue` maps to Akinator `/exclude` and **must** send `step_last_proposition` (the rejected guess id from `id_proposition`/`id_base_proposition`), otherwise Akinator repeats the same guess forever. The frontend stores it in `state.stepLast` in `showResult()` and clears it in `updateFromStep()` so a stale id is never sent with `/answer`.
+- Never write fetch URLs as `'${API_BASE}/path'` in the page script — `${...}` inside a plain string is not interpolated (that was the "The string did not match the expected pattern" start error). Use `API_BASE + '/path'`.
+- akinator.com hard-blocks some residential IPs with a Cloudflare 403 even with full browser headers; the worker's Cloudflare egress works. Don't trust local `curl` results for diagnosis — use `/debug-start` on the deployed worker instead.
 
 ## ✅ Best Practices
 -   **Images:** Use **WebP** or **SVG**. They are fully supported and perform best.
