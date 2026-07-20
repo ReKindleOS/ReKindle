@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+    <title>Comic Reader</title>
+    <!-- Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js" integrity="sha384-MTDrIlFOzEqpmOxY6UIA/1Zkh0a64UlmJ6R0UrZXqXCPx99siPGi8EmtQjIeCcTH" crossorigin="anonymous"></script>
+    <style>
+        /* SYSTEM 7 AESTHETICS */
+        :root {
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: "Geneva", "Verdana", sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            min-height: 90vh;
+            width: 100%;
+            max-width: 900px;
+            position: relative;
+        }
+
+        .window.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: calc(100vw / var(--rekindle-scale, 1));
+            height: calc(100vh / var(--rekindle-scale, 1));
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            margin: 0;
+            z-index: 2000;
+            transform-origin: top left !important;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+            font-family: "Helvetica Neue", sans-serif;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            display: inline-flex;
+            align-items: center;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        #back-btn {
+            display: none;
+            position: absolute;
+            left: 36px;
+            width: auto;
+            padding: 0 6px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.7rem;
+            line-height: 18px;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        #back-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* TABS */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid black;
+            background: #eee;
+        }
+
+        /* CONTROLS (Right side of Title Bar) */
+        .title-controls {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 2;
+            display: flex;
+            align-items: center;
+        }
+
+        .icon-btn {
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .icon-btn:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Icon State Toggles */
+        .icon-contract {
+            display: none;
+        }
+
+        .window.fullscreen .icon-expand {
+            display: none;
+        }
+
+        .window.fullscreen .icon-contract {
+            display: inline;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            border-right: 2px solid black;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+        }
+
+        /* CONTENT */
+        .window-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: white;
+            position: relative;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 20px;
+            align-content: start;
+        }
+
+        .card {
+            background: white;
+            border: 2px solid black;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            position: relative;
+        }
+
+        .card:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .cover-img {
+            width: 100%;
+            height: 195px;
+            object-fit: cover;
+            border: 1px solid #000;
+            margin-bottom: 10px;
+            background: #eee;
+            image-rendering: auto;
+            /* Allow covers to be smooth if they aren't pixel art */
+        }
+
+        .book-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+            line-height: 1.2;
+        }
+
+        .book-author {
+            font-size: 0.8rem;
+            font-style: italic;
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        .btn {
+            background: white;
+            border: 2px solid black;
+            padding: 6px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+            box-shadow: 2px 2px 0 black;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+
+        .btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            color: #666;
+            box-shadow: none;
+            cursor: default;
+            transform: none;
+            border-color: #999;
+        }
+
+        .store-attribution {
+            font-size: 0.7rem;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        /* READER VIEW */
+        #reader-view {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 10;
+            flex-direction: column;
+        }
+
+        .reader-content {
+            flex-grow: 1;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fdfdfd;
+            position: relative;
+        }
+
+        .reader-page {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            image-rendering: -webkit-optimize-contrast;
+        }
+
+        /* Tap Zones for page navigation */
+        .tap-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            z-index: 5;
+            cursor: pointer;
+        }
+
+        .tap-zone-prev {
+            left: 0;
+            width: 30%;
+        }
+
+        .tap-zone-next {
+            right: 0;
+            width: 70%;
+        }
+
+        #status-bar {
+            border-top: 2px solid black;
+            padding: 4px;
+            font-size: 0.75rem;
+            background: #eee;
+            text-align: center;
+            flex-shrink: 0;
+            font-family: sans-serif;
+        }
+    </style>
+    <script src="theme.js?v=18"></script>
+    <script src="js/i18n.js"></script>
+</head>
+
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="location.href='index'">X</div>
+            <div id="back-btn" onclick="closeReader()">Back</div>
+            <span class="title-text" id="app-title" data-i18n="manga.title">Comics</span>
+            <div class="title-controls">
+                <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                        stroke-linecap="square" stroke-linejoin="miter">
+                        <path class="icon-expand" d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"></path>
+                        <path class="icon-contract" d="M21 9H15V3M21 3l-6 6M3 15h6v6M3 21l6-6"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" id="tab-library" onclick="switchTab('library')" data-i18n="manga.tab.library">
+                Library</div>
+            <div class="tab" id="tab-store" onclick="switchTab('store')" data-i18n="manga.tab.store">Store</div>
+        </div>
+
+        <div class="window-content">
+            <!-- LIBRARY VIEW -->
+            <div id="view-library" class="grid"></div>
+
+            <!-- STORE VIEW -->
+            <div id="view-store" style="display: none;">
+                <!-- Store Controls -->
+                <div id="store-controls"
+                    style="margin-bottom: 10px; display: grid; grid-template-columns: 1fr; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px;">
+                        <input type="text" id="store-search" placeholder="Search comics..."
+                            data-i18n-placeholder="manga.store.search" onkeydown="if(event.keyCode===13)doStoreSearch()"
+                            style="border: 2px solid black; padding: 6px 10px; font-family: inherit; font-size: 0.85rem; box-sizing: border-box; outline: none;">
+                        <button class="btn" onclick="doStoreSearch()" style="white-space: nowrap;">Search</button>
+                    </div>
+                    <select id="store-sort" onchange="doStoreSearch()"
+                        style="border: 2px solid black; padding: 4px 6px; font-family: inherit; font-size: 0.8rem; background: white; outline: none;">
+                        <option value="downloads">Most Downloaded</option>
+                        <option value="newest">Recently Added</option>
+                        <option value="title">Alphabetical</option>
+                    </select>
+                </div>
+                <div class="store-attribution">Public domain &amp; freely licensed comics from the Internet Archive
+                    (archive.org).</div>
+                <div id="store-results" class="grid"></div>
+            </div>
+
+            <!-- READER VIEW -->
+            <div id="reader-view">
+                <div class="reader-content" id="reader-content">
+                </div>
+                <div class="tap-zone tap-zone-prev" onclick="prevPage()"></div>
+                <div class="tap-zone tap-zone-next" onclick="nextPage()"></div>
+            </div>
+        </div>
+
+        <div id="status-bar" data-i18n="manga.msg.loading">Loading...</div>
+    </div>
+
+    <script>
+        // --- INTERNET ARCHIVE PUBLIC DOMAIN COMICS ---
+        // Only items with an explicit open license (public domain / Creative Commons)
+        // are surfaced, via the licenseurl:* filter. No pirated scanlations.
+        var SEARCH_API = 'https://archive.org/advancedsearch.php';
+        var META_API = 'https://archive.org/metadata/';
+        var COVER_BASE = 'https://archive.org/services/img/';
+        var DL_BASE = 'https://archive.org/download/';
+        var DETAILS_BASE = 'https://archive.org/details/';
+        var BASE_QUERY = 'mediatype:texts AND collection:comics* AND licenseurl:*';
+        var PAGE_WIDTH = 1080;
+        var PAGE_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="%23ccc"/></svg>';
+
+        var library = [];
+        var currentStorePage = 1;
+        var storeTotal = 0;
+        var isLoadingStore = false;
+        var currentReading = null;
+        var currentPage = 0;
+        var isReaderOpen = false;
+        var storeSearchQuery = '';
+        var storeSort = 'downloads';
+        var libraryMigrated = false;
+
+        window.onload = async () => {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            if (window.rekindleApplyScale) window.rekindleApplyScale();
+            if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale();
+            if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
+
+            await loadLibrary();
+            switchTab('library'); // default
+
+            if (libraryMigrated) {
+                showStatus('Old MangaDex titles were removed. This app now uses legal public domain comics from the Internet Archive.');
+            } else {
+                showStatus(window.t('manga.msg.ready') || 'Ready');
+            }
+        };
+
+        async function loadLibrary() {
+            try {
+                var saved = await localforage.getItem('manga_library');
+                if (saved && Array.isArray(saved)) {
+                    // Drop legacy MangaDex entries (no longer supported source)
+                    var kept = saved.filter(function (item) { return item && item.source === 'ia'; });
+                    if (kept.length !== saved.length) {
+                        libraryMigrated = true;
+                        library = kept;
+                        await saveLibrary();
+                    } else {
+                        library = saved;
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function saveLibrary() {
+            try {
+                await localforage.setItem('manga_library', library);
+            } catch (e) {
+                console.error(e);
+                showStatus("Storage Error!");
+            }
+        }
+
+        function switchTab(tab) {
+            document.getElementById('tab-library').classList.remove('active');
+            document.getElementById('tab-store').classList.remove('active');
+            document.getElementById('view-library').style.display = 'none';
+            document.getElementById('view-store').style.display = 'none';
+
+            document.getElementById('tab-' + tab).classList.add('active');
+            if (tab === 'library') {
+                document.getElementById('view-library').style.display = 'grid';
+            } else {
+                document.getElementById('view-' + tab).style.display = 'block';
+            }
+
+            if (tab === 'library') {
+                renderLibrary();
+            } else if (tab === 'store') {
+                if (document.getElementById('store-results').innerHTML === '') {
+                    loadStore(1);
+                }
+            }
+        }
+
+        function doStoreSearch() {
+            storeSearchQuery = document.getElementById('store-search').value.trim();
+            storeSort = document.getElementById('store-sort').value;
+            currentStorePage = 1;
+            loadStore(1);
+        }
+
+        function showStatus(msg) {
+            document.getElementById('status-bar').innerText = msg;
+        }
+
+        function asText(v) {
+            if (!v) return '';
+            if (Array.isArray(v)) return v.join(', ');
+            return String(v);
+        }
+
+        async function loadStore(page) {
+            if (isLoadingStore) return;
+            isLoadingStore = true;
+            showStatus("Loading Internet Archive Catalog...");
+
+            var container = document.getElementById('store-results');
+            if (page === 1) container.innerHTML = '';
+
+            try {
+                var q = BASE_QUERY;
+                if (storeSearchQuery) {
+                    var cleanQ = storeSearchQuery.replace(/["()]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (cleanQ) {
+                        q += ' AND (title:(' + cleanQ + ') OR creator:(' + cleanQ + '))';
+                    }
+                }
+
+                var sortStr = 'downloads desc';
+                if (storeSort === 'title') sortStr = 'titleSorter asc';
+                else if (storeSort === 'newest') sortStr = 'publicdate desc';
+
+                var apiUrl = SEARCH_API +
+                    '?q=' + encodeURIComponent(q) +
+                    '&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year' +
+                    '&rows=20&page=' + page +
+                    '&sort[]=' + encodeURIComponent(sortStr) +
+                    '&output=json';
+
+                var res = await fetch(apiUrl);
+                var data = await res.json();
+                var docs = (data.response && data.response.docs) || [];
+                storeTotal = (data.response && data.response.numFound) || 0;
+
+                if (docs.length === 0 && page === 1) {
+                    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;" data-i18n="manga.msg.empty_store">Store is empty.</div>';
+                    return;
+                }
+
+                docs.forEach(function (doc) {
+                    var id = doc.identifier;
+                    var title = asText(doc.title) || id;
+                    var creator = asText(doc.creator) || 'Unknown';
+                    var year = asText(doc.year);
+                    var coverUrl = COVER_BASE + id;
+
+                    var isAdded = library.some(function (libItem) { return libItem.id === id; });
+                    var card = document.createElement('div');
+                    card.className = 'card';
+
+                    card.innerHTML =
+                        '<img src="' + coverUrl + '" class="cover-img" onerror="this.src=\'' + PAGE_PLACEHOLDER.replace(/"/g, '&quot;') + '\'">' +
+                        '<div class="book-title">' + escapeHtml(title) + '</div>' +
+                        '<div class="book-author">' + escapeHtml(creator) + (year ? ' (' + escapeHtml(year) + ')' : '') + '</div>';
+
+                    var btn = document.createElement('button');
+                    btn.className = 'btn';
+                    btn.style.marginTop = 'auto';
+                    if (isAdded) {
+                        btn.innerText = window.t('manga.msg.added') || "Added";
+                        btn.disabled = true;
+                    } else {
+                        btn.innerText = window.t('manga.btn.add') || "+ Add";
+                        btn.onclick = function (e) {
+                            e.stopPropagation();
+                            addToLibrary({
+                                id: id,
+                                title: title,
+                                cover: coverUrl,
+                                author: creator,
+                                source: 'ia'
+                            });
+                            btn.innerText = window.t('manga.msg.added') || "Added";
+                            btn.disabled = true;
+                        };
+                    }
+
+                    card.appendChild(btn);
+                    container.appendChild(card);
+                });
+
+                // Add "Load More" button
+                if (page * 20 < storeTotal) {
+                    var moreBtn = document.createElement('button');
+                    moreBtn.className = 'btn';
+                    moreBtn.style.gridColumn = '1/-1';
+                    moreBtn.style.marginTop = '20px';
+                    moreBtn.innerText = "Load More";
+                    moreBtn.onclick = function () {
+                        moreBtn.remove();
+                        currentStorePage++;
+                        loadStore(currentStorePage);
+                    };
+                    container.appendChild(moreBtn);
+                }
+
+                showStatus(window.t('manga.msg.ready') || "Ready");
+            } catch (e) {
+                console.error(e);
+                showStatus("Failed to load store: " + e.message);
+                if (page === 1) container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: red;">Network Error loading catalog.</div>';
+            } finally {
+                isLoadingStore = false;
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        async function renderLibrary() {
+            var container = document.getElementById('view-library');
+            container.innerHTML = '';
+
+            if (library.length === 0) {
+                var emptyMsg = window.t('manga.msg.empty_library') || 'Your library is empty. Go to the Store to add some.';
+                container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;" data-i18n="manga.msg.empty_library">' + emptyMsg + '</div>';
+                return;
+            }
+
+            // Load all progress at once
+            var allProgress = {};
+            try {
+                allProgress = await localforage.getItem('manga_progress') || {};
+            } catch (e) { }
+
+            library.forEach(function (item) {
+                var card = document.createElement('div');
+                card.className = 'card';
+
+                var savedProgress = allProgress[item.id];
+                var savedPage = 0;
+                if (typeof savedProgress === 'number') savedPage = savedProgress;
+                else if (savedProgress && typeof savedProgress === 'object') savedPage = savedProgress.page || 0;
+
+                var progressText = '';
+                if (savedPage > 0) {
+                    var label = (window.t('manga.msg.page') || 'Page') + ' ' + (savedPage + 1);
+                    progressText = '<div style="font-size:0.7rem; background:#000; color:#fff; padding:2px 6px; display:inline-block; margin-bottom:4px;">' + label + '</div>';
+                }
+
+                // X remove button at top-right
+                var removeBtn = document.createElement('div');
+                removeBtn.style.cssText = 'position:absolute; top:4px; right:4px; width:18px; height:18px; border:2px solid black; background:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.8rem; cursor:pointer; z-index:3; box-shadow:1px 1px 0 black;';
+                removeBtn.innerText = 'X';
+                removeBtn.onclick = function (e) {
+                    e.stopPropagation();
+                    removeFromLibrary(item.id);
+                };
+
+                card.innerHTML =
+                    '<img src="' + item.cover + '" class="cover-img" onerror="this.src=\'' + PAGE_PLACEHOLDER.replace(/"/g, '&quot;') + '\'">' +
+                    '<div class="book-title">' + escapeHtml(item.title) + '</div>' +
+                    '<div class="book-author">' + escapeHtml(item.author || '') + '</div>' +
+                    progressText;
+
+                card.appendChild(removeBtn);
+
+                var btnRead = document.createElement('button');
+                btnRead.className = 'btn';
+                btnRead.style.marginTop = 'auto';
+                btnRead.innerText = (savedPage > 0) ? (window.t('manga.btn.continue') || 'Continue') : (window.t('manga.btn.read') || 'Read');
+                btnRead.onclick = function (e) {
+                    e.stopPropagation();
+                    openReader(item);
+                };
+
+                card.appendChild(btnRead);
+                container.appendChild(card);
+            });
+        }
+
+        async function addToLibrary(item) {
+            if (!library.some(function (libItem) { return libItem.id === item.id; })) {
+                library.push(item);
+                await saveLibrary();
+            }
+        }
+
+        async function removeFromLibrary(id) {
+            library = library.filter(function (item) { return item.id !== id; });
+            await saveLibrary();
+            renderLibrary();
+        }
+
+        // --- READING PROGRESS ---
+        async function saveProgress(comicId, pageIdx) {
+            try {
+                var progress = await localforage.getItem('manga_progress') || {};
+                progress[comicId] = { page: pageIdx };
+                await localforage.setItem('manga_progress', progress);
+            } catch (e) {
+                console.error('Failed to save progress:', e);
+            }
+        }
+
+        async function getProgress(comicId) {
+            try {
+                var progress = await localforage.getItem('manga_progress') || {};
+                var val = progress[comicId];
+                if (!val) return { page: 0 };
+                if (typeof val === 'number') return { page: val };
+                return { page: val.page || 0 };
+            } catch (e) {
+                return { page: 0 };
+            }
+        }
+
+        // --- READER LOGIC ---
+        async function openReader(item) {
+            currentReading = item;
+            isReaderOpen = true;
+            document.getElementById('reader-view').style.display = 'flex';
+            document.getElementById('view-library').style.display = 'none';
+            document.getElementById('view-store').style.display = 'none';
+
+            // Show back button, update title, hide tabs
+            document.getElementById('back-btn').style.display = 'block';
+            document.querySelector('.tabs').style.display = 'none';
+            document.getElementById('app-title').innerText = item.title;
+
+            var content = document.getElementById('reader-content');
+            content.innerHTML = '<div style="padding: 20px;">Fetching comic info...</div>';
+
+            try {
+                // 1. Find the scandata file from item metadata (CORS-open, direct fetch)
+                var metaRes = await fetch(META_API + item.id);
+                var meta = await metaRes.json();
+                var files = meta.files || [];
+                var scandataName = null;
+                for (var i = 0; i < files.length; i++) {
+                    var fname = files[i].name || '';
+                    if (fname.endsWith('_scandata.xml')) {
+                        scandataName = fname;
+                        break;
+                    }
+                }
+
+                if (!scandataName) {
+                    showExternalFallback(item, content);
+                    return;
+                }
+
+                // 2. Fetch scandata through our proxy (/download/ does not send CORS headers)
+                content.innerHTML = '<div style="padding: 20px;">Fetching page list...</div>';
+                var scandataUrl = DL_BASE + item.id + '/' + encodeURIComponent(scandataName).replace(/%2F/g, '/');
+                var sdRes = await fetch('/api/proxy?url=' + encodeURIComponent(scandataUrl));
+                var sdText = await sdRes.text();
+
+                // 3. Parse leaf page numbers, skipping deleted pages
+                var parser = new DOMParser();
+                var xmlDoc = parser.parseFromString(sdText, 'text/xml');
+                var pageEls = xmlDoc.getElementsByTagName('page');
+                var leafs = [];
+                for (var j = 0; j < pageEls.length; j++) {
+                    var leafAttr = pageEls[j].getAttribute('leafNum');
+                    if (leafAttr === null) continue;
+                    var addEls = pageEls[j].getElementsByTagName('addToAccessFormats');
+                    if (addEls.length > 0 && addEls[0].textContent.trim() === 'false') continue;
+                    leafs.push(parseInt(leafAttr, 10));
+                }
+                leafs.sort(function (a, b) { return a - b; });
+
+                if (leafs.length === 0) {
+                    showExternalFallback(item, content);
+                    return;
+                }
+
+                currentReading.pages = leafs.map(function (leaf) {
+                    return DL_BASE + item.id + '/page/n' + leaf + '_w' + PAGE_WIDTH + '.jpg';
+                });
+
+                // Restore progress
+                var savedProgress = await getProgress(item.id);
+                currentPage = savedProgress.page || 0;
+                if (currentPage >= currentReading.pages.length) currentPage = 0;
+
+                updateMangaPage();
+
+            } catch (e) {
+                console.error(e);
+                content.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function showExternalFallback(item, content) {
+            content.innerHTML =
+                '<div style="padding: 20px; text-align: center;">' +
+                '<p style="margin-bottom: 20px; font-weight: bold;">This comic cannot be read in-app.</p>' +
+                '<a href="' + DETAILS_BASE + item.id + '" target="_blank" style="display: inline-block; padding: 10px 20px; background: black; color: white; text-decoration: none; font-weight: bold; font-family: sans-serif; box-shadow: 2px 2px 0 #555;">' +
+                'Read on archive.org</a></div>';
+            showStatus(window.t('manga.msg.ready') || 'Ready');
+        }
+
+        function toggleFullScreen() {
+            var win = document.querySelector('.window');
+            win.classList.toggle('fullscreen');
+        }
+
+        function closeReader() {
+            isReaderOpen = false;
+            document.getElementById('reader-view').style.display = 'none';
+            document.getElementById('reader-content').innerHTML = '';
+
+            // Hide back button, show tabs
+            document.getElementById('back-btn').style.display = 'none';
+            document.querySelector('.tabs').style.display = 'flex';
+
+            // Restore active tab view
+            var activeTab = document.querySelector('.tab.active');
+            if (activeTab && activeTab.id === 'tab-store') {
+                document.getElementById('view-store').style.display = 'block';
+            } else {
+                document.getElementById('view-library').style.display = 'grid';
+            }
+
+            // Restore title
+            document.getElementById('app-title').innerText = window.t('manga.title') || 'Comics';
+
+            // Reset status bar
+            showStatus(window.t('manga.msg.ready') || 'Ready');
+            currentReading = null;
+
+            // Refresh library to show updated progress
+            renderLibrary();
+        }
+
+        function updateMangaPage() {
+            if (!currentReading || !currentReading.pages) return;
+
+            var pages = currentReading.pages;
+            var content = document.getElementById('reader-content');
+            content.innerHTML = '';
+
+            var img = document.createElement('img');
+            img.src = pages[currentPage];
+            img.className = 'reader-page';
+
+            showStatus('Loading ' + (currentPage + 1) + ' / ' + pages.length + '...');
+            img.onload = function () {
+                showStatus((currentPage + 1) + ' / ' + pages.length);
+            };
+            img.onerror = function () {
+                showStatus('Error loading page ' + (currentPage + 1));
+            };
+
+            content.appendChild(img);
+            content.scrollTop = 0;
+
+            // Save progress
+            saveProgress(currentReading.id, currentPage);
+        }
+
+        function prevPage() {
+            if (!isReaderOpen) return;
+            if (currentReading && currentReading.pages && currentPage > 0) {
+                currentPage--;
+                updateMangaPage();
+            }
+        }
+
+        function nextPage() {
+            if (!isReaderOpen) return;
+            if (currentReading && currentReading.pages && currentPage < currentReading.pages.length - 1) {
+                currentPage++;
+                updateMangaPage();
+            }
+        }
+    </script>
+</body>
+
+</html>
