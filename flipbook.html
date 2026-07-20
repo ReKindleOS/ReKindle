@@ -715,6 +715,7 @@
         // --- STATE ---
         let currentAnimationId = null;
         let frames = []; // Array of ImageData
+        let frameUrlCache = []; // Parallel to frames: cached PNG data URLs, null = dirty
         let currentFrameIndex = 0;
         let isPlaying = false;
         let fps = 6;
@@ -724,6 +725,9 @@
         let currentTool = 'pen';
         let isDrawing = false;
         let autoSaveTimer = null;
+        let isOpening = false;
+        let savePending = false;
+        let subChecked = false;
 
         let manifest = [];
         let db, auth, rtdb, socialAuth, currentUser = null;
@@ -749,6 +753,22 @@
         bufferCanvas.width = CANVAS_SIZE;
         bufferCanvas.height = CANVAS_SIZE;
         const bufferCtx = bufferCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Reusable scratch canvases (avoid per-render allocations on the JIT-less Kindle CPU)
+        const onionCanvas = document.createElement('canvas');
+        onionCanvas.width = CANVAS_SIZE;
+        onionCanvas.height = CANVAS_SIZE;
+        const onionCtx = onionCanvas.getContext('2d');
+        let onionLoadedIndex = -1;
+
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = CANVAS_SIZE;
+        thumbCanvas.height = CANVAS_SIZE;
+        const thumbCtx = thumbCanvas.getContext('2d', { willReadFrequently: true });
+        const compCanvas = document.createElement('canvas');
+        compCanvas.width = CANVAS_SIZE;
+        compCanvas.height = CANVAS_SIZE;
+        const compCtx = compCanvas.getContext('2d');
 
         // --- INIT ---
         window.onload = () => {
@@ -844,7 +864,7 @@
                 const el = document.createElement('div');
                 el.className = 'gallery-item';
                 el.onclick = (e) => {
-                    if (!e.target.closest('.action-btn')) openAnimation(item.id);
+                    if (!e.target.closest('.action-btn') && !isOpening) openAnimation(item.id);
                 };
 
                 let thumbHtml = '';
@@ -878,20 +898,29 @@
         }
 
         // --- DRAWING / EDITOR LOGIC ---
-        function createNew() {
-            if (!isPro) {
+        function requirePro() {
+            if (isPro) return true;
+            if (currentUser && !subChecked) {
+                showInfoModal("Verifying subscription... please try again in a moment.");
+            } else {
                 document.getElementById('paywall-overlay').style.display = 'flex';
                 document.getElementById('paywall-status').innerText = "Pro subscription required to create animations.";
-                return;
             }
+            return false;
+        }
+
+        function createNew() {
+            if (!requirePro()) return;
 
             if (!isManifestLoaded) {
                 showInfoModal(window.t ? window.t('flipbook.status.loading') : "Please wait, loading...");
                 return;
             }
 
+            if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
             currentAnimationId = null;
             frames = [];
+            frameUrlCache = [];
             currentFrameIndex = 0;
             fps = 6;
 
@@ -906,19 +935,15 @@
         function addFrame(isFirst = false) {
             if (isPlaying) stopPlaying();
             const newData = new ImageData(CANVAS_SIZE, CANVAS_SIZE);
-            // Fill clear (transparent) or white?
-            // Since it's flipnote, transparent background is better for layers but default canvas is white.
-            // We want white background effectively.
-            // But ImageData is transparent by default (0,0,0,0).
-            // Let's rely on renderCanvas to draw white bg.
 
             if (isFirst) {
                 frames.push(newData);
+                frameUrlCache.push(null);
             } else {
                 // Insert after current
                 if (frames.length > 0) saveCurrentFrame();
-                // Copy previous? Or Blank? Let's do Blank.
                 frames.splice(currentFrameIndex + 1, 0, newData);
+                frameUrlCache.splice(currentFrameIndex + 1, 0, null);
                 currentFrameIndex++;
             }
             loadCurrentFrameToBuffer();
@@ -927,15 +952,38 @@
             triggerAutoSave();
         }
 
+        function decodeFrame(src) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const temp = document.createElement('canvas');
+                        temp.width = CANVAS_SIZE;
+                        temp.height = CANVAS_SIZE;
+                        const tc = temp.getContext('2d');
+                        tc.drawImage(img, 0, 0);
+                        resolve(tc.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE));
+                    } catch (e) { resolve(null); }
+                };
+                img.onerror = () => resolve(null);
+                img.src = src;
+            });
+        }
+
         async function openAnimation(id) {
-            if (!isPro) {
-                document.getElementById('paywall-overlay').style.display = 'flex';
-                document.getElementById('paywall-status').innerText = "Pro subscription required to open animations.";
-                return;
-            }
+            if (!requirePro()) return;
+            if (isOpening) return; // Ignore extra taps while a load is in progress
             const item = manifest.find(m => m.id === id);
             if (!item) return;
-            currentAnimationId = id;
+            isOpening = true;
+            showLoadingModal(window.t ? window.t('flipbook.status.loading') : "Loading...");
+
+            // Flush any pending autosave for the previously open animation
+            // BEFORE switching, so its frames can never be written under this id.
+            if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+            if (currentAnimationId && currentAnimationId !== id) {
+                await performSave();
+            }
 
             // Load frames
             let data = null;
@@ -951,43 +999,62 @@
                     const doc = await db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(id).get();
                     if (doc.exists) {
                         data = doc.data();
-                        localStorage.setItem(key, JSON.stringify(data));
+                        try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { }
                     }
                 } catch (e) { }
             }
 
+            let loadOk = false;
             if (data && data.frames && data.frames.length > 0) {
-                // Convert Base64 strings back to ImageData
-                frames = [];
-                for (let src of data.frames) {
-                    const img = new Image();
-                    img.src = src;
-                    await img.decode();
-                    const temp = document.createElement('canvas');
-                    temp.width = CANVAS_SIZE;
-                    temp.height = CANVAS_SIZE;
-                    temp.getContext('2d').drawImage(img, 0, 0);
-                    frames.push(temp.getContext('2d').getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE));
+                // Decode in parallel into LOCAL arrays; only swap the globals once,
+                // atomically, so a re-entrant call can never interleave pushes.
+                const decoded = await Promise.all(data.frames.map(decodeFrame));
+                const newFrames = [];
+                const newCache = [];
+                for (let i = 0; i < decoded.length; i++) {
+                    if (decoded[i]) {
+                        newFrames.push(decoded[i]);
+                        newCache.push(data.frames[i]); // Already-encoded PNG; no re-encode needed
+                    }
                 }
-                fps = data.fps || 6;
-            } else {
-                createNew(); // Fallback
+                if (newFrames.length > 0) {
+                    frames = newFrames;
+                    frameUrlCache = newCache;
+                    fps = data.fps || 6;
+                    loadOk = true;
+                }
+            }
+
+            if (!loadOk) {
+                // Fallback: start fresh
+                isOpening = false;
+                hideLoadingModal();
+                createNew();
                 return;
             }
 
+            currentAnimationId = id;
             currentFrameIndex = 0;
+            onionLoadedIndex = -1;
             showEditor();
             setupCanvas();
             loadCurrentFrameToBuffer();
             renderCanvas();
             updateUI();
+            isOpening = false;
+            hideLoadingModal();
         }
 
         // --- SAVING ---
         let isSaving = false;
         async function performSave() {
-            if (isSaving) return;
+            if (isSaving) { savePending = true; return; }
+            if (frames.length === 0) return;
             isSaving = true;
+
+            // Everything below runs synchronously until the Firestore write,
+            // and animId/data are captured up front, so switching animations
+            // mid-save can never cross-write one flipbook into another.
 
             if (!currentAnimationId) {
                 currentAnimationId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -1001,33 +1068,33 @@
                 });
             }
 
+            const animId = currentAnimationId;
+
             // Update Manifest Item
-            const item = manifest.find(m => m.id === currentAnimationId);
+            const item = manifest.find(m => m.id === animId);
             if (item) {
                 item.modified = Date.now();
                 item.frameCount = frames.length;
-                // Generate thumbnail from current frame
-                await createThumbnail(currentFrameIndex).then(url => item.thumbnail = url);
+                item.thumbnail = createThumbnail(currentFrameIndex);
             }
-
-            // Convert ImageData frames to Base64
-            const frameUrls = await Promise.all(frames.map((_, i) => createThumbnail(i)));
 
             const data = {
                 fps: fps,
-                frames: frameUrls
+                frames: getAllFrameUrls()
             };
 
             // Save Data
-            const key = `flipnote_anim_${currentAnimationId}`;
-            localStorage.setItem(key, JSON.stringify(data));
+            const key = `flipnote_anim_${animId}`;
+            try { localStorage.setItem(key, JSON.stringify(data)); }
+            catch (e) { console.warn("Local save failed (storage full?)", e); }
 
             if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(currentAnimationId).set(data).catch(console.error);
+                db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(animId).set(data).catch(console.error);
             }
 
             saveManifest();
             isSaving = false;
+            if (savePending) { savePending = false; performSave(); }
         }
 
         function isAnimationBlank() {
@@ -1062,36 +1129,28 @@
             }, 1000);
         }
 
+        // Encode a frame to a PNG data URL, composited over white.
+        // Fully synchronous and reuses scratch canvases (safe: no awaits inside).
         function createThumbnail(index) {
-            return new Promise(resolve => {
-                if (!frames[index]) { resolve(null); return; }
-                const temp = document.createElement('canvas');
-                temp.width = CANVAS_SIZE;
-                temp.height = CANVAS_SIZE;
-                const tx = temp.getContext('2d');
+            if (!frames[index]) return null;
+            thumbCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            thumbCtx.putImageData(frames[index], 0, 0);
 
-                // Draw white bg
-                tx.fillStyle = 'white';
-                tx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-                tx.putImageData(frames[index], 0, 0);
+            compCtx.fillStyle = 'white';
+            compCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            compCtx.drawImage(thumbCanvas, 0, 0); // Composite over white
 
-                // If opacity/onion skin logic changes, we might need drawImage logic
-                // But putImageData is raw. We need to handle transparency if frames are transparent layers.
-                // Assuming white bg for output.
-                // Actually putImageData replaces pixels. If frame has transparent pixels, they stay transparent?
-                // No, ImageData has RGBA. 
-                // We want final look. Composite over white.
+            return compCanvas.toDataURL('image/png');
+        }
 
-                const comp = document.createElement('canvas');
-                comp.width = CANVAS_SIZE;
-                comp.height = CANVAS_SIZE;
-                const cx = comp.getContext('2d');
-                cx.fillStyle = 'white';
-                cx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-                cx.drawImage(temp, 0, 0); // Composite
-
-                resolve(comp.toDataURL('image/png'));
-            });
+        // Return PNG data URLs for all frames, re-encoding only dirty frames.
+        function getAllFrameUrls() {
+            const urls = [];
+            for (let i = 0; i < frames.length; i++) {
+                if (!frameUrlCache[i]) frameUrlCache[i] = createThumbnail(i);
+                urls.push(frameUrlCache[i]);
+            }
+            return urls;
         }
 
         // --- DRAWING LOGIC ---
@@ -1157,6 +1216,7 @@
         function saveCurrentFrame() {
             if (frames[currentFrameIndex]) {
                 frames[currentFrameIndex] = bufferCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                frameUrlCache[currentFrameIndex] = null; // Mark dirty for re-encode on next save
             }
         }
 
@@ -1171,16 +1231,15 @@
         function renderCanvas() {
             ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-            // Onion Skin
+            // Onion Skin (reuses one scratch canvas; only re-uploads when the frame changes)
             if (onionSkin && currentFrameIndex > 0 && !isPlaying) {
+                if (onionLoadedIndex !== currentFrameIndex) {
+                    onionCtx.putImageData(frames[currentFrameIndex - 1], 0, 0);
+                    onionLoadedIndex = currentFrameIndex;
+                }
                 ctx.save();
                 ctx.globalAlpha = 0.2;
-                const prev = frames[currentFrameIndex - 1];
-                const temp = document.createElement('canvas');
-                temp.width = CANVAS_SIZE;
-                temp.height = CANVAS_SIZE;
-                temp.getContext('2d').putImageData(prev, 0, 0);
-                ctx.drawImage(temp, 0, 0);
+                ctx.drawImage(onionCanvas, 0, 0);
                 ctx.restore();
             }
 
@@ -1222,6 +1281,7 @@
             if (isPlaying) stopPlaying();
             if (frames.length <= 1) { clearFrame(); return; }
             frames.splice(currentFrameIndex, 1);
+            frameUrlCache.splice(currentFrameIndex, 1);
             if (currentFrameIndex >= frames.length) currentFrameIndex = frames.length - 1;
             loadCurrentFrameToBuffer();
             renderCanvas();
@@ -1301,8 +1361,16 @@
         function openModal(id) { document.getElementById(id).style.display = 'flex'; }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
+        function showLoadingModal(msg) {
+            document.getElementById('modal-message').textContent = msg;
+            document.getElementById('modal-btns').innerHTML = '';
+            openModal('modal-overlay');
+        }
+        function hideLoadingModal() { closeModal('modal-overlay'); }
+
         function showGallery() {
-            if (isSaving) { triggerAutoSave(); }
+            // Flush any pending autosave so the gallery shows fresh thumbnails
+            if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; performSave(); }
             document.getElementById('screen-editor').classList.remove('active');
             document.getElementById('screen-gallery').classList.add('active');
             document.getElementById('editor-back-btn').style.display = 'none';
@@ -1449,7 +1517,7 @@
 
             const animData = {
                 fps: fps,
-                frames: await Promise.all(frames.map((_, i) => createThumbnail(i)))
+                frames: getAllFrameUrls()
             };
 
             const MODERATION_WORKER_URL = "https://rekindle-moderate.timjarnott.workers.dev";
@@ -1551,6 +1619,7 @@
                 // Timeout fallback
                 const timeoutId = setTimeout(() => {
                     console.warn("Subscription check timed out");
+                    subChecked = true;
                     status.innerText = "Verification timed out. Please refresh.";
                     // If not already pro by cache, show overlay
                     if (!isPro) overlay.style.display = 'flex';
@@ -1559,6 +1628,7 @@
                 db.collection('users').doc(user.uid).get()
                     .then(doc => {
                         clearTimeout(timeoutId);
+                        subChecked = true;
                         if (doc.exists) {
                             const data = doc.data();
                             const now = Date.now();
@@ -1596,6 +1666,7 @@
                     })
                     .catch(e => {
                         clearTimeout(timeoutId);
+                        subChecked = true;
                         console.error("Error checking sub", e);
                         status.innerText = "Error verifying. Try again.";
                         overlay.style.display = 'flex';

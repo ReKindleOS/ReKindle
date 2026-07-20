@@ -850,3 +850,15 @@ Single-player entries that have a multiplayer counterpart (e.g. `chess`, `checke
 
 **Important:** Do **not** add `single: true` to games that are single-player-only and have no multiplayer variant in the project (e.g. `crossy`, `dino`). That flag is only for the folder-grouping badge system. For solid pixel-art icons, use `filled: true` instead.
 
+## 📓 Flipbook (flipbook.html) — Frame Corruption & Performance Fixes (2026-07)
+
+A user report ("multiple clicks to open, drastic lag, flipbooks merge together, frames double") traced to four bugs, all now fixed:
+
+1. **Doubled frames (re-entrancy):** `openAnimation()` had no loading feedback and no guard, so impatient extra taps re-entered it. Interleaved async decode loops each did `frames = []` then pushed into the shared global → 2N frames, persisted by autosave. Fix: `isOpening` guard, a `showLoadingModal()`/`hideLoadingModal()` overlay, and decoding into **local arrays** via `Promise.all(data.frames.map(decodeFrame))`, swapping the globals atomically only after all frames decode.
+2. **Merged flipbooks (async ID race):** old `performSave()` read the global `currentAnimationId` *after* `await`ing thumbnail generation, so switching animations mid-save wrote A's frames under B's ID; a pending 1s autosave timer could also fire after `openAnimation` had assigned the new ID. Fix: `performSave()` is now fully synchronous up to the fire-and-forget Firestore write, captures `animId` up front, and `openAnimation()` clears the autosave timer + flushes `performSave()` for the old animation *before* assigning the new ID (`currentAnimationId = id` now happens only after a successful load).
+3. **Lag (autosave re-encoding):** every autosave (1s after each stroke) re-encoded **every** frame to a 256×256 PNG data URL. Fix: `frameUrlCache[]` parallel to `frames[]` holds encoded PNGs; `saveCurrentFrame()` marks the edited index dirty (`null`), `getAllFrameUrls()` re-encodes only dirty frames, and `openAnimation()` seeds the cache from the stored base64 (an open-then-repost now encodes nothing). `createThumbnail()` is synchronous and reuses module-level scratch canvases.
+4. **Lag (per-pointermove allocation):** `renderCanvas()` allocated a new 256×256 canvas on every pointermove for onion skin. Fix: one reusable `onionCanvas`, only re-`putImageData` when `currentFrameIndex` changes (`onionLoadedIndex`).
+
+Also: `requirePro()` gates create/open — if the Firestore subscription check hasn't resolved yet (`subChecked === false`) it shows "Verifying subscription..." instead of flashing the paywall, which was part of the "multiple clicks" complaint. `localStorage.setItem` of animation data is wrapped in try/catch (64MB cache limit). When touching frame add/delete/save logic, keep `frameUrlCache` spliced/pushed in sync with `frames`.
+
+
