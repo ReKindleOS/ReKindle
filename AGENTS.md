@@ -591,6 +591,26 @@ Important notes:
 - Never write fetch URLs as `'${API_BASE}/path'` in the page script — `${...}` inside a plain string is not interpolated (that was the original "The string did not match the expected pattern" start error). Use `API_BASE + '/path'`.
 - akinator.com hard-blocks some residential IPs with a Cloudflare 403 even with full browser headers; the worker's Cloudflare egress works. Don't trust local `curl` results for diagnosis — debug through the deployed worker instead.
 
+## ❓ Game Rules Helper (js/gamerules.js)
+
+`js/gamerules.js` adds a "?" button to the title bar of games whose rules may not be universally known, opening a System 7 "How to Play" modal.
+
+### How it works
+- Pages opt in simply by including `<script src="js/gamerules.js"></script>` (in `<head>`, next to `js/i18n.js`).
+- The game is detected from the page **filename** via the `ALIASES` map (e.g. `2pchess`, `livechess` → `chess`), so variants share one rules entry.
+- Rules text lives in the `RULES` registry as English default HTML. At open time it calls `window.t('gamerules.<key>', defaultHtml)`, so translations can be added to locale files later without touching this script. Title/close use `gamerules.title` / `gamerules.close`.
+- The modal (`#gamerules-overlay`) is appended to `<body>` (never inside `.window`) to dodge the stacking-context trap, with all CSS scoped under `#gamerules-*` selectors and explicit resets per the injected-UI rules in section 6.
+
+### Button placement gotcha
+Several games already have right-side title-bar controls (e.g. `yahtzee.html` New/Scores buttons, `chess.html` Stats, `2048.html` Reset, `spellbound.html` Stats, `oregontrail.html` Restart). The script measures those siblings with `offsetLeft`/`offsetWidth` (**pre-zoom layout units** — safe under theme.js CSS `zoom`, unlike `getBoundingClientRect()`) and shifts the "?" button left of them. All target pages' `.title-bar` rules have `position: relative`, which this relies on.
+
+### Adding a new game
+1. Add an entry to `RULES` (key) and `ALIASES` (filename → key) in `js/gamerules.js`.
+2. Include the script tag in the page's `<head>`.
+3. Optionally add `gamerules.<key>` translations to the locale files.
+
+Games deliberately **excluded** (rules universally known / self-evident): tictactoe (+2p/live), snake, tetris, crossy, dino, hangman, memory, maze, jigsaw, circle, doom, mario, trivia, airtype, uno.html (menu wrapper — rules live on `liveuno.html`), life.html (life calendar, not a game).
+
 ## ✅ Best Practices
 -   **Images:** Use **WebP** or **SVG**. They are fully supported and perform best.
 -   **Modals:** Always stick to the `.modal-overlay` / `.modal-box` DOM structure found in `weather.html`.
@@ -767,6 +787,8 @@ The KindleChat gallery (`kindlechat.html`) shows only pixel art and flipbooks. T
   - `text`: caption text
 - The gallery queries `art_index` ordered by `timestamp` and paginates with `limitToLast` + `endAt`.
 - Clicking a gallery item fetches the full message from `kindlechat/messages/{messageId}` to show the large pixel art or play the full flipbook.
+- Pixel-art saves from the gallery reuse `savePixelArtData()` with the current message cached in `window.galleryPixelArtData`; never put the base64 image URL into an inline `onclick` handler.
+- `showPixelArtModal()` replaces `#generic-modal-content.innerHTML`, which destroys the default `#modal-message` and `#modal-btns` children. `showModal()` must rebuild those nodes and reset the generic modal's inline width/max-width before displaying another message.
 - The moderation worker automatically writes the index entry when a pixel art or flipbook message is posted, and deletes it when a message is auto-deleted from a report.
 
 ### Files involved
@@ -849,6 +871,18 @@ Games that exist in multiple modes are grouped by name in the dashboard (`index.
 Single-player entries that have a multiplayer counterpart (e.g. `chess`, `checkers`, `pool`, `yahtzee`, `battleship`, `connect4`, `dotsandboxes`, `tictactoe`, `uno`) should set `single: true` so the folder items are labeled with the game name and the correct badge.
 
 **Important:** Do **not** add `single: true` to games that are single-player-only and have no multiplayer variant in the project (e.g. `crossy`, `dino`). That flag is only for the folder-grouping badge system. For solid pixel-art icons, use `filled: true` instead.
+
+## 🟦 Geometry Dash (gdash.html)
+
+A Geometry Dash clone adapted from kindle-geometrydash.netlify.app (same 10 level strings and obstacle grammar), reworked for the System 7 window instead of fullscreen.
+
+### Key differences from the reference implementation
+*   **Canvas:** fixed 512×288 internal resolution, CSS-scaled (reference is fullscreen). `FLOOR_Y = 216`, `CEIL_Y = 40`, `PLAYER_X = 96`, obstacle step 130px, start x 520.
+*   **Inverted gravity has a real ceiling:** inverted players land on and ride `CEIL_Y` and hop *down* over ceiling spikes (which hang from `CEIL_Y`). The reference clamps inverted players at `FLOOR_Y + 40` (below the floor — a bug there), do not copy that.
+*   **Portals / speed gates / end flag span the full corridor** (`CEIL_Y`..`FLOOR_Y`) so they trigger at any altitude. Reference portals float at fixed offsets that only work on tall fullscreen canvases.
+*   **Auto-restart on death** with an attempts counter (reference returns to menu). Practice mode restores the last checkpoint instead.
+*   Physics (60Hz fixed timestep): gravity 1.0, jump -14, terminal 13, 80% hitbox, coyote 6 / buffer 7 frames. Triple spikes intentionally have only a ~3-frame jump window — matches the reference/GD tightness, do not "fix".
+*   Progress: `localStorage` `gdash_progress_v1` (best % per level, 100 on completion), `gdash_simple_v1` disables death particles. No Firebase/leaderboard — if one is added, update `firestore.rules` per the rule checklist.
 
 ## 📓 Flipbook (flipbook.html) — Frame Corruption & Performance Fixes (2026-07)
 
