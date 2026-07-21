@@ -639,6 +639,16 @@
                             </svg>
                             <span class="btn-label" data-i18n="flipbook.tool.eraser">Eraser</span>
                         </button>
+                        <button id="tool-fill" class="sys-btn icon-btn" onclick="setTool('fill')"
+                            data-i18n-title="flipbook.tool.fill" title="Fill">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M11 3L4 10l7 7 7-7-7-7z"></path>
+                                <path d="M4 10h14"></path>
+                                <path d="M18 14c1 1.6 2 2.8 2 4a2 2 0 1 1-4 0c0-1.2 1-2.4 2-4z"></path>
+                            </svg>
+                            <span class="btn-label" data-i18n="flipbook.tool.fill">Fill</span>
+                        </button>
                         <button class="sys-btn icon-btn" onclick="clearFrame()" data-i18n-title="flipbook.tool.clear"
                             title="Clear Frame">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -680,6 +690,14 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
                                 <path d="M12 5v14M5 12h14"></path>
+                            </svg>
+                        </button>
+                        <button class="sys-btn icon-btn" onclick="duplicateFrame()"
+                            data-i18n-title="flipbook.mgmt.duplicate" title="Duplicate Frame">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                         </button>
                         <button class="sys-btn icon-btn caution" onclick="deleteFrame()"
@@ -1167,9 +1185,18 @@
             if (isPlaying) return;
             if (!e.isPrimary) return;
             e.preventDefault();
-            isDrawing = true;
 
             const pos = getPointerPos(e);
+
+            if (currentTool === 'fill') {
+                floodFill(Math.floor(pos.x), Math.floor(pos.y));
+                saveCurrentFrame();
+                renderCanvas();
+                triggerAutoSave();
+                return;
+            }
+
+            isDrawing = true;
             bufferCtx.lineCap = 'round';
             bufferCtx.lineJoin = 'round';
 
@@ -1254,6 +1281,58 @@
             renderCanvas();
         }
 
+        // Scanline flood fill: fills the contiguous region of the tapped color
+        // with opaque black. Iterative (no recursion) to stay safe on the JIT-less CPU.
+        function floodFill(startX, startY) {
+            if (startX < 0 || startX >= CANVAS_SIZE || startY < 0 || startY >= CANVAS_SIZE) return;
+
+            const imgData = bufferCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            const data = imgData.data;
+            const startIdx = (startY * CANVAS_SIZE + startX) * 4;
+            const sr = data[startIdx], sg = data[startIdx + 1], sb = data[startIdx + 2], sa = data[startIdx + 3];
+
+            // Already opaque black: nothing to do
+            if (sr === 0 && sg === 0 && sb === 0 && sa === 255) return;
+
+            const tolerance = 48;
+            function matches(idx) {
+                return Math.abs(data[idx] - sr) <= tolerance &&
+                    Math.abs(data[idx + 1] - sg) <= tolerance &&
+                    Math.abs(data[idx + 2] - sb) <= tolerance &&
+                    Math.abs(data[idx + 3] - sa) <= tolerance;
+            }
+
+            const stack = [[startX, startY]];
+            while (stack.length > 0) {
+                const p = stack.pop();
+                let x = p[0];
+                const y = p[1];
+                let idx = (y * CANVAS_SIZE + x) * 4;
+
+                // Scan to left edge of the span
+                while (x >= 0 && matches(idx)) { x--; idx -= 4; }
+                x++; idx += 4;
+
+                let spanUp = false, spanDown = false;
+                while (x < CANVAS_SIZE && matches(idx)) {
+                    data[idx] = 0; data[idx + 1] = 0; data[idx + 2] = 0; data[idx + 3] = 255;
+
+                    if (y > 0) {
+                        const up = idx - CANVAS_SIZE * 4;
+                        if (!spanUp && matches(up)) { stack.push([x, y - 1]); spanUp = true; }
+                        else if (spanUp && !matches(up)) { spanUp = false; }
+                    }
+                    if (y < CANVAS_SIZE - 1) {
+                        const down = idx + CANVAS_SIZE * 4;
+                        if (!spanDown && matches(down)) { stack.push([x, y + 1]); spanDown = true; }
+                        else if (spanDown && !matches(down)) { spanDown = false; }
+                    }
+                    x++; idx += 4;
+                }
+            }
+            bufferCtx.putImageData(imgData, 0, 0);
+        }
+
         // --- FRAMES ---
         function prevFrame() {
             if (isPlaying) stopPlaying();
@@ -1275,6 +1354,21 @@
                 renderCanvas();
                 updateUI();
             }
+        }
+
+        function duplicateFrame() {
+            if (isPlaying) stopPlaying();
+            if (frames.length === 0) return;
+            saveCurrentFrame();
+            const src = frames[currentFrameIndex];
+            const copy = new ImageData(new Uint8ClampedArray(src.data), CANVAS_SIZE, CANVAS_SIZE);
+            frames.splice(currentFrameIndex + 1, 0, copy);
+            frameUrlCache.splice(currentFrameIndex + 1, 0, frameUrlCache[currentFrameIndex] || null);
+            currentFrameIndex++;
+            loadCurrentFrameToBuffer();
+            renderCanvas();
+            updateUI();
+            triggerAutoSave();
         }
 
         function deleteFrame() {
@@ -1355,7 +1449,9 @@
         function setTool(t) {
             currentTool = t;
             document.querySelectorAll('.controls-container .sys-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(t === 'pen' ? 'tool-pen' : (t === 'eraser' ? 'tool-eraser' : '')).classList.add('active');
+            const idMap = { pen: 'tool-pen', eraser: 'tool-eraser', fill: 'tool-fill' };
+            const btn = document.getElementById(idMap[t]);
+            if (btn) btn.classList.add('active');
         }
 
         function openModal(id) { document.getElementById(id).style.display = 'flex'; }

@@ -739,6 +739,16 @@
                             </svg>
                             <span class="btn-label" data-i18n="pixel.tool.eraser">Eraser</span>
                         </button>
+                        <button id="tool-fill" class="sys-btn" onclick="setTool('fill')" title="Fill"
+                            data-i18n-title="pixel.tool.fill">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 2l8 8-8.5 8.5a2.83 2.83 0 0 1-4 0L3 14l9-12z"></path>
+                                <path d="M5 12h14"></path>
+                                <path d="M19 19a2 2 0 0 0 4 0c0-1.1-2-3-2-3s-2 1.9-2 3z"></path>
+                            </svg>
+                            <span class="btn-label" data-i18n="pixel.tool.fill">Fill</span>
+                        </button>
                         <button class="sys-btn" onclick="clearGrid()" title="Clear Canvas"
                             data-i18n-title="pixel.tool.clear">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -791,6 +801,7 @@
 
         let lastDrawnRow = -1;
         let lastDrawnCol = -1;
+        let fillUsedThisStroke = false;
 
         // Undo / Redo history
         let undoHistory = [];
@@ -1647,6 +1658,25 @@
             }
         }
 
+        function floodFill(startRow, startCol, newValue) {
+            const targetValue = grid[startRow][startCol];
+            if (targetValue === newValue) return;
+            const stack = [[startRow, startCol]];
+            while (stack.length > 0) {
+                const pos = stack.pop();
+                const r = pos[0];
+                const c = pos[1];
+                if (r < 0 || r >= gridSize || c < 0 || c >= gridSize) continue;
+                if (grid[r][c] !== targetValue) continue;
+                grid[r][c] = newValue;
+                drawPixel(r, c, newValue);
+                stack.push([r - 1, c]);
+                stack.push([r + 1, c]);
+                stack.push([r, c - 1]);
+                stack.push([r, c + 1]);
+            }
+        }
+
         function handleDraw(event) {
             if (isReadOnly) return; // Read Only Check
             event.preventDefault();
@@ -1661,6 +1691,15 @@
             if (col >= 0 && col < gridSize && row >= 0 && row < gridSize) {
                 // Round to 2 decimal places for storage efficiency
                 const penVal = Math.round(currentShade * 100) / 100;
+
+                if (currentTool === 'fill') {
+                    if (!fillUsedThisStroke) {
+                        fillUsedThisStroke = true;
+                        floodFill(row, col, penVal);
+                    }
+                    return;
+                }
+
                 const newValue = (currentTool === 'eraser') ? 0 : penVal;
 
                 if (lastDrawnRow !== -1 && lastDrawnCol !== -1) {
@@ -1679,6 +1718,7 @@
         function startDrawing(e) {
             saveUndoState();
             isDrawing = true;
+            fillUsedThisStroke = false;
             lastDrawnRow = -1;
             lastDrawnCol = -1;
             handleDraw(e);
@@ -1823,6 +1863,7 @@
             document.querySelectorAll('.controls-container .sys-btn').forEach(btn => btn.classList.remove('active'));
             if (tool === 'pen') document.getElementById('tool-pen').classList.add('active');
             if (tool === 'eraser') document.getElementById('tool-eraser').classList.add('active');
+            if (tool === 'fill') document.getElementById('tool-fill').classList.add('active');
         }
 
         function updateShade(val) {
@@ -1831,8 +1872,8 @@
             // 100 (Right) = White (0.0)
             currentShade = 1.0 - (val / 100);
 
-            // Auto-switch to pen if user adjusts slider
-            if (currentTool !== 'pen') setTool('pen');
+            // Auto-switch to pen if user adjusts slider while erasing
+            if (currentTool === 'eraser') setTool('pen');
         }
 
 
