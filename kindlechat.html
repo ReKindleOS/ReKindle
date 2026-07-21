@@ -1488,13 +1488,22 @@
         // --- CONFIGURATION ---
         function showModal(msg, isConfirm, callback) {
             var overlay = document.getElementById('modal-overlay');
+            var generic = document.getElementById('generic-modal-content');
+
+            if (!document.getElementById('modal-message') || !document.getElementById('modal-btns')) {
+                generic.innerHTML = '<div id="modal-message" class="modal-text"></div><div id="modal-btns" class="modal-btns"></div>';
+            }
+
             var messageEl = document.getElementById('modal-message');
             var btnsEl = document.getElementById('modal-btns');
 
             // Show generic content, hide Others
             document.getElementById('settings-modal-content').style.display = 'none';
             document.getElementById('rules-modal-content').style.display = 'none';
-            document.getElementById('generic-modal-content').style.display = 'block';
+            generic.style.display = 'block';
+            generic.style.padding = '';
+            generic.style.width = '';
+            generic.style.maxWidth = '';
 
             messageEl.textContent = msg;
             if (isConfirm) {
@@ -1510,7 +1519,11 @@
             var overlay = document.getElementById('modal-overlay');
             if (overlay) overlay.style.display = 'none';
             var generic = document.getElementById('generic-modal-content');
-            if (generic) generic.style.padding = '';
+            if (generic) {
+                generic.style.padding = '';
+                generic.style.width = '';
+                generic.style.maxWidth = '';
+            }
         }
 
         firebase.initializeApp(firebaseConfig);
@@ -2811,6 +2824,16 @@
             var safeUid = escapeHtml(msg.uid || '');
             var authorName = escapeHtml(msg.uid ? msg.uid.substring(0, 8) : 'Unknown');
 
+            window.galleryPixelArtData = {
+                msgId: msgId || '',
+                uid: msg.uid || '',
+                src: imageSrc
+            };
+
+            var saveButtonHtml = imageSrc
+                ? '<div class="save-btn" style="opacity:1; font-size:0.8rem; padding:4px 10px; border-radius:0; box-shadow:2px 2px 0 #999;" onclick="saveGalleryPixelArt()">' + (window.t ? window.t('pixel.btn.save', 'Save') : 'Save') + '</div>'
+                : '';
+
             var headerHtml = '<div id="pixel-modal-header" style="display:flex; align-items:center; padding: 15px 15px 0 15px;">' +
                 '<canvas id="pixel-modal-avatar" width="32" height="32" style="width:32px; height:32px; border:2px solid black; margin-right:10px; flex-shrink:0; image-rendering:pixelated; image-rendering:crisp-edges; background:white;"></canvas>' +
                 '<span id="pixel-modal-username" style="font-weight:bold; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + authorName + '</span>' +
@@ -2829,10 +2852,10 @@
                     .replace(/\u003c/g, '\u0026lt;')
                     .replace(/\u003e/g, '\u0026gt;')
                     .replace(/"/g, '\u0026quot;');
-                reportButtonHtml = '<div style="margin-top:15px; display:flex; justify-content:center;">' +
-                    '<div class="report-btn" style="width:auto; height:auto; padding:4px 10px; border-radius:0; font-size:0.8rem; opacity:1;" onclick="rekindleOpenReportModal({contentType:\'kindlechat\',contentId:\'' + safeMsgId2 + '\',contentPath:\'kindlechat/messages/' + safeMsgId2 + '\',reportedUserId:\'' + safeReportedUid + '\',contentSnapshot:\'' + safeSnapshot + '\'})" title="Report" data-i18n="kindlechat.btn.report">Report</div>' +
-                    '</div>';
+                reportButtonHtml = '<div class="report-btn" style="width:auto; height:auto; padding:4px 10px; border-radius:0; font-size:0.8rem; opacity:1; margin-left:8px;" onclick="rekindleOpenReportModal({contentType:\'kindlechat\',contentId:\'' + safeMsgId2 + '\',contentPath:\'kindlechat/messages/' + safeMsgId2 + '\',reportedUserId:\'' + safeReportedUid + '\',contentSnapshot:\'' + safeSnapshot + '\'})" title="Report" data-i18n="kindlechat.btn.report">Report</div>';
             }
+
+            var galleryActionsHtml = '<div style="margin-top:15px; display:flex; justify-content:center; align-items:center;">' + saveButtonHtml + reportButtonHtml + '</div>';
 
             modalBox.style.padding = '0';
             modalBox.style.width = '560px';
@@ -2846,7 +2869,7 @@
                 '<div style="padding: 15px;">' +
                 '<img src="' + safeSrc + '" style="width:512px; height:512px; max-width:100%; border:2px solid black; image-rendering:pixelated; image-rendering:crisp-edges; display:block; margin:0 auto;">' +
                 (safeCaption ? '<div style="margin-top:10px; font-size:0.9rem; word-break:break-word;">' + safeCaption + '</div>' : '') +
-                reportButtonHtml +
+                galleryActionsHtml +
                 '</div>';
 
             modalBox.style.display = 'block';
@@ -4230,19 +4253,30 @@
 
         // --- DMs: Send to Firestore ---
         // --- PIXEL ART SAVING ---
+        function saveGalleryPixelArt() {
+            var data = window.galleryPixelArtData;
+            if (!data) {
+                showModal("Could not retrieve image data.");
+                return;
+            }
+            savePixelArtData(data.msgId, data.uid, data.src);
+        }
+
         function savePixelArt(msgId, authorUid, btnElement) {
-            // Get the image URL from the sibling msg-bubble element
             var parent = btnElement.parentElement;
             var bubble = parent ? parent.querySelector('.msg-bubble') : null;
             var imgEl = bubble ? bubble.querySelector('img') : null;
             var imageUrl = imgEl ? imgEl.src : null;
 
+            savePixelArtData(msgId, authorUid, imageUrl);
+        }
+
+        function savePixelArtData(msgId, authorUid, imageUrl) {
             if (!imageUrl) {
                 showModal("Could not retrieve image data.");
                 return;
             }
 
-            // Load Other Manifest
             var otherKey = 'pixel_manifest_others';
             var manifestOthers = [];
             try {
@@ -4250,20 +4284,17 @@
                 if (local) manifestOthers = JSON.parse(local);
             } catch (e) { }
 
-            // Check if already saved
             var existing = manifestOthers.find(function (m) { return m.sourceMsgId === msgId; });
             if (existing) {
                 showModal("You already saved this drawing!");
                 return;
             }
 
-            // Resolve author name from user_cards if available
             var authorName = authorUid ? authorUid.substring(0, 8) : 'Unknown';
             if (authorUid && window.rekindleCardCache && window.rekindleCardCache[authorUid] && window.rekindleCardCache[authorUid].card) {
                 authorName = window.rekindleCardCache[authorUid].card.username || authorName;
             }
 
-            // Create Entry
             var id = 'saved_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
 
             var newEntry = {
@@ -4277,7 +4308,6 @@
                 sourceMsgId: msgId
             };
 
-            // Update manifest (no separate data storage needed, image is in manifest)
             manifestOthers.unshift(newEntry);
             localStorage.setItem(otherKey, JSON.stringify(manifestOthers));
 
