@@ -184,6 +184,25 @@
             image-rendering: pixelated;
         }
 
+        #canvas-wrap {
+            position: relative;
+        }
+
+        #ready-overlay {
+            position: absolute;
+            left: 50%;
+            top: 54.8%;
+            transform: translate(-50%, -50%);
+            background: black;
+            color: white;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 0.85rem;
+            padding: 3px 10px;
+            display: none;
+            white-space: nowrap;
+        }
+
         /* D-PAD CONTROLS */
         .controls {
             display: grid;
@@ -338,7 +357,10 @@
                 <span><span data-i18n="pacman.label.lives">Lives</span>: <span id="lives">3</span></span>
             </div>
 
-            <canvas id="gameCanvas" width="304" height="336"></canvas>
+            <div id="canvas-wrap">
+                <canvas id="gameCanvas" width="304" height="336"></canvas>
+                <div id="ready-overlay" data-i18n="pacman.label.ready">Ready to Play?</div>
+            </div>
 
             <div class="controls">
                 <div class="ctrl-btn btn-up" onpointerdown="handleInput('ArrowUp', event)">&#9650;</div>
@@ -439,7 +461,7 @@
         const DIR_LIST = [DIRS.up, DIRS.left, DIRS.down, DIRS.right];
 
         // --- GAME STATE ---
-        let canvas, ctx, mazeCanvas;
+        let canvas, ctx, mazeCanvas, readyOverlay;
         let maze = []; // per-level mutable pellet grid
         let pelletsLeft = 0;
         let score = 0;
@@ -574,6 +596,8 @@
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            readyOverlay = document.getElementById('ready-overlay');
             document.addEventListener('keydown', (e) => handleInput(e.key));
 
             resizeCanvas();
@@ -1040,7 +1064,65 @@
             document.getElementById('game-over').style.display = 'block';
         }
 
-        // --- RENDERING ---
+        // --- RENDERING (strict 1-bit: integer fillRect only, no arcs/strokes/text) ---
+        const CIRCLE_MASKS = {};
+        function getCircleMask(r) {
+            if (!CIRCLE_MASKS[r]) {
+                const rows = [];
+                for (let dy = -r; dy < r; dy++) {
+                    rows.push(Math.floor(Math.sqrt(r * r - (dy + 0.5) * (dy + 0.5))));
+                }
+                CIRCLE_MASKS[r] = rows;
+            }
+            return CIRCLE_MASKS[r];
+        }
+
+        function fillCircle(cx, cy, r) {
+            if (r <= 1) {
+                ctx.fillRect(cx - 1, cy - 1, 2, 2);
+                return;
+            }
+            const rows = getCircleMask(r);
+            for (let i = 0; i < rows.length; i++) {
+                const h = rows[i];
+                if (h > 0) ctx.fillRect(cx - h, cy - r + i, h * 2, 1);
+            }
+        }
+
+        const DIGIT_GLYPHS = {
+            '0': ['111', '101', '101', '101', '111'],
+            '1': ['010', '110', '010', '010', '111'],
+            '2': ['111', '001', '111', '100', '111'],
+            '3': ['111', '001', '111', '001', '111'],
+            '4': ['101', '101', '111', '001', '001'],
+            '5': ['111', '100', '111', '001', '111'],
+            '6': ['111', '100', '111', '101', '111'],
+            '7': ['111', '001', '001', '010', '010'],
+            '8': ['111', '101', '111', '101', '111'],
+            '9': ['111', '101', '111', '001', '111']
+        };
+
+        function drawPixelText(text, x, y, scale) {
+            const w = text.length * 4 * scale - scale;
+            const h = 5 * scale;
+            let cx0 = Math.round(x - w / 2);
+            const cy0 = Math.round(y - h / 2);
+            ctx.fillStyle = 'black';
+            for (let i = 0; i < text.length; i++) {
+                const gl = DIGIT_GLYPHS[text[i]];
+                if (gl) {
+                    for (let r = 0; r < 5; r++) {
+                        for (let c = 0; c < 3; c++) {
+                            if (gl[r][c] === '1') {
+                                ctx.fillRect(cx0 + c * scale, cy0 + r * scale, scale, scale);
+                            }
+                        }
+                    }
+                }
+                cx0 += 4 * scale;
+            }
+        }
+
         function renderMazeLayer() {
             if (!mazeCanvas) {
                 mazeCanvas = document.createElement('canvas');
@@ -1050,8 +1132,7 @@
             const m = mazeCanvas.getContext('2d');
             m.fillStyle = 'white';
             m.fillRect(0, 0, WIDTH, HEIGHT);
-            m.strokeStyle = 'black';
-            m.lineWidth = 2;
+            m.fillStyle = 'black';
 
             for (let y = 0; y < ROWS; y++) {
                 for (let x = 0; x < COLS; x++) {
@@ -1065,7 +1146,13 @@
                         }
                     }
                     if (!nearPath) continue;
-                    m.strokeRect(x * TILE + 3, y * TILE + 3, TILE - 6, TILE - 6);
+                    // Hollow block via 4 fillRect bars (1-bit safe, no stroke AA)
+                    const bx = x * TILE + 2;
+                    const by = y * TILE + 2;
+                    m.fillRect(bx, by, TILE - 4, 2);
+                    m.fillRect(bx, by + TILE - 6, TILE - 4, 2);
+                    m.fillRect(bx, by, 2, TILE - 4);
+                    m.fillRect(bx + TILE - 6, by, 2, TILE - 4);
                 }
             }
 
@@ -1085,18 +1172,16 @@
                 for (let x = 0; x < COLS; x++) {
                     const c = maze[y] ? maze[y][x] : ' ';
                     if (c === '.') {
-                        ctx.fillRect(x * TILE + HALF - 1.5, y * TILE + HALF - 1.5, 3, 3);
+                        ctx.fillRect(x * TILE + HALF - 1, y * TILE + HALF - 1, 2, 2);
                     } else if (c === 'o' && blink) {
-                        ctx.beginPath();
-                        ctx.arc(x * TILE + HALF, y * TILE + HALF, 5, 0, Math.PI * 2);
-                        ctx.fill();
+                        fillCircle(x * TILE + HALF, y * TILE + HALF, 5);
                     }
                 }
             }
 
             if (state === 'dying') {
                 drawGhosts();
-                drawReadyText('!');
+                if (readyOverlay) readyOverlay.style.display = 'none';
                 return;
             }
 
@@ -1104,53 +1189,63 @@
             drawGhosts();
             drawFloaters();
 
-            if (state === 'ready') {
-                drawReadyText(window.t ? window.t('pacman.label.ready') : 'READY!');
+            if (readyOverlay) {
+                readyOverlay.style.display = state === 'ready' ? 'block' : 'none';
             }
         }
 
-        function drawReadyText(text) {
-            ctx.fillStyle = 'black';
-            ctx.font = 'bold 12px "Courier New", monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const c = centerOf(9, 11);
-            ctx.fillRect(c.x - 85, c.y - 10, 170, 20);
-            ctx.fillStyle = 'white';
-            ctx.fillText(text, c.x, c.y);
-            ctx.fillStyle = 'black';
-        }
-
         function drawFloaters() {
-            ctx.font = 'bold 10px "Courier New", monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
             for (let i = 0; i < floaters.length; i++) {
                 const f = floaters[i];
+                const x = Math.round(f.x);
+                const y = Math.round(f.y);
+                const w = f.text.length * 8 + 4;
                 ctx.fillStyle = 'white';
-                ctx.fillRect(f.x - 12, f.y - 7, 24, 14);
-                ctx.fillStyle = 'black';
-                ctx.fillText(f.text, f.x, f.y);
+                ctx.fillRect(x - Math.floor(w / 2), y - 7, w, 14);
+                drawPixelText(f.text, x, y, 2);
             }
         }
 
         function drawPacman() {
             if (!pacman) return;
+            const px = Math.round(pacman.x);
+            const py = Math.round(pacman.y);
             const mouthOpen = state === 'playing'
                 ? 0.05 + Math.abs(Math.sin(animTime / 90)) * 0.3
                 : 0.15;
-            let angle = 0;
-            if (pacman.face.x === 1) angle = 0;
-            else if (pacman.face.x === -1) angle = Math.PI;
-            else if (pacman.face.y === 1) angle = Math.PI / 2;
-            else if (pacman.face.y === -1) angle = -Math.PI / 2;
-
+            const tanM = Math.tan(mouthOpen * Math.PI);
+            const r = 7;
+            const rows = getCircleMask(r);
+            const fx = pacman.face.x;
+            const fy = pacman.face.y;
             ctx.fillStyle = 'black';
-            ctx.beginPath();
-            ctx.moveTo(pacman.x, pacman.y);
-            ctx.arc(pacman.x, pacman.y, 7, angle + mouthOpen * Math.PI, angle + (2 - mouthOpen) * Math.PI);
-            ctx.closePath();
-            ctx.fill();
+
+            for (let i = 0; i < rows.length; i++) {
+                const dy = i - r;
+                const h = rows[i];
+                if (h <= 0) continue;
+                let x0 = px - h;
+                let x1 = px + h - 1;
+
+                if (fx === 1) {
+                    // Facing right: cut wedge x >= px + cut
+                    const cut = Math.ceil(Math.abs(dy + 0.5) / tanM);
+                    x1 = Math.min(x1, px + cut - 1);
+                } else if (fx === -1) {
+                    // Facing left: cut wedge x <= px - cut
+                    const cut = Math.ceil(Math.abs(dy + 0.5) / tanM);
+                    x0 = Math.max(x0, px - cut + 1);
+                } else if (fy !== 0 && ((fy === 1 && dy >= 0) || (fy === -1 && dy < 0))) {
+                    // Facing down/up: cut center span on mouth-side rows
+                    const w = Math.floor(Math.abs(dy + 0.5) * tanM);
+                    const l1 = Math.min(x1, px - w - 1);
+                    const r0 = Math.max(x0, px + w + 1);
+                    if (l1 >= x0) ctx.fillRect(x0, py + dy, l1 - x0 + 1, 1);
+                    if (x1 >= r0) ctx.fillRect(r0, py + dy, x1 - r0 + 1, 1);
+                    continue;
+                }
+                if (x1 >= x0) ctx.fillRect(x0, py + dy, x1 - x0 + 1, 1);
+            }
         }
 
         function drawGhosts() {
@@ -1159,99 +1254,89 @@
                 if (g.state === 'eyes') {
                     drawEyes(g);
                 } else if (frightTimer > 0 && g.state === 'active') {
-                    // Hollow (frightened) ghost; blinks when fright ending
-                    if (frightTimer < 2000 && Math.floor(animTime / 200) % 2 === 0) {
-                        drawGhostBody(g, true);
-                    } else {
-                        drawGhostBody(g, false);
-                    }
+                    // Frightened: hollow body, blinks black when fright ending
+                    drawGhostBody(g, frightTimer < 2000 && Math.floor(animTime / 200) % 2 === 0);
                 } else {
                     drawGhostBody(g, true);
                 }
             }
         }
 
-        function drawGhostBody(g, filled) {
-            const x = g.x;
-            const y = g.y;
-            const r = g.name === 'clyde' ? 8 : 7;
-            ctx.beginPath();
-            ctx.arc(x, y - 1, r, Math.PI, 0);
-            ctx.lineTo(x + r, y + 5);
-            ctx.lineTo(x + r - 3, y + 2);
-            ctx.lineTo(x, y + 5);
-            ctx.lineTo(x - r + 3, y + 2);
-            ctx.lineTo(x - r, y + 5);
-            ctx.closePath();
+        function drawGhostShape(x, y, r) {
+            // Head: top half of circle mask
+            const rows = getCircleMask(r);
+            for (let i = 0; i < r; i++) {
+                const h = rows[i];
+                if (h > 0) ctx.fillRect(x - h, y - r + i, h * 2, 1);
+            }
+            // Body
+            ctx.fillRect(x - r, y, r * 2, 5);
+            // Feet: 3 notched blocks
+            ctx.fillRect(x - r, y + 5, 4, 2);
+            ctx.fillRect(x - r + 5, y + 5, 4, 2);
+            ctx.fillRect(x - r + 10, y + 5, 4, 2);
+        }
 
-            if (filled) {
-                ctx.fillStyle = 'black';
-                ctx.fill();
-            } else {
+        function drawGhostBody(g, filled) {
+            const x = Math.round(g.x);
+            const y = Math.round(g.y);
+            const r = g.name === 'clyde' ? 8 : 7;
+            ctx.fillStyle = 'black';
+            drawGhostShape(x, y, r);
+
+            if (!filled) {
+                // Hollow: white inset leaves a 1px black outline
                 ctx.fillStyle = 'white';
-                ctx.fill();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                const rows = getCircleMask(r);
+                for (let i = 1; i < r; i++) {
+                    const h = rows[i] - 1;
+                    if (h > 0) ctx.fillRect(x - h, y - r + i, h * 2, 1);
+                }
+                ctx.fillRect(x - r + 1, y, r * 2 - 2, 4);
+                ctx.fillRect(x - r + 1, y + 5, 2, 1);
+                ctx.fillRect(x - r + 6, y + 5, 2, 1);
+                ctx.fillRect(x - r + 11, y + 5, 2, 1);
             }
 
             if (frightTimer > 0 && g.state === 'active') {
-                // Frightened face: two small black square eyes
+                // Frightened face: square eyes + zigzag mouth
                 ctx.fillStyle = filled ? 'white' : 'black';
-                ctx.fillRect(x - 4, y - 4, 3, 3);
-                ctx.fillRect(x + 1, y - 4, 3, 3);
+                ctx.fillRect(x - 4, y - 4, 2, 2);
+                ctx.fillRect(x + 2, y - 4, 2, 2);
+                ctx.fillRect(x - 4, y + 1, 2, 1);
+                ctx.fillRect(x - 2, y + 2, 2, 1);
+                ctx.fillRect(x, y + 1, 2, 1);
+                ctx.fillRect(x + 2, y + 2, 2, 1);
             } else {
                 drawEyes(g);
-                // Distinct marks per ghost (white on black body)
                 if (filled) {
+                    // Distinct white marks per ghost
                     ctx.fillStyle = 'white';
                     if (g.name === 'pinky') {
                         // Bow
-                        ctx.beginPath();
-                        ctx.moveTo(x - 3, y - r + 1);
-                        ctx.lineTo(x, y - r + 4);
-                        ctx.lineTo(x - 3, y - r + 5);
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.beginPath();
-                        ctx.moveTo(x + 3, y - r + 1);
-                        ctx.lineTo(x, y - r + 4);
-                        ctx.lineTo(x + 3, y - r + 5);
-                        ctx.closePath();
-                        ctx.fill();
+                        ctx.fillRect(x - 5, y - r + 1, 2, 2);
+                        ctx.fillRect(x + 3, y - r + 1, 2, 2);
                     } else if (g.name === 'inky') {
                         // Antenna
-                        ctx.fillRect(x - 1, y - r - 2, 2, 4);
+                        ctx.fillRect(x - 1, y - r - 2, 2, 3);
                     }
                 }
             }
+            ctx.fillStyle = 'black';
         }
 
         function drawEyes(g) {
-            const x = g.x;
-            const y = g.y;
+            const x = Math.round(g.x);
+            const y = Math.round(g.y);
             const ox = g.dir ? g.dir.x : 0;
             const oy = g.dir ? g.dir.y : 0;
             ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-            // Two eyes
-            ctx.beginPath();
-            ctx.arc(x - 3, y - 3, 2.6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(x + 3, y - 3, 2.6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+            fillCircle(x - 3, y - 3, 3);
+            fillCircle(x + 3, y - 3, 3);
             // Pupils look toward movement direction
             ctx.fillStyle = 'black';
-            ctx.beginPath();
-            ctx.arc(x - 3 + ox * 1.2, y - 3 + oy * 1.2, 1.2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(x + 3 + ox * 1.2, y - 3 + oy * 1.2, 1.2, 0, Math.PI * 2);
-            ctx.fill();
+            fillCircle(x - 3 + ox, y - 3 + oy, 1);
+            fillCircle(x + 3 + ox, y - 3 + oy, 1);
         }
 
     </script>
