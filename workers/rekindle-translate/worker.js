@@ -381,26 +381,28 @@ function isAsciiEmoji(text) {
     return false;
 }
 
-async function translateWithGoogle(text, targetLang = 'en', sourceLang = 'auto', client = 'gtx') {
+async function translateWithGoogle(text, targetLang = 'en', sourceLang = 'auto') {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
-        return { text: null, error: "Skipped: Emoji or Empty" };
+        return { text: null, error: "Skipped: Emoji or Empty", retryable: false };
     }
     if (sourceLang === targetLang) {
-        return { text: null, error: `Skipped: Source language is same as target (${targetLang})` };
+        return { text: null, error: `Skipped: Source language is same as target (${targetLang})`, retryable: false };
     }
     const mentions = [];
     const maskedText = text.replace(/@(\w+)/g, (match) => {
         mentions.push(match);
         return `__MENTION_${mentions.length - 1}__`;
     });
-    const url = `https://translate.googleapis.com/translate_a/single?client=${client}&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
+    // 3 attempts with jittered exponential backoff — shared cloud egress IPs
+    // get bursty 429s from Google's gtx endpoint.
+    const BACKOFF_MS = [600, 1800];
+    for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
         try {
             const response = await fetch(url);
-            // Retry once on rate-limit / server errors (shared cloud egress IPs get 429s)
             if (response.status === 429 || response.status >= 500) {
-                if (attempt === 0) {
-                    await new Promise(r => setTimeout(r, 400));
+                if (attempt < BACKOFF_MS.length) {
+                    await new Promise(r => setTimeout(r, BACKOFF_MS[attempt] + Math.floor(Math.random() * 300)));
                     continue;
                 }
                 throw new Error(`Google API Error: ${response.status}`);
@@ -418,22 +420,23 @@ async function translateWithGoogle(text, targetLang = 'en', sourceLang = 'auto',
                 translatedText = translatedText.replace(`__MENTION_${index}__`, mention);
             });
             if (detectedLang === targetLang) {
-                return { text: null, error: `Skipped: Detected language is same as target (${targetLang})` };
+                return { text: null, error: `Skipped: Detected language is same as target (${targetLang})`, retryable: false };
             }
             if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
-                return { text: translatedText, error: null };
+                return { text: translatedText, error: null, retryable: false };
             }
-            return { text: null, error: "Suppressed: Identical translation" };
+            return { text: null, error: "Suppressed: Identical translation", retryable: false };
         } catch (err) {
-            if (attempt === 0 && /429|5\d\d|fetch|network/i.test(err.message)) {
-                await new Promise(r => setTimeout(r, 400));
+            const retryable = /429|5\d\d|fetch|network/i.test(err.message);
+            if (attempt < BACKOFF_MS.length && retryable) {
+                await new Promise(r => setTimeout(r, BACKOFF_MS[attempt] + Math.floor(Math.random() * 300)));
                 continue;
             }
-            console.error(`Translation to ${targetLang} failed (client=${client}):`, err);
-            return { text: null, error: `Failed: ${err.message}` };
+            console.error(`Translation to ${targetLang} failed:`, err);
+            return { text: null, error: `Failed: ${err.message}`, retryable };
         }
     }
-    return { text: null, error: "Failed: exhausted retries" };
+    return { text: null, error: "Failed: exhausted retries", retryable: true };
 }
 
 async function detectLanguageInfo(text) {
@@ -497,41 +500,49 @@ function resolveSourceLang(text, detectedLang, confidence, translatedToEn) {
     return detectedLang || 'en';
 }
 
-async function translateToAllLanguages(text) {
+async function translateToAllLanguages(text, onlyLangs, knownSourceLang) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) return null;
-
-    // One Google call doubles as the language detector AND the English
-    // translation (sl=auto&tl=en returns detected lang, confidence, and the
-    // English text), so non-English sources cost 9 calls total, not 10-11.
-    const { detectedLang, confidence, translatedToEn } = await detectLanguageInfo(text);
-    const sourceLang = resolveSourceLang(text, detectedLang, confidence, translatedToEn);
 
     const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
     const translations = {};
+    let sourceLang = knownSourceLang || null;
 
-    // Identity entry: readers whose language matches the source always see
-    // the original text, never a machine "translation" of it.
-    if (sourceLang === 'en') {
-        translations.en = text;
-    } else if (translatedToEn && translatedToEn.toLowerCase().trim() !== text.toLowerCase().trim()) {
-        translations.en = translatedToEn; // reuse the detect call's English output
-    }
-    if (targetLangs.indexOf(sourceLang) !== -1) {
-        translations[sourceLang] = text;
+    // Retry path: the client passes sourceLang + onlyLangs from the first
+    // attempt, so no detect call is needed and only missing langs translate.
+    if (!sourceLang) {
+        // One Google call doubles as the language detector AND the English
+        // translation (sl=auto&tl=en returns detected lang, confidence, and
+        // the English text), so non-English sources cost 9 calls, not 10-11.
+        const { detectedLang, confidence, translatedToEn } = await detectLanguageInfo(text);
+        sourceLang = resolveSourceLang(text, detectedLang, confidence, translatedToEn);
+
+        // Identity entry: readers whose language matches the source always
+        // see the original text, never a machine "translation" of it.
+        if (sourceLang === 'en') {
+            translations.en = text;
+        } else if (translatedToEn && translatedToEn.toLowerCase().trim() !== text.toLowerCase().trim()) {
+            translations.en = translatedToEn; // reuse the detect call's English output
+        }
+        if (targetLangs.indexOf(sourceLang) !== -1) {
+            translations[sourceLang] = text;
+        }
     }
 
-    const remaining = targetLangs.filter(l => l !== 'en' && l !== sourceLang);
+    const base = (onlyLangs && onlyLangs.length ? onlyLangs : targetLangs);
+    const remaining = base.filter(l => targetLangs.indexOf(l) !== -1 && l !== 'en' && l !== sourceLang);
     // Sequential with a small stagger: Google's gtx endpoint 429s parallel
     // bursts from shared Cloudflare egress IPs (verified 2026-07 — a
     // Promise.all fan-out got every target call rate-limited while the
     // identity entry still wrote, producing en-only coverage).
+    const failed = [];
     for (const lang of remaining) {
         const result = await translateWithGoogle(text, lang, sourceLang);
         if (result.text) translations[lang] = result.text;
+        else if (result.retryable) failed.push(lang);
         await new Promise(r => setTimeout(r, 75));
     }
 
-    return Object.keys(translations).length > 0 ? translations : null;
+    return { translations, failed, sourceLang };
 }
 
 async function writeTranslationsByLang(translations, msgId, accessToken) {
@@ -618,22 +629,39 @@ export default {
             }
 
             if (translateOnly && msgId) {
-                const translatedText = await translateToAllLanguages(text);
-                if (!translatedText) {
-                    return new Response(JSON.stringify({ success: true, skipped: true }), { status: 200, headers });
+                // Retry attempts pass missingLangs + sourceLang from the
+                // first response so only the missing languages translate
+                // (and no second detect call is needed).
+                const missingLangs = Array.isArray(payload.missingLangs)
+                    ? payload.missingLangs.filter(l => typeof l === 'string')
+                    : null;
+                const knownSourceLang = typeof payload.sourceLang === 'string' ? payload.sourceLang : null;
+
+                const result = await translateToAllLanguages(text, missingLangs, knownSourceLang);
+                if (!result) {
+                    return new Response(JSON.stringify({ success: true, skipped: true, missing: [] }), { status: 200, headers });
                 }
 
-                if (app === 'neighbourhood') {
-                    await firestorePatch(`neighbourhood_posts/${msgId}`, { translation: translatedText }, accessToken);
-                } else {
-                    await writeTranslationsByLang(translatedText, msgId, accessToken);
+                if (Object.keys(result.translations).length > 0) {
+                    if (app === 'neighbourhood') {
+                        await firestorePatch(`neighbourhood_posts/${msgId}`, { translation: result.translations }, accessToken);
+                    } else {
+                        await writeTranslationsByLang(result.translations, msgId, accessToken);
+                    }
                 }
 
-                return new Response(JSON.stringify({ success: true, msgId, translation: translatedText }), { status: 200, headers });
+                return new Response(JSON.stringify({
+                    success: true,
+                    msgId,
+                    translation: result.translations,
+                    missing: result.failed,
+                    sourceLang: result.sourceLang
+                }), { status: 200, headers });
             }
 
             if (reprocess && msgId) {
-                let translatedText = await translateToAllLanguages(text);
+                const result = await translateToAllLanguages(text);
+                const translatedText = result ? result.translations : null;
 
                 if (app === 'neighbourhood') {
                     await firestorePatch(`neighbourhood_posts/${msgId}`, {
@@ -653,7 +681,9 @@ export default {
                 return new Response(JSON.stringify({
                     success: true,
                     msgId,
-                    translation: translatedText
+                    translation: translatedText,
+                    missing: result ? result.failed : [],
+                    sourceLang: result ? result.sourceLang : null
                 }), { status: 200, headers });
             }
 
@@ -662,7 +692,8 @@ export default {
                 return new Response(JSON.stringify({ error: "Missing uid or text" }), { status: 400, headers });
             }
 
-            let translatedText = await translateToAllLanguages(text);
+            const result = await translateToAllLanguages(text);
+            const translatedText = result ? result.translations : null;
 
             let docId;
             if (app === 'neighbourhood') {
@@ -691,7 +722,9 @@ export default {
             return new Response(JSON.stringify({
                 success: true,
                 id: docId,
-                translation: translatedText
+                translation: translatedText,
+                missing: result ? result.failed : [],
+                sourceLang: result ? result.sourceLang : null
             }), { status: 200, headers });
 
         } catch (err) {

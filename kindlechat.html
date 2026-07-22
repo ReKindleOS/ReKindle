@@ -4148,12 +4148,32 @@
             }
         }
 
-        var TRANSLATION_RETRY_DELAY_MS = 8000;
-        var TRANSLATION_MAX_RETRIES = 3;
+        // Translation retries are scheduled by the SENDER'S browser (no server cron):
+        // the worker returns which languages are still `missing`, and we re-fire
+        // the request for just those after escalating delays. Google's gtx endpoint
+        // rate-limits the worker's shared egress IPs in bursts lasting minutes, so
+        // spreading retries over minutes is what actually fills the gaps.
+        var TRANSLATION_MAX_ATTEMPTS = 4;
+        var TRANSLATION_RETRY_DELAYS_MS = [20000, 60000, 180000]; // delay before attempts 2, 3, 4
 
-        function fireTranslationRequest(uid, text, msgId, attempt) {
+        function fireTranslationRequest(uid, text, msgId, attempt, missingLangs, sourceLang) {
             if (!currentUser) return;
             attempt = attempt || 1;
+
+            var body = { uid: uid, text: text, msgId: msgId, translateOnly: true };
+            if (missingLangs && missingLangs.length) body.missingLangs = missingLangs;
+            if (sourceLang) body.sourceLang = sourceLang;
+
+            var scheduleRetry = function (missing, src) {
+                if (attempt >= TRANSLATION_MAX_ATTEMPTS) {
+                    console.warn("Translation incomplete after " + TRANSLATION_MAX_ATTEMPTS + " attempts; still missing:", missing);
+                    return;
+                }
+                var delay = TRANSLATION_RETRY_DELAYS_MS[attempt - 1] || 180000;
+                setTimeout(function () {
+                    fireTranslationRequest(uid, text, msgId, attempt + 1, missing, src);
+                }, delay);
+            };
 
             var tokenSource = socialAuth.currentUser || currentUser;
             tokenSource.getIdToken(true).then(function (token) {
@@ -4163,38 +4183,23 @@
                         'Content-Type': 'application/json',
                         'Authorization': 'Bearer ' + token
                     },
-                    body: JSON.stringify({
-                        uid: uid,
-                        text: text,
-                        msgId: msgId,
-                        translateOnly: true
-                    })
+                    body: JSON.stringify(body)
                 }).then(function (resp) {
-                    if (!resp.ok && attempt < TRANSLATION_MAX_RETRIES) {
-                        console.warn("Translation worker returned " + resp.status + ", retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s (attempt " + attempt + ")");
-                        setTimeout(function () {
-                            fireTranslationRequest(uid, text, msgId, attempt + 1);
-                        }, TRANSLATION_RETRY_DELAY_MS);
+                    if (!resp.ok) throw new Error("HTTP " + resp.status);
+                    return resp.json();
+                }).then(function (json) {
+                    var missing = (json && json.missing) || [];
+                    var src = (json && json.sourceLang) || sourceLang || null;
+                    if (missing.length > 0) {
+                        scheduleRetry(missing, src);
                     }
                 })['catch'](function (err) {
-                    if (attempt < TRANSLATION_MAX_RETRIES) {
-                        console.warn("Translation request failed (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
-                        setTimeout(function () {
-                            fireTranslationRequest(uid, text, msgId, attempt + 1);
-                        }, TRANSLATION_RETRY_DELAY_MS);
-                    } else {
-                        console.warn("Translation failed after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
-                    }
+                    console.warn("Translation request failed (attempt " + attempt + "):", err);
+                    scheduleRetry(missingLangs || null, sourceLang || null);
                 });
             })['catch'](function (err) {
-                if (attempt < TRANSLATION_MAX_RETRIES) {
-                    console.warn("Could not get auth token for translation (attempt " + attempt + "), retrying in " + (TRANSLATION_RETRY_DELAY_MS / 1000) + "s:", err);
-                    setTimeout(function () {
-                        fireTranslationRequest(uid, text, msgId, attempt + 1);
-                    }, TRANSLATION_RETRY_DELAY_MS);
-                } else {
-                    console.warn("Could not get auth token for translation after " + TRANSLATION_MAX_RETRIES + " attempts:", err);
-                }
+                console.warn("Could not get auth token for translation (attempt " + attempt + "):", err);
+                scheduleRetry(missingLangs || null, sourceLang || null);
             });
         }
 
