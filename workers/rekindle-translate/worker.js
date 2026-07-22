@@ -381,41 +381,59 @@ function isAsciiEmoji(text) {
     return false;
 }
 
-async function translateWithGoogle(text, targetLang = 'en') {
+async function translateWithGoogle(text, targetLang = 'en', sourceLang = 'auto', client = 'gtx') {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) {
         return { text: null, error: "Skipped: Emoji or Empty" };
+    }
+    if (sourceLang === targetLang) {
+        return { text: null, error: `Skipped: Source language is same as target (${targetLang})` };
     }
     const mentions = [];
     const maskedText = text.replace(/@(\w+)/g, (match) => {
         mentions.push(match);
         return `__MENTION_${mentions.length - 1}__`;
     });
-    try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Google API Error: ${response.status} ${await response.text()}`);
+    const url = `https://translate.googleapis.com/translate_a/single?client=${client}&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(maskedText)}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const response = await fetch(url);
+            // Retry once on rate-limit / server errors (shared cloud egress IPs get 429s)
+            if (response.status === 429 || response.status >= 500) {
+                if (attempt === 0) {
+                    await new Promise(r => setTimeout(r, 400));
+                    continue;
+                }
+                throw new Error(`Google API Error: ${response.status}`);
+            }
+            if (!response.ok) {
+                throw new Error(`Google API Error: ${response.status} ${await response.text()}`);
+            }
+            const data = await response.json();
+            if (!data || !data[0]) {
+                throw new Error("Invalid response format from Google");
+            }
+            let translatedText = data[0].map(chunk => chunk[0]).join('');
+            const detectedLang = data[2];
+            mentions.forEach((mention, index) => {
+                translatedText = translatedText.replace(`__MENTION_${index}__`, mention);
+            });
+            if (detectedLang === targetLang) {
+                return { text: null, error: `Skipped: Detected language is same as target (${targetLang})` };
+            }
+            if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
+                return { text: translatedText, error: null };
+            }
+            return { text: null, error: "Suppressed: Identical translation" };
+        } catch (err) {
+            if (attempt === 0 && /429|5\d\d|fetch|network/i.test(err.message)) {
+                await new Promise(r => setTimeout(r, 400));
+                continue;
+            }
+            console.error(`Translation to ${targetLang} failed (client=${client}):`, err);
+            return { text: null, error: `Failed: ${err.message}` };
         }
-        const data = await response.json();
-        if (!data || !data[0]) {
-            throw new Error("Invalid response format from Google");
-        }
-        let translatedText = data[0].map(chunk => chunk[0]).join('');
-        const detectedLang = data[2];
-        mentions.forEach((mention, index) => {
-            translatedText = translatedText.replace(`__MENTION_${index}__`, mention);
-        });
-        if (detectedLang === targetLang) {
-            return { text: null, error: `Skipped: Detected language is same as target (${targetLang})` };
-        }
-        if (translatedText && translatedText.toLowerCase().trim() !== text.toLowerCase().trim()) {
-            return { text: translatedText, error: null };
-        }
-        return { text: null, error: "Suppressed: Identical translation" };
-    } catch (err) {
-        console.error(`Translation to ${targetLang} failed:`, err);
-        return { text: null, error: `Failed: ${err.message}` };
     }
+    return { text: null, error: "Failed: exhausted retries" };
 }
 
 async function detectLanguageInfo(text) {
@@ -463,9 +481,10 @@ function isProbablyEnglish(original, detectedLang, confidence, translatedToEn) {
         if (contained && longer < 30) return true;
     }
 
-    // Low confidence (< 0.75) with mostly Latin/ASCII characters
-    // is a strong signal for English text-speak / funny spellings
-    if (confidence < 0.75 && original.length > 0) {
+    // Non-English detection below the 0.85 trust threshold with mostly
+    // Latin/ASCII characters is a strong signal for English text-speak /
+    // funny spellings (covers the 0.75-0.85 mid-confidence window too)
+    if (confidence < 0.85 && original.length > 0) {
         const latinChars = (original.match(/[a-zA-Z\s0-9.,!?;:'"-]/g) || []).length;
         if (latinChars / original.length > 0.85) return true;
     }
@@ -473,28 +492,46 @@ function isProbablyEnglish(original, detectedLang, confidence, translatedToEn) {
     return false;
 }
 
+function resolveSourceLang(text, detectedLang, confidence, translatedToEn) {
+    if (isProbablyEnglish(text, detectedLang, confidence, translatedToEn)) return 'en';
+    return detectedLang || 'en';
+}
+
 async function translateToAllLanguages(text) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) return null;
 
-    // Detect language first and bail out early if it's probably just English
+    // One Google call doubles as the language detector AND the English
+    // translation (sl=auto&tl=en returns detected lang, confidence, and the
+    // English text), so non-English sources cost 9 calls total, not 10-11.
     const { detectedLang, confidence, translatedToEn } = await detectLanguageInfo(text);
-
-    if (isProbablyEnglish(text, detectedLang, confidence, translatedToEn)) {
-        console.log(`Assuming English (detected: ${detectedLang}, confidence: ${confidence}): "${text}"`);
-        return null;
-    }
+    const sourceLang = resolveSourceLang(text, detectedLang, confidence, translatedToEn);
 
     const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
     const translations = {};
-    for (const lang of targetLangs) {
-        const result = await translateWithGoogle(text, lang);
-        if (result.text) {
-            translations[lang] = result.text;
-        }
-        await new Promise(r => setTimeout(r, 50));
+
+    // Identity entry: readers whose language matches the source always see
+    // the original text, never a machine "translation" of it.
+    if (sourceLang === 'en') {
+        translations.en = text;
+    } else if (translatedToEn && translatedToEn.toLowerCase().trim() !== text.toLowerCase().trim()) {
+        translations.en = translatedToEn; // reuse the detect call's English output
     }
-    if (Object.keys(translations).length === 0) return null;
-    return translations;
+    if (targetLangs.indexOf(sourceLang) !== -1) {
+        translations[sourceLang] = text;
+    }
+
+    const remaining = targetLangs.filter(l => l !== 'en' && l !== sourceLang);
+    // Sequential with a small stagger: Google's gtx endpoint 429s parallel
+    // bursts from shared Cloudflare egress IPs (verified 2026-07 — a
+    // Promise.all fan-out got every target call rate-limited while the
+    // identity entry still wrote, producing en-only coverage).
+    for (const lang of remaining) {
+        const result = await translateWithGoogle(text, lang, sourceLang);
+        if (result.text) translations[lang] = result.text;
+        await new Promise(r => setTimeout(r, 75));
+    }
+
+    return Object.keys(translations).length > 0 ? translations : null;
 }
 
 async function writeTranslationsByLang(translations, msgId, accessToken) {
