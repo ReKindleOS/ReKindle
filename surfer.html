@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+
+    <title>Surfer</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --rekindle-scale: 1;
+        }
+
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 560px;
+            min-height: fit-content;
+            max-height: 95vh;
+            overflow-y: auto;
+            position: relative;
+            zoom: 1 !important;
+            transform: none !important;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+            zoom: var(--rekindle-scale, 1);
+        }
+
+        @supports not (zoom: 1) {
+            .title-bar {
+                transform: scale(var(--rekindle-scale, 1));
+                transform-origin: top center;
+            }
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            display: inline-flex;
+            align-items: center;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .title-score {
+            font-family: "Courier New", monospace;
+            font-size: 0.8rem;
+            font-weight: bold;
+            background: white;
+            padding: 0 6px;
+            z-index: 2;
+        }
+
+        .title-score-left {
+            position: absolute;
+            left: 40px;
+        }
+
+        .title-right-group {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 0 4px;
+        }
+
+        .title-right-group .title-score {
+            margin-right: 8px;
+        }
+
+        .leaderboard-btn {
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            position: relative;
+        }
+
+        canvas {
+            border: 4px solid black;
+            background-color: #fff;
+            display: block;
+            image-rendering: pixelated;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+            width: 100%;
+            max-width: 200px;
+        }
+
+        .ctrl-btn {
+            height: 56px;
+            background: white;
+            border: 2px solid black;
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        .ctrl-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .btn-up {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .btn-left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .btn-down {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .btn-right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        #game-over,
+        #leaderboard-modal,
+        #start-game-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .controls-hint {
+            font-family: "Courier New", monospace;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+    </style>
+    <script src="theme.js?v=18"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-score title-score-left"><span data-i18n="surfer.label.score">Score</span>: <span id="score">0</span></span>
+            <span class="title-text" data-i18n="surfer.title">Surfer</span>
+            <div class="title-right-group">
+                <span class="title-score"><span data-i18n="surfer.label.high_score">High</span>: <span id="high-score">0</span></span>
+                <button class="leaderboard-btn" onclick="openLeaderboard()"
+                    data-i18n="surfer.btn.leaderboard">Leaderboard</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <canvas id="gameCanvas" width="256" height="320"></canvas>
+
+            <div class="controls">
+                <div class="ctrl-btn btn-up" onpointerdown="handleInput('ArrowUp', event)">▲</div>
+                <div class="ctrl-btn btn-left" onpointerdown="handleInput('ArrowLeft', event)">◀</div>
+                <div class="ctrl-btn btn-down" onpointerdown="handleInput('ArrowDown', event)">▼</div>
+                <div class="ctrl-btn btn-right" onpointerdown="handleInput('ArrowRight', event)">▶</div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h2 data-i18n="surfer.label.game_over">CRASH!</h2>
+            <p><span data-i18n="surfer.label.score">Score</span>: <span id="final-score">0</span></p>
+            <p><span data-i18n="surfer.label.coins">Coins</span>: <span id="final-coins">0</span></p>
+            <button class="sys-btn" onclick="resetGame()" data-i18n="surfer.btn.retry">Retry</button>
+        </div>
+
+        <div id="start-game-modal" style="display: block;">
+            <h2 data-i18n="surfer.label.ready">Surfer</h2>
+            <p data-i18n="surfer.label.instructions">Dodge the trains. Jump barriers. Roll under signs. Grab coins.</p>
+            <p class="controls-hint" data-i18n="surfer.label.controls">Swipe or use arrows: Left/Right move, Up jump, Down roll.</p>
+            <button class="sys-btn" onclick="startGame()" disabled data-i18n="surfer.status.loading">Loading...</button>
+        </div>
+
+        <div id="leaderboard-modal">
+            <h3 data-i18n="surfer.label.top_players">Top Surfers</h3>
+            <div class="lb-list" id="lb-content" data-i18n="surfer.status.loading">
+                Loading...
+            </div>
+            <button class="sys-btn" onclick="document.getElementById('leaderboard-modal').style.display='none'"
+                data-i18n="surfer.btn.close">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (typeof firebase !== 'undefined' && typeof firebase.initializeApp === 'function') {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            } else {
+                firebase.app();
+            }
+        }
+        const db = (typeof firebase !== 'undefined' && typeof firebase.firestore === 'function') ? firebase.firestore() : null;
+        const auth = (typeof firebase !== 'undefined' && typeof firebase.auth === 'function') ? firebase.auth() : null;
+
+        let uid = null;
+        let username = "Guest";
+        let personalHighScore = 0;
+
+        const W = 256;
+        const H = 320;
+        const CX = 128;
+        const HORIZON_Y = 62;
+        const GROUND_Y = 290;
+        const CAM = 10;
+        const LANE_W = 52;
+        const VIEW_Z = 60;
+        const SPAWN_Z = 56;
+        const COLLIDE_Z = 0.5;
+        const JUMP_DUR = 0.6;
+        const JUMP_H = 52;
+        const JUMP_SAFE = 0.3;
+        const ROLL_DUR = 0.9;
+        const BASE_SPEED = 6;
+        const MAX_BONUS = 9;
+
+        const T_BARRIER = 0;
+        const T_SIGN = 1;
+        const T_TRAIN = 2;
+
+        const SKYLINE = [[6, 22, 24], [34, 16, 36], [56, 20, 18], [82, 12, 28], [168, 14, 22], [188, 22, 32], [216, 18, 20], [238, 10, 30]];
+
+        let canvas, ctx;
+        let gameLoop;
+        let lastTick = 0;
+        let tickAccumulator = 0;
+        const tickInterval = 100;
+        let isGameOver = false;
+        let distance = 0;
+        let speed = BASE_SPEED;
+        let nextSpawn = 20;
+        let trackScroll = 0;
+        let tickCount = 0;
+        let score = 0;
+        let coinsCollected = 0;
+        let shownScore = -1;
+        let player = { lane: 1, laneVisual: 0, jumpT: -1, rollT: 0 };
+        let obstacles = [];
+        let coins = [];
+        let scoreEl;
+        let touchStartX = 0, touchStartY = 0;
+        let bgCanvas = null, bgCtx = null;
+
+        const FILL_MASKS = {};
+        const OUTLINE_MASKS = {};
+
+        const GLYPHS = {
+            '0': [7, 5, 5, 5, 7], '1': [2, 6, 2, 2, 7], '2': [7, 1, 7, 4, 7], '3': [7, 1, 7, 1, 7],
+            '4': [5, 5, 7, 1, 1], '5': [7, 4, 7, 1, 7], '6': [7, 4, 7, 5, 7], '7': [7, 1, 1, 2, 2],
+            '8': [7, 5, 7, 5, 7], '9': [7, 5, 7, 1, 7], 'x': [0, 5, 2, 5, 0]
+        };
+
+        function buildCircleMasks() {
+            for (var r = 1; r <= 12; r++) {
+                var rows = {};
+                var pts = [];
+                var x = r, y = 0, err = 1 - r;
+                while (x >= y) {
+                    addSpan(rows, y, x);
+                    addSpan(rows, -y, x);
+                    addSpan(rows, x, y);
+                    addSpan(rows, -x, y);
+                    pts.push([x, y], [y, x], [-x, y], [-y, x], [x, -y], [y, -x], [-x, -y], [-y, -x]);
+                    y++;
+                    if (err < 0) {
+                        err += 2 * y + 1;
+                    } else {
+                        x--;
+                        err += 2 * (y - x) + 1;
+                    }
+                }
+                var rowsArr = [];
+                for (var dy in rows) {
+                    if (Object.prototype.hasOwnProperty.call(rows, dy)) {
+                        rowsArr.push([parseInt(dy, 10), rows[dy]]);
+                    }
+                }
+                FILL_MASKS[r] = rowsArr;
+                OUTLINE_MASKS[r] = pts;
+            }
+        }
+
+        function addSpan(rows, dy, hw) {
+            if (!(dy in rows) || rows[dy] < hw) rows[dy] = hw;
+        }
+
+        function drawFilledCircle(cx, cy, r) {
+            var rows = FILL_MASKS[r];
+            if (!rows) return;
+            for (var i = 0; i < rows.length; i++) {
+                var hw = rows[i][1];
+                ctx.fillRect(cx - hw, cy + rows[i][0], hw * 2 + 1, 1);
+            }
+        }
+
+        function drawCircleOutline(cx, cy, r) {
+            var pts = OUTLINE_MASKS[r];
+            if (!pts) return;
+            for (var i = 0; i < pts.length; i++) {
+                ctx.fillRect(cx + pts[i][0], cy + pts[i][1], 1, 1);
+            }
+        }
+
+        function pixelLine(c, x0, y0, x1, y1, t) {
+            var dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+            var sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+            var err = dx + dy;
+            var off = Math.floor(t / 2);
+            while (true) {
+                c.fillRect(x0 - off, y0 - off, t, t);
+                if (x0 === x1 && y0 === y1) break;
+                var e2 = 2 * err;
+                if (e2 >= dy) { err += dy; x0 += sx; }
+                if (e2 <= dx) { err += dx; y0 += sy; }
+            }
+        }
+
+        function outlineRect(c, x, y, w, h, t) {
+            c.fillRect(x, y, w, t);
+            c.fillRect(x, y + h - t, w, t);
+            c.fillRect(x, y + t, t, h - 2 * t);
+            c.fillRect(x + w - t, y + t, t, h - 2 * t);
+        }
+
+        function drawPixelText(str, x, y, sc) {
+            for (var i = 0; i < str.length; i++) {
+                var glyph = GLYPHS[str[i]];
+                if (!glyph) continue;
+                var gx = x + i * 4 * sc;
+                for (var row = 0; row < 5; row++) {
+                    var bits = glyph[row];
+                    for (var col = 0; col < 3; col++) {
+                        if (bits & (4 >> col)) {
+                            ctx.fillRect(gx + col * sc, y + row * sc, sc, sc);
+                        }
+                    }
+                }
+            }
+        }
+
+        function scaleAt(z) {
+            return CAM / (CAM + z);
+        }
+
+        function yAt(z) {
+            return HORIZON_Y + (GROUND_Y - HORIZON_Y) * scaleAt(z);
+        }
+
+        function xAt(laneF, z) {
+            return CX + laneF * LANE_W * scaleAt(z);
+        }
+
+        function jumpFrac() {
+            if (player.jumpT < 0) return 0;
+            return Math.sin(Math.PI * player.jumpT / JUMP_DUR);
+        }
+
+        window.addEventListener('pageshow', function () {
+            initializePage();
+        });
+
+        function initializePage() {
+            const onAuthReady = new Promise(function (resolve) {
+                if (auth && auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email ? auth.currentUser.email.split('@')[0] : "Guest";
+                    return resolve();
+                }
+                if (!auth) return resolve();
+                const unsubscribe = auth.onAuthStateChanged(function (user) {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email ? user.email.split('@')[0] : "Guest";
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(function () {
+                initGame();
+            });
+        }
+
+        function resizeCanvas() {
+            if (!canvas) return;
+            var win = document.querySelector('.window');
+            var content = document.querySelector('.window-content');
+            var maxW = Math.min(content.clientWidth - 30, 400);
+            var maxWindowH = Math.floor(window.innerHeight * 0.95);
+            var othersH = win.offsetHeight - canvas.offsetHeight;
+            var sizeByH = Math.floor((maxWindowH - othersH - 8) / 1.25);
+            var size = Math.floor(Math.min(maxW, sizeByH));
+            if (size < 128) size = 128;
+            canvas.style.width = size + 'px';
+            canvas.style.height = Math.floor(size * 1.25) + 'px';
+        }
+
+        function initGame() {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            scoreEl = document.getElementById('score');
+
+            buildCircleMasks();
+            buildBackground();
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('orientationchange', resizeCanvas);
+            window.addEventListener('load', resizeCanvas);
+            setTimeout(resizeCanvas, 100);
+            setTimeout(resizeCanvas, 500);
+
+            document.addEventListener('keydown', function (e) {
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].indexOf(e.key) !== -1) {
+                    e.preventDefault();
+                }
+                handleInput(e.key);
+            });
+
+            canvas.addEventListener('touchstart', function (e) {
+                var t = e.changedTouches[0];
+                touchStartX = t.clientX;
+                touchStartY = t.clientY;
+                e.preventDefault();
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', function (e) {
+                var t = e.changedTouches[0];
+                var dx = t.clientX - touchStartX;
+                var dy = t.clientY - touchStartY;
+                e.preventDefault();
+                if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    handleInput(dx < 0 ? 'ArrowLeft' : 'ArrowRight');
+                } else {
+                    handleInput(dy < 0 ? 'ArrowUp' : 'ArrowDown');
+                }
+            }, { passive: false });
+
+            loadPersonalHighScore().then(function () {
+                var startButton = document.querySelector('#start-game-modal .sys-btn');
+                startButton.disabled = false;
+                startButton.innerText = window.t ? window.t('surfer.btn.start', 'Start Game') : "Start Game";
+                startButton.removeAttribute('data-i18n');
+            });
+
+            draw();
+        }
+
+        function startGame() {
+            document.getElementById('start-game-modal').style.display = 'none';
+            resetGame();
+        }
+
+        async function loadPersonalHighScore() {
+            const localHigh = localStorage.getItem('surfer_highscore');
+            if (localHigh) personalHighScore = parseInt(localHigh);
+
+            if (uid && db) {
+                try {
+                    const doc = await db.collection('leaderboard_surfer').doc(uid).get();
+                    if (doc.exists) {
+                        const cloudHigh = doc.data().score;
+                        if (cloudHigh > personalHighScore) {
+                            personalHighScore = cloudHigh;
+                            localStorage.setItem('surfer_highscore', cloudHigh);
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+            document.getElementById('high-score').innerText = personalHighScore;
+        }
+
+        async function saveHighScore(newScore) {
+            if (newScore > personalHighScore) {
+                personalHighScore = newScore;
+                document.getElementById('high-score').innerText = personalHighScore;
+                localStorage.setItem('surfer_highscore', personalHighScore);
+
+                if (uid && db) {
+                    try {
+                        await db.collection('leaderboard_surfer').doc(uid).set({
+                            username: username,
+                            score: newScore,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch (e) { console.error(e); }
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'block';
+            const list = document.getElementById('lb-content');
+            list.innerText = window.t ? window.t('surfer.status.loading', 'Loading...') : 'Loading...';
+            list.removeAttribute('data-i18n');
+
+            const user = auth ? auth.currentUser : null;
+            if (user && db) {
+                try {
+                    const snapshot = await db.collection('leaderboard_surfer')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerText = window.t ? window.t('surfer.status.no_scores', 'No scores yet!') : "No scores yet!";
+                        return;
+                    }
+                    let rank = 1;
+                    snapshot.forEach(function (doc) {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = 'lb-row ' + (isMe ? 'me' : '');
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = rank + '. ' + escapeHtml(data.username);
+                        const scoreSpan = document.createElement('span');
+                        scoreSpan.textContent = data.score;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(scoreSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerText = window.t ? window.t('surfer.status.error_loading', 'Error loading scores.') : "Error loading scores.";
+                }
+            } else {
+                list.innerText = window.t ? window.t('surfer.status.login_required', 'Log in to see global scores.') : "Log in to see global scores.";
+            }
+        }
+
+        function resetGame() {
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            distance = 0;
+            speed = BASE_SPEED;
+            nextSpawn = 20;
+            trackScroll = 0;
+            tickCount = 0;
+            score = 0;
+            coinsCollected = 0;
+            shownScore = -1;
+            scoreEl.innerText = '0';
+
+            player = { lane: 1, laneVisual: 0, jumpT: -1, rollT: 0 };
+            obstacles = [];
+            coins = [];
+
+            if (gameLoop) cancelAnimationFrame(gameLoop);
+            lastTick = performance.now();
+            tickAccumulator = 0;
+            draw();
+            gameLoop = requestAnimationFrame(loop);
+        }
+
+        function handleInput(key, event) {
+            if (event) event.preventDefault();
+            if (isGameOver) return;
+            if (key === 'ArrowLeft') {
+                if (player.lane > 0) player.lane--;
+            } else if (key === 'ArrowRight') {
+                if (player.lane < 2) player.lane++;
+            } else if (key === 'ArrowUp' || key === ' ') {
+                if (player.jumpT < 0) {
+                    player.rollT = 0;
+                    player.jumpT = 0;
+                }
+            } else if (key === 'ArrowDown') {
+                player.jumpT = -1;
+                player.rollT = ROLL_DUR;
+            }
+        }
+
+        function pickType() {
+            var r = Math.random();
+            if (r < 0.45) return T_BARRIER;
+            if (r < 0.75) return T_SIGN;
+            return T_TRAIN;
+        }
+
+        function spawnRow() {
+            nextSpawn = speed * (0.55 + Math.random() * 0.25);
+            var spawnedTypes = [null, null, null];
+            if (distance > 50) {
+                var r = Math.random();
+                if (r < 0.42) {
+                    var l = Math.floor(Math.random() * 3);
+                    spawnedTypes[l] = pickType();
+                } else if (r < 0.72) {
+                    var l1 = Math.floor(Math.random() * 3);
+                    var l2 = (l1 + 1 + Math.floor(Math.random() * 2)) % 3;
+                    spawnedTypes[l1] = pickType();
+                    spawnedTypes[l2] = pickType();
+                } else if (speed >= 9.5 && r < 0.85) {
+                    var order = [0, 1, 2].sort(function () { return Math.random() - 0.5; });
+                    spawnedTypes[order[0]] = T_TRAIN;
+                    spawnedTypes[order[1]] = T_BARRIER;
+                    spawnedTypes[order[2]] = T_SIGN;
+                }
+                for (var l = 0; l < 3; l++) {
+                    if (spawnedTypes[l] !== null) {
+                        obstacles.push({ z: SPAWN_Z, lane: l, type: spawnedTypes[l], resolved: false });
+                    }
+                }
+            }
+            if (Math.random() < 0.4) {
+                var cand = [];
+                for (var l = 0; l < 3; l++) {
+                    if (spawnedTypes[l] !== T_TRAIN) cand.push(l);
+                }
+                var cl = cand[Math.floor(Math.random() * cand.length)];
+                var high = spawnedTypes[cl] === T_BARRIER;
+                for (var i = 0; i < 4; i++) {
+                    coins.push({ z: SPAWN_Z + 1 + i * 2.2, lane: cl, high: high, taken: false });
+                }
+            }
+        }
+
+        function processTick() {
+            if (isGameOver) return;
+            tickCount++;
+            var dz = speed * 0.1;
+            distance += dz;
+            speed = BASE_SPEED + Math.min(MAX_BONUS, distance / 120);
+            trackScroll += dz;
+
+            if (player.jumpT >= 0) {
+                player.jumpT += 0.1;
+                if (player.jumpT >= JUMP_DUR) player.jumpT = -1;
+            }
+            if (player.rollT > 0) {
+                player.rollT -= 0.1;
+                if (player.rollT < 0) player.rollT = 0;
+            }
+
+            var target = player.lane - 1;
+            var diff = target - player.laneVisual;
+            player.laneVisual = Math.abs(diff) < 0.03 ? target : player.laneVisual + diff * 0.4;
+
+            var i, o, c;
+            for (i = 0; i < obstacles.length; i++) {
+                o = obstacles[i];
+                o.z -= dz;
+                if (!o.resolved && o.z <= COLLIDE_Z) {
+                    o.resolved = true;
+                    if (o.lane === player.lane) {
+                        if (o.type === T_TRAIN) { endGame(); return; }
+                        if (o.type === T_BARRIER && jumpFrac() < JUMP_SAFE) { endGame(); return; }
+                        if (o.type === T_SIGN && player.rollT <= 0) { endGame(); return; }
+                    }
+                }
+            }
+            while (obstacles.length && obstacles[0].z < -4) obstacles.shift();
+
+            for (i = 0; i < coins.length; i++) {
+                c = coins[i];
+                c.z -= dz;
+                if (!c.taken && c.z <= 1.0 && c.z >= -2 && c.lane === player.lane) {
+                    if (!c.high || jumpFrac() >= 0.4) {
+                        c.taken = true;
+                        coinsCollected++;
+                    }
+                }
+            }
+            while (coins.length && (coins[0].z < -4 || coins[0].taken)) coins.shift();
+
+            nextSpawn -= dz;
+            if (nextSpawn <= 0) spawnRow();
+
+            score = Math.floor(distance) + coinsCollected * 5;
+            if (score !== shownScore) {
+                shownScore = score;
+                scoreEl.innerText = score;
+            }
+        }
+
+        function buildBackground() {
+            bgCanvas = document.createElement('canvas');
+            bgCanvas.width = W;
+            bgCanvas.height = H;
+            bgCtx = bgCanvas.getContext('2d');
+            bgCtx.imageSmoothingEnabled = false;
+            bgCtx.fillStyle = '#fff';
+            bgCtx.fillRect(0, 0, W, H);
+            bgCtx.fillStyle = '#000';
+
+            bgCtx.fillRect(0, HORIZON_Y, W, 1);
+            for (var i = 0; i < SKYLINE.length; i++) {
+                var b = SKYLINE[i];
+                outlineRect(bgCtx, b[0], HORIZON_Y - b[2], b[1], b[2], 1);
+            }
+
+            var sBottom = (H - HORIZON_Y) / (GROUND_Y - HORIZON_Y);
+            var edgeX = Math.round(78 * sBottom);
+            var divX = Math.round(26 * sBottom);
+            pixelLine(bgCtx, CX - edgeX, H - 1, CX, HORIZON_Y, 3);
+            pixelLine(bgCtx, CX + edgeX, H - 1, CX, HORIZON_Y, 3);
+            pixelLine(bgCtx, CX - divX, H - 1, CX, HORIZON_Y, 2);
+            pixelLine(bgCtx, CX + divX, H - 1, CX, HORIZON_Y, 2);
+        }
+
+        function drawTrackDynamics() {
+            var off = trackScroll % 3;
+            for (var z = 3 - off; z < VIEW_Z; z += 3) {
+                var s = scaleAt(z);
+                var y = Math.round(yAt(z));
+                var hw = Math.round(78 * s);
+                ctx.fillRect(CX - hw, y, hw * 2, s > 0.55 ? 2 : 1);
+            }
+
+            var poff = trackScroll % 8;
+            for (z = 8 - poff; z < VIEW_Z; z += 8) {
+                s = scaleAt(z);
+                y = Math.round(yAt(z));
+                var px = Math.round(92 * s);
+                var ph = Math.max(2, Math.round(22 * s));
+                var pw = Math.max(1, Math.round(3 * s));
+                ctx.fillRect(CX - px - pw, y - ph, pw, ph);
+                ctx.fillRect(CX + px, y - ph, pw, ph);
+            }
+        }
+
+        function drawCoin(c) {
+            var s = scaleAt(c.z);
+            var x = Math.round(xAt(c.lane - 1, c.z));
+            var gy = yAt(c.z);
+            var cy = Math.round(gy - (c.high ? 30 * s : 8 * s));
+            var r = Math.max(2, Math.round(5 * s));
+            if (r > 12) r = 12;
+            drawCircleOutline(x, cy, r);
+            ctx.fillRect(x - 1, cy - 1, 2, 2);
+        }
+
+        function drawObstacle(o) {
+            var s = scaleAt(o.z);
+            var x = Math.round(xAt(o.lane - 1, o.z));
+            var gy = Math.round(yAt(o.z));
+            var i;
+
+            if (o.type === T_BARRIER) {
+                var w = Math.round(42 * s);
+                var postW = Math.max(1, Math.round(3.5 * s));
+                var postH = Math.max(1, Math.round(15 * s));
+                var barH = Math.max(1, Math.round(9 * s));
+                ctx.fillRect(x - Math.round(w / 2) - postW, gy - postH, postW, postH);
+                ctx.fillRect(x + Math.round(w / 2), gy - postH, postW, postH);
+                ctx.fillRect(x - Math.round(w / 2) - postW, gy - postH - barH, w + 2 * postW, barH);
+                ctx.fillStyle = '#fff';
+                var slitW = Math.max(1, Math.round(1.5 * s));
+                var barW = w + 2 * postW;
+                for (i = 1; i <= 3; i++) {
+                    var sx = x - Math.round(w / 2) - postW + Math.round(barW * i / 4) - Math.floor(slitW / 2);
+                    ctx.fillRect(sx, gy - postH - barH, slitW, barH);
+                }
+                ctx.fillStyle = '#000';
+            } else if (o.type === T_SIGN) {
+                var gw = Math.round(46 * s);
+                var gpostW = Math.max(1, Math.round(3.5 * s));
+                var gpostH = Math.max(1, Math.round(34 * s));
+                var gbarH = Math.max(1, Math.round(10 * s));
+                ctx.fillRect(x - Math.round(gw / 2) - gpostW, gy - gpostH, gpostW, gpostH);
+                ctx.fillRect(x + Math.round(gw / 2), gy - gpostH, gpostW, gpostH);
+                ctx.fillRect(x - Math.round(gw / 2) - gpostW, gy - gpostH - gbarH, gw + 2 * gpostW, gbarH);
+                if (gbarH >= 6) {
+                    ctx.fillStyle = '#fff';
+                    var au = Math.max(1, Math.round(1.2 * s));
+                    var ay = gy - gpostH - gbarH + Math.max(1, Math.round(2 * s));
+                    for (i = 0; i < 3; i++) {
+                        var ahw = (3 - i) * au;
+                        ctx.fillRect(x - ahw, ay + i * au, ahw * 2, au);
+                    }
+                    ctx.fillStyle = '#000';
+                }
+            } else {
+                var tw = Math.round(44 * s);
+                var th = Math.max(4, Math.round(60 * s));
+                var bw = Math.max(1, Math.round(2 * s));
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(x - Math.round(tw / 2), gy - th, tw, th);
+                ctx.fillStyle = '#000';
+                outlineRect(ctx, x - Math.round(tw / 2), gy - th, tw, th, bw);
+                ctx.fillRect(x - Math.round(tw / 2), gy - th, tw, Math.max(1, Math.round(3 * s)));
+                var winX = x - Math.round(tw / 2) + Math.round(5 * s);
+                var winW = tw - 2 * Math.round(5 * s);
+                if (winW > 0) {
+                    ctx.fillRect(winX, gy - th + Math.round(7 * s), winW, Math.max(1, Math.round(13 * s)));
+                }
+                var lr = Math.max(1, Math.round(2 * s));
+                if (lr > 12) lr = 12;
+                drawFilledCircle(x - Math.round(tw / 4), gy - Math.round(9 * s), lr);
+                drawFilledCircle(x + Math.round(tw / 4), gy - Math.round(9 * s), lr);
+                var bh = Math.max(1, Math.round(3 * s));
+                ctx.fillRect(x - Math.round(tw / 2) - bw, gy - bh, tw + 2 * bw, bh);
+            }
+        }
+
+        function drawPlayer() {
+            var x = Math.round(CX + player.laneVisual * LANE_W);
+            var jf = jumpFrac();
+            var feetY = Math.round(GROUND_Y - jf * JUMP_H);
+
+            if (player.rollT > 0) {
+                drawFilledCircle(x, GROUND_Y - 9, 9);
+                ctx.fillStyle = '#fff';
+                drawFilledCircle(x + 3, GROUND_Y - 12, 2);
+                ctx.fillStyle = '#000';
+                return;
+            }
+
+            drawFilledCircle(x, feetY - 38, 5);
+            pixelLine(ctx, x, feetY - 33, x, feetY - 18, 4);
+
+            if (jf > 0.02) {
+                pixelLine(ctx, x, feetY - 30, x - 7, feetY - 36, 3);
+                pixelLine(ctx, x, feetY - 30, x + 7, feetY - 36, 3);
+                pixelLine(ctx, x, feetY - 18, x - 5, feetY - 8, 3);
+                pixelLine(ctx, x, feetY - 18, x + 5, feetY - 8, 3);
+            } else if (tickCount % 2 === 0) {
+                pixelLine(ctx, x, feetY - 30, x - 7, feetY - 22, 3);
+                pixelLine(ctx, x, feetY - 18, x - 7, feetY, 3);
+                pixelLine(ctx, x, feetY - 18, x + 6, feetY - 6, 3);
+            } else {
+                pixelLine(ctx, x, feetY - 30, x + 7, feetY - 22, 3);
+                pixelLine(ctx, x, feetY - 18, x + 7, feetY, 3);
+                pixelLine(ctx, x, feetY - 18, x - 6, feetY - 6, 3);
+            }
+        }
+
+        function drawHud() {
+            drawCircleOutline(16, 14, 5);
+            ctx.fillRect(15, 13, 2, 2);
+            drawPixelText('x' + coinsCollected, 26, 10, 2);
+        }
+
+        function draw() {
+            ctx.drawImage(bgCanvas, 0, 0);
+            ctx.fillStyle = '#000';
+            ctx.strokeStyle = '#000';
+
+            drawTrackDynamics();
+
+            var i;
+            for (i = coins.length - 1; i >= 0; i--) {
+                if (!coins[i].taken) drawCoin(coins[i]);
+            }
+            for (i = obstacles.length - 1; i >= 0; i--) {
+                drawObstacle(obstacles[i]);
+            }
+            drawPlayer();
+            drawHud();
+        }
+
+        function loop(timestamp) {
+            if (isGameOver) return;
+            var dt = timestamp - lastTick;
+            lastTick = timestamp;
+            if (dt > 500) {
+                tickAccumulator = 0;
+                gameLoop = requestAnimationFrame(loop);
+                return;
+            }
+            tickAccumulator += dt;
+            var ticked = false;
+            while (tickAccumulator >= tickInterval) {
+                tickAccumulator -= tickInterval;
+                processTick();
+                ticked = true;
+            }
+            if (ticked) draw();
+            gameLoop = requestAnimationFrame(loop);
+        }
+
+        function endGame() {
+            isGameOver = true;
+            if (gameLoop) cancelAnimationFrame(gameLoop);
+            saveHighScore(score);
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-coins').innerText = coinsCollected;
+            document.getElementById('game-over').style.display = 'block';
+            draw();
+        }
+    </script>
+
+</body>
+
+</html>

@@ -576,11 +576,21 @@ if (!gameState.players[gameState.host]) {
 This keeps the game alive if the host leaves or drops, and lets remaining players finish the match. It is implemented in `liveuno.html`.
 
 ### Akinator API (`akinator.html`)
-The Akinator game is no longer a Pages Function. It is served by the standalone Cloudflare Worker at `workers/rekindle-akinator/` and deployed at `https://rekindle-akinator.timjarnott.workers.dev`.
+The Akinator game talks to Akinator.com through a **transport fallback chain** (added 2026-07): third-party CORS proxies first, the Cloudflare Worker as the final fallback.
 
-Frontend uses `API_BASE = 'https://rekindle-akinator.timjarnott.workers.dev'` and calls `/start`, `/answer`, `/back`, and `/continue`.
+### Transport chain (in `akinator.html`)
+1. **CORS proxies** (`CORS_PROXIES` list, tried in order). The page itself does what the worker does: scrapes `/game` for session/signature/question and POSTs form data to `/answer`, `/cancel_answer`, `/exclude`. Per-proxy entry shape: `{ base, encode }` — `encode: true` means append `encodeURIComponent(targetUrl)` (corsproxy.io, codetabs), `false` means append the raw URL (Zibri's `test.cors.workers.dev`).
+2. **Cloudflare Worker** (`API_BASE + '/start'|'/answer'|'/back'|'/continue'`, JSON bodies) — the original backend at `workers/rekindle-akinator/`, deployed at `https://rekindle-akinator.timjarnott.workers.dev`.
 
-Important notes:
+`withTransport(fn)` runs each operation against the chain; the first transport that succeeds becomes `activeTransport` and is tried first next time (reset on failure). **Akinator sessions are param-based** (`session` + `signature` in every POST, no cookies), so transports can switch mid-game without losing state.
+
+### Proxy gotchas (verified 2026-07)
+- **`X-Requested-With: XMLHttpRequest` is required** on POSTs to Akinator's endpoints — without it Akinator's Cloudflare returns a 403 WAF block page. Browsers can send it (triggers a preflight; working proxies answer OPTIONS correctly).
+- `test.cors.workers.dev` (Zibri's cloudflare-cors-anywhere) is the only public proxy verified to work with Akinator. It **rejects requests without an `Origin` header** ("Error: use fetch()") and without a browser User-Agent — both are automatic from a real browser, but curl/node tests must set them manually.
+- `corsproxy.io` reaches Akinator but gets a Cloudflare challenge page; codetabs/allorigins are frequently down (522); `proxy.corsfix.com` requires per-domain registration; `cors.sh` needs an API key. Public proxies are flaky — that's why the chain and worker fallback exist. Re-test before adding/reordering proxies.
+- The proxy path validates responses exactly like the worker (regex-extracted session/signature/question for start, `JSON.parse` for actions), so a proxy returning a challenge page or HTML just fails through to the next transport.
+
+### Worker details (unchanged)
 - Akinator.com sits behind Cloudflare bot protection; server-side calls can be blocked if the upstream IP/headers are flagged.
 - The start endpoint scrapes the Akinator `/game` page. Reliable patterns are:
   - `session: '...'` (inline JS)
@@ -778,6 +788,20 @@ The `icons.js` entry uses `id: 'comics'` (file `comics.html`) with `name: 'Comic
 
 To audit translation pipeline health, query RTDB directly with `service-account-social.json` (in repo root) via firebase-admin: compare `kindlechat/messages` timestamps against `kindlechat/translations_by_lang` keys.
 
+## KindleChat Translation Worker Pipeline (rebuilt 2026-07-22)
+
+**Regression lesson:** the June 2026 "confidence score" commit added an `isProbablyEnglish()` early-bail in `translateToAllLanguages()` that wrote **zero translations in any language** for English messages. Non-English coverage collapsed from ~78% of messages to <1% overnight ("translation never works" for non-English readers). **Never skip translating entirely based on detected source language** — only suppress the same-language target.
+
+Current design in `workers/rekindle-translate/worker.js`:
+
+- **Canonical source detection:** `detectLanguageInfo()` makes ONE Google call (`sl=auto&tl=en`) that returns the detected language, a confidence score (`data[6]`), AND the English translation. `resolveSourceLang()` picks the source: `isProbablyEnglish()` heuristics → `'en'`, otherwise the detected code. All target translations then use explicit `sl=sourceLang` (never 10 independent auto-detects).
+- **Identity entries:** the entry for the source language itself is always the original text (e.g. `es: <original>` for a Spanish message). Clients already suppress translations identical to the original, so source-language readers see the original and every other language gets a real translation.
+- **Detect/en merge:** for non-English sources, the detect call's English output (`translatedToEn`) is reused as the `en` entry — non-English messages cost 9 Google calls total, not 10-11.
+- **Sequential targets:** the remaining 8-9 target calls run sequentially with a 75ms stagger. Do **NOT** `Promise.all` them — Google's gtx endpoint 429s parallel bursts from shared Cloudflare egress IPs (verified 2026-07: a parallel fan-out got all 9 target calls rate-limited while the identity entry still wrote, producing en-only coverage). `translateWithGoogle()` makes 3 attempts with jittered exponential backoff (600ms, 1800ms) and returns `retryable: true` only for 429/5xx/network failures (not for identical/suppressed results — those must never be retried).
+- **Client-scheduled retries (no cron — deliberate, to avoid idle Firebase usage):** every worker response includes `missing: [...]` (languages that failed retryably) and `sourceLang`. `fireTranslationRequest()` in `kindlechat.html` re-fires with `missingLangs` + `sourceLang` in the body after 20s/60s/180s (max 4 attempts), and the worker then translates ONLY those languages without re-detecting. Retries live and die with the sender's browser session — if the sender leaves, remaining languages stay untranslated. Google's per-IP 429s come in multi-minute bursts, so spreading retries over minutes is what fills the gaps; in-request backoff alone cannot.
+- **Confidence thresholds in `isProbablyEnglish()`:** `detectedLang === 'en'` → English; `confidence >= 0.85` → trust the non-English detection; identical/contained after stripping punctuation → English; `confidence < 0.85` with >85% Latin/ASCII chars → English (the `< 0.85` bound deliberately covers the 0.75-0.85 mid-confidence window where English slang was being force-translated from a mis-detected language into garbage `en` output).
+- **Every message should now produce all 10 language entries** (immediately in clear windows, within ~4 minutes via client retries during 429 storms). If an audit shows English messages stuck at en-only with no other entries appearing over time, the client retry loop is broken — that is the signature to look for.
+
 ## KindleChat Art Gallery & `kindlechat/art_index`
 
 The KindleChat gallery (`kindlechat.html`) shows only pixel art and flipbooks. To avoid downloading every chat message, the gallery reads from a dedicated RTDB index at `kindlechat/art_index`.
@@ -794,6 +818,8 @@ The KindleChat gallery (`kindlechat.html`) shows only pixel art and flipbooks. T
 - Clicking a gallery item fetches the full message from `kindlechat/messages/{messageId}` to show the large pixel art or play the full flipbook.
 - Pixel-art saves from the gallery reuse `savePixelArtData()` with the current message cached in `window.galleryPixelArtData`; never put the base64 image URL into an inline `onclick` handler.
 - `showPixelArtModal()` replaces `#generic-modal-content.innerHTML`, which destroys the default `#modal-message` and `#modal-btns` children. `showModal()` must rebuild those nodes and reset the generic modal's inline width/max-width before displaying another message.
+- Both viewer modals reuse `#generic-modal-content` (a `.modal-box` with `padding: 20px`), so `showPixelArtModal()` and `showFlipbookModal()` must set `modalBox.style.padding = '0'` (hideModal/showModal reset it back to ''). Without this the flipbook viewer keeps the 20px modal padding.
+- Chat-view pixel art and flipbook bubbles open the same gallery viewer via `openGalleryItem(msgId)` (it fetches the full message from `kindlechat/messages` and handles deleted messages). Inline `playFlipnote()` is now only used for the auto-play-on-render; clicking a flipbook thumbnail opens the modal.
 - The moderation worker automatically writes the index entry when a pixel art or flipbook message is posted, and deletes it when a message is auto-deleted from a report.
 
 ### Files involved
@@ -859,6 +885,7 @@ Several games exist as both a single-player file and a multiplayer file. The sin
 *   **Dots & Boxes** — `dotsandboxes.html` (vs CPU with Easy/Hard). Based on `2pdotsandboxes.html`. Easy is greedy-box. Hard completes boxes, avoids giving the opponent a 3-sided box, and prefers moves that set up future boxes.
 *   **Battleship** — `battleship.html` (vs CPU). Based on `2pbattleships.html`. Player places ships manually or with Auto; CPU places ships randomly and fires using hunt/target mode after a hit.
 *   **Uno** — `uno.html` (solo vs bots). A wrapper that launches `liveuno.html?single=1`. The live game detects the `single=1` parameter and automatically hosts a 4-player match with 3 bots, starting immediately. The `liveuno.html` menu also has a "Play Solo vs Bots" button for the same mode.
+*   **Jumpy** — `jumpy.html` (Doodle Jump-style vertical platformer). See its own section below.
 
 All new single-player files disable CSS animations/transitions (`* { transition: none !important; animation: none !important; }`) and reuse the same System 7 window/title-bar patterns as their 2-player counterparts.
 
@@ -877,17 +904,77 @@ Single-player entries that have a multiplayer counterpart (e.g. `chess`, `checke
 
 **Important:** Do **not** add `single: true` to games that are single-player-only and have no multiplayer variant in the project (e.g. `crossy`, `dino`). That flag is only for the folder-grouping badge system. For solid pixel-art icons, use `filled: true` instead.
 
-## 🟦 Geometry Dash (gdash.html)
+## 🟦 Cube Dash (cubedash.html)
 
-A Geometry Dash clone adapted from kindle-geometrydash.netlify.app (same 10 level strings and obstacle grammar), reworked for the System 7 window instead of fullscreen.
+An original cube/ship platformer inspired by Geometry Dash. It started as a port of kindle-geometrydash.netlify.app but was rewritten (2026-07) with **original branding, original level designs, and new mechanics** — do not reintroduce the reference's level strings or names. All 10 levels are original and were verified completable (with all gears reachable) by a headless bot harness.
 
-### Key differences from the reference implementation
-*   **Canvas:** fixed 512×288 internal resolution, CSS-scaled (reference is fullscreen). `FLOOR_Y = 216`, `CEIL_Y = 40`, `PLAYER_X = 96`, obstacle step 130px, start x 520.
-*   **Inverted gravity has a real ceiling:** inverted players land on and ride `CEIL_Y` and hop *down* over ceiling spikes (which hang from `CEIL_Y`). The reference clamps inverted players at `FLOOR_Y + 40` (below the floor — a bug there), do not copy that.
-*   **Portals / speed gates / end flag span the full corridor** (`CEIL_Y`..`FLOOR_Y`) so they trigger at any altitude. Reference portals float at fixed offsets that only work on tall fullscreen canvases.
-*   **Auto-restart on death** with an attempts counter (reference returns to menu). Practice mode restores the last checkpoint instead.
-*   Physics (60Hz fixed timestep): gravity 1.0, jump -14, terminal 13, 80% hitbox, coyote 6 / buffer 7 frames. Triple spikes intentionally have only a ~3-frame jump window — matches the reference/GD tightness, do not "fix".
-*   Progress: `localStorage` `gdash_progress_v1` (best % per level, 100 on completion), `gdash_simple_v1` disables death particles. No Firebase/leaderboard — if one is added, update `firestore.rules` per the rule checklist.
+### Mechanics (beyond the reference)
+*   **Ship mode:** `w`/`q` portals switch between cube and ship. Ship physics: hold input to thrust (`SHIP_RISE -0.85` vs `SHIP_FALL 0.65`, terminal ±6.5), floor/ceiling contact is safe, any solid obstacle kills. `inputHeld` drives ship thrust AND cube auto-hop (holding = repeated jumps, like GD).
+*   **Gears (`*`):** collectible, saved per-level as a bitmask in `cubedash_save_v1`. Hitbox is `x-60, w 70, top 76, h 110` — deliberately offset so a gear one char after a spike is grabbed mid jump-arc, and NOT collectable while running grounded. **If you change jump physics, re-verify gear reachability.**
+*   **Obstacle grammar:** `s` spike / `d` double / `3` triple, `b` block / `h` tall block, `S` block+spike (pure kill zone), `c` ceiling spike, `P` floor pillar 88 / `U` hanging pillar 88 / `B` floating platform (top 124 — landable from a floor jump; do not move it lower), `p` pad, `r` ring, `g`/`n` gravity, `f`/`o` speed, `w`/`q` ship portals, `*` gear, `e` end gate.
+*   **Physics:** 60Hz fixed timestep; gravity 1.0, jump -14, terminal 13, 80% hitbox, coyote 6 / buffer 7. Triple spikes have only a ~3-frame jump window (authentic GD tightness, do not "fix"). Portals/gates/end flag span the full corridor (`CEIL_Y 40`..`FLOOR_Y 216`) so they trigger at any altitude.
+*   **Rendering is strict 1-bit — Simple Mode is FORCED ON and settings are removed** (2026-07). Like Surfer, any anti-aliased canvas pixel forces full e-ink grayscale refreshes (constant flashing), so `drawFrame()` may only use integer `fillRect` via the `fillB`/`fillW`/`rectB` helpers, Bresenham `lineB()` for diagonals, and midpoint `circleB()`/`discB()` for circles. **Banned:** `arc()`, `stroke()`/`strokeRect()`, `beginPath`/`lineTo` strokes, `ctx.rotate`/`translate` for gameplay sprites, and fractional coordinates. The cube's spin is faked with a quantized 8-direction spoke; the ship tilts via `rotPts()` + scanline `fillPolyW()` on integer-rounded points; the ring pulse steps integer radii 10–12. There is no parallax, no death particles, no settings overlay — do not reintroduce them without keeping the 1-bit rule.
+
+### Level design & validation
+Level strings live in `LEVELS` (char = 130px grid, start x 520). **Any level edit must be re-validated headlessly**: stub the DOM, `eval` the inline script, and auto-play — cube bot jumps at gap 58 (single) / 46 (double+S) / 20 (triple) / 105 (block family) measured from obstacle-left to player-right (123); ship bot holds when `y+13 > targetY` where targetY is the gap center of the nearest solid. Rules learned: gears belong exactly one char after spike-family hazards; never put floor spikes inside ship sections; after `q` (cube portal) leave ≥3 chars before the next hazard (ship-exit fall distance).
+
+### Saves
+`localStorage` `cubedash_save_v1` = `{progress[], gears[]}`. The old `gdash_*` keys, `gdash.html`, and the `cubedash_simple_v1` simple-mode key are all deleted; there is no migration (progress was trivial to re-earn). No Firebase/leaderboard — if one is added, update `firestore.rules` per the rule checklist.
+
+## 🐸 Jumpy (jumpy.html) — Doodle Jump-Style Platformer (2026-07)
+
+Portrait canvas (256×384 buffer, 2:3), pure B&W primitives drawn with `fillRect` (no sprite assets). Fixed 60Hz timestep with an rAF accumulator (dt clamped to 250 ms) so physics are identical on 7fps e-ink and 144Hz desktop. **`TIME_SCALE = 0.55`** scales real→simulated ms in the accumulator — this is THE e-ink pacing knob (bounce period ~1.9s, move speed ~119 px/s at 0.55; users reported 1.0 as "way too fast" on e-ink). Always tune speed via `TIME_SCALE`, never via gravity/jump velocity, so the spatial invariants below stay valid. Input: holdable ◀ ▶ buttons, arrow keys/A-D, or touch halves of the canvas (multi-source flags synced via `syncMove()`). Leaderboard `leaderboard_jumpy` (rules in `firestore.rules`); localStorage key `jumpy_highscore_v1`.
+
+### Generator invariants (found via headless bot harness — do NOT break)
+The platform generator tracks the last **bouncable** platform (`lastBouncableY/X/Type`) because breakable platforms don't bounce, and constraint checks must apply to the bouncable chain, not consecutive platforms:
+
+1. **Vertical:** every bouncable platform ≤ 100px above the previous bouncable one (max jump height is ~166px at `GRAVITY 0.35` / `JUMP_V -10.8`). Enforced by clamping `y = lastBouncableY - 100`, NOT by converting types — converting a breakable to normal when >100px above the last bouncable does NOT help (the new platform itself ends up too far). This bug appeared twice before the clamp was added.
+2. **Breakables:** only spawn ≤55px above the last bouncable platform, leaving ≥45px room for the next bouncable one. This also prevents two breakables in a row.
+3. **Horizontal:** bouncable-to-bouncable center distance ≤110px. Constraining only consecutive platforms lets dx chain through breakables up to ±240px — beyond the ~173px horizontal range of a max-gap jump (verified unreachable by bot).
+4. **No consecutive moving platforms** in the bouncable chain — at speed a moving pair can phase away together and become untimeable on a ~7-15fps e-ink screen. Moving speed capped at 1.2 px/step (72 px/s) for the same reason.
+5. The full-width start platform never breaks, so a no-input player idles forever at score 0 — intentional, not a bug.
+
+### Validation harness
+Validated like Oregon Trail: DOM-stub + `eval` the inline script + auto-play bot that commits to a target platform on each bounce (naive per-frame targeting dithers and bounces in place on the full-width start platform — a bot flaw, not a game flaw). Assertions: no NaN, platform array stays bounded (~≤20), and **every death must have had a reachable platform at the last bounce** (`hadReachable` check) — deaths are bot skill, walls are generator bugs. 30 seeded runs passed. Note: `hadReachable` can false-positive on spring bounces (spring range ~389px vs normal 166px).
+
+## Local Testing Gotcha: Service Worker Forces Extensionless URLs
+
+`js/i18n.js` registers a service worker that reloads the page to the extensionless URL (`/jumpy.html` → `/jumpy`) on first load. `python3 -m http.server` then 404s, showing an "Error response" page with no `.title-text` — looks like a broken page, but isn't. Test locally with a static server that falls back to `.html` (try file, then file + '.html'), or use query params (`?lang=de`) which also bypass the reload. Production (Cloudflare Pages) serves extensionless URLs natively.
+
+## 🏃 Surfer (surfer.html) — Subway Surfers-Style Runner (2026-07)
+
+3-lane pseudo-3D endless runner built for e-ink: portrait canvas 256×320, fixed 10Hz timestep that **only redraws on ticks** (never per-rAF). Obstacles: barrier (jump), overhead sign (roll), train (lane-change only). Coins: low + high (jump-arc over barriers). Leaderboard: `leaderboard_surfer` (rules in `firestore.rules`); localStorage key `surfer_highscore`.
+
+### ⚠ Canvas anti-aliasing forces full e-ink refreshes (applies to ALL canvas games)
+**Any anti-aliased pixel (gray) in the canvas makes the Kindle do a full grayscale screen refresh every frame** — visible as constant flashing. Canvas AA sources: `arc()`, `stroke()`/`strokeRect()` (stroke is centered on the path → half-pixel coverage), diagonal `lineTo()`, `fillText()`, round `lineCap`, and fractional `fillRect` coordinates. Surfer's renderer is strict **1-bit**: only integer `fillRect`, Bresenham `pixelLine()` for diagonals, precomputed midpoint-circle row masks (`FILL_MASKS`/`OUTLINE_MASKS`, radii 1–12) for circles, a 3×5 `GLYPHS` pixel font for HUD text, and a static offscreen background canvas (`bgCanvas`, drawn once: skyline + track edges) blitted 1:1 per frame with `imageSmoothingEnabled = false`. Quantizing scaled geometry to integers causes minor 1px stepping as objects grow — acceptable, grays are not. Reuse this pattern for any new animated canvas game.
+
+### Tuning invariants (found via headless bot harness — do NOT change blindly)
+*   **`JUMP_DUR` (0.6s) must be SHORTER than the minimum spawn gap** (`speed * 0.55` in `spawnRow`). With 0.85s jumps, consecutive barrier rows forced land-into-death with no re-jump window — the bot died every run. Same reason `ROLL_DUR` is 0.9s (must outlast the approach + tick quantization at max speed 15).
+*   **`JUMP_SAFE = 0.3` is the 1-tick reaction floor.** At 10Hz, a jump started one tick before impact gives `jumpFrac() = sin(π·0.1/0.6) ≈ 0.36`. Any threshold above ~0.35 kills players who jumped on the last valid tick. Grounded = frac 0, so barriers still kill non-jumpers.
+*   **`COLLIDE_Z = 0.5`** resolves hits at the visual contact plane. 1.2 resolved ~25px before the obstacle visually reached the player ("I wasn't touching it" deaths); resolution is a monotonic `z <= COLLIDE_Z` crossing check, so there is no tunneling even at dz=1.5/tick.
+*   **Spawn fairness rules in `spawnRow()`:** never 3 trains in one row (at least one lane is always jumpable/rollable/open); triple rows (train+barrier+sign) only at speed ≥ 9.5; no obstacles at all for the first 50 units. Inputs mutate `player.lane` instantly (no per-tick queue), so double-tap lane escapes are legal — don't add an input queue.
+*   **Speed ramp:** `6 + min(9, distance/120)` → cap 15 at ~1080 distance. Gap formula keeps obstacle *time* spacing (~0.55–0.8s) constant at all speeds.
+
+### Validation harness
+Validated like Oregon Trail: DOM-stub + `eval` + auto-play bot (perfect play survived 25×180s with 0 deaths; idle player dies at ~17s; ~135 coins/run collected). **Any change to jump/roll physics, `COLLIDE_Z`, spawn gaps, or speed ramp must re-run a survival bot** — fairness regressions are invisible to eyeball testing. Harness pattern: capture rAF manually, step 100ms frames, bot dodges/jumps/rolls from a state export.
+
+## 🐂 Oregon Trail (oregontrail.html) — Full Rebuild (2026-07)
+
+Rebuilt from scratch as a faithful classic-style trail sim. The previous version (single health stat, four buttons, no party/landmarks/forts) was replaced entirely; its `rekindle_oregontrail_save` key was superseded by `rekindle_oregontrail_save_v2` (old saves are ignored, not migrated).
+
+### Structure
+*   **Screens:** setup (profession/party names/departure month) → general store → trail → win/game-over. Forts and hunting are overlay screens on top of the trail.
+*   **Day engine:** everything runs through `advanceDay(opts)` (`{travel, resting, fixedMiles, log}`) which rolls weather, consumes food, applies pace/climate/affliction damage, fires random events, checks landmarks and game end, saves, renders, and drains the modal queue.
+*   **Modal sequencing:** two queues — `deathQueue` (filled by `hurtMember` whenever a member hits 0 HP, merged into `modalQueue` by `advanceDay`) and `modalQueue` (events, deaths, river/fort/landmark/dalles arrivals, win, gameover). `processQueue()` shifts ONE item per call; each modal's close handler calls `processQueue()` again. Never show two modals at once outside this queue.
+*   **The Dalles multi-day road:** `state._dallesActive` flag + empty-queue branch in `processQueue()` chains the next `dallesRoadStep()` only after any event/death modal from the previous day has been dismissed. Do not replace this with a plain loop or a `modalQueue.length === 0` check right after `advanceDay()` — `processQueue` shifts items synchronously, so the queue is empty while a modal is still on screen.
+*   **Balance invariants** (found by simulation — see below): resting while `food <= 0` gives NO healing (otherwise a starving party rests forever); repair without parts has a pity timer (`repairFails`, 25%→100% over 4 attempts) so `wagonBroken + 0 parts` can't softlock; blizzard travel multiplier is 0.25, not lower, or winter mountains become unfinishable.
+*   **Landmarks/rivers** are data-driven from the `LANDMARKS` array (distance, type, ferry flag, fort price multiplier). `checkLandmarks()` caps distance at the landmark and must early-return when `state.riverPending` — otherwise waiting at a river re-rolls its depth every day.
+*   **Hunting minigame:** canvas, step-based (`setInterval` 700 ms hops, not rAF) to stay readable on e-ink. The page uses the standard canvas zoom-exemption CSS block (section 6) so tap coordinates line up. **Sizing:** on open, set `canvas.width/height` from `canvas.clientWidth/clientHeight` (flex-computed) so the drawing buffer matches layout pixels 1:1 — never let CSS stretch a fixed-size canvas buffer (that was the "graphics are stretched" bug). All draw/spawn coordinates are derived from `hunt.W`/`hunt.H`, never hard-coded.
+*   **Trail scene SVG:** viewBox `0 0 300 64` with `.art-scene svg { width: 100%; height: auto; }` so the scene fills the window width at any size. A narrow viewBox (e.g. 100 wide) with fixed CSS height letterboxes into a tiny centered strip on wide windows.
+*   **i18n:** short UI strings are translated in all 10 locale files (`oregontrail.*`); long narrative strings (event/log text) live in `en.json` + in-code fallbacks elsewhere. Dynamic interpolated text goes through the local `tpl()` helper (manual `${var}` replace) — never `window.t(key, vars)`. **Gotcha:** when a rebuilt feature reuses an *existing* locale key but changes the value to include `${...}` placeholders, an add-only-if-missing locale update will keep the old static value and silently show wrong numbers (bit us on `event.fruit` "Gain 30 food"). Overwrite those keys in all 10 locales instead.
+
+### Testing narrative games headlessly
+The game was balance-tested with a Node DOM-stub harness: stub `document`/`localStorage`/`window` (memoized `getElementById`, classList via `Set`, no-op canvas 2d context via `Proxy`), `eval` the extracted `<script>`, then auto-play full runs draining modals each day. This caught: party-wide simultaneous deaths from uniform damage (fixed with per-member `variedDamage`), the starving-rest exploit, repair softlocks, and winter death spirals. Target outcome for a "reasonable player" harness: ~90% win rate with occasional mid-trail wipes; reckless play should still lose. If you change difficulty knobs, re-run a few dozen simulated playthroughs rather than guessing.
 
 ## 📓 Flipbook (flipbook.html) — Frame Corruption & Performance Fixes (2026-07)
 

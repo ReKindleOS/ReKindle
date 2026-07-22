@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+
+    <title>Jumpy</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="js/i18n.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --border: 2px solid #000000;
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+            --rekindle-scale: 1;
+        }
+
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
+
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #e5e5e5;
+
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 460px;
+            min-height: fit-content;
+            max-height: 95vh;
+            overflow-y: auto;
+            position: relative;
+            zoom: 1 !important;
+            transform: none !important;
+        }
+
+        /* TITLE BAR */
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 10px;
+            position: relative;
+            flex-shrink: 0;
+            zoom: var(--rekindle-scale, 1);
+        }
+
+        @supports not (zoom: 1) {
+            .title-bar {
+                transform: scale(var(--rekindle-scale, 1));
+                transform-origin: top center;
+            }
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            z-index: 1;
+            font-size: 1.1rem;
+            display: inline-flex;
+            align-items: center;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        .title-score {
+            font-family: "Courier New", monospace;
+            font-size: 0.8rem;
+            font-weight: bold;
+            background: white;
+            padding: 0 6px;
+            z-index: 2;
+        }
+
+        .title-score-left {
+            position: absolute;
+            left: 40px;
+        }
+
+        .title-right-group {
+            position: absolute;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 0 4px;
+        }
+
+        .title-right-group .title-score {
+            margin-right: 8px;
+        }
+
+        .leaderboard-btn {
+            cursor: pointer;
+            background: white;
+            border: 2px solid black;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        .leaderboard-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .window-content {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            position: relative;
+        }
+
+        canvas {
+            border: 4px solid black;
+            background-color: #fff;
+            display: block;
+            image-rendering: pixelated;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            box-shadow: 4px 4px 0 black;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .ctrl-btn {
+            height: 64px;
+            background: white;
+            border: 2px solid black;
+            font-size: 1.8rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 black;
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        .ctrl-btn:active,
+        .ctrl-btn.pressed {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        #game-over,
+        #leaderboard-modal,
+        #start-game-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 4px double black;
+            padding: 20px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 5px 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .lb-list {
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: "Courier New", monospace;
+            font-size: 0.9rem;
+        }
+
+        .lb-row.me {
+            background: black;
+            color: white;
+        }
+    </style>
+    <script src="theme.js?v=18"></script>
+</head>
+
+<body>
+
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
+            <span class="title-score title-score-left"><span data-i18n="jumpy.label.score">Score</span>: <span id="score">0</span></span>
+            <span class="title-text" data-i18n="jumpy.title">Jumpy</span>
+            <div class="title-right-group">
+                <span class="title-score"><span data-i18n="jumpy.label.high_score">High</span>: <span id="high-score">0</span></span>
+                <button class="leaderboard-btn" onclick="openLeaderboard()"
+                    data-i18n="jumpy.btn.leaderboard">Leaderboard</button>
+            </div>
+        </div>
+
+        <div class="window-content">
+            <canvas id="gameCanvas" width="256" height="384"></canvas>
+
+            <div class="controls">
+                <div class="ctrl-btn" id="btn-left">◀</div>
+                <div class="ctrl-btn" id="btn-right">▶</div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h2 data-i18n="jumpy.label.game_over">GAME OVER</h2>
+            <p><span data-i18n="jumpy.label.score">Score</span>: <span id="final-score">0</span></p>
+            <button class="sys-btn" onclick="resetGame()" data-i18n="jumpy.btn.retry">Retry</button>
+        </div>
+
+        <div id="start-game-modal" style="display: block;">
+            <h2 data-i18n="jumpy.label.ready">Jumpy</h2>
+            <p data-i18n="jumpy.label.instructions">Bounce upward from platform to platform. Move with the buttons, arrow keys, or by touching the sides of the screen. Don't fall!</p>
+            <button class="sys-btn" onclick="startGame()" data-i18n="jumpy.btn.start">Start Game</button>
+        </div>
+
+        <div id="leaderboard-modal">
+            <h3 data-i18n="jumpy.label.top_players">Top Jumpers</h3>
+            <div class="lb-list" id="lb-content" data-i18n="jumpy.status.loading">
+                Loading...
+            </div>
+            <button class="sys-btn" onclick="document.getElementById('leaderboard-modal').style.display='none'"
+                data-i18n="jumpy.btn.close">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        if (typeof firebase !== 'undefined' && typeof firebase.initializeApp === 'function') {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            } else {
+                firebase.app();
+            }
+        }
+        const db = (typeof firebase !== 'undefined' && typeof firebase.firestore === 'function') ? firebase.firestore() : null;
+        const auth = (typeof firebase !== 'undefined' && typeof firebase.auth === 'function') ? firebase.auth() : null;
+
+        let uid = null;
+        let username = "Guest";
+        let personalHighScore = 0;
+
+        // --- GAME CONSTANTS (fixed 60Hz timestep, units are buffer px per step) ---
+        // TIME_SCALE slows simulated time for e-ink refresh rates. Scaling time
+        // (instead of gravity/jump velocity) keeps every jump arc and platform
+        // generator reachability invariant identical, just slower on screen.
+        const TIME_SCALE = 0.55;
+        const W = 256;
+        const H = 384;
+        const GRAVITY = 0.35;
+        const JUMP_V = -10.8;
+        const SPRING_V = -16.5;
+        const MOVE_SPEED = 3.6;
+        const PLAYER_W = 20;
+        const PLAYER_H = 20;
+        const PLAT_H = 6;
+        const STEP_MS = 1000 / 60;
+        const CAM_LINE = Math.floor(H * 0.45);
+        const TYPE_NORMAL = 0;
+        const TYPE_MOVING = 1;
+        const TYPE_BREAK = 2;
+
+        let canvas, ctx;
+        let gameLoop = null;
+        let lastTime = 0;
+        let accumulator = 0;
+        let isGameOver = false;
+        let player = { x: 0, y: 0, vy: 0, facing: 1 };
+        let platforms = [];
+        let camY = 0;
+        let maxHeight = 0;
+        let score = 0;
+        let platformCount = 0;
+        let lastBouncableY = 0;
+        let lastBouncableX = W / 2;
+        let lastBouncableType = TYPE_NORMAL;
+        let moveLeft = false;
+        let moveRight = false;
+        const moveSrc = { keyL: false, keyR: false, btnL: false, btnR: false, tchL: false, tchR: false };
+        let canvasPointerId = null;
+
+        function syncMove() {
+            moveLeft = moveSrc.keyL || moveSrc.btnL || moveSrc.tchL;
+            moveRight = moveSrc.keyR || moveSrc.btnR || moveSrc.tchR;
+        }
+
+        function currentMaxGap() {
+            return 55 + Math.min(60, Math.floor(score * 0.12));
+        }
+
+        function currentPlatWidth() {
+            return Math.max(30, 46 - Math.floor(score / 60));
+        }
+
+        function genNextPlatform() {
+            const prev = platforms[platforms.length - 1];
+            const gap = 45 + Math.random() * (currentMaxGap() - 45);
+            const w = currentPlatWidth();
+            const dx = (Math.random() * 2 - 1) * 120;
+            let x = prev.x + prev.w / 2 + dx - w / 2;
+            if (x < 4) x = 4;
+            if (x > W - 4 - w) x = W - 4 - w;
+
+            let type = TYPE_NORMAL;
+            if (platformCount >= 6) {
+                const pMove = Math.min(0.25, score * 0.0008);
+                const pBreak = Math.min(0.20, score * 0.0006);
+                const r = Math.random();
+                if (r < pBreak) type = TYPE_BREAK;
+                else if (r < pBreak + pMove) type = TYPE_MOVING;
+            }
+
+            let y = prev.y - gap;
+            // Breakables don't bounce, so the bouncable chain needs invariants:
+            // 1) a breakable only spawns within 55px above the last bouncable
+            //    platform, leaving room (>=45px) for the next bouncable one;
+            // 2) every bouncable platform is at most 100px above the previous
+            //    bouncable one (max jump height is ~166px);
+            // 3) bouncable-to-bouncable horizontal distance is capped, since dx
+            //    chaining through breakables could otherwise exceed jump range.
+            if (type === TYPE_BREAK && lastBouncableY - y > 55) {
+                type = TYPE_NORMAL;
+            }
+            // No two moving platforms in a row in the bouncable chain: at high
+            // speed a moving pair can phase away together and become untimeable
+            // on a low-refresh e-ink screen.
+            if (type === TYPE_MOVING && lastBouncableType === TYPE_MOVING) {
+                type = TYPE_NORMAL;
+            }
+            if (type !== TYPE_BREAK) {
+                if (lastBouncableY - y > 100) {
+                    y = lastBouncableY - 100;
+                }
+                const maxDx = 110;
+                const cNew = x + w / 2;
+                if (cNew - lastBouncableX > maxDx) x = lastBouncableX + maxDx - w / 2;
+                else if (lastBouncableX - cNew > maxDx) x = lastBouncableX - maxDx - w / 2;
+                if (x < 4) x = 4;
+                if (x > W - 4 - w) x = W - 4 - w;
+                lastBouncableY = y;
+                lastBouncableX = x + w / 2;
+                lastBouncableType = type;
+            }
+
+            platforms.push({
+                x: x,
+                y: y,
+                w: w,
+                type: type,
+                dir: Math.random() < 0.5 ? -1 : 1,
+                speed: 0.5 + Math.min(0.7, score * 0.0023),
+                broken: false,
+                vy: 0,
+                spring: type === TYPE_NORMAL && Math.random() < 0.07
+            });
+            platformCount++;
+        }
+
+        function setupWorld() {
+            platforms = [{
+                x: 0, y: 0, w: W, type: TYPE_NORMAL,
+                dir: 1, speed: 0, broken: false, vy: 0, spring: false
+            }];
+            platformCount = 1;
+            lastBouncableY = 0;
+            lastBouncableX = W / 2;
+            lastBouncableType = TYPE_NORMAL;
+            score = 0;
+            maxHeight = 0;
+            document.getElementById('score').innerText = '0';
+
+            player.x = W / 2 - PLAYER_W / 2;
+            player.y = -PLAYER_H;
+            player.vy = JUMP_V;
+            player.facing = 1;
+            camY = -(H - 40);
+
+            while (platforms[platforms.length - 1].y > camY - 120) {
+                genNextPlatform();
+            }
+        }
+
+        function step() {
+            if (moveLeft && !moveRight) {
+                player.x -= MOVE_SPEED;
+                player.facing = -1;
+            } else if (moveRight && !moveLeft) {
+                player.x += MOVE_SPEED;
+                player.facing = 1;
+            }
+            if (player.x > W) player.x = -PLAYER_W;
+            else if (player.x < -PLAYER_W) player.x = W;
+
+            const oldY = player.y;
+            player.vy += GRAVITY;
+            if (player.vy > 15) player.vy = 15;
+            player.y += player.vy;
+
+            let i, p;
+            for (i = 0; i < platforms.length; i++) {
+                p = platforms[i];
+                if (p.broken) {
+                    p.vy += GRAVITY;
+                    p.y += p.vy;
+                } else if (p.type === TYPE_MOVING) {
+                    p.x += p.dir * p.speed;
+                    if (p.x < 2) { p.x = 2; p.dir = 1; }
+                    else if (p.x + p.w > W - 2) { p.x = W - 2 - p.w; p.dir = -1; }
+                }
+            }
+
+            if (player.vy > 0) {
+                const prevBottom = oldY + PLAYER_H;
+                const newBottom = player.y + PLAYER_H;
+                for (i = platforms.length - 1; i >= 0; i--) {
+                    p = platforms[i];
+                    if (p.broken) continue;
+                    if (prevBottom <= p.y + 2 && newBottom >= p.y &&
+                        player.x + PLAYER_W > p.x + 2 && player.x < p.x + p.w - 2) {
+                        if (p.type === TYPE_BREAK) {
+                            p.broken = true;
+                            p.vy = 1;
+                        } else {
+                            player.y = p.y - PLAYER_H;
+                            player.vy = p.spring ? SPRING_V : JUMP_V;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (player.y - camY < CAM_LINE) {
+                camY = player.y - CAM_LINE;
+            }
+
+            while (platforms.length && platforms[0].y - camY > H + 60) {
+                platforms.shift();
+            }
+            while (platforms[platforms.length - 1].y > camY - 120) {
+                genNextPlatform();
+            }
+
+            const h = -player.y;
+            if (h > maxHeight) {
+                maxHeight = h;
+                const ns = Math.floor(maxHeight / 50);
+                if (ns !== score) {
+                    score = ns;
+                    document.getElementById('score').innerText = score;
+                }
+            }
+
+            if (player.y - camY > H + 30) {
+                endGame();
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, W, H);
+
+            ctx.fillStyle = 'black';
+            const startK = Math.floor(camY / 128) - 1;
+            for (let k = startK; k < startK + 6; k++) {
+                const gy = k * 128 - camY;
+                if (gy < 0 || gy > H) continue;
+                for (let gx = 4; gx < W; gx += 16) {
+                    ctx.fillRect(gx, gy, 2, 1);
+                }
+            }
+
+            for (let i = 0; i < platforms.length; i++) {
+                drawPlatform(platforms[i]);
+            }
+            drawPlayer();
+        }
+
+        function drawPlatform(p) {
+            const x = Math.round(p.x);
+            const y = Math.round(p.y - camY);
+            if (y < -20 || y > H + 20) return;
+            const w = Math.round(p.w);
+            ctx.fillStyle = 'black';
+
+            if (p.type === TYPE_NORMAL) {
+                ctx.fillRect(x, y, w, PLAT_H);
+            } else if (p.type === TYPE_MOVING) {
+                ctx.fillRect(x, y, w, 2);
+                ctx.fillRect(x, y + PLAT_H - 2, w, 2);
+                ctx.fillRect(x, y, 2, PLAT_H);
+                ctx.fillRect(x + w - 2, y, 2, PLAT_H);
+                const cx = x + Math.floor(w / 2);
+                ctx.fillRect(cx - 1, y + 2, 2, PLAT_H - 4);
+            } else {
+                ctx.fillRect(x, y, w, 2);
+                ctx.fillRect(x, y + 3, w, 2);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x + Math.floor(w / 3), y, 2, 5);
+                ctx.fillRect(x + Math.floor(2 * w / 3), y, 2, 5);
+                ctx.fillStyle = 'black';
+            }
+
+            if (p.spring) {
+                const sx = x + Math.floor(w / 2) - 4;
+                ctx.fillRect(sx, y - 7, 8, 2);
+                ctx.fillRect(sx + 2, y - 5, 2, 2);
+                ctx.fillRect(sx + 4, y - 3, 2, 2);
+            }
+        }
+
+        function drawPlayer() {
+            const x = Math.round(player.x);
+            const y = Math.round(player.y - camY);
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 3, y + 2, 14, 4);
+            ctx.fillRect(x + 1, y + 6, 18, 8);
+            ctx.fillRect(x + 3, y + 14, 14, 3);
+            ctx.fillRect(x + 4, y + 17, 3, 3);
+            ctx.fillRect(x + 13, y + 17, 3, 3);
+            ctx.fillStyle = 'white';
+            if (player.facing >= 0) {
+                ctx.fillRect(x + 11, y + 7, 3, 3);
+                ctx.fillRect(x + 15, y + 7, 3, 3);
+            } else {
+                ctx.fillRect(x + 2, y + 7, 3, 3);
+                ctx.fillRect(x + 6, y + 7, 3, 3);
+            }
+        }
+
+        function loop(ts) {
+            if (isGameOver) return;
+            if (!lastTime) lastTime = ts;
+            let dt = ts - lastTime;
+            lastTime = ts;
+            if (dt > 250) dt = 250;
+            accumulator += dt * TIME_SCALE;
+            while (accumulator >= STEP_MS) {
+                accumulator -= STEP_MS;
+                step();
+                if (isGameOver) break;
+            }
+            draw();
+            if (!isGameOver) gameLoop = requestAnimationFrame(loop);
+        }
+
+        function endGame() {
+            if (isGameOver) return;
+            isGameOver = true;
+            if (gameLoop) cancelAnimationFrame(gameLoop);
+            gameLoop = null;
+            saveHighScore(score);
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'block';
+            draw();
+        }
+
+        function resetGame() {
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            setupWorld();
+            if (gameLoop) cancelAnimationFrame(gameLoop);
+            lastTime = 0;
+            accumulator = 0;
+            gameLoop = requestAnimationFrame(loop);
+        }
+
+        function startGame() {
+            document.getElementById('start-game-modal').style.display = 'none';
+            resetGame();
+        }
+
+        // --- INPUT ---
+        function bindHoldButton(el, prop) {
+            el.addEventListener('pointerdown', function (e) {
+                moveSrc[prop] = true;
+                el.classList.add('pressed');
+                syncMove();
+                e.preventDefault();
+            });
+            function release() {
+                moveSrc[prop] = false;
+                el.classList.remove('pressed');
+                syncMove();
+            }
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('pointercancel', release);
+        }
+
+        function canvasSide(e) {
+            const rect = canvas.getBoundingClientRect();
+            return (e.clientX - rect.left) < rect.width / 2 ? 'L' : 'R';
+        }
+
+        function setupInput() {
+            document.addEventListener('keydown', function (e) {
+                if (['ArrowLeft', 'ArrowRight', ' '].indexOf(e.key) !== -1) {
+                    e.preventDefault();
+                }
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { moveSrc.keyL = true; syncMove(); }
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { moveSrc.keyR = true; syncMove(); }
+            });
+            document.addEventListener('keyup', function (e) {
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { moveSrc.keyL = false; syncMove(); }
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { moveSrc.keyR = false; syncMove(); }
+            });
+
+            bindHoldButton(document.getElementById('btn-left'), 'btnL');
+            bindHoldButton(document.getElementById('btn-right'), 'btnR');
+
+            canvas.addEventListener('pointerdown', function (e) {
+                canvasPointerId = e.pointerId;
+                if (canvasSide(e) === 'L') { moveSrc.tchL = true; moveSrc.tchR = false; }
+                else { moveSrc.tchR = true; moveSrc.tchL = false; }
+                syncMove();
+                e.preventDefault();
+            });
+            canvas.addEventListener('pointermove', function (e) {
+                if (e.pointerId !== canvasPointerId) return;
+                if (canvasSide(e) === 'L') { moveSrc.tchL = true; moveSrc.tchR = false; }
+                else { moveSrc.tchR = true; moveSrc.tchL = false; }
+                syncMove();
+            });
+            function endTouch(e) {
+                if (e.pointerId !== canvasPointerId) return;
+                canvasPointerId = null;
+                moveSrc.tchL = false;
+                moveSrc.tchR = false;
+                syncMove();
+            }
+            canvas.addEventListener('pointerup', endTouch);
+            canvas.addEventListener('pointercancel', endTouch);
+        }
+
+        // --- CANVAS SIZING (portrait 2:3, measured from leftover vertical space) ---
+        function resizeCanvas() {
+            if (!canvas) return;
+            const win = document.querySelector('.window');
+            const content = document.querySelector('.window-content');
+            const maxW = Math.min(content.clientWidth - 30, 400);
+            const maxWindowH = Math.floor(window.innerHeight * 0.95);
+            const othersH = win.offsetHeight - canvas.offsetHeight;
+            const allowedCanvasBox = maxWindowH - othersH;
+            const wByH = Math.floor(allowedCanvasBox * 2 / 3);
+            let w = Math.floor(Math.min(maxW, wByH - 8));
+            if (w < 128) w = 128;
+            canvas.style.width = w + 'px';
+            canvas.style.height = Math.floor(w * 3 / 2) + 'px';
+        }
+
+        window.addEventListener('pageshow', function () {
+            initializePage();
+        });
+
+        function initializePage() {
+            const onAuthReady = new Promise(function (resolve) {
+                if (auth && auth.currentUser) {
+                    uid = auth.currentUser.uid;
+                    username = auth.currentUser.email ? auth.currentUser.email.split('@')[0] : "Guest";
+                    return resolve();
+                }
+                if (!auth) return resolve();
+                const unsubscribe = auth.onAuthStateChanged(function (user) {
+                    if (user) {
+                        uid = user.uid;
+                        username = user.email ? user.email.split('@')[0] : "Guest";
+                    }
+                    unsubscribe();
+                    return resolve();
+                });
+            });
+
+            onAuthReady.then(function () {
+                initGame();
+            });
+        }
+
+        function initGame() {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('orientationchange', resizeCanvas);
+            window.addEventListener('load', resizeCanvas);
+            setTimeout(resizeCanvas, 100);
+            setTimeout(resizeCanvas, 500);
+
+            setupInput();
+            setupWorld();
+            draw();
+
+            loadPersonalHighScore();
+        }
+
+        // --- HIGHSCORE LOGIC ---
+        async function loadPersonalHighScore() {
+            const localHigh = localStorage.getItem('jumpy_highscore_v1');
+            if (localHigh) personalHighScore = parseInt(localHigh);
+
+            if (uid && db) {
+                try {
+                    const doc = await db.collection('leaderboard_jumpy').doc(uid).get();
+                    if (doc.exists) {
+                        const cloudHigh = doc.data().score;
+                        if (cloudHigh > personalHighScore) {
+                            personalHighScore = cloudHigh;
+                            localStorage.setItem('jumpy_highscore_v1', cloudHigh);
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+            document.getElementById('high-score').innerText = personalHighScore;
+        }
+
+        async function saveHighScore(newScore) {
+            if (newScore > personalHighScore) {
+                personalHighScore = newScore;
+                document.getElementById('high-score').innerText = personalHighScore;
+                localStorage.setItem('jumpy_highscore_v1', personalHighScore);
+
+                if (uid && db) {
+                    try {
+                        await db.collection('leaderboard_jumpy').doc(uid).set({
+                            username: username,
+                            score: newScore,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch (e) { console.error(e); }
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        // --- LEADERBOARD UI ---
+        async function openLeaderboard() {
+            const modal = document.getElementById('leaderboard-modal');
+            modal.style.display = 'block';
+            const list = document.getElementById('lb-content');
+            list.innerText = window.t ? window.t('jumpy.status.loading', 'Loading...') : 'Loading...';
+            list.removeAttribute('data-i18n');
+
+            const user = auth ? auth.currentUser : null;
+            if (user && db) {
+                try {
+                    const snapshot = await db.collection('leaderboard_jumpy')
+                        .orderBy('score', 'desc')
+                        .limit(10)
+                        .get();
+
+                    list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerText = window.t ? window.t('jumpy.status.no_scores', 'No scores yet!') : "No scores yet!";
+                        return;
+                    }
+                    let rank = 1;
+                    snapshot.forEach(function (doc) {
+                        const data = doc.data();
+                        const isMe = (doc.id === user.uid);
+                        const div = document.createElement('div');
+                        div.className = 'lb-row ' + (isMe ? 'me' : '');
+
+                        const rankSpan = document.createElement('span');
+                        rankSpan.textContent = rank + '. ' + escapeHtml(data.username);
+                        const scoreSpan = document.createElement('span');
+                        scoreSpan.textContent = data.score;
+
+                        div.appendChild(rankSpan);
+                        div.appendChild(scoreSpan);
+                        list.appendChild(div);
+                        rank++;
+                    });
+                } catch (e) {
+                    console.error("Error loading leaderboard:", e);
+                    list.innerText = window.t ? window.t('jumpy.status.error_loading', 'Error loading scores.') : "Error loading scores.";
+                }
+            } else {
+                list.innerText = window.t ? window.t('jumpy.status.login_required', 'Log in to see global scores.') : "Log in to see global scores.";
+            }
+        }
+    </script>
+
+</body>
+
+</html>
