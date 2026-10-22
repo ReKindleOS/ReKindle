@@ -4,9 +4,9 @@
     // Automatically strip .html from URL bar
     if (window.location.pathname.endsWith('.html')) {
         var cleanUrl = window.location.pathname.replace('.html', '');
-        // Keep the query string: ?kiosk=1, ?lang=de and ?login=true are read
-        // later by theme.js / i18n / index and must survive the pretty-URL
-        // rewrite (the local .html test URLs depend on this).
+        // Keep the query string: ?lang=de and ?login=true are read later by
+        // i18n / index and must survive the pretty-URL rewrite (the local
+        // .html test URLs depend on this).
         window.history.replaceState(null, '', cleanUrl + window.location.search);
     }
 
@@ -16,133 +16,6 @@
     var AUTO_END_HOUR = 6;    // 6 AM
     var ROTATION_KEY = 'rekindle_rotation'; // '0', '90', '180', '270'
     var FONT_KEY = 'rekindle_font_opendyslexic'; // 'true', 'false'
-
-    // --- KIOSK / FULLSCREEN LAUNCHER MODE ---
-    // The "ReKindle Fullscreen" scriptlet for jailbroken Kindles stops the
-    // Kindle GUI and opens https://rekindle.ink/?kiosk=1. The flag persists in
-    // localStorage so every in-app navigation stays full-bleed, and ?kiosk=0
-    // (or Settings > Kindle Fullscreen) turns it off again.
-    //
-    // Keep this CSS scoped to html.rekindle-kiosk: normal browser users must
-    // not pay for it. It only runs when the flag is set.
-    var KIOSK_KEY = 'rekindle_kiosk';
-    var KIOSK_CLASS = 'rekindle-kiosk';
-
-    function getUrlParam(name) {
-        var search = window.location.search || '';
-        var parts = search.replace(/^\?/, '').split('&');
-        for (var i = 0; i < parts.length; i++) {
-            var pair = parts[i].split('=');
-            var key = pair[0] || '';
-            try { key = decodeURIComponent(key.replace(/\+/g, ' ')); } catch (e) { }
-            if (key !== name) continue;
-            var value = pair.length > 1 ? pair.slice(1).join('=') : '';
-            try { value = decodeURIComponent(value.replace(/\+/g, ' ')); } catch (e) { }
-            return value;
-        }
-        return null;
-    }
-
-    function readKioskFlag() {
-        try {
-            var param = getUrlParam('kiosk');
-            if (param === '1') localStorage.setItem(KIOSK_KEY, '1');
-            else if (param === '0') localStorage.removeItem(KIOSK_KEY);
-            return localStorage.getItem(KIOSK_KEY) === '1';
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function injectKioskStyles() {
-        if (document.getElementById('rekindle-kiosk-style')) return;
-        var style = document.createElement('style');
-        style.id = 'rekindle-kiosk-style';
-        // System 7 stays visible (title bars, borders on inner content) but the
-        // desktop frame, outer window border and body padding are removed.
-        // calc() is used instead of min()/max()/clamp() for Chromium 75.
-        style.textContent =
-            'html.rekindle-kiosk, html.rekindle-kiosk body {' +
-            ' width: 100% !important; height: 100% !important;' +
-            ' margin: 0 !important; padding: 0 !important;' +
-            ' background: #ffffff !important; background-image: none !important;' +
-            ' overflow: hidden !important;' +
-            '}' +
-            'html.rekindle-kiosk body {' +
-            ' display: block !important; position: fixed !important;' +
-            ' top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;' +
-            '}' +
-            'html.rekindle-kiosk .window {' +
-            ' position: fixed !important; top: 0 !important; left: 0 !important;' +
-            ' width: 100vw !important;' +
-            ' width: calc(100vw / var(--rekindle-scale, 1)) !important;' +
-            ' height: 100vh !important;' +
-            ' height: calc(100vh / var(--rekindle-scale, 1)) !important;' +
-            ' max-width: none !important; max-height: none !important;' +
-            ' margin: 0 !important; border: none !important; box-shadow: none !important;' +
-            '}' +
-            'html.rekindle-kiosk .window.fullscreen {' +
-            ' width: 100vw !important;' +
-            ' width: calc(100vw / var(--rekindle-scale, 1)) !important;' +
-            ' height: 100vh !important;' +
-            ' height: calc(100vh / var(--rekindle-scale, 1)) !important;' +
-            ' top: 0 !important; left: 0 !important;' +
-            '}' +
-            'html.rekindle-kiosk .sys-menu-bar {' +
-            ' position: fixed !important; top: 0 !important; left: 0 !important;' +
-            ' width: 100vw !important;' +
-            ' width: calc(100vw / var(--rekindle-scale, 1)) !important;' +
-            ' z-index: 950 !important;' +
-            '}' +
-            'html.rekindle-kiosk .desktop-wrapper {' +
-            ' position: fixed !important; left: 0 !important;' +
-            ' top: 35px !important;' +
-            ' top: calc(35px * var(--rekindle-scale, 1)) !important;' +
-            ' width: 100vw !important;' +
-            ' width: calc(100vw / var(--rekindle-scale, 1)) !important;' +
-            ' height: calc(100vh - 35px) !important;' +
-            ' height: calc((100vh - (35px * var(--rekindle-scale, 1))) / var(--rekindle-scale, 1)) !important;' +
-            ' max-width: none !important; max-height: none !important;' +
-            ' margin: 0 !important;' +
-            '}' +
-            'html.rekindle-kiosk .dashboard {' +
-            ' border: none !important; box-shadow: none !important;' +
-            '}' +
-            // Kiosk raises .window to fill the viewport; keep body-level modal
-            // overlays above it (chess and others use z-index 100).
-            'html.rekindle-kiosk .modal-overlay {' +
-            ' z-index: 10000 !important;' +
-            '}' +
-            'html.rekindle-kiosk .folder-tabs-container {' +
-            ' margin-top: 0 !important;' +
-            '}';
-        (document.head || document.documentElement).appendChild(style);
-    }
-
-    function applyKioskMode() {
-        var on = readKioskFlag();
-        if (on) {
-            document.documentElement.classList.add(KIOSK_CLASS);
-            injectKioskStyles();
-        } else {
-            document.documentElement.classList.remove(KIOSK_CLASS);
-            var style = document.getElementById('rekindle-kiosk-style');
-            if (style && style.parentNode) style.parentNode.removeChild(style);
-        }
-        return on;
-    }
-
-    window.rekindleSetKiosk = function (on) {
-        try {
-            if (on) localStorage.setItem(KIOSK_KEY, '1');
-            else localStorage.removeItem(KIOSK_KEY);
-        } catch (e) { }
-        applyKioskMode();
-    };
-    window.rekindleIsKiosk = function () {
-        return document.documentElement.classList.contains(KIOSK_CLASS);
-    };
-    applyKioskMode();
 
     // Temporarily force light mode while dark mode is disabled.
     var storedMode = localStorage.getItem(THEME_KEY);

@@ -7,7 +7,7 @@
  *   - scriptlet metadata/syntax and version consistency
  *   - the dry-run plan (URL, flags, power-watch, GUI hand-off)
  *   - the generated zip layout, executable bits and checksums
- *   - the kiosk contract between theme.js, Settings and the guide page
+ *   - the normal framed-layout contract (no app-level fullscreen)
  *   - cache-buster coverage for the shared theme.js
  */
 const assert = require('assert');
@@ -58,7 +58,9 @@ try {
     assert.match(launcher, /preventScreenSaver/, 'launcher must manage the screensaver');
     assert.match(launcher, /--js-flags=jitless/, 'launcher must disable JIT');
     assert.match(launcher, /--content-shell-hide-toolbar/, 'launcher must hide the browser toolbar');
-    assert.match(launcher, /https:\/\/rekindle\.ink\/\?kiosk=1/, 'default URL must enable kiosk mode');
+    assert.match(launcher, /^# Icon: \/mnt\/us\/documents\/ReKindleCover\.png$/m, 'launcher must use the library cover');
+    assert.match(launcher, /https:\/\/rekindle\.ink\/$/m, 'default URL must be the normal ReKindle site');
+    assert.ok(!launcher.includes('?kiosk=1'), 'launcher must not enable app-level fullscreen');
     assert.ok(!/rm\s+-rf\s+\/(\s|$)/.test(launcher), 'launcher must never rm -rf /');
 
     section('dry-run plan');
@@ -68,7 +70,7 @@ try {
     });
     for (const needle of [
         `PLAN: version=${version}`,
-        'PLAN: url=https://rekindle.ink/?kiosk=1',
+        'PLAN: url=https://rekindle.ink/',
         'PLAN: browser=/usr/bin/chromium/bin/kindle_browser',
         'prevent-screensaver',
         'stop-gui',
@@ -83,30 +85,25 @@ try {
         assert.ok(plan.includes(needle), `dry-run output is missing: ${needle}`);
     }
 
-    section('web kiosk contract');
+    section('normal display contract');
     const theme = read('theme.js');
-    assert.match(theme, /KIOSK_KEY = 'rekindle_kiosk'/, 'theme.js must use the rekindle_kiosk key');
-    assert.match(theme, /getUrlParam\('kiosk'\)/, 'theme.js must parse ?kiosk');
-    assert.match(theme, /window\.rekindleSetKiosk = function/, 'theme.js must expose rekindleSetKiosk');
-    assert.match(theme, /html\.rekindle-kiosk \.window/, 'theme.js must inject kiosk window CSS');
-    assert.match(theme, /cleanUrl \+ window\.location\.search/, 'the pretty-URL rewrite must preserve ?kiosk / ?lang');
-    assert.match(theme, /html\.rekindle-kiosk \.modal-overlay/, 'kiosk must raise body-level modal overlays');
-    assert.ok(!theme.includes("' z-index: 900 !important;'"), 'kiosk must not raise .window above body modals');
+    assert.ok(!theme.includes('rekindle-kiosk'), 'theme.js must not include kiosk CSS');
+    assert.ok(!theme.includes('rekindle_kiosk'), 'theme.js must not include the kiosk flag');
+    assert.match(theme, /cleanUrl \+ window\.location\.search/, 'the pretty-URL rewrite must preserve ?lang / ?login');
     assert.ok(!theme.includes('?.') && !theme.includes('??'), 'theme.js must stay ES2019-safe');
 
     const settings = read('settings.html');
-    assert.match(settings, /id="toggle-kiosk"/, 'Settings is missing the kiosk toggle');
-    assert.match(settings, /toggleService\('kiosk'\)/, 'Settings must handle the kiosk toggle');
-    assert.match(settings, /rekindle_kiosk/, 'Settings must persist rekindle_kiosk');
+    assert.ok(!settings.includes('toggle-kiosk'), 'Settings must not include the kiosk toggle');
+    assert.ok(!settings.includes('rekindle_kiosk'), 'Settings must not persist a kiosk flag');
 
     for (const lang of ['en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'ru', 'vi', 'zh']) {
         const strings = JSON.parse(fs.readFileSync(path.join(root, 'locales', `${lang}.json`), 'utf8'));
-        assert.ok(strings['settings.kindle_fullscreen'], `${lang}.json is missing settings.kindle_fullscreen`);
-        assert.ok(strings['settings.desc.kindle_fullscreen'], `${lang}.json is missing settings.desc.kindle_fullscreen`);
+        assert.ok(!strings['settings.kindle_fullscreen'], `${lang}.json still has settings.kindle_fullscreen`);
+        assert.ok(!strings['settings.desc.kindle_fullscreen'], `${lang}.json still has settings.desc.kindle_fullscreen`);
     }
 
     const sw = read('sw.js');
-    assert.match(sw, /'\.\/theme\.js\?v=22'/, 'sw.js must precache theme.js?v=22');
+    assert.match(sw, /'\.\/theme\.js\?v=23'/, 'sw.js must precache theme.js?v=23');
 
     const guide = read('kindle.html');
     for (const needle of [
@@ -114,14 +111,19 @@ try {
         'downloads/ReKindle.sh',
         'downloads/ReKindle.txt',
         'downloads/ReKindleStop.sh',
-        'downloads/ReKindleStop.txt',
         'download="ReKindle.sh"',
         'kindle.sh',
         'kindle.txt',
+        'kpm add-repo',
+        'kpm update',
+        'kpm install rekindle-fullscreen',
+        'rekindle.ink/downloads/kpm/repo.json',
+        'Invalid file type',
+        'rekindleApplyWallpaper',
         'kindlemodding.org/jailbreak-wizard.html',
         'Kindle Fullscreen',
-        '?kiosk=0',
-        'theme.js?v=22'
+        'normal framed layout',
+        'theme.js?v=23'
     ]) {
         assert.ok(guide.includes(needle), `kindle.html is missing: ${needle}`);
     }
@@ -131,6 +133,7 @@ try {
     assert.match(headers, /\/downloads\/ReKindle\.txt[\s\S]*filename="ReKindle\.sh"/, '.txt alias must save as ReKindle.sh');
     assert.match(headers, /\/kindle\.sh[\s\S]*filename="ReKindle\.sh"/, '/kindle.sh must save as ReKindle.sh');
     assert.match(headers, /\/kindle\.txt[\s\S]*filename="ReKindle\.sh"/, '/kindle.txt must save as ReKindle.sh');
+    assert.match(headers, /\/downloads\/kpm\/\*[\s\S]*Cache-Control: no-cache/, 'KPM repo/package must not be cached');
 
     const help = read('help-data.js');
     assert.ok(help.includes("id: 'kindle-fullscreen'"), 'help-data.js is missing the Kindle Fullscreen article');
@@ -147,6 +150,7 @@ try {
         'documents/',
         'documents/ReKindle.sh',
         'documents/ReKindleStop.sh',
+        'documents/ReKindleCover.png',
         'README.txt',
         'rekindle-fullscreen.conf.example',
         'SHA256SUMS.txt'
@@ -160,6 +164,7 @@ try {
         const mode = fs.statSync(path.join(extract, file)).mode & 0o777;
         assert.strictEqual(mode, 0o755, `${file} must be executable in the zip`);
     }
+    assert.strictEqual(fs.statSync(path.join(extract, 'documents/ReKindleCover.png')).mode & 0o777, 0o644, 'cover must not be executable');
 
     const sums = fs.readFileSync(path.join(extract, 'SHA256SUMS.txt'), 'utf8').trim().split('\n');
     for (const line of sums) {
@@ -169,7 +174,7 @@ try {
     }
 
     section('guide downloads');
-    for (const file of ['ReKindle.sh', 'ReKindle.txt', 'ReKindleStop.sh', 'ReKindleStop.txt', 'SHA256SUMS.txt']) {
+    for (const file of ['ReKindle.sh', 'ReKindle.txt', 'ReKindleStop.sh', 'ReKindleStop.txt', 'ReKindleCover.png', 'SHA256SUMS.txt']) {
         assert.ok(fs.existsSync(path.join(outDir, file)), `standalone ${file} missing`);
     }
 
@@ -179,6 +184,38 @@ try {
         assert.ok(match, `bad download checksum line: ${line}`);
         assert.strictEqual(sha256(path.join(outDir, match[2])), match[1], `download checksum mismatch for ${match[2]}`);
     }
+
+    section('kpm package');
+    const kpmDir = path.join(outDir, 'kpm');
+    const repo = JSON.parse(fs.readFileSync(path.join(kpmDir, 'repo.json'), 'utf8'));
+    assert.strictEqual(repo.manifest_version, 2);
+    assert.strictEqual(repo.id, 'rekindle');
+    const pkg = repo.packages['rekindle-fullscreen'];
+    assert.ok(pkg, 'repo is missing the rekindle-fullscreen package');
+    assert.strictEqual(pkg.artifacts.length, 1);
+    const artifact = pkg.artifacts[0];
+    assert.deepStrictEqual(artifact.version, version.split('.').map(function (n) { return parseInt(n, 10); }));
+    assert.deepStrictEqual(artifact.supported_platforms, ['kindlehf']);
+
+    const kpkg = path.join(kpmDir, artifact.url);
+    assert.ok(fs.existsSync(kpkg), 'KPM artifact is missing');
+    const kpmEntries = execFileSync('tar', ['-tzf', kpkg], { encoding: 'utf8' })
+        .split('\n').filter(Boolean);
+    for (const entry of ['manifest.json', 'install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh', 'ReKindleCover.png']) {
+        assert.ok(kpmEntries.includes(entry), `KPM package is missing ${entry}`);
+    }
+
+    const kpmExtract = path.join(tmp, 'kpm-extract');
+    fs.mkdirSync(kpmExtract, { recursive: true });
+    execFileSync('tar', ['-xzf', kpkg, '-C', kpmExtract], { stdio: 'pipe' });
+    const kpmManifest = JSON.parse(fs.readFileSync(path.join(kpmExtract, 'manifest.json'), 'utf8'));
+    assert.strictEqual(kpmManifest.id, 'rekindle-fullscreen');
+    assert.deepStrictEqual(kpmManifest.version, artifact.version);
+    const installHook = fs.readFileSync(path.join(kpmExtract, 'install.sh'), 'utf8');
+    assert.match(installHook, /cp -f \.\/ReKindle\.sh \/mnt\/us\/documents\/ReKindle\.sh/);
+    assert.match(installHook, /cp -f \.\/ReKindleCover\.png \/mnt\/us\/documents\/ReKindleCover\.png/);
+    execFileSync('sh', ['-n', path.join(kpmExtract, 'install.sh')], { stdio: 'pipe' });
+    execFileSync('sh', ['-n', path.join(kpmExtract, 'uninstall.sh')], { stdio: 'pipe' });
 
     console.log('PASS - Kindle Fullscreen checks');
 } finally {

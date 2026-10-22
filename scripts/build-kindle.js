@@ -52,6 +52,7 @@ async function stagePackage(stage) {
 
     await fs.copy(path.join(SOURCE, 'ReKindle.sh'), path.join(documents, 'ReKindle.sh'));
     await fs.copy(path.join(SOURCE, 'ReKindleStop.sh'), path.join(documents, 'ReKindleStop.sh'));
+    await fs.copy(path.join(SOURCE, 'ReKindleCover.png'), path.join(documents, 'ReKindleCover.png'));
     await fs.copy(path.join(SOURCE, 'README.txt'), path.join(stage, 'README.txt'));
     await fs.copy(path.join(SOURCE, 'rekindle-fullscreen.conf.example'), path.join(stage, 'rekindle-fullscreen.conf.example'));
 
@@ -59,12 +60,14 @@ async function stagePackage(stage) {
     // makes the files usable over SSH and from KUAL wrappers too.
     fs.chmodSync(path.join(documents, 'ReKindle.sh'), 0o755);
     fs.chmodSync(path.join(documents, 'ReKindleStop.sh'), 0o755);
+    fs.chmodSync(path.join(documents, 'ReKindleCover.png'), 0o644);
     fs.chmodSync(path.join(stage, 'README.txt'), 0o644);
     fs.chmodSync(path.join(stage, 'rekindle-fullscreen.conf.example'), 0o644);
 
     for (const file of [
         path.join(documents, 'ReKindle.sh'),
         path.join(documents, 'ReKindleStop.sh'),
+        path.join(documents, 'ReKindleCover.png'),
         path.join(stage, 'README.txt'),
         path.join(stage, 'rekindle-fullscreen.conf.example')
     ]) {
@@ -76,6 +79,7 @@ async function stagePackage(stage) {
     const sums = [
         `${sha256(path.join(documents, 'ReKindle.sh'))}  documents/ReKindle.sh`,
         `${sha256(path.join(documents, 'ReKindleStop.sh'))}  documents/ReKindleStop.sh`,
+        `${sha256(path.join(documents, 'ReKindleCover.png'))}  documents/ReKindleCover.png`,
         `${sha256(path.join(stage, 'README.txt'))}  README.txt`,
         `${sha256(path.join(stage, 'rekindle-fullscreen.conf.example'))}  rekindle-fullscreen.conf.example`
     ].join('\n') + '\n';
@@ -109,6 +113,7 @@ async function buildKindlePackage(options) {
 
         await fs.copy(path.join(stage, 'documents', 'ReKindle.sh'), path.join(outDir, 'ReKindle.sh'));
         await fs.copy(path.join(stage, 'documents', 'ReKindleStop.sh'), path.join(outDir, 'ReKindleStop.sh'));
+        await fs.copy(path.join(stage, 'documents', 'ReKindleCover.png'), path.join(outDir, 'ReKindleCover.png'));
 
         // Amazon's stock browser only downloads a short allowlist of file types
         // (azw/mobi/txt/...). The .txt copies are the same bytes served under a
@@ -120,6 +125,61 @@ async function buildKindlePackage(options) {
         fs.chmodSync(path.join(outDir, 'ReKindle.txt'), 0o644);
         fs.chmodSync(path.join(outDir, 'ReKindleStop.txt'), 0o644);
 
+        // KPM package + repository. This is the reliable on-device install:
+        // KPM downloads packages with the shell, so Amazon's browser file-type
+        // filter never sees them.
+        const kpmOut = path.join(outDir, 'kpm');
+        await fs.ensureDir(kpmOut);
+        const kpkgName = `rekindle-fullscreen_${version}_kindlehf.kpkg`;
+        const kpkgPath = path.join(kpmOut, kpkgName);
+        const kpmStage = await fs.mkdtemp(path.join(os.tmpdir(), 'rekindle-kpm-'));
+        try {
+            await fs.copy(path.join(SOURCE, 'kpm', 'manifest.json'), path.join(kpmStage, 'manifest.json'));
+            await fs.copy(path.join(SOURCE, 'kpm', 'install.sh'), path.join(kpmStage, 'install.sh'));
+            await fs.copy(path.join(SOURCE, 'kpm', 'uninstall.sh'), path.join(kpmStage, 'uninstall.sh'));
+            await fs.copy(path.join(outDir, 'ReKindle.sh'), path.join(kpmStage, 'ReKindle.sh'));
+            await fs.copy(path.join(outDir, 'ReKindleStop.sh'), path.join(kpmStage, 'ReKindleStop.sh'));
+            await fs.copy(path.join(outDir, 'ReKindleCover.png'), path.join(kpmStage, 'ReKindleCover.png'));
+            for (const file of ['install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh']) {
+                fs.chmodSync(path.join(kpmStage, file), 0o755);
+            }
+            fs.chmodSync(path.join(kpmStage, 'manifest.json'), 0o644);
+
+            await fs.remove(kpkgPath);
+            execFileSync('tar', [
+                '-czf', kpkgPath,
+                '-C', kpmStage,
+                'manifest.json', 'install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh', 'ReKindleCover.png'
+            ], { stdio: 'pipe' });
+        } finally {
+            await fs.remove(kpmStage);
+        }
+
+        const versionParts = version.split('.').map(function (n) { return parseInt(n, 10); });
+        const repo = {
+            manifest_version: 2,
+            id: 'rekindle',
+            name: 'ReKindle',
+            description: 'ReKindle Fullscreen for jailbroken Kindles',
+            packages: {
+                'rekindle-fullscreen': {
+                    name: 'ReKindle Fullscreen',
+                    author: 'ReKindle',
+                    description: 'Run ReKindle without the Kindle interface or browser chrome.',
+                    artifacts: [
+                        {
+                            url: kpkgName,
+                            version: versionParts,
+                            dependencies: [],
+                            supported_platforms: ['kindlehf']
+                        }
+                    ]
+                }
+            }
+        };
+        const repoPath = path.join(kpmOut, 'repo.json');
+        await fs.writeFile(repoPath, JSON.stringify(repo, null, 2) + '\n');
+
         // Checksums for the loose downloads (the zip carries its own list with
         // documents/... paths).
         const downloadSums = [
@@ -127,12 +187,15 @@ async function buildKindlePackage(options) {
             `${sha256(path.join(outDir, 'ReKindle.txt'))}  ReKindle.txt`,
             `${sha256(path.join(outDir, 'ReKindleStop.sh'))}  ReKindleStop.sh`,
             `${sha256(path.join(outDir, 'ReKindleStop.txt'))}  ReKindleStop.txt`,
-            `${sha256(zipPath)}  ReKindle-Fullscreen.zip`
+            `${sha256(path.join(outDir, 'ReKindleCover.png'))}  ReKindleCover.png`,
+            `${sha256(zipPath)}  ReKindle-Fullscreen.zip`,
+            `${sha256(kpkgPath)}  kpm/${kpkgName}`,
+            `${sha256(repoPath)}  kpm/repo.json`
         ].join('\n') + '\n';
         await fs.writeFile(path.join(outDir, 'SHA256SUMS.txt'), downloadSums);
 
-        log(`📦 Kindle package v${version}: ${zipPath}`);
-        return { version, zipPath, outDir };
+        log(`📦 Kindle package v${version}: ${zipPath} + kpm/${kpkgName}`);
+        return { version, zipPath, kpkgPath, repoPath, outDir };
     } finally {
         await fs.remove(stage);
     }

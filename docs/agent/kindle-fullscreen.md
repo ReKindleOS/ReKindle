@@ -2,15 +2,16 @@
 
 Last updated: 2026-10-22. Status: v1.0, beta-quality on-device add-on.
 
-This is the area doc for `kindle/`, `kindle.html`, the `?kiosk=1` mode in `theme.js`, the
-Settings toggle, and the build packaging step. Read it before changing any of them.
+This is the area doc for `kindle/`, `kindle.html`, the cover, the KPM package and the build
+packaging step. Read it before changing any of them.
 
 ## What it is
 
 Amazon's browser normally surrounds ReKindle with a status bar, an address bar and the
 Kindle desktop. On a **jailbroken Kindle on firmware 5.16.4+** (the Chromium browser) we
-can stop the Kindle GUI and run the stock browser directly, so ReKindle owns the whole
-e-ink panel. The launcher is a **scriptlet** (a `.sh` file in `/mnt/us/documents`), not a
+can stop the Kindle GUI and run the stock browser directly, so ReKindle has the whole
+screen without the Kindle UI or browser chrome. ReKindle itself keeps its normal framed
+layout; the launcher does not stretch the dashboard or apps. The launcher is a **scriptlet** (a `.sh` file in `/mnt/us/documents`), not a
 KUAL extension. KUAL is obsolete on current firmware and does not work; the Universal
 Hotfix that ships with modern jailbreaks provides scriptlets instead.
 
@@ -21,8 +22,8 @@ Hard constraints:
 - **No rootfs changes.** It stops/starts the GUI, writes to `/mnt/us` and `/tmp`, and
   uses the stock browser. A reboot always recovers.
 - **No daemon, no autostart.** Launch is explicit; exiting is the power button.
-- **No new web dependencies.** The kiosk layout is CSS injected by `theme.js`, and the
-  launcher only opens one URL.
+- **No new web dependencies and no app-level fullscreen.** The launcher opens the normal
+  `rekindle.ink` URL; the existing framed desktop/app layout is unchanged.
 
 ## Files
 
@@ -30,13 +31,13 @@ Hard constraints:
 | :--- | :--- |
 | `kindle/ReKindle.sh` | The scriptlet. Stop GUI, launch Chromium, watch power, restore GUI. |
 | `kindle/ReKindleStop.sh` | Recovery scriptlet: kill the browser, restore the screensaver and GUI. |
+| `kindle/ReKindleCover.png` | Library cover referenced by `# Icon:` in both scriptlets (400x640 grayscale). |
 | `kindle/README.txt` | Plain-text install/use/recovery instructions shipped in the zip. |
 | `kindle/rekindle-fullscreen.conf.example` | Optional `URL` / `DSF` / `CORD` overrides. |
-| `kindle/version.json` | Single version source. `ReKindle.sh` and `ReKindleStop.sh` carry the same version; `scripts/test-kindle.js` fails on a mismatch. |
+| `kindle/version.json` | Single version source. `ReKindle.sh`, `ReKindleStop.sh` and the KPM manifest carry the same version; `scripts/test-kindle.js` fails on a mismatch. |
+| `kindle/kpm/` | KPM `manifest.json`, `install.sh` (copies scriptlets to `documents`) and `uninstall.sh` (removes them). |
 | `kindle.html` | User-facing guide: jailbreaking, install, exit, troubleshooting, uninstall. |
-| `scripts/build-kindle.js` | Stages the zip, checksums, and standalone downloads. |
-| `theme.js` | `?kiosk=1` / `?kiosk=0`, persisted `rekindle_kiosk`, scoped kiosk CSS, `rekindleSetKiosk()`. |
-| `settings.html` | **Kindle Fullscreen** toggle (`toggle-kiosk`, `rekindle_kiosk`). |
+| `scripts/build-kindle.js` | Stages the zip, KPM `.kpkg`/repo, checksums, and standalone downloads. |
 | `docs/agent/kindle-fullscreen.md` | This file. |
 
 ## Launcher flow
@@ -89,40 +90,18 @@ the browser toolbar. `XDG_CONFIG_HOME=/mnt/us/system/browser/` keeps the browser
 Amazon-specific flags that are not in desktop Chromium; unknown flags can silently break
 rendering.
 
-## Kiosk mode (`?kiosk=1`)
+## Display behavior
 
-`theme.js` handles the web side:
+The launcher's "fullscreen" is **only** the removal of the Kindle GUI and browser
+chrome. It opens `https://rekindle.ink/` with no `?kiosk` parameter. The dashboard
+keeps its desktop frame, and apps open in their normal System 7 windows at their
+designed size. Do not add an app-level fullscreen/stretch mode to the launcher.
 
-- The pretty-URL rewrite now appends `window.location.search`, so `?kiosk=1`,
-  `?lang=de` and `?login=true` survive the `.html` → extensionless history replace.
-  Without this, local `.html?kiosk=1` URLs silently lost the flag (found in the
-  visual pass).
-- `?kiosk=1` sets `localStorage.rekindle_kiosk = '1'`; `?kiosk=0` removes it. The flag is
-  read with a small query-string parser (no `URLSearchParams` dependency).
-- The `rekindle-kiosk` class is added to `<html>` **before** `init()` runs, and a single
-  `<style id="rekindle-kiosk-style">` is injected only while the flag is on.
-- CSS removes the desktop background, body padding, outer window border/shadow and the
-  95%/90% sizing, then fills `100vw`/`100vh`. Index keeps its `.sys-menu-bar` (35 px) and
-  fills the rest with `.desktop-wrapper`; every other page makes `.window` fixed.
-- Dimensions divide by `--rekindle-scale`, matching the existing `.window.fullscreen`
-  pattern, so a non-default ReKindle zoom still fills the panel. Fallback declarations
-  (`width: 100vw` before the `calc`) keep old browsers from losing the whole rule.
-- `.window` deliberately has **no z-index** in kiosk mode, and `.modal-overlay` is
-  raised to `10000 !important`. Many pages put their modal overlay directly under
-  `<body>` with z-index 100 (chess does); if `.window` were raised, those modals would
-  be hidden behind the app. This was caught in the visual pass.
-- `window.rekindleSetKiosk(on)` toggles it at runtime for the Settings checkbox;
-  `window.rekindleIsKiosk()` is available for debugging.
-- Settings → Display → **Kindle Fullscreen** (`toggle-kiosk`) writes the same flag. This is
-  the escape hatch if a user opens ReKindle in the normal browser while the flag is set.
+The existing **Settings → Default Fullscreen** toggle is a separate, user-controlled
+per-app feature and is unchanged; it is not part of this add-on.
 
-**Do not add `?kiosk=1` to normal navigation or links.** Only the launcher URL and the
-guide's "turn it off" instructions mention it. Normal users should keep the framed layout.
-
-**Cache busting:** `theme.js` is a shared script. Any change to it requires bumping
-`theme.js?v=N` in every HTML file and in `sw.js` `ASSETS_TO_CACHE`. The kiosk work is
-`?v=22`.
-
+**Cache busting:** `theme.js` is a shared script. The kiosk mode was removed from it, so
+bump `theme.js?v=N` in every HTML file and in `sw.js` `ASSETS_TO_CACHE` (`?v=23`).
 ## Build and release
 
 ```bash
@@ -139,6 +118,7 @@ SHA256SUMS.txt
 documents/
   ReKindle.sh
   ReKindleStop.sh
+  ReKindleCover.png
 ```
 
 `build-automation.js` adds `kindle` to `ignoreList` (the source scripts are not served)
@@ -146,38 +126,47 @@ and writes `downloads/` into `_deploy/{main,lite,legacy}`, plus a short
 `/kindle.sh` URL at each deploy root. `_headers` forces `Content-Disposition:
 attachment` for `/downloads/*`.
 
-### On-device browser downloads
+### On-device installs
 
-Amazon's stock Kindle browser restricts downloads to a short allowlist of book
-formats (the KindleBrowserPatch project exists specifically to remove that
-filter), so a plain `.sh` link can be refused. The build therefore publishes:
+**Direct browser downloads do not work on stock firmware.** The browser allows
+only book formats and checks the **saved filename/type**. On 2026-10-22 both
+`/kindle.sh` and the `.txt` alias were tested on a real Kindle and rejected with
+"Invalid file type"; renaming the URL or serving `text/plain` does not bypass the
+filter. The `.txt` aliases remain published for browsers with the restriction
+removed (KindleBrowserPatch), but they are **not** the supported install path.
 
-| URL | Served as | Purpose |
-| :--- | :--- | :--- |
-| `/kindle.sh` | `text/plain`, filename `ReKindle.sh` | Short URL to type on the Kindle |
-| `/downloads/ReKindle.sh` | `text/plain`, filename `ReKindle.sh` | Direct link |
-| `/downloads/ReKindle.txt` | `text/plain`, filename `ReKindle.sh` | Browser-friendly alias; same bytes |
-| `/downloads/ReKindleStop.txt` | same | Recovery script alias |
+The supported no-computer route is **KPM**, which is included with current
+WinterBreak/SpringBreak jailbreaks. KPM downloads with the shell, so the browser
+filter is never involved:
 
-The guide uses `download="ReKindle.sh"` on the aliases. This works only if the
-browser honours the `Content-Disposition`/`download` filename; if a browser saves
-the file as `.txt`, the user must rename it on a computer. The ZIP remains the
-reliable route. The aliases are generated by `scripts/build-kindle.js`; do not
-commit them.
+```sh
+;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json
+;kpm update
+;kpm install rekindle-fullscreen
+```
 
-**Do not assume the placeholder is test-free.** The stock browser's allowlist
-changes with firmware; a real-device download test is part of the release
-checklist before advertising "one tap" install.
+`scripts/build-kindle.js` generates `downloads/kpm/rekindle-fullscreen_<version>_kindlehf.kpkg`
+and `downloads/kpm/repo.json`. The `.kpkg` is a gzipped tar with `manifest.json`
+(v2), `install.sh`, `uninstall.sh`, `ReKindle.sh` and `ReKindleStop.sh` at the
+root. `install.sh` copies both scriptlets to `/mnt/us/documents`; `uninstall.sh`
+removes them. Keep the manifest version in sync with `kindle/version.json`
+(`scripts/test-kindle.js` checks it).
+
+The ZIP remains the fallback for users without KPM. Direct `.sh`/`.txt` URLs and
+`/kindle.sh` / `/kindle.txt` are still built for patched browsers and as an
+escape hatch, but the guide labels them "may be blocked".
 
 Release checklist when changing the launcher:
 
-1. Bump `kindle/version.json` and the `VERSION=` line in **both** scripts.
+1. Bump `kindle/version.json`, the `VERSION=` line in **both** scripts, and the
+   KPM manifest version.
 2. Run `npm test` (`scripts/test-kindle.js` checks syntax, metadata, dry-run output,
-   version consistency, and the zip contents).
-3. On a real Kindle, test: `rekindle.ink/kindle.sh` download → appears in the library →
-   launch → ReKindle loads → login persists → power exits → GUI returns. Test once on a
-   600 px screen if you change `detect_dsf`.
-4. Rebuild/deploy. The zip is generated, not committed (`/downloads/` is gitignored).
+   version consistency, zip and KPM package contents/repo JSON).
+3. On a real Kindle, test: KPM install → scriptlets appear in the library → launch →
+   ReKindle loads → login persists → power exits → GUI returns. Test once on a 600 px
+   screen if you change `detect_dsf`.
+4. Rebuild/deploy. The zip/KPM artifacts are generated, not committed (`/downloads/`
+   is gitignored).
 
 ## Testing without a Kindle
 
@@ -197,12 +186,13 @@ For the web side, use the no-focus WebKit harness (see
 
 ```bash
 python3 scripts/serve-local.py 8899
-scripts/shot-webkit.sh "http://127.0.0.1:8899/index.html?kiosk=1" 800 1000 /tmp/kiosk-index.png
-scripts/shot-webkit.sh "http://127.0.0.1:8899/notes.html?kiosk=1" 600 800 /tmp/kiosk-notes.png
+scripts/shot-webkit.sh "http://127.0.0.1:8899/index.html" 800 1000 /tmp/index.png
+scripts/shot-webkit.sh "http://127.0.0.1:8899/notes.html" 600 800 /tmp/notes.png
+scripts/shot-webkit.sh "http://127.0.0.1:8899/kindle.html" 600 800 /tmp/kindle.png
 ```
 
-Check that the app fills the viewport, the title bar is intact, the content still scrolls,
-and no desktop frame remains. Also check `?kiosk=0` returns to the normal layout.
+Check the normal framed layout is intact (desktop frame, 95%/90vh window). The launcher
+must not change it; there are no kiosk screenshots to take anymore.
 
 ## Known limitations / future work
 
@@ -213,11 +203,6 @@ and no desktop frame remains. Also check `?kiosk=0` returns to the normal layout
   layout and `KEY_POWER` code 0x74. If a model reports a different input device, the
   `lipc-wait-event` fallback is used; if that also fails, the user must run
   `ReKindleStop.sh` or reboot. Adding a touch-corner exit gesture is future work.
-- **Rotation is not supported in kiosk mode.** The kiosk CSS assumes 0 deg; the
-  `theme.js` 90/270 body transform conflicts with the fixed full-viewport layout.
-  The guide tells users to set Rotation to 0. If landscape becomes a requirement,
-  add a `data-rekindle-rotation` attribute in `injectRotationStyle()` and mirror
-  the rotation rules inside the kiosk sheet.
 - **No battery/sleep integration.** `preventScreenSaver` is disabled while the browser is
   open. Do not add a deep-sleep loop without testing e-ink wake behaviour; a panel that
   shows a frozen ReKindle while the device is suspended is worse than a lit screen.

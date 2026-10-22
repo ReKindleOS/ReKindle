@@ -36,7 +36,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [help.md](docs/agent/help.md) | `help.html`, `help-data.js`: adding/renaming app guides, search, A-Z index, help content coverage |
 | [social-cleanup.md](docs/agent/social-cleanup.md) | Daily `cleanupSocial` retention: KindleChat messages/translations/art, topics, neighbourhood posts, reports, automod & moderator logs |
 | [legacy-build.md](docs/agent/legacy-build.md) | Lite/Legacy pipeline: SRI on localized libs, extensionless links, Kobo/WebKit `/probe`, old-browser polyfills |
-| [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, kiosk, packaging |
+| [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, cover, KPM |
 
 ## 🚫 Restrictions (Target: Chromium 75)
 

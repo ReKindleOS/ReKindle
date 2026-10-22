@@ -1,6 +1,7 @@
 #!/bin/bash
 # Name: ReKindle Stop
 # Author: ReKindle
+# Icon: /mnt/us/documents/ReKindleCover.png
 # Version: 1.0.0
 # DontUseFBInk
 #

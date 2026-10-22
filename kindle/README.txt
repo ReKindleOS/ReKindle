@@ -20,21 +20,29 @@ INSTALL (USB)
 5. Open the library and tap "ReKindle Fullscreen". It may be under Docs or
    Recent.
 
-INSTALL (ON DEVICE)
--------------------
-Open rekindle.ink/kindle.sh (or rekindle.ink/kindle) on the Kindle browser and
-tap "Download ReKindle.sh". The stock browser may refuse .sh downloads; use
-"Download as .txt" in that case. It is the same script and should save as
-ReKindle.sh. If it saves as .txt, rename it to ReKindle.sh on a computer.
-The ZIP is the reliable fallback.
+INSTALL (ON DEVICE, KPM)
+------------------------
+KPM is included with current WinterBreak / SpringBreak jailbreaks. In the
+Kindle search bar, run these one at a time:
+
+  ;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json
+  ;kpm update
+  ;kpm install rekindle-fullscreen
+
+KPM downloads with the shell, so Amazon's browser file-type filter is not
+involved. The scriptlets are copied into documents; open the library and tap
+"ReKindle Fullscreen".
+
+Do not use the direct download links on a stock Kindle browser: it reports
+"Invalid file type" for .sh and .txt. The ZIP below is the fallback.
 
 USE
 ---
 Tap "ReKindle Fullscreen" in your library. ReKindle opens after a few seconds.
 Press the power button once to close it and return to the Kindle library.
 
-To go back to the normal framed layout later, open ReKindle Settings and turn
-off "Kindle Fullscreen", or visit https://rekindle.ink/?kiosk=0.
+ReKindle keeps its normal framed layout. The launcher only removes the Kindle
+interface and browser chrome; it does not stretch the apps.
 
 If the Kindle is stuck, run "ReKindle Stop" from your library. If the library
 is not visible, hold the power button until the Kindle reboots.
@@ -43,6 +51,7 @@ FILES
 -----
 documents/ReKindle.sh               launcher
 documents/ReKindleStop.sh           emergency exit
+documents/ReKindleCover.png         library cover
 rekindle-fullscreen.conf.example    optional URL / display / position settings
 
 The launcher does not change the root filesystem. It stops the Kindle GUI,

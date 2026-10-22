@@ -1,6 +1,7 @@
 #!/bin/bash
 # Name: ReKindle Fullscreen
 # Author: ReKindle
+# Icon: /mnt/us/documents/ReKindleCover.png
 # Version: 1.0.0
 # DontUseFBInk
 #
@@ -13,7 +14,7 @@
 #
 # What it does:
 #   1. Stops the Kindle GUI (lab126_gui) to free the whole display and memory.
-#   2. Launches the stock Chromium browser on https://rekindle.ink/?kiosk=1
+#   2. Launches the stock Chromium browser on https://rekindle.ink/
 #      with the same low-end flags Amazon uses (JIT disabled, low-memory mode).
 #   3. Watches the power button. One press exits the browser and restarts the
 #      Kindle UI.
@@ -25,7 +26,7 @@
 # ReKindleStop.sh from your library after the UI is back.
 #
 # Optional config file: /mnt/us/rekindle-fullscreen.conf
-#   URL="https://rekindle.ink/?kiosk=1"
+#   URL="https://rekindle.ink/"
 #   DSF="2"          # Chromium device scale factor (1, 1.5, 2)
 #   CORD="0,215"     # Chromium host-window position
 #
@@ -36,7 +37,7 @@ VERSION="1.0.0"
 CONF="/mnt/us/rekindle-fullscreen.conf"
 LOG="/mnt/us/rekindle-fullscreen.log"
 POWER_FLAG="/tmp/rekindle-fullscreen-power"
-URL="https://rekindle.ink/?kiosk=1"
+URL="https://rekindle.ink/"
 CORD="0,215"
 BROWSER="/usr/bin/chromium/bin/kindle_browser"
 USER_AGENT="Mozilla/5.0 (X11; U; Linux armv7l like Android; en-us) AppleWebKit/531.2+ (KHTML, like Gecko) Version/5.0 Safari/533.2+ Kindle/3.0+"

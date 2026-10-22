@@ -3,7 +3,7 @@ const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './icons.js?v=5',
-    './theme.js?v=22',
+    './theme.js?v=23',
     './logo.svg',
     './discord.svg',
     './donate.svg',
