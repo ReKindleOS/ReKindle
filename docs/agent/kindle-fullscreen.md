@@ -140,17 +140,23 @@ WinterBreak/SpringBreak jailbreaks. KPM downloads with the shell, so the browser
 filter is never involved:
 
 ```sh
-;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json
+;kpm add-repo https://repo.rekindle.ink
 ;kpm update
-;kpm install rekindle-fullscreen
+;kpm install rekindle
 ```
 
-`scripts/build-kindle.js` generates `downloads/kpm/rekindle-fullscreen_<version>_kindlehf.kpkg`
+`scripts/build-kindle.js` generates `downloads/kpm/rekindle_<version>_kindlehf.kpkg`
 and `downloads/kpm/repo.json`. The `.kpkg` is a gzipped tar with `manifest.json`
 (v2), `install.sh`, `uninstall.sh`, `ReKindle.sh` and `ReKindleStop.sh` at the
 root. `install.sh` copies both scriptlets to `/mnt/us/documents`; `uninstall.sh`
 removes them. Keep the manifest version in sync with `kindle/version.json`
 (`scripts/test-kindle.js` checks it).
+
+`functions/_middleware.js` maps `repo.rekindle.ink/` to the repo manifest and
+`repo.rekindle.ink/*.kpkg` to the package, so KPM only needs the bare host URL.
+Attach `repo.rekindle.ink` as a custom domain to the `rekindle` Pages project
+(one-time dashboard/DNS step); until then the fallback URL
+`https://rekindle.ink/downloads/kpm/repo.json` still works.
 
 The ZIP remains the fallback for users without KPM. Direct `.sh`/`.txt` URLs and
 `/kindle.sh` / `/kindle.txt` are still built for patched browsers and as an

@@ -130,7 +130,7 @@ async function buildKindlePackage(options) {
         // filter never sees them.
         const kpmOut = path.join(outDir, 'kpm');
         await fs.ensureDir(kpmOut);
-        const kpkgName = `rekindle-fullscreen_${version}_kindlehf.kpkg`;
+        const kpkgName = `rekindle_${version}_kindlehf.kpkg`;
         const kpkgPath = path.join(kpmOut, kpkgName);
         const kpmStage = await fs.mkdtemp(path.join(os.tmpdir(), 'rekindle-kpm-'));
         try {
@@ -162,13 +162,13 @@ async function buildKindlePackage(options) {
             name: 'ReKindle',
             description: 'ReKindle Fullscreen for jailbroken Kindles',
             packages: {
-                'rekindle-fullscreen': {
+                'rekindle': {
                     name: 'ReKindle Fullscreen',
                     author: 'ReKindle',
                     description: 'Run ReKindle without the Kindle interface or browser chrome.',
                     artifacts: [
                         {
-                            url: kpkgName,
+                            url: 'https://rekindle.ink/downloads/kpm/' + kpkgName,
                             version: versionParts,
                             dependencies: [],
                             supported_platforms: ['kindlehf']

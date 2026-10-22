@@ -116,7 +116,8 @@ try {
         'kindle.txt',
         'kpm add-repo',
         'kpm update',
-        'kpm install rekindle-fullscreen',
+        'kpm install rekindle',
+        'https://repo.rekindle.ink',
         'rekindle.ink/downloads/kpm/repo.json',
         'Invalid file type',
         'rekindleApplyWallpaper',
@@ -186,19 +187,23 @@ try {
     }
 
     section('kpm package');
+    const middleware = read('functions/_middleware.js');
+    assert.match(middleware, /repo\.rekindle\.ink/, 'middleware must handle the repo host');
+    assert.match(middleware, /ASSETS\.fetch/, 'middleware must serve repo artifacts');
     const kpmDir = path.join(outDir, 'kpm');
     const repo = JSON.parse(fs.readFileSync(path.join(kpmDir, 'repo.json'), 'utf8'));
     assert.strictEqual(repo.manifest_version, 2);
     assert.strictEqual(repo.id, 'rekindle');
-    const pkg = repo.packages['rekindle-fullscreen'];
-    assert.ok(pkg, 'repo is missing the rekindle-fullscreen package');
+    const pkg = repo.packages['rekindle'];
+    assert.ok(pkg, 'repo is missing the rekindle package');
     assert.strictEqual(pkg.artifacts.length, 1);
     const artifact = pkg.artifacts[0];
     assert.deepStrictEqual(artifact.version, version.split('.').map(function (n) { return parseInt(n, 10); }));
     assert.deepStrictEqual(artifact.supported_platforms, ['kindlehf']);
 
-    const kpkg = path.join(kpmDir, artifact.url);
+    const kpkg = path.join(kpmDir, artifact.url.split('/').pop());
     assert.ok(fs.existsSync(kpkg), 'KPM artifact is missing');
+    assert.match(artifact.url, /^https:\/\/rekindle\.ink\/downloads\/kpm\/rekindle_[0-9.]+_kindlehf\.kpkg$/, 'KPM artifact URL must be absolute for a bare repo host');
     const kpmEntries = execFileSync('tar', ['-tzf', kpkg], { encoding: 'utf8' })
         .split('\n').filter(Boolean);
     for (const entry of ['manifest.json', 'install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh', 'ReKindleCover.png']) {
@@ -209,13 +214,52 @@ try {
     fs.mkdirSync(kpmExtract, { recursive: true });
     execFileSync('tar', ['-xzf', kpkg, '-C', kpmExtract], { stdio: 'pipe' });
     const kpmManifest = JSON.parse(fs.readFileSync(path.join(kpmExtract, 'manifest.json'), 'utf8'));
-    assert.strictEqual(kpmManifest.id, 'rekindle-fullscreen');
+    assert.strictEqual(kpmManifest.id, 'rekindle');
     assert.deepStrictEqual(kpmManifest.version, artifact.version);
     const installHook = fs.readFileSync(path.join(kpmExtract, 'install.sh'), 'utf8');
     assert.match(installHook, /cp -f \.\/ReKindle\.sh \/mnt\/us\/documents\/ReKindle\.sh/);
     assert.match(installHook, /cp -f \.\/ReKindleCover\.png \/mnt\/us\/documents\/ReKindleCover\.png/);
     execFileSync('sh', ['-n', path.join(kpmExtract, 'install.sh')], { stdio: 'pipe' });
     execFileSync('sh', ['-n', path.join(kpmExtract, 'uninstall.sh')], { stdio: 'pipe' });
+
+
+    section('repo host middleware');
+    const mwPath = path.join(tmp, 'middleware.mjs');
+    fs.writeFileSync(mwPath, fs.readFileSync(path.join(root, 'functions', '_middleware.js'), 'utf8'));
+    const mw = await import('file://' + mwPath);
+    function repoContext(host, pathname) {
+        return {
+            request: new Request('https://' + host + pathname),
+            env: {
+                ASSETS: {
+                    fetch: async function (input) {
+                        const p = new URL(input).pathname;
+                        if (p === '/downloads/kpm/repo.json') {
+                            return new Response('{"manifest_version":2,"id":"rekindle","packages":{}}', {
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                        }
+                        if (p.endsWith('.kpkg')) {
+                            return new Response('PKG', { headers: { 'Content-Type': 'application/octet-stream' } });
+                        }
+                        return new Response('missing', { status: 404 });
+                    }
+                }
+            },
+            next: async function () { return new Response('APP'); }
+        };
+    }
+    let res = await mw.onRequest(repoContext('repo.rekindle.ink', '/'));
+    assert.strictEqual(res.status, 200);
+    assert.match(res.headers.get('Content-Type'), /application\/json/);
+    assert.match(await res.text(), /"id":"rekindle"/);
+    res = await mw.onRequest(repoContext('repo.rekindle.ink', '/rekindle_1.0.0_kindlehf.kpkg'));
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get('Content-Type'), 'application/octet-stream');
+    res = await mw.onRequest(repoContext('repo.rekindle.ink', '/../secret'));
+    assert.strictEqual(res.status, 404);
+    res = await mw.onRequest(repoContext('rekindle.ink', '/'));
+    assert.strictEqual(await res.text(), 'APP');
 
     console.log('PASS - Kindle Fullscreen checks');
 } finally {

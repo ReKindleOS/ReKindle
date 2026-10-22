@@ -17,7 +17,7 @@ ReKindle is a Progressive Web App (PWA). No "installation" or jailbreak is requi
 Firmware 5.16.4+ can run ReKindle with **no Kindle interface and no browser chrome**. The optional scriptlet stops the Kindle GUI, launches the stock Chromium browser on `rekindle.ink`, and restores the Kindle UI when you press the power button. ReKindle keeps its normal framed layout; only the Kindle interface and browser chrome are removed. It changes nothing on the root filesystem.
 
 *   Step-by-step guide, including jailbreaking: [ReKindle Fullscreen](kindle.html)
-*   Install on the Kindle with KPM: `;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json`, `;kpm update`, `;kpm install rekindle-fullscreen`. Or download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` over USB.
+*   Install on the Kindle with KPM: `;kpm add-repo https://repo.rekindle.ink`, `;kpm update`, `;kpm install rekindle`. Or download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` over USB.
 *   The stock browser rejects direct `.sh`/`.txt` downloads as **Invalid file type**; KPM or USB is required.
 *   Source and recovery scripts: [`kindle/`](kindle/)
 

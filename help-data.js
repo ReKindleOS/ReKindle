@@ -111,7 +111,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Install</h2>
             <ol>
                 <li>Jailbreak the Kindle with the <a href="https://kindlemodding.org/jailbreak-wizard.html" target="_blank" rel="noopener">KindleModding wizard</a>, then block automatic updates.</li>
-                <li><b>On the Kindle (KPM):</b> run these in the search bar one at a time: <code>;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json</code>, then <code>;kpm update</code>, then <code>;kpm install rekindle-fullscreen</code>. KPM is included with current WinterBreak / SpringBreak jailbreaks.</li>
+                <li><b>On the Kindle (KPM):</b> run these in the search bar one at a time: <code>;kpm add-repo https://repo.rekindle.ink</code>, then <code>;kpm update</code>, then <code>;kpm install rekindle</code>. KPM is included with current WinterBreak / SpringBreak jailbreaks.</li>
                 <li><b>Or over USB:</b> download the ZIP from the <a href="kindle">ReKindle Fullscreen guide</a>, unzip it, and copy the <code>documents</code> folder into the Kindle's root folder, merging with the existing one.</li>
                 <li>Open the library and tap <b>ReKindle Fullscreen</b> (it may be under Docs or Recent).</li>
             </ol>

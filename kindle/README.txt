@@ -25,9 +25,9 @@ INSTALL (ON DEVICE, KPM)
 KPM is included with current WinterBreak / SpringBreak jailbreaks. In the
 Kindle search bar, run these one at a time:
 
-  ;kpm add-repo https://rekindle.ink/downloads/kpm/repo.json
+  ;kpm add-repo https://repo.rekindle.ink
   ;kpm update
-  ;kpm install rekindle-fullscreen
+  ;kpm install rekindle
 
 KPM downloads with the shell, so Amazon's browser file-type filter is not
 involved. The scriptlets are copied into documents; open the library and tap
