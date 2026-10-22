@@ -287,6 +287,16 @@ Letters to Lucilius / Seneca", correct cover URL, then a real EPUB download
 saved to localforage (`PK` ZIP magic). jsdom 30 has no `fetch` (inject Node's)
 and its `FileReader` rejects undici `Blob`s (stub `blobToArrayBuffer`).
 
+## 📝 Changelog + GitHub commits (changelog.html, 2026-10-22)
+
+`changelog.html` is the About modal's "Changelog" link (`index.html` and the Lite/Legacy `index_old.html`). It lists the commit history of `ReKindleOS/ReKindle`, newest first, with a client-side filter and both "load older" (one page) and "load all" actions.
+
+*   **`functions/api/commits.js`** is the only data source. It is hard-coded to one repository (not a general GitHub proxy), validates `page`/`per_page` as bounded integers, and returns a **normalised** payload: `sha`, `short`, first line of the message (≤240 chars), author name/login, ISO date, and commit URL. GitHub's raw commit objects carry the full body, parents, tree and verification payloads; returning them for 100 commits per page is megabytes of JSON on a Kindle.
+*   **Rate limits / caching:** unauthenticated GitHub allows 60 requests/hour per IP. Pages Functions share egress IPs, so each page is cached at the edge for **1 hour** (`s-maxage=3600`, browser `max-age=600`) and the client asks for 100 commits per request (8 requests for ~750 commits). On a cache miss the Function retries `429`/`5xx` twice, maps GitHub rate limits to `503 {error:"rate_limited"}` with `Retry-After`, and never exposes the upstream body. The page shows a Retry button and a GitHub fallback link.
+*   **Optional `GITHUB_TOKEN` binding:** set it in the Cloudflare Pages project environment to raise the limit to 5,000/hour. `context.env.GITHUB_TOKEN` (or `GITHUB_API_TOKEN`) is attached as a bearer header and is never logged or returned. Without it the edge cache is what keeps the endpoint inside the anonymous quota; do not add a client-side cache-busting query parameter.
+*   **Do not pass `?refresh=...` or any user-controlled value through to GitHub.** The repository and query shape are fixed; only numeric paging is accepted.
+*   **Tests:** `node scripts/test-commits.js` (wired into `npm test`) covers normalisation, Link-header paging, method guards, the upstream request shape, and rate-limit mapping. There is no network access in the test.
+
 ## ReKindle+ custom claims (2026-10-20)
 
 `workers/rekindle-stripe/worker.js` sets the `pro` custom claim from the Stripe
