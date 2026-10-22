@@ -12,6 +12,14 @@ ReKindle is a Progressive Web App (PWA). No "installation" or jailbreak is requi
 2.  Navigate to `rekindle.ink`.
 3.  **Recommended:** Bookmark the page or add it to your device's home screen if supported.
 
+### Jailbroken Kindle: fullscreen
+
+Firmware 5.16.4+ can run ReKindle with **no Kindle interface and no browser chrome**. The optional scriptlet stops the Kindle GUI, launches the stock Chromium browser on `rekindle.ink/?kiosk=1`, and restores the Kindle UI when you press the power button. It changes nothing on the root filesystem.
+
+*   Step-by-step guide, including jailbreaking: [ReKindle Fullscreen](kindle.html)
+*   Download: `rekindle.ink/kindle.sh` on the device, or `downloads/ReKindle-Fullscreen.zip` for USB (built by `npm run build:kindle`). The site also serves `.txt` aliases because Amazon's browser filters `.sh` downloads.
+*   Source and recovery scripts: [`kindle/`](kindle/)
+
 ## Gallery
 
 <p align="center">
@@ -159,6 +167,14 @@ This creates three optimized targets in the `_deploy` directory:
 1.  **Main (`_deploy/main`):** For modern devices (Chromium-based Kindles on firmware 5.16.4+, desktop, mobile). Minified with ES6+ features.
 2.  **Lite (`_deploy/lite`):** Optimized for **pre-Chromium Kindles** (Mesquite / WebKit ~534, firmware below 5.16.4). All app JavaScript is down-levelled to ES5, with local polyfills and the older-device rendering fixes.
 3.  **Legacy (`_deploy/legacy`):** Optimized for **Kobo** e-readers (QtWebKit 538.1, ES5 only) and other very old browsers. Features aggressive transpilation, heavy polyfills (AbortController, TextEncoder/Decoder, matchAll, DOM insertion methods), Kobo window/navigation shims, extensionless links (Cloudflare 308 compatibility), and visual warnings for unsupported applications. Open `/probe` on a device to print its capability report.
+
+The build also packages the jailbroken-Kindle add-on into each target's `downloads/` folder. To build only that package:
+
+```bash
+npm run build:kindle
+```
+
+This writes `downloads/ReKindle-Fullscreen.zip`, the standalone `.sh` files and `SHA256SUMS.txt`. The `/kindle` page links to those files.
 
 ---
 

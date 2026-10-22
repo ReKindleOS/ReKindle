@@ -62,7 +62,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>If you want sync, tap <b>LOG IN / REGISTER</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
                 <li>Star the apps you use most: tap <b>Edit</b> on the home screen, then the star on an app. See <a href="#home">The home screen</a>.</li>
             </ol>
-            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. There is no jailbreak, app store install or USB step. A bookmark or home-screen shortcut is enough.</div>
+            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle Fullscreen launcher</a> is only for jailbroken Kindles that want the browser chrome gone.</div>
             <p>This Help app covers every app and game. Use the search box on the left (or the category buttons) and the <a href="#all">A-Z index</a> when you know the name of something.</p>
         `
     },
@@ -91,10 +91,36 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td>Phone, tablet, desktop</td><td>Full site. Keyboard shortcuts and a mouse work in most apps and games.</td></tr>
             </table>
             <div class="note"><b>Why firmware matters:</b> ReKindle targets the Chromium 75 browser shipped on newer Kindles. Very old browsers cannot run modern JavaScript features, which is why the Lite and Legacy builds exist.</div>
+            <div class="note"><b>Want no browser chrome?</b> On a jailbroken Kindle with firmware 5.16.4+, the optional <a href="#kindle-fullscreen">ReKindle Fullscreen launcher</a> hides the Kindle interface entirely.</div>
             <h2>Offline use</h2>
             <p>The dashboard shell and some assets are cached by a service worker, but most apps need a network connection for their data. Games that store state locally keep working offline. Cloud sync resumes when you reconnect.</p>
             <h2>Storage and clearing data</h2>
             <p>Guest data lives in <code>localStorage</code>. The Kindle browser can wipe its cache when storage is tight, so do not treat guest mode as a permanent backup. See <a href="#storage">Where your data lives</a>.</p>
+        `
+    },
+    {
+        id: 'kindle-fullscreen',
+        cat: 'start',
+        title: 'ReKindle Fullscreen on a jailbroken Kindle',
+        summary: 'Hide the Kindle interface and browser chrome, and recover if the launcher gets stuck.',
+        tags: 'kindle fullscreen full screen kiosk jailbreak jailbroken scriptlet launcher power button 5.16.4 usb documents',
+        related: ['install', 'settings', 'troubleshooting'],
+        body: `
+            <p>ReKindle normally runs inside the Kindle browser, with the Kindle status bar and browser controls around it. On a jailbroken Kindle with firmware 5.16.4 or newer, the optional <b>ReKindle Fullscreen</b> launcher stops the Kindle interface, opens the stock Chromium browser on <code>rekindle.ink/?kiosk=1</code>, and gives ReKindle the whole e-ink panel.</p>
+            <div class="note"><b>Requirements:</b> a jailbroken Kindle on firmware 5.16.4+ with scriptlet support from the Universal Hotfix. Older Kindles use the WebKit browser and cannot run this launcher. Normal ReKindle use needs no jailbreak.</div>
+            <h2>Install</h2>
+            <ol>
+                <li>Jailbreak the Kindle with the <a href="https://kindlemodding.org/jailbreak-wizard.html" target="_blank" rel="noopener">KindleModding wizard</a>, then block automatic updates.</li>
+                <li>Download the ZIP from the <a href="kindle">ReKindle Fullscreen guide</a>.</li>
+                <li>Unzip it and copy the <code>documents</code> folder into the Kindle's root folder over USB. Merge it with the existing <code>documents</code> folder.</li>
+                <li>Eject the Kindle and tap <b>ReKindle Fullscreen</b> in the library.</li>
+            </ol>
+            <p>On the Kindle itself, open <code>rekindle.ink/kindle.sh</code> and tap <b>Download ReKindle.sh</b>. Amazon's stock browser filters <code>.sh</code> downloads, so the guide also offers a <b>.txt</b> alias that is the same script and should save as <code>ReKindle.sh</code>. Kindle downloads land in <code>documents</code>, so the script should appear in the library. If it saves as <code>.txt</code> or does not appear, rename it on a computer or use the ZIP.</p>
+            <h2>Exit and recovery</h2>
+            <p>Press the <b>power button once</b> to close ReKindle and restart the Kindle interface. If the Kindle is stuck, run <b>ReKindle Stop</b> from the library. If the library is not visible, hold the power button until the Kindle reboots; the launcher changes no boot files.</p>
+            <h2>Turn off fullscreen mode</h2>
+            <p>The launcher stores a fullscreen flag in local storage. To return to the normal framed layout in a browser, open <b>Settings &rarr; Kindle Fullscreen</b> and turn it off, or visit <code>rekindle.ink/?kiosk=0</code>. The full guide also covers uninstalling, display scale and troubleshooting.</p>
+            <p><a href="kindle">Open the full ReKindle Fullscreen guide &rarr;</a></p>
         `
     },
     {

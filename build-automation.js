@@ -26,6 +26,8 @@ const ignoreList = [
     'build-automation.js', 'package.json', 'package-lock.json',
     'wrangler.toml', '.gitignore', '.DS_Store',
     'workers', 'scripts', 'screenshots', 'admin', 'Sync', 'pocketbase',
+    // Kindle launcher source; the built downloads/ are generated below.
+    'kindle',
     // Firebase Backend Files (Keep in repo, ignore for hosting)
     'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json', 'rtdb-rules.json',
     // CREDENTIALS — MUST NEVER BE PUBLISHED. These were live on rekindle.ink and
@@ -2224,6 +2226,30 @@ async function run() {
         await generateSitemap('https://legacy.rekindle.ink', LEGACY_DIR);
     } catch (err) {
         console.error("Failed to generate sitemap", err);
+    }
+
+    // 9.5 Build the Kindle Fullscreen download package. The /kindle page and
+    // README link to downloads/ReKindle-Fullscreen.zip, so every deploy target
+    // needs a fresh copy. Failing here is deliberate: a stale or missing
+    // installer is worse than a failed build.
+    try {
+        console.log("📦 Building Kindle Fullscreen package...");
+        const buildKindlePackage = require('./scripts/build-kindle');
+        for (const dir of [MAIN_DIR, LITE_DIR, LEGACY_DIR]) {
+            await buildKindlePackage({
+                outDir: path.join(dir, 'downloads'),
+                log: function () { }
+            });
+            // Short, memorable URLs for the on-device browser:
+            // https://rekindle.ink/kindle.sh (direct)
+            // https://rekindle.ink/kindle.txt (same bytes, browser-friendly)
+            await fs.copy(path.join(dir, 'downloads', 'ReKindle.sh'), path.join(dir, 'kindle.sh'));
+            await fs.copy(path.join(dir, 'downloads', 'ReKindle.sh'), path.join(dir, 'kindle.txt'));
+            fs.chmodSync(path.join(dir, 'kindle.txt'), 0o644);
+        }
+    } catch (err) {
+        console.error("Failed to build Kindle package:", err && err.message ? err.message : err);
+        throw err;
     }
 
     // 10. Refuse to publish credentials (see FORBIDDEN_IN_DEPLOY above)
