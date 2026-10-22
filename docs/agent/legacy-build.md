@@ -85,6 +85,17 @@ GAMES". The home CSS injection in both transpilers now switches `.dashboard` to 
 floats a 220px `.sidebar`, gives `.app-view` a 220px left margin, and stacks the sidebar above
 the app view below 520px. Re-check at 600×800 and 732×762.
 
+### The home layout is the user's choice — settings toggles must not switch it (2026-10-22)
+
+`settings.html` `toggleService('games')` used to force `rekindle_layout` **and** the Firestore
+`homeLayout` field to `'old'` whenever games were disabled, then never restore them when games were
+re-enabled. `index.html` redirects to `index_old.html` on page load when that value is `'old'`
+(lines 12-13), so "Disable Games" silently moved the account to the Classic home page for good.
+Both dashboards hide games already (`areGamesDisabled()` in `icons.js` → `updateNavVisibility()`),
+so the layout switch was redundant and has been removed. Any account that picked up
+`homeLayout: 'old'` from the old build stays on the Classic page until Settings → Appearance →
+Home Layout is set back to Modern.
+
 ## Build order and verification
 
 ```bash
