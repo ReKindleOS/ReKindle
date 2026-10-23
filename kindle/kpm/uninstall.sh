@@ -1,10 +1,12 @@
 #!/bin/sh
-# KPM uninstall hook. KPM deletes the package files; remove the scriptlets
-# that install.sh copied into the user's documents folder.
+# KPM uninstall hook. Runs as root.
 
-rm -f /mnt/us/documents/ReKindle.sh
+set -e
+
+rm -f /mnt/us/documents/ReKindle.sh "/mnt/us/documents/ReKindle Launcher.sh"
 rm -f /mnt/us/documents/ReKindleStop.sh
 rm -f /mnt/us/documents/ReKindleCover.png
+rm -rf /var/local/rekindle
 
-echo "ReKindle Fullscreen scriptlets removed"
+echo "ReKindle scriptlet and root launcher removed"
 exit 0

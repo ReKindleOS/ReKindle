@@ -1,11 +1,13 @@
-ReKindle Fullscreen for jailbroken Kindles
+ReKindle for jailbroken Kindles
 ==========================================
 
-Runs rekindle.ink without the Kindle interface or browser chrome.
+Stops the Kindle interface and runs the stock Chromium browser on rekindle.ink.
+v1.0.4 mounts chromium.sqsh and runs Chromium as the framework user, matching
+Amazon's own browser launcher. The GUI is restored when you exit.
 
 REQUIREMENTS
 ------------
-* A jailbroken Kindle on firmware 5.16.4 or newer (Chromium browser).
+* A jailbroken Kindle on firmware 5.16.4 or newer (stock Chromium browser).
 * Scriptlet support from the Universal Hotfix. If other .sh scriptlets in
   your library work, you are ready.
 * Wi-Fi.
@@ -17,45 +19,46 @@ INSTALL (USB)
 3. Copy the "documents" folder from the zip into the Kindle's root folder,
    merging it with the existing "documents" folder. Do not copy the zip.
 4. Eject the Kindle.
-5. Open the library and tap "ReKindle Fullscreen". It may be under Docs or
+5. Open the library and tap "ReKindle". It may be under Docs or
    Recent.
 
 INSTALL (ON DEVICE, KPM)
 ------------------------
-KPM is included with current WinterBreak / SpringBreak jailbreaks. In the
-Kindle search bar, run these one at a time:
+KPM is included with current WinterBreak / SpringBreak jailbreaks. The search
+bar cannot pass a URL to KPM: Amazon's scriptExecutor rejects "." and ":" in
+";" commands. Install kterm with ";kpm install kterm", open kterm, then run:
 
-  ;kpm add-repo https://repo.rekindle.ink
-  ;kpm update
-  ;kpm install rekindle
+  kpm add-repo https://repo.rekindle.ink
+  kpm update
+  kpm install rekindle
 
-KPM downloads with the shell, so Amazon's browser file-type filter is not
-involved. The scriptlets are copied into documents; open the library and tap
-"ReKindle Fullscreen".
+Alternatively, copy the scriptlets over USB; that is the reliable route.
+Whichever method you use, the scriptlets are copied into documents; open the
+library and tap "ReKindle".
 
 Do not use the direct download links on a stock Kindle browser: it reports
 "Invalid file type" for .sh and .txt. The ZIP below is the fallback.
 
 USE
 ---
-Tap "ReKindle Fullscreen" in your library. ReKindle opens after a few seconds.
-Press the power button once to close it and return to the Kindle library.
+Tap "ReKindle" in your library. The screen goes blank for a few seconds while
+the Kindle interface stops, then Chromium opens ReKindle.
 
-ReKindle keeps its normal framed layout. The launcher only removes the Kindle
-interface and browser chrome; it does not stretch the apps.
+ReKindle keeps its normal framed layout; the apps are not stretched. Press the
+power button once to close the browser and restart the Kindle interface.
 
-If the Kindle is stuck, run "ReKindle Stop" from your library. If the library
-is not visible, hold the power button until the Kindle reboots.
+If anything looks wrong, open "ReKindle Log" or "ReKindle Error" from the
+library. The launcher changes no boot files, so a reboot is always safe.
 
 FILES
 -----
 documents/ReKindle.sh               launcher
-documents/ReKindleStop.sh           emergency exit
 documents/ReKindleCover.png         library cover
-rekindle-fullscreen.conf.example    optional URL / display / position settings
+rekindle-fullscreen.conf.example    optional URL override
 
-The launcher does not change the root filesystem. It stops the Kindle GUI,
-runs the stock Chromium browser, and restarts the GUI when you exit.
+The launcher does not change the root filesystem. It mounts chromium.sqsh
+temporarily, stops the Kindle GUI, runs Chromium as framework, and restarts the
+GUI when you exit.
 
 LOG
 ---

@@ -1,5 +1,5 @@
 /*
- * ReKindle Fullscreen (jailbroken Kindle) checks.
+ * ReKindle for jailbroken Kindles: checks.
  *
  * Run: node scripts/test-kindle.js
  *
@@ -52,38 +52,35 @@ try {
     }
 
     const launcher = fs.readFileSync(path.join(kindleDir, 'ReKindle.sh'), 'utf8');
-    assert.match(launcher, /BROWSER="\/usr\/bin\/chromium\/bin\/kindle_browser"/, 'Chromium browser path changed');
-    assert.match(launcher, /stop lab126_gui/, 'launcher must stop the Kindle GUI');
-    assert.match(launcher, /start lab126_gui/, 'launcher must restore the Kindle GUI');
-    assert.match(launcher, /preventScreenSaver/, 'launcher must manage the screensaver');
-    assert.match(launcher, /--js-flags=jitless/, 'launcher must disable JIT');
-    assert.match(launcher, /--content-shell-hide-toolbar/, 'launcher must hide the browser toolbar');
+    assert.match(launcher, /appmgrd start "app:\/\/com\.lab126\.browser#going\?url=\$URL"/, 'launcher must use appmgrd');
+    assert.match(launcher, /configureChrome/, 'launcher must blank the URL bar');
+    assert.ok(launcher.includes('topNavBar') && launcher.includes('CHROME_JSON'), 'launcher must configure the browser top bar');
+    assert.match(launcher, /run_fullscreen/, 'launcher must include the root fullscreen path');
+    assert.match(launcher, /watch_brightness/, 'launcher must include the brightness gesture watcher');
+    assert.match(launcher, /flIntensity/, 'launcher must control frontlight brightness');
+    assert.ok(!launcher.includes('mount -t squashfs'), 'launcher must not mount Chromium');
+    assert.ok(!launcher.includes('su - framework'), 'launcher must not need the framework user');
     assert.match(launcher, /^# Icon: \/mnt\/us\/documents\/ReKindleCover\.png$/m, 'launcher must use the library cover');
-    assert.match(launcher, /https:\/\/rekindle\.ink\/$/m, 'default URL must be the normal ReKindle site');
+    assert.match(launcher, /URL="https:\/\/rekindle\.ink\/"/, 'default URL must be the normal ReKindle site');
+    assert.match(launcher, /eips 2 2 "ReKindle v\$VERSION"/, 'boot screen must show the version');
     assert.ok(!launcher.includes('?kiosk=1'), 'launcher must not enable app-level fullscreen');
     assert.ok(!/rm\s+-rf\s+\/(\s|$)/.test(launcher), 'launcher must never rm -rf /');
 
     section('dry-run plan');
     const plan = execFileSync('bash', [path.join(kindleDir, 'ReKindle.sh')], {
         encoding: 'utf8',
-        env: Object.assign({}, process.env, { REKINDLE_DRY_RUN: '1' })
+        env: Object.assign({}, process.env, { REKINDLE_DRY_RUN: '1', REKINDLE_HYBRID: '0' })
     });
     for (const needle of [
         `PLAN: version=${version}`,
+        'PLAN: mode=browser-app (GUI/status bar stays)',
         'PLAN: url=https://rekindle.ink/',
-        'PLAN: browser=/usr/bin/chromium/bin/kindle_browser',
-        'prevent-screensaver',
-        'stop-gui',
-        'launch-browser',
-        'watch-power',
-        'restore-gui',
-        '--force-device-scale-factor=',
-        '--js-flags=jitless',
-        '--content-shell-hide-toolbar',
-        '--content-shell-host-window-cord=0,215'
+        'PLAN: app=app://com.lab126.browser#going?url=https://rekindle.ink/',
+        'PLAN: chrome={"appId":"com.lab126.browser","topNavBar":{"template":"blank","height":0}'
     ]) {
         assert.ok(plan.includes(needle), `dry-run output is missing: ${needle}`);
     }
+    assert.ok(!plan.includes('stop-gui'), 'browser-app mode must not stop the Kindle GUI');
 
     section('normal display contract');
     const theme = read('theme.js');
@@ -110,11 +107,11 @@ try {
         'downloads/ReKindle-Fullscreen.zip',
         'downloads/ReKindle.sh',
         'downloads/ReKindle.txt',
-        'downloads/ReKindleStop.sh',
         'download="ReKindle.sh"',
         'kindle.sh',
         'kindle.txt',
         'kpm add-repo',
+        'kterm',
         'kpm update',
         'kpm install rekindle',
         'https://repo.rekindle.ink',
@@ -122,7 +119,6 @@ try {
         'Invalid file type',
         'rekindleApplyWallpaper',
         'kindlemodding.org/jailbreak-wizard.html',
-        'Kindle Fullscreen',
         'normal framed layout',
         'theme.js?v=23'
     ]) {
@@ -150,7 +146,6 @@ try {
     for (const entry of [
         'documents/',
         'documents/ReKindle.sh',
-        'documents/ReKindleStop.sh',
         'documents/ReKindleCover.png',
         'README.txt',
         'rekindle-fullscreen.conf.example',
@@ -159,9 +154,11 @@ try {
         assert.ok(entries.includes(entry), `zip is missing ${entry}`);
     }
 
+    assert.ok(!entries.includes('documents/ReKindleStop.sh'), 'Stop app must not be installed from the zip');
+
     const extract = path.join(tmp, 'extract');
     execFileSync('unzip', ['-q', info.zipPath, '-d', extract], { stdio: 'pipe' });
-    for (const file of ['documents/ReKindle.sh', 'documents/ReKindleStop.sh']) {
+    for (const file of ['documents/ReKindle.sh']) {
         const mode = fs.statSync(path.join(extract, file)).mode & 0o777;
         assert.strictEqual(mode, 0o755, `${file} must be executable in the zip`);
     }
@@ -175,7 +172,7 @@ try {
     }
 
     section('guide downloads');
-    for (const file of ['ReKindle.sh', 'ReKindle.txt', 'ReKindleStop.sh', 'ReKindleStop.txt', 'ReKindleCover.png', 'SHA256SUMS.txt']) {
+    for (const file of ['ReKindle.sh', 'ReKindle.txt', 'ReKindleCover.png', 'SHA256SUMS.txt']) {
         assert.ok(fs.existsSync(path.join(outDir, file)), `standalone ${file} missing`);
     }
 
@@ -199,14 +196,14 @@ try {
     assert.strictEqual(pkg.artifacts.length, 1);
     const artifact = pkg.artifacts[0];
     assert.deepStrictEqual(artifact.version, version.split('.').map(function (n) { return parseInt(n, 10); }));
-    assert.deepStrictEqual(artifact.supported_platforms, ['kindlehf']);
+    assert.strictEqual(artifact.supported_platforms, null);
 
     const kpkg = path.join(kpmDir, artifact.url.split('/').pop());
     assert.ok(fs.existsSync(kpkg), 'KPM artifact is missing');
     assert.match(artifact.url, /^https:\/\/rekindle\.ink\/downloads\/kpm\/rekindle_[0-9.]+_kindlehf\.kpkg$/, 'KPM artifact URL must be absolute for a bare repo host');
     const kpmEntries = execFileSync('tar', ['-tzf', kpkg], { encoding: 'utf8' })
         .split('\n').filter(Boolean);
-    for (const entry of ['manifest.json', 'install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh', 'ReKindleCover.png']) {
+    for (const entry of ['manifest.json', 'install.sh', 'uninstall.sh', 'launch.sh', 'ReKindle.sh', 'ReKindleCover.png']) {
         assert.ok(kpmEntries.includes(entry), `KPM package is missing ${entry}`);
     }
 
@@ -217,7 +214,7 @@ try {
     assert.strictEqual(kpmManifest.id, 'rekindle');
     assert.deepStrictEqual(kpmManifest.version, artifact.version);
     const installHook = fs.readFileSync(path.join(kpmExtract, 'install.sh'), 'utf8');
-    assert.match(installHook, /cp -f \.\/ReKindle\.sh \/mnt\/us\/documents\/ReKindle\.sh/);
+    assert.match(installHook, /cp -f \.\/ReKindle\.sh "\/mnt\/us\/documents\/ReKindle Launcher\.sh"/);
     assert.match(installHook, /cp -f \.\/ReKindleCover\.png \/mnt\/us\/documents\/ReKindleCover\.png/);
     execFileSync('sh', ['-n', path.join(kpmExtract, 'install.sh')], { stdio: 'pipe' });
     execFileSync('sh', ['-n', path.join(kpmExtract, 'uninstall.sh')], { stdio: 'pipe' });
@@ -261,7 +258,7 @@ try {
     res = await mw.onRequest(repoContext('rekindle.ink', '/'));
     assert.strictEqual(await res.text(), 'APP');
 
-    console.log('PASS - Kindle Fullscreen checks');
+    console.log('PASS - ReKindle checks');
 } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
 }

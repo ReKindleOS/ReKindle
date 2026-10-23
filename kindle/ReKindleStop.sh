@@ -2,10 +2,10 @@
 # Name: ReKindle Stop
 # Author: ReKindle
 # Icon: /mnt/us/documents/ReKindleCover.png
-# Version: 1.0.0
+# Version: 1.2.1
 # DontUseFBInk
 #
-# Emergency exit for ReKindle Fullscreen.
+# Emergency exit for ReKindle.
 #
 # Run this from the Kindle library (or over SSH) if the browser is stuck, the
 # Kindle UI did not come back, or you need to stop the fullscreen session
@@ -33,7 +33,7 @@ refresh_screen() {
 
 [ -d /etc/upstart ] && INIT_TYPE="upstart" || INIT_TYPE="sysv"
 
-log "Stopping ReKindle Fullscreen"
+log "Stopping ReKindle"
 
 if command -v killall >/dev/null 2>&1; then
     killall kindle_browser >/dev/null 2>&1 || true

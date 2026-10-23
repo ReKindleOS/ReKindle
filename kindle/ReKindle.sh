@@ -1,177 +1,116 @@
 #!/bin/bash
-# Name: ReKindle Fullscreen
+# Name: ReKindle
 # Author: ReKindle
 # Icon: /mnt/us/documents/ReKindleCover.png
-# Version: 1.0.0
+# Version: 1.2.1
 # DontUseFBInk
 #
-# ReKindle Fullscreen - run rekindle.ink without the Kindle UI or browser
-# chrome on a jailbroken Kindle (firmware 5.16.4+, Chromium browser).
+# ReKindle - open rekindle.ink in the Kindle stock browser and blank the
+# browser's URL bar. The Kindle GUI/status bar stays alive, so brightness,
+# Wi-Fi and the normal swipe-down controls keep working.
 #
-# Copy this file to /mnt/us/documents/ and tap it in your Kindle library.
-# The companion ReKindleStop.sh restores the Kindle UI if the browser or this
-# script is interrupted.
-#
-# What it does:
-#   1. Stops the Kindle GUI (lab126_gui) to free the whole display and memory.
-#   2. Launches the stock Chromium browser on https://rekindle.ink/
-#      with the same low-end flags Amazon uses (JIT disabled, low-memory mode).
-#   3. Watches the power button. One press exits the browser and restarts the
-#      Kindle UI.
-#
-# It does not modify the root filesystem, install a daemon, or touch Amazon
-# content. Everything it changes is reverted on exit.
-#
-# Recovery: hold the power button until the Kindle reboots, or run
-# ReKindleStop.sh from your library after the UI is back.
-#
-# Optional config file: /mnt/us/rekindle-fullscreen.conf
-#   URL="https://rekindle.ink/"
-#   DSF="2"          # Chromium device scale factor (1, 1.5, 2)
-#   CORD="0,215"     # Chromium host-window position
-#
-# Environment overrides: REKINDLE_URL, REKINDLE_DSF, REKINDLE_CORD,
-# REKINDLE_DRY_RUN=1
+# This build does not stop the GUI, mount Chromium, or need root. It works
+# from the library tile and from `kpm launch rekindle`.
 
-VERSION="1.0.0"
+VERSION="1.2.1"
 CONF="/mnt/us/rekindle-fullscreen.conf"
 LOG="/mnt/us/rekindle-fullscreen.log"
-POWER_FLAG="/tmp/rekindle-fullscreen-power"
+ERROR_FILE="/mnt/us/documents/ReKindle Error.txt"
+LOG_COPY="/mnt/us/documents/ReKindle Log.txt"
 URL="https://rekindle.ink/"
-CORD="0,215"
-BROWSER="/usr/bin/chromium/bin/kindle_browser"
-USER_AGENT="Mozilla/5.0 (X11; U; Linux armv7l like Android; en-us) AppleWebKit/531.2+ (KHTML, like Gecko) Version/5.0 Safari/533.2+ Kindle/3.0+"
-DRY_RUN="${REKINDLE_DRY_RUN:-0}"
-LOG_OK=0
-[ -d /mnt/us ] && LOG_OK=1
-DSF=""
-INIT_TYPE="upstart"
+CHROME_JSON="${CHROME_JSON:-}"
+HYBRID="${HYBRID:-1}"
 GUI_STOPPED=0
-BROWSER_PID=""
 WATCH_PID=""
+BRIGHT_PID=""
+LIPC_WATCH_PID=""
 PREVENT_SS=""
+DRY_RUN="${REKINDLE_DRY_RUN:-0}"
+FW_VERSION=""
+APP_WATCH_PID=""
+LOG_OK=0
+
+if [ -d /mnt/us ] && touch "$LOG" 2>/dev/null; then
+    LOG_OK=1
+else
+    LOG="/tmp/rekindle-fullscreen.log"
+    if touch "$LOG" 2>/dev/null; then LOG_OK=1; fi
+fi
 
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-# Optional user config. Keep it sourced after the defaults so it can override
-# them, then let environment variables win.
 if [ -f "$CONF" ]; then
     . "$CONF"
 fi
 URL="${REKINDLE_URL:-$URL}"
-DSF="${REKINDLE_DSF:-$DSF}"
-CORD="${REKINDLE_CORD:-$CORD}"
+CHROME_JSON="${REKINDLE_CHROME_JSON:-$CHROME_JSON}"
+HYBRID="${REKINDLE_HYBRID:-$HYBRID}"
+if [ -z "$CHROME_JSON" ]; then
+    CHROME_JSON='{"appId":"com.lab126.browser","topNavBar":{"template":"blank","height":0},"searchBar":{"template":"none"}}'
+fi
 
 log() {
     local line
     line="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    if [ "$LOG_OK" = "1" ]; then
-        echo "$line" >> "$LOG" 2>/dev/null
-    fi
+    [ "$LOG_OK" = "1" ] && echo "$line" >> "$LOG" 2>/dev/null
     [ "$DRY_RUN" = "1" ] && echo "$line"
-    return 0
-}
-
-plan() {
-    [ "$DRY_RUN" = "1" ] && echo "PLAN: $*"
-    return 0
-}
-
-run() {
-    if [ "$DRY_RUN" = "1" ]; then
-        echo "RUN: $*"
-        return 0
-    fi
-    "$@"
-}
-
-refresh_screen() {
-    command -v eips >/dev/null 2>&1 || return 0
-    eips -c >/dev/null 2>&1
-    eips -c >/dev/null 2>&1
     return 0
 }
 
 say_screen() {
     command -v eips >/dev/null 2>&1 || return 0
     eips -c >/dev/null 2>&1
-    eips 2 2 "ReKindle" >/dev/null 2>&1
+    eips 2 2 "ReKindle v$VERSION" >/dev/null 2>&1
     eips 2 3 "$1" >/dev/null 2>&1
     return 0
 }
 
+copy_log() {
+    [ "$LOG_OK" = "1" ] || return 0
+    [ -d /mnt/us/documents ] || return 0
+    [ -f "$LOG" ] || return 0
+    tail -120 "$LOG" > "$LOG_COPY" 2>/dev/null || true
+}
+
+write_error_report() {
+    {
+        echo "ReKindle could not start"
+        echo "Time: $(date)"
+        echo "Error: $*"
+        echo ""
+        echo "Firmware: ${FW_VERSION:-unknown}"
+        [ -r /etc/version.txt ] && cat /etc/version.txt 2>/dev/null
+        echo ""
+        echo "Mode: browser-app (stock browser + blank URL bar; GUI stays running)"
+        echo "URL: $URL"
+        echo ""
+        echo "appmgrd active app:"
+        lipc-get-prop com.lab126.appmgrd activeApp 2>/dev/null || true
+        echo ""
+        echo "chromebar config:"
+        lipc-get-prop com.lab126.chromebar lastChromeConfig 2>/dev/null || true
+        echo ""
+        echo "Last log lines:"
+        tail -60 "$LOG" 2>/dev/null
+    } > "$ERROR_FILE" 2>/dev/null || true
+}
+
 fail() {
     log "ERROR: $*"
+    write_error_report "$*"
     if [ "$DRY_RUN" != "1" ]; then
-        say_screen "Error - see log"
+        say_screen "Error - see ReKindle Error.txt"
         sleep 6
     fi
     exit 1
 }
 
-detect_init() {
-    if [ -d /etc/upstart ]; then
-        INIT_TYPE="upstart"
-    else
-        INIT_TYPE="sysv"
+detect_firmware() {
+    if [ -r /etc/version.txt ]; then
+        FW_VERSION=$(head -n 1 /etc/version.txt 2>/dev/null | tr -d '[:space:]')
     fi
-}
-
-detect_dsf() {
-    [ -n "$DSF" ] && return 0
-    local width=""
-    if [ -r /sys/class/graphics/fb0/virtual_size ]; then
-        width=$(cut -d, -f1 < /sys/class/graphics/fb0/virtual_size 2>/dev/null)
-    fi
-    case "$width" in
-        ''|*[!0-9]*) width=1072 ;;
-    esac
-    if [ "$width" -ge 900 ]; then
-        DSF="2"
-    else
-        DSF="1"
-    fi
-}
-
-stop_gui() {
-    [ "$GUI_STOPPED" = "1" ] && return 0
-    GUI_STOPPED=1
-    log "Stopping Kindle GUI ($INIT_TYPE)"
-    if [ "$INIT_TYPE" = "sysv" ]; then
-        run /etc/init.d/framework stop >/dev/null 2>&1 || true
-    else
-        run stop lab126_gui >/dev/null 2>&1 || true
-        sleep 1
-        # The Chromium browser expects this service after the GUI is stopped.
-        # It is present on 5.16.4+ firmware; ignore it if this model lacks it.
-        run start kb >/dev/null 2>&1 || true
-    fi
-    refresh_screen
-}
-
-start_gui() {
-    [ "$GUI_STOPPED" = "1" ] || return 0
-    GUI_STOPPED=0
-    log "Restarting Kindle GUI"
-    if [ "$INIT_TYPE" = "sysv" ]; then
-        run /etc/init.d/framework start >/dev/null 2>&1 || true
-    else
-        run start lab126_gui >/dev/null 2>&1 || true
-        sleep 1
-        # Some firmware needs the framework service as well.
-        if ! lipc-get-prop com.lab126.appmgrd activeApp >/dev/null 2>&1; then
-            run /etc/init.d/framework start >/dev/null 2>&1 || true
-        fi
-    fi
-    refresh_screen
-}
-
-restore_screensaver() {
-    [ "$DRY_RUN" = "1" ] && return 0
-    if [ -n "$PREVENT_SS" ]; then
-        lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_SS" >/dev/null 2>&1 || true
-    else
-        lipc-set-prop com.lab126.powerd preventScreenSaver 0 >/dev/null 2>&1 || true
+    if [ -z "$FW_VERSION" ] && command -v lipc-get-prop >/dev/null 2>&1; then
+        FW_VERSION=$(lipc-get-prop com.lab126.system version 2>/dev/null | tr -d '[:space:]')
     fi
 }
 
@@ -192,191 +131,270 @@ enable_wifi() {
     fi
 }
 
-find_power_device() {
-    local dev name
-    for dev in /dev/input/event*; do
-        [ -e "$dev" ] || continue
-        name=$(cat "/sys/class/input/$(basename "$dev")/device/name" 2>/dev/null)
-        case "$name" in
-            *Power*|*power*|*gpio-keys*|*gpio_keys*)
-                echo "$dev"
-                return 0
-                ;;
-        esac
-    done
-    # Known fallbacks on Kindle hardware.
-    if [ -e /dev/input/event1 ]; then
-        echo /dev/input/event1
-        return 0
-    fi
-    if [ -e /dev/input/event0 ]; then
-        echo /dev/input/event0
-        return 0
-    fi
+browser_running() {
+    command -v pgrep >/dev/null 2>&1 || return 1
+    pgrep -f 'kindle_browser' >/dev/null 2>&1 && return 0
+    pgrep -f '/usr/bin/chromium' >/dev/null 2>&1 && return 0
     return 1
 }
 
-read_event_hex() {
-    if command -v hexdump >/dev/null 2>&1; then
-        dd if="$1" bs=16 count=1 2>/dev/null | hexdump -v -e '16/1 "%02X"'
+stop_gui() {
+    [ "$GUI_STOPPED" = "1" ] && return 0
+    GUI_STOPPED=1
+    log "Stopping Kindle GUI"
+    trap '' TERM
+    stop lab126_gui >> "$LOG" 2>&1 || true
+    sleep 1
+    command -v initctl >/dev/null 2>&1 && initctl stop lab126_gui >> "$LOG" 2>&1 || true
+    trap - TERM
+    sleep 2
+}
+
+start_gui() {
+    [ "$GUI_STOPPED" = "1" ] || return 0
+    log "Restoring Kindle GUI"
+    cd / && start lab126_gui >> "$LOG" 2>&1 || true
+    sleep 1
+}
+
+write_input_report() {
+    {
+        echo "ReKindle input devices"
+        echo "Time: $(date)"
+        echo ""
+        cat /proc/bus/input/devices 2>/dev/null
+        echo ""
+        if command -v evtest >/dev/null 2>&1; then
+            evtest --list 2>&1 || true
+        fi
+    } > "/mnt/us/documents/ReKindle Inputs.txt" 2>/dev/null || true
+}
+
+find_touch_device() {
+    local ev name caps
+    for ev in /dev/input/event*; do
+        [ -r "$ev" ] || continue
+        name=$(basename "$ev")
+        caps="/sys/class/input/$name/device/capabilities/abs"
+        [ -r "$caps" ] || continue
+        if grep -qwE '35|36' "$caps"; then
+            echo "$ev"
+            return 0
+        fi
+        name=$(cat "/sys/class/input/$(basename "$ev")/device/name" 2>/dev/null)
+        case "$name" in
+            *[Tt]ouch*|*[Tt]pd*|*[Tt]s*|*cyttsp*|*elan*|*synaptics*) echo "$ev"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+find_power_device() {
+    local ev name caps
+    for ev in /dev/input/event*; do
+        [ -r "$ev" ] || continue
+        name=$(basename "$ev")
+        caps="/sys/class/input/$name/device/capabilities/key"
+        [ -r "$caps" ] || continue
+        if grep -qw '7400' "$caps"; then
+            echo "$ev"
+            return 0
+        fi
+    done
+    echo /dev/input/event1
+}
+
+adjust_brightness() {
+    local delta="$1" cur new
+    cur=$(lipc-get-prop com.lab126.powerd flIntensity 2>/dev/null)
+    case "$cur" in
+        ''|*[!0-9]*) cur=12 ;;
+    esac
+    new=$((cur + delta))
+    [ "$new" -lt 0 ] && new=0
+    [ "$new" -gt 24 ] && new=24
+    if lipc-set-prop com.lab126.powerd flIntensity "$new" >/dev/null 2>&1; then
+        log "Brightness $cur -> $new"
     else
-        dd if="$1" bs=16 count=1 2>/dev/null | od -An -tx1 -N16 | tr -d ' \n'
+        log "Brightness set failed (flIntensity=$cur, wanted $new)"
     fi
+}
+
+watch_lipc_power() {
+    command -v lipc-wait-event >/dev/null 2>&1 || return 1
+    lipc-wait-event com.lab126.powerd powerButton >/dev/null 2>&1 || return 1
+    log "lipc powerButton event"
+    touch /tmp/rekindle-power 2>/dev/null
 }
 
 watch_power() {
     local dev event type code value
-    dev=$(find_power_device) || dev=""
-    if [ -z "$dev" ]; then
-        # Fallback for models where the input device name is not useful.
-        if command -v lipc-wait-event >/dev/null 2>&1; then
-            log "Watching power button via lipc-wait-event"
-            lipc-wait-event com.lab126.powerd powerButton >/dev/null 2>&1
-            touch "$POWER_FLAG" 2>/dev/null
-            return 0
-        fi
-        log "No power button device found; use ReKindleStop.sh to exit"
-        return 1
-    fi
-    log "Watching power button on $dev"
+    dev=$(find_power_device)
+    [ -r "$dev" ] || return 1
     while true; do
-        event=$(read_event_hex "$dev")
-        if [ -z "$event" ]; then
-            sleep 1
-            continue
-        fi
-        # input_event: timeval[8] type[2] code[2] value[4] (32-bit Kindle).
-        # EV_KEY=0x0100, KEY_POWER=0x7400, value=1 (press).
+        event=$(dd if="$dev" bs=16 count=1 2>/dev/null | hexdump -v -e '16/1 "%02X"')
+        [ -n "$event" ] || continue
         type=${event:16:4}
         code=${event:20:4}
         value=${event:24:8}
         if [ "$type" = "0100" ] && [ "$code" = "7400" ] && [ "$value" = "01000000" ]; then
-            log "Power button pressed; exiting fullscreen"
-            touch "$POWER_FLAG" 2>/dev/null
+            log "Power button pressed"
+            touch /tmp/rekindle-power 2>/dev/null
             return 0
         fi
     done
 }
 
-cleanup() {
-    trap - EXIT INT TERM
-    if [ -n "$WATCH_PID" ]; then
-        kill "$WATCH_PID" >/dev/null 2>&1 || true
+watch_brightness() {
+    local dev line type code value height width start_y start_x done active
+    dev=$(find_touch_device) || { log "No touchscreen device for brightness gesture"; return 0; }
+    width=1072; height=1448
+    if [ -r /sys/class/graphics/fb0/virtual_size ]; then
+        width=$(cut -d, -f1 < /sys/class/graphics/fb0/virtual_size 2>/dev/null)
+        height=$(cut -d, -f2 < /sys/class/graphics/fb0/virtual_size 2>/dev/null)
     fi
-    if [ -n "$BROWSER_PID" ]; then
-        kill "$BROWSER_PID" >/dev/null 2>&1 || true
-        sleep 1
-        kill -9 "$BROWSER_PID" >/dev/null 2>&1 || true
-    fi
-    if [ "$DRY_RUN" != "1" ] && command -v killall >/dev/null 2>&1; then
-        killall kindle_browser >/dev/null 2>&1 || true
-    fi
-    restore_screensaver
-    start_gui
-    rm -f "$POWER_FLAG" >/dev/null 2>&1 || true
-    log "Stopped"
-    exit 0
-}
-
-launch_browser() {
-    log "Launching $URL (scale $DSF)"
-    if [ "$DRY_RUN" = "1" ]; then
-        echo "BROWSER: $BROWSER \"$URL\" --force-device-scale-factor=$DSF --js-flags=jitless --content-shell-hide-toolbar --content-shell-host-window-cord=$CORD"
-        return 0
-    fi
-    export XDG_CONFIG_HOME="/mnt/us/system/browser/"
-    export LD_LIBRARY_PATH="/usr/bin/chromium/lib:/usr/bin/chromium/usr/lib:/usr/lib/"
-    mkdir -p /mnt/us/system/browser 2>/dev/null || true
-    nohup "$BROWSER" "$URL" \
-        --no-zygote --no-sandbox --single-process \
-        --skia-resource-cache-limit-mb=64 --disable-gpu --in-process-gpu \
-        --disable-gpu-sandbox --disable-gpu-compositing \
-        --enable-dom-distiller --enable-distillability-service \
-        --force-device-scale-factor="$DSF" --js-flags=jitless \
-        --content-shell-hide-toolbar --content-shell-host-window-cord="$CORD" \
-        --force-gpu-mem-available-mb=32 --enable-grayscale-mode \
-        --enable-low-end-device-mode --enable-low-res-tiling \
-        --disable-site-isolation-trials \
-        --user-agent="$USER_AGENT" \
-        >> "$LOG" 2>&1 &
-    BROWSER_PID=$!
-    log "Browser PID $BROWSER_PID"
-}
-
-wait_for_exit() {
-    rm -f "$POWER_FLAG" >/dev/null 2>&1 || true
-    watch_power &
-    WATCH_PID=$!
+    case "$width" in ''|*[!0-9]*) width=1072 ;; esac
+    case "$height" in ''|*[!0-9]*) height=1448 ;; esac
+    log "Brightness gesture on $dev (${width}x${height})"
+    active=0; done=0; start_y=""; start_x=""
     while true; do
-        if ! kill -0 "$BROWSER_PID" >/dev/null 2>&1; then
-            log "Browser exited"
-            break
-        fi
-        if ! kill -0 "$WATCH_PID" >/dev/null 2>&1; then
-            if [ -f "$POWER_FLAG" ]; then
-                break
+        line=$(dd if="$dev" bs=16 count=1 2>/dev/null | hexdump -v -e '2/4 "%u " 2/2 "%u " 1/4 "%d"')
+        [ -n "$line" ] || continue
+        set -- $line
+        type=$3; code=$4; value=$5
+        if [ "$type" = "1" ] && [ "$code" = "330" ]; then
+            if [ "$value" = "1" ]; then
+                active=1; done=0; start_y=""; start_x=""
+            else
+                active=0; start_y=""
             fi
-            # Power watcher could not start (unknown input device). Keep the
-            # browser alive until it exits; ReKindleStop.sh / reboot recovers.
-            WATCH_PID=""
-            wait "$BROWSER_PID" >/dev/null 2>&1
-            break
+        elif [ "$type" = "3" ] && [ "$active" = "1" ]; then
+            case "$code" in
+                57)
+                    if [ "$value" -ge 0 ]; then active=1; done=0; start_y=""; start_x=""; fi
+                    ;;
+                0|53) [ -z "$start_x" ] && start_x=$value ;;
+                1|54)
+                    if [ -z "$start_y" ]; then
+                        start_y=$value
+                    elif [ "$done" = "0" ]; then
+                        if [ $((value - start_y)) -gt 110 ] && [ "$start_y" -lt $((height / 6)) ]; then
+                            if [ -n "$start_x" ] && [ "$start_x" -gt $((width / 2)) ]; then
+                                adjust_brightness 3
+                            else
+                                adjust_brightness -3
+                            fi
+                            done=1
+                        fi
+                    fi
+                    ;;
+            esac
         fi
-        sleep 1
     done
 }
 
-check_kindle() {
-    if [ ! -d /mnt/us ]; then
-        echo "ReKindle Fullscreen: this does not look like a Kindle (/mnt/us missing)."
-        exit 2
-    fi
-    if [ ! -x "$BROWSER" ]; then
-        fail "Kindle firmware 5.16.4+ required (Chromium browser not found)."
-    fi
+run_fullscreen() {
+    [ "$(id -u 2>/dev/null)" = "0" ] || return 1
+    log "FULLSCREEN root mode: appmgrd browser, then stop GUI"
+    write_input_report
+    PREVENT_SS=$(lipc-get-prop com.lab126.powerd preventScreenSaver 2>/dev/null)
+    lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
+    lipc-set-prop com.lab126.appmgrd start "app://com.lab126.browser#going?url=$URL" >> "$LOG" 2>&1 || fail "appmgrd could not start the browser."
+    local i=0
+    while [ "$i" -lt 15 ]; do
+        browser_running && break
+        sleep 1
+        i=$((i + 1))
+    done
+    browser_running || fail "Browser process did not start."
+    sleep 4
+    lipc-set-prop com.lab126.chromebar configureChrome "$CHROME_JSON" >> "$LOG" 2>&1 || true
+    say_screen "Starting fullscreen..."
+    stop_gui
+    browser_running || fail "Browser exited when the Kindle GUI stopped."
+    watch_power &
+    WATCH_PID=$!
+    watch_lipc_power &
+    LIPC_WATCH_PID=$!
+    watch_brightness &
+    BRIGHT_PID=$!
+    while browser_running; do
+        [ -f /tmp/rekindle-power ] && break
+        sleep 1
+    done
+    log "Browser closed or power pressed"
 }
 
-rotate_log() {
-    [ "$LOG_OK" = "1" ] || return 0
-    [ -f "$LOG" ] || return 0
-    local size
-    size=$(wc -c < "$LOG" 2>/dev/null || echo 0)
-    if [ "$size" -gt 65536 ] 2>/dev/null; then
-        mv "$LOG" "$LOG.old" >/dev/null 2>&1 || true
-    fi
+launch_browser_app() {
+    log "BROWSER_APP mode: appmgrd browser + custom chromebar; GUI remains running"
+    command -v lipc-set-prop >/dev/null 2>&1 || fail "lipc-set-prop is unavailable."
+    lipc-set-prop com.lab126.appmgrd start "app://com.lab126.browser#going?url=$URL" >> "$LOG" 2>&1 || fail "appmgrd could not start the browser."
+
+    local i=0
+    while [ "$i" -lt 15 ]; do
+        browser_running && break
+        sleep 1
+        i=$((i + 1))
+    done
+    browser_running || fail "The browser process did not start."
+
+    (
+        while browser_running; do
+            lipc-set-prop com.lab126.chromebar configureChrome "$CHROME_JSON" >> "$LOG" 2>&1 || true
+            sleep 1
+        done
+    ) &
+    APP_WATCH_PID=$!
+    copy_log
+    say_screen "ReKindle is open"
+
+    while browser_running; do
+        sleep 2
+    done
+    log "Browser closed; Kindle GUI/status bar was never stopped"
+}
+
+cleanup() {
+    trap - EXIT INT TERM
+    if [ -n "$APP_WATCH_PID" ]; then kill "$APP_WATCH_PID" >/dev/null 2>&1 || true; fi
+    if [ -n "$WATCH_PID" ]; then kill "$WATCH_PID" >/dev/null 2>&1 || true; fi
+    if [ -n "$BRIGHT_PID" ]; then kill "$BRIGHT_PID" >/dev/null 2>&1 || true; fi
+    if [ -n "$LIPC_WATCH_PID" ]; then kill "$LIPC_WATCH_PID" >/dev/null 2>&1 || true; fi
+    command -v killall >/dev/null 2>&1 && killall kindle_browser >/dev/null 2>&1 || true
+    if [ -n "$PREVENT_SS" ]; then lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_SS" >/dev/null 2>&1 || true; fi
+    start_gui
+    rm -f /tmp/rekindle-power
+    log "Stopped"
+    copy_log
+    exit 0
 }
 
 main() {
-    rotate_log
-    log "ReKindle Fullscreen v$VERSION starting (dry-run=$DRY_RUN)"
-    detect_init
-    detect_dsf
+    detect_firmware
+    log "ReKindle v$VERSION starting (browser-app, firmware=${FW_VERSION:-unknown}, dry-run=$DRY_RUN)"
+    copy_log
 
     if [ "$DRY_RUN" = "1" ]; then
-        echo "PLAN: version=$VERSION init=$INIT_TYPE dsf=$DSF"
+        echo "PLAN: version=$VERSION firmware=${FW_VERSION:-unknown}"
+        if [ "$HYBRID" = "1" ]; then
+            echo "PLAN: mode=root fullscreen + brightness gesture"
+        else
+            echo "PLAN: mode=browser-app (GUI/status bar stays)"
+        fi
         echo "PLAN: url=$URL"
-        echo "PLAN: browser=$BROWSER"
-        echo "PLAN: power=$(find_power_device 2>/dev/null || echo none)"
-        echo "PLAN: sequence=prevent-screensaver -> stop-gui -> launch-browser -> watch-power -> restore-gui"
-        launch_browser
+        echo "PLAN: app=app://com.lab126.browser#going?url=$URL"
+        echo "PLAN: chrome=$CHROME_JSON"
         exit 0
     fi
 
-    check_kindle
+    [ -d /mnt/us ] || fail "This does not look like a Kindle (/mnt/us missing)."
     enable_wifi
-
-    PREVENT_SS=$(lipc-get-prop com.lab126.powerd preventScreenSaver 2>/dev/null)
-    lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
-    refresh_screen
-
-    say_screen "Starting fullscreen..."
-    sleep 1
-    stop_gui
-    launch_browser
-    if [ -z "$BROWSER_PID" ]; then
-        fail "Could not start the browser."
+    if [ "$HYBRID" = "1" ] && [ "$(id -u 2>/dev/null)" = "0" ]; then
+        run_fullscreen
+        exit 0
     fi
-    wait_for_exit
+    say_screen "Opening ReKindle..."
+    launch_browser_app
 }
 
 trap cleanup EXIT INT TERM

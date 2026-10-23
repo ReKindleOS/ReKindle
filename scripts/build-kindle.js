@@ -1,12 +1,11 @@
 /*
- * Build the ReKindle Fullscreen add-on for jailbroken Kindles.
+ * Build the ReKindle add-on for jailbroken Kindles.
  *
  * Run: node scripts/build-kindle.js [outDir]
  *
  * Produces:
  *   downloads/ReKindle-Fullscreen.zip  - extract to the Kindle root
  *   downloads/ReKindle.sh              - single-file launcher download
- *   downloads/ReKindleStop.sh          - recovery scriptlet
  *   downloads/SHA256SUMS.txt           - checksums
  *
  * The zip is assembled from kindle/ at build time so the source tree remains
@@ -51,7 +50,6 @@ async function stagePackage(stage) {
     await fs.ensureDir(documents);
 
     await fs.copy(path.join(SOURCE, 'ReKindle.sh'), path.join(documents, 'ReKindle.sh'));
-    await fs.copy(path.join(SOURCE, 'ReKindleStop.sh'), path.join(documents, 'ReKindleStop.sh'));
     await fs.copy(path.join(SOURCE, 'ReKindleCover.png'), path.join(documents, 'ReKindleCover.png'));
     await fs.copy(path.join(SOURCE, 'README.txt'), path.join(stage, 'README.txt'));
     await fs.copy(path.join(SOURCE, 'rekindle-fullscreen.conf.example'), path.join(stage, 'rekindle-fullscreen.conf.example'));
@@ -59,14 +57,12 @@ async function stagePackage(stage) {
     // Scriptlets are launched by the hotfix, but keeping the executable bit
     // makes the files usable over SSH and from KUAL wrappers too.
     fs.chmodSync(path.join(documents, 'ReKindle.sh'), 0o755);
-    fs.chmodSync(path.join(documents, 'ReKindleStop.sh'), 0o755);
     fs.chmodSync(path.join(documents, 'ReKindleCover.png'), 0o644);
     fs.chmodSync(path.join(stage, 'README.txt'), 0o644);
     fs.chmodSync(path.join(stage, 'rekindle-fullscreen.conf.example'), 0o644);
 
     for (const file of [
         path.join(documents, 'ReKindle.sh'),
-        path.join(documents, 'ReKindleStop.sh'),
         path.join(documents, 'ReKindleCover.png'),
         path.join(stage, 'README.txt'),
         path.join(stage, 'rekindle-fullscreen.conf.example')
@@ -78,7 +74,6 @@ async function stagePackage(stage) {
     // without trusting the web page.
     const sums = [
         `${sha256(path.join(documents, 'ReKindle.sh'))}  documents/ReKindle.sh`,
-        `${sha256(path.join(documents, 'ReKindleStop.sh'))}  documents/ReKindleStop.sh`,
         `${sha256(path.join(documents, 'ReKindleCover.png'))}  documents/ReKindleCover.png`,
         `${sha256(path.join(stage, 'README.txt'))}  README.txt`,
         `${sha256(path.join(stage, 'rekindle-fullscreen.conf.example'))}  rekindle-fullscreen.conf.example`
@@ -112,7 +107,6 @@ async function buildKindlePackage(options) {
         execFileSync('zip', ['-X', '-q', '-r', zipPath, '.'], { cwd: stage, stdio: 'pipe' });
 
         await fs.copy(path.join(stage, 'documents', 'ReKindle.sh'), path.join(outDir, 'ReKindle.sh'));
-        await fs.copy(path.join(stage, 'documents', 'ReKindleStop.sh'), path.join(outDir, 'ReKindleStop.sh'));
         await fs.copy(path.join(stage, 'documents', 'ReKindleCover.png'), path.join(outDir, 'ReKindleCover.png'));
 
         // Amazon's stock browser only downloads a short allowlist of file types
@@ -121,9 +115,7 @@ async function buildKindlePackage(options) {
         // filename so the scriptlet still lands in documents with the right
         // extension. The ZIP remains the universally reliable path.
         await fs.copy(path.join(outDir, 'ReKindle.sh'), path.join(outDir, 'ReKindle.txt'));
-        await fs.copy(path.join(outDir, 'ReKindleStop.sh'), path.join(outDir, 'ReKindleStop.txt'));
         fs.chmodSync(path.join(outDir, 'ReKindle.txt'), 0o644);
-        fs.chmodSync(path.join(outDir, 'ReKindleStop.txt'), 0o644);
 
         // KPM package + repository. This is the reliable on-device install:
         // KPM downloads packages with the shell, so Amazon's browser file-type
@@ -137,10 +129,10 @@ async function buildKindlePackage(options) {
             await fs.copy(path.join(SOURCE, 'kpm', 'manifest.json'), path.join(kpmStage, 'manifest.json'));
             await fs.copy(path.join(SOURCE, 'kpm', 'install.sh'), path.join(kpmStage, 'install.sh'));
             await fs.copy(path.join(SOURCE, 'kpm', 'uninstall.sh'), path.join(kpmStage, 'uninstall.sh'));
+            await fs.copy(path.join(SOURCE, 'kpm', 'launch.sh'), path.join(kpmStage, 'launch.sh'));
             await fs.copy(path.join(outDir, 'ReKindle.sh'), path.join(kpmStage, 'ReKindle.sh'));
-            await fs.copy(path.join(outDir, 'ReKindleStop.sh'), path.join(kpmStage, 'ReKindleStop.sh'));
             await fs.copy(path.join(outDir, 'ReKindleCover.png'), path.join(kpmStage, 'ReKindleCover.png'));
-            for (const file of ['install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh']) {
+            for (const file of ['install.sh', 'uninstall.sh', 'launch.sh', 'ReKindle.sh']) {
                 fs.chmodSync(path.join(kpmStage, file), 0o755);
             }
             fs.chmodSync(path.join(kpmStage, 'manifest.json'), 0o644);
@@ -149,7 +141,7 @@ async function buildKindlePackage(options) {
             execFileSync('tar', [
                 '-czf', kpkgPath,
                 '-C', kpmStage,
-                'manifest.json', 'install.sh', 'uninstall.sh', 'ReKindle.sh', 'ReKindleStop.sh', 'ReKindleCover.png'
+                'manifest.json', 'install.sh', 'uninstall.sh', 'launch.sh', 'ReKindle.sh', 'ReKindleCover.png'
             ], { stdio: 'pipe' });
         } finally {
             await fs.remove(kpmStage);
@@ -160,10 +152,10 @@ async function buildKindlePackage(options) {
             manifest_version: 2,
             id: 'rekindle',
             name: 'ReKindle',
-            description: 'ReKindle Fullscreen for jailbroken Kindles',
+            description: 'ReKindle for jailbroken Kindles',
             packages: {
                 'rekindle': {
-                    name: 'ReKindle Fullscreen',
+                    name: 'ReKindle',
                     author: 'ReKindle',
                     description: 'Run ReKindle without the Kindle interface or browser chrome.',
                     artifacts: [
@@ -171,7 +163,7 @@ async function buildKindlePackage(options) {
                             url: 'https://rekindle.ink/downloads/kpm/' + kpkgName,
                             version: versionParts,
                             dependencies: [],
-                            supported_platforms: ['kindlehf']
+                            supported_platforms: null
                         }
                     ]
                 }
@@ -185,8 +177,6 @@ async function buildKindlePackage(options) {
         const downloadSums = [
             `${sha256(path.join(outDir, 'ReKindle.sh'))}  ReKindle.sh`,
             `${sha256(path.join(outDir, 'ReKindle.txt'))}  ReKindle.txt`,
-            `${sha256(path.join(outDir, 'ReKindleStop.sh'))}  ReKindleStop.sh`,
-            `${sha256(path.join(outDir, 'ReKindleStop.txt'))}  ReKindleStop.txt`,
             `${sha256(path.join(outDir, 'ReKindleCover.png'))}  ReKindleCover.png`,
             `${sha256(zipPath)}  ReKindle-Fullscreen.zip`,
             `${sha256(kpkgPath)}  kpm/${kpkgName}`,

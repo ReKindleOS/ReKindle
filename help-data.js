@@ -62,7 +62,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>If you want sync, tap <b>LOG IN / REGISTER</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
                 <li>Star the apps you use most: tap <b>Edit</b> on the home screen, then the star on an app. See <a href="#home">The home screen</a>.</li>
             </ol>
-            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle Fullscreen launcher</a> is only for jailbroken Kindles that want the browser chrome gone.</div>
+            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle launcher</a> is only for jailbroken Kindles that want the browser chrome gone.</div>
             <p>This Help app covers every app and game. Use the search box on the left (or the category buttons) and the <a href="#all">A-Z index</a> when you know the name of something.</p>
         `
     },
@@ -91,7 +91,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td>Phone, tablet, desktop</td><td>Full site. Keyboard shortcuts and a mouse work in most apps and games.</td></tr>
             </table>
             <div class="note"><b>Why firmware matters:</b> ReKindle targets the Chromium 75 browser shipped on newer Kindles. Very old browsers cannot run modern JavaScript features, which is why the Lite and Legacy builds exist.</div>
-            <div class="note"><b>Want no browser chrome?</b> On a jailbroken Kindle with firmware 5.16.4+, the optional <a href="#kindle-fullscreen">ReKindle Fullscreen launcher</a> hides the Kindle interface entirely.</div>
+            <div class="note"><b>Want no browser chrome?</b> On a jailbroken Kindle with firmware 5.16.4+, the optional <a href="#kindle-fullscreen">ReKindle launcher</a> hides the Kindle interface and browser chrome.</div>
             <h2>Offline use</h2>
             <p>The dashboard shell and some assets are cached by a service worker, but most apps need a network connection for their data. Games that store state locally keep working offline. Cloud sync resumes when you reconnect.</p>
             <h2>Storage and clearing data</h2>
@@ -101,26 +101,26 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
     {
         id: 'kindle-fullscreen',
         cat: 'start',
-        title: 'ReKindle Fullscreen on a jailbroken Kindle',
-        summary: 'Hide the Kindle interface and browser chrome, and recover if the launcher gets stuck.',
-        tags: 'kindle fullscreen full screen jailbreak jailbroken scriptlet launcher power button 5.16.4 usb documents kpm cover',
+        title: 'ReKindle on a jailbroken Kindle',
+        summary: 'Run ReKindle fullscreen on a jailbroken Kindle and recover if the launcher gets stuck.',
+        tags: 'kindle fullscreen full screen jailbreak jailbroken scriptlet launcher appmgrd chromebar 5.16.4 usb documents kpm cover',
         related: ['install', 'settings', 'troubleshooting'],
         body: `
-            <p>ReKindle normally runs inside the Kindle browser, with the Kindle status bar and browser controls around it. On a jailbroken Kindle with firmware 5.16.4 or newer, the optional <b>ReKindle Fullscreen</b> launcher stops the Kindle interface and opens the stock Chromium browser on <code>rekindle.ink</code>. It hides the Kindle UI and browser chrome, but keeps ReKindle's normal framed layout.</p>
+            <p>On a jailbroken Kindle with firmware 5.16.4 or newer, the optional <b>ReKindle</b> launcher mounts the stock Chromium image, stops the Kindle interface, and opens <code>rekindle.ink</code> as the <code>framework</code> user with Amazon's own flags. ReKindle keeps its normal framed layout.</p>
             <div class="note"><b>Requirements:</b> a jailbroken Kindle on firmware 5.16.4+ with scriptlet support from the Universal Hotfix. Older Kindles use the WebKit browser and cannot run this launcher. Normal ReKindle use needs no jailbreak.</div>
             <h2>Install</h2>
             <ol>
                 <li>Jailbreak the Kindle with the <a href="https://kindlemodding.org/jailbreak-wizard.html" target="_blank" rel="noopener">KindleModding wizard</a>, then block automatic updates.</li>
-                <li><b>On the Kindle (KPM):</b> run these in the search bar one at a time: <code>;kpm add-repo https://repo.rekindle.ink</code>, then <code>;kpm update</code>, then <code>;kpm install rekindle</code>. KPM is included with current WinterBreak / SpringBreak jailbreaks.</li>
-                <li><b>Or over USB:</b> download the ZIP from the <a href="kindle">ReKindle Fullscreen guide</a>, unzip it, and copy the <code>documents</code> folder into the Kindle's root folder, merging with the existing one.</li>
-                <li>Open the library and tap <b>ReKindle Fullscreen</b> (it may be under Docs or Recent).</li>
+                <li><b>Over USB (recommended):</b> download the ZIP from the <a href="kindle">ReKindle for Kindle guide</a>, unzip it, and copy the <code>documents</code> folder into the Kindle's root folder, merging with the existing one.</li>
+                <li><b>No computer, with kterm:</b> install kterm with <code>;kpm install kterm</code>, open kterm, then run <code>kpm add-repo https://repo.rekindle.ink</code>, <code>kpm update</code> and <code>kpm install rekindle</code>. Do not run <code>;kpm add-repo</code> from the search bar: Amazon's scriptExecutor rejects <code>.</code> and <code>:</code> in <code>;</code> commands, so the URL never reaches KPM.</li>
+                <li>Open the library and tap <b>ReKindle</b> (it may be under Docs or Recent).</li>
             </ol>
             <p>Do not use the direct <code>.sh</code> or <code>.txt</code> links on a stock Kindle browser: it reports <b>Invalid file type</b> because only book formats are allowed. The <code>.txt</code> alias cannot bypass that, because the browser checks the saved filename/type. KPM or USB is required.</p>
             <h2>Exit and recovery</h2>
-            <p>Press the <b>power button once</b> to close ReKindle and restart the Kindle interface. If the Kindle is stuck, run <b>ReKindle Stop</b> from the library. If the library is not visible, hold the power button until the Kindle reboots; the launcher changes no boot files.</p>
+            <p>Press the <b>power button once</b> to close ReKindle and restart the Kindle interface. If the Kindle is stuck, hold power until it reboots; the launcher changes no boot files.</p>
             <h2>Display behavior</h2>
-            <p>The launcher does not stretch ReKindle. The dashboard keeps its desktop frame and apps open in their normal System 7 windows; only the Kindle interface and browser chrome are removed. The full guide covers uninstalling, display scale and troubleshooting.</p>
-            <p><a href="kindle">Open the full ReKindle Fullscreen guide &rarr;</a></p>
+            <p>The launcher does not stretch ReKindle. The dashboard keeps its desktop frame and apps open in their normal System 7 windows; only the Kindle interface and browser chrome are removed. The full guide covers uninstalling and troubleshooting.</p>
+            <p><a href="kindle">Open the full ReKindle for Kindle guide &rarr;</a></p>
         `
     },
     {
@@ -431,7 +431,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'start',
         title: 'Troubleshooting',
         summary: 'Fix blank pages, stale content, login problems, missing apps and sync issues.',
-        tags: 'fix broken blank page refresh cache login loop timezone weather pro not working offline network stale slow',
+        tags: 'fix broken blank page refresh cache login loop timezone weather pro not working offline network stale slow blocked spain laliga liga isp vpn bloqueo cloudflare',
         related: ['faq', 'storage', 'display'],
         body: `
             <p>Most problems come from a stale cache, a missing login, or a network request that failed quietly. Work through this list in order.</p>
@@ -461,6 +461,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>That app needs JavaScript features your browser lacks. The fix is newer firmware or a newer device; the Lite/Legacy builds trade features for compatibility. See <a href="#badges">Badges explained</a>.</p>
             <h2>Feeds, weather or stocks fail to load</h2>
             <p>These call external services. Rate limits, DNS hiccups and provider outages all look like an empty list. Wait a few minutes, use Refresh, and check another app that needs the network. Reddit and some RSS sources are especially prone to rate limiting.</p>
+            <h2>Seeing a "La Liga" block page</h2>
+            <p>Some Spanish internet providers block websites that share ReKindle's internet address, because of a court order involving La Liga. The notice page comes from your provider, not from ReKindle, so reloading, clearing site data or resetting the device will not help. It usually only lasts for a match window, and rekindle.ink works again afterwards.</p>
+            <p>A phone often gets through while an e-reader does not, because the two devices connect in slightly different ways. A phone hotspot on its own does not change that.</p>
+            <p>While the block lasts, use the alternate address <b>rekindle.pages.dev</b>. It is the same ReKindle, served from a different address, and it is not affected.</p>
+            <div class="note"><b>About your data:</b> signed-in accounts see everything on the alternate address too. Guest data (stored in the browser with no account) is saved per site address, so it does not follow you there.</div>
             <h2>Storage full or data vanished</h2>
             <p>The Kindle cache can be wiped when the device runs low. Sign in before doing heavy work so it reaches Firestore. See <a href="#storage">Where your data lives</a>.</p>
             <h2>Nothing here helped</h2>

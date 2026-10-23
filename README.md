@@ -14,10 +14,10 @@ ReKindle is a Progressive Web App (PWA). No "installation" or jailbreak is requi
 
 ### Jailbroken Kindle: fullscreen
 
-Firmware 5.16.4+ can run ReKindle with **no Kindle interface and no browser chrome**. The optional scriptlet stops the Kindle GUI, launches the stock Chromium browser on `rekindle.ink`, and restores the Kindle UI when you press the power button. ReKindle keeps its normal framed layout; only the Kindle interface and browser chrome are removed. It changes nothing on the root filesystem.
+Firmware 5.16.4+ can run ReKindle with **no Kindle interface and no browser chrome**. The optional scriptlet mounts `chromium.sqsh`, stops the Kindle GUI, and launches Chromium as the `framework` user with Amazon’s own flags. ReKindle keeps its normal framed layout; the Kindle UI and browser chrome are removed and restored on exit. It changes nothing on the root filesystem.
 
-*   Step-by-step guide, including jailbreaking: [ReKindle Fullscreen](kindle.html)
-*   Install on the Kindle with KPM: `;kpm add-repo https://repo.rekindle.ink`, `;kpm update`, `;kpm install rekindle`. Or download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` over USB.
+*   Step-by-step guide, including jailbreaking: [ReKindle for Kindle](kindle.html)
+*   Install over USB: download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` to the Kindle. No computer? Install kterm with `;kpm install kterm`, then run `kpm add-repo https://repo.rekindle.ink`, `kpm update` and `kpm install rekindle` inside kterm. Do not run `;kpm add-repo` from the search bar: Amazon rejects `.` and `:` in `;` commands.
 *   The stock browser rejects direct `.sh`/`.txt` downloads as **Invalid file type**; KPM or USB is required.
 *   Source and recovery scripts: [`kindle/`](kindle/)
 
