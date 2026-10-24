@@ -25,14 +25,15 @@ Only this file is injected automatically. The docs below are **not** in the agen
 
 | Doc | Read before working on |
 | :--- | :--- |
-| [kindlechat.md](docs/agent/kindlechat.md) | `kindlechat.html` (messages, translations, art gallery, composer), `emojis.js`, `sw.js` + OpenMoji caching |
-| [games.md](docs/agent/games.md) | Any game page: single-player catalog, Cube Dash, Jumpy, Surfer, Oregon Trail, Flipbook, `js/gamerules.js`, canvas sizing |
+| [kindlechat.md](docs/agent/kindlechat.md) | `kindlechat.html`, `emojis.js`, `sw.js` + OpenMoji caching |
+| [games.md](docs/agent/games.md) | Any game page, `js/gamerules.js`, canvas sizing |
 | [performance.md](docs/agent/performance.md) | Slow-device / e-ink optimisation: containment, dirty-flag rendering, feed pagination, rect caching, denormalised comment counts (`neighbourhood_posts`/`topics` `commentCount`) |
 | [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, Discord notifications |
 | [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs) |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |
-| [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, full-app visual review, System 7 visual checklist |
-| [backlog.md](docs/agent/backlog.md) | Deferred optimisation/QoL work from the 2026-10 audit: deliberately skipped fixes, partial fixes and their verification steps |
+| [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, visual review, System 7 checklist |
+| [backlog.md](docs/agent/backlog.md) | Deferred 2026-10 audit work: skipped/partial fixes and verification steps |
+| [account-deletion.md](docs/agent/account-deletion.md) | `settings.html` Delete Account, `deleteAccount` function, full user-data sweep |
 | [help.md](docs/agent/help.md) | `help.html`, `help-data.js`: adding/renaming app guides, search, A-Z index, help content coverage |
 | [social-cleanup.md](docs/agent/social-cleanup.md) | Daily `cleanupSocial` retention: KindleChat messages/translations/art, topics, neighbourhood posts, reports, automod & moderator logs |
 | [legacy-build.md](docs/agent/legacy-build.md) | Lite/Legacy pipeline: SRI on localized libs, extensionless links, Kobo/WebKit `/probe`, old-browser polyfills |

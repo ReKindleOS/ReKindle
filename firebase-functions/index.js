@@ -1344,6 +1344,20 @@ exports.startGameRun = onCall(callOptions, scoreHandlers.startGameRun);
 exports.submitScore = onCall(callOptions, scoreHandlers.submitScore);
 
 /**
+ * Permanent account deletion. See firebase-functions/account-deletion.js and
+ * docs/agent/account-deletion.md. The longer timeout covers a full social +
+ * personal data sweep; the Auth record is deleted last so a timeout is
+ * retryable.
+ */
+const accountDeletion = require("./account-deletion");
+exports.deleteAccount = onCall(
+    Object.assign({}, callOptions, { timeoutSeconds: 540, memory: "512MiB" }),
+    function (request) {
+        return accountDeletion.deleteAccount(request, { socialApp: socialAdminApp });
+    }
+);
+
+/**
  * createRssFeed — Server-enforced RSS feed creation for free users.
  * Pro users write directly to Firestore (rules allow it); free users call this.
  *
