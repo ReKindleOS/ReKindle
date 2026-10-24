@@ -407,6 +407,40 @@
             font-family: inherit;
         }
 
+        /* js/custom-select.js replaces <select> with an inline-block widget that
+           does not inherit .modal-input sizing. Its width follows the selected
+           label, so an unfixed widget collapses to ~90px for "General" and
+           clips the longer options - pin a comfortable width and centre it
+           rather than stretching it like the text fields. Long translations
+           still wrap instead of being clipped at the edge. */
+        #modal-overlay .custom-select-container,
+        #edit-cat-overlay .custom-select-container {
+            display: block;
+            width: 280px;
+            max-width: 100%;
+            margin: 10px auto;
+        }
+
+        #modal-overlay .custom-select-trigger,
+        #edit-cat-overlay .custom-select-trigger {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #modal-overlay .custom-option,
+        #edit-cat-overlay .custom-option {
+            white-space: normal;
+            overflow-wrap: break-word;
+        }
+
+        /* The shared widget caps the list at 200px, which cuts the 6-item
+           problem categories through the middle of "Other". 260px fits the
+           whole list; translation's 12 languages still scroll. */
+        #modal-overlay .custom-options,
+        #edit-cat-overlay .custom-options {
+            max-height: 260px;
+        }
+
         #login-overlay {
             display: none;
             position: fixed;
@@ -1385,8 +1419,14 @@
                         badgeKey = 'suggestions.cat.' + category.toLowerCase().replace(' ', '_');
                     }
 
-                    let badgeText = (window.t ? window.t(badgeKey) : (category === 'General' ? type : category)).toUpperCase();
-                    if (badgeText.startsWith('SUGGESTIONS.')) badgeText = (category === 'General' ? type : category).toUpperCase(); // Fallback if key missing
+                    // Category/language keys are built at runtime, so always pass
+                    // the English label as the fallback: locales/en.json is never
+                    // fetched (js/i18n.js skips it), and window.t() without a
+                    // fallback returns the raw key ("suggestions.cat.general").
+                    const badgeFallback = (category === 'General' || category === '')
+                        ? capitaliseLabel(type) : category;
+                    let badgeText = (window.t ? window.t(badgeKey, badgeFallback) : badgeFallback).toUpperCase();
+                    if (badgeText.startsWith('SUGGESTIONS.')) badgeText = badgeFallback.toUpperCase(); // Fallback if key missing
                     badgeText = escapeHtml(badgeText);
 
                     const isProblem = (data.type === 'problem');
@@ -1706,6 +1746,7 @@
 
                 const sel = document.getElementById('edit-cat-select');
                 sel.innerHTML = '';
+                sel.dataset.suggType = type;
 
                 let finalOpts = [];
                 if (type === 'suggestion') {
@@ -1719,9 +1760,7 @@
                 finalOpts.forEach(function (o) {
                     const op = document.createElement('option');
                     op.value = o;
-                    let key = 'suggestions.cat.' + o.toLowerCase().replace(' ', '_');
-                    if (type === 'translation') key = 'suggestions.lang.' + o.toLowerCase();
-                    op.text = (window.t ? window.t(key) : o);
+                    op.text = categoryLabel(o, type);
                     if (o === currentCat) op.selected = true;
                     sel.appendChild(op);
                 });
@@ -2104,15 +2143,70 @@
                 box.style.display = 'block';
             };
 
-            window.updateFormFields = function () {
+            // Category dropdown labels are locale keys built at runtime
+            // ("suggestions.cat." + label), so they can never be marked up with
+            // data-i18n. window.t() must therefore always get the English label
+            // as its fallback: js/i18n.js deliberately skips fetching
+            // locales/en.json (every data-i18n element already carries English),
+            // so an unfallbacked window.t(key) returns the key itself and the
+            // dropdown rendered "suggestions.cat.general" (2026-10-24 report).
+            function categoryI18nKey(label, type) {
+                if (type === 'translation') return 'suggestions.lang.' + String(label).toLowerCase();
+                return 'suggestions.cat.' + String(label).toLowerCase().replace(/ /g, '_');
+            }
+
+            function categoryLabel(label, type) {
+                if (typeof window.t !== 'function') return label;
+                return window.t(categoryI18nKey(label, type), label);
+            }
+
+            function capitaliseLabel(label) {
+                const s = String(label || '');
+                return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+            }
+
+            function getSelectedSuggestionType() {
                 const radios = document.getElementsByName('sugg-type');
-                let type = 'suggestion';
                 for (var i = 0; i < radios.length; i++) {
-                    if (radios[i].checked) {
-                        type = radios[i].value;
-                        break;
-                    }
+                    if (radios[i].checked) return radios[i].value;
                 }
+                return 'suggestion';
+            }
+
+            // Re-paint labels already in the DOM once the locale JSON lands
+            // (fetch is async, so a modal opened early keeps English text).
+            // Option *values* are never touched, so the saved category is safe.
+            function refreshCategoryLabels() {
+                const newSel = document.getElementById('new-category');
+                if (newSel && newSel.options.length) {
+                    const newType = getSelectedSuggestionType();
+                    Array.prototype.forEach.call(newSel.options, function (op) {
+                        op.text = categoryLabel(op.value, newType);
+                    });
+                }
+                const editSel = document.getElementById('edit-cat-select');
+                if (editSel && editSel.options.length) {
+                    const editType = editSel.dataset.suggType || 'suggestion';
+                    Array.prototype.forEach.call(editSel.options, function (op) {
+                        op.text = categoryLabel(op.value, editType);
+                    });
+                }
+            }
+
+            document.addEventListener('rekindle:i18n:ready', function () {
+                refreshCategoryLabels();
+                // Badges drawn before the locale file arrived would otherwise
+                // stay in English until the next tab switch.
+                if (typeof renderList === 'function' && allSuggestions.length) {
+                    try { renderList(); } catch (e) { }
+                }
+            });
+            // The loader can finish before this script runs (it fires from a
+            // microtask when no locale file is fetched), so catch that case.
+            if (window.rekindleI18nReady) refreshCategoryLabels();
+
+            window.updateFormFields = function () {
+                const type = getSelectedSuggestionType();
 
                 const catSelect = document.getElementById('new-category');
                 catSelect.innerHTML = '';
@@ -2138,9 +2232,7 @@
                 finalOpts.forEach(function (o) {
                     const op = document.createElement('option');
                     op.value = o;
-                    let key = 'suggestions.cat.' + o.toLowerCase().replace(' ', '_');
-                    if (type === 'translation') key = 'suggestions.lang.' + o.toLowerCase();
-                    op.text = (window.t ? window.t(key) : o);
+                    op.text = categoryLabel(o, type);
                     catSelect.appendChild(op);
                 });
             };

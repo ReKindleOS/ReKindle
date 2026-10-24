@@ -32,6 +32,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs) |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |
 | [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, visual review, System 7 checklist |
+| [i18n.md](docs/agent/i18n.md) | `window.t()` / `tFormat` calls, raw key or `${...}` text on screen, translated dropdown labels, the global `function t` trap |
 | [backlog.md](docs/agent/backlog.md) | Deferred 2026-10 audit work: skipped/partial fixes and verification steps |
 | [account-deletion.md](docs/agent/account-deletion.md) | `settings.html` Delete Account, `deleteAccount` function, full user-data sweep |
 | [help.md](docs/agent/help.md) | `help.html`, `help-data.js`: adding/renaming app guides, search, A-Z index, help content coverage |
@@ -293,40 +294,15 @@ For dynamic labels, omit `data-i18n` on the element (the loader would overwrite 
 
 `scripts/test-i18n.js` is the guard: it rejects `data-i18n` keys whose English value contains `${...}`, `data-i18n-args`, literal `window.t('key')` calls without a fallback, and object-argument `window.t` calls.
 
-### Two Related i18n Display Bugs (fixed 2026-07, guarded 2026-10)
+### i18n Display Bugs & the Global `t` Conflict
 
-1. **Raw key shown (`blackjack.label.bank`, `hangman.status.guess`, etc.):** `window.t` is defined synchronously by `i18n.js`, but `window.rekindleTranslations` only populates after the async `fetch('locales/xx.json')` resolves. Any `window.t('some.key')` called **without a fallback** from `window.onload` (which often fires first) returns `defaultText || key` → the **raw key string**. If the code then also does `removeAttribute('data-i18n')` (a common pattern to stop the loader overwriting dynamic text), the raw key is stuck on screen permanently. **Fix:** always pass an English fallback as the second argument, or use `tFormat`. The 2026-10 codemod added fallbacks to every literal `window.t('key')` call in the repo; keep it that way.
-2. **Raw `${placeholder}` shown (`MODE: ${NUM}`, `Mode: ${mode}`):** never put `data-i18n="key"` on an element whose locale value contains `${...}` placeholders — `applyTranslations()` sets `innerText` to the **uninterpolated template**. The `data-i18n-args` attribute is **not supported by `js/i18n.js`** (it does nothing). For dynamically-interpolated labels, omit `data-i18n` entirely and render with `tFormat`. Fixed in `blackjack`, `memory`, `hanoi`, `lightsout`, `codebreaker`, `mario`, `pet`, `texasholdem`, `pay`, `liveyahtzee`, and `livetictactoe`.
+Three display bugs — raw key on load, raw `${placeholder}`, and **computed** keys such as `'suggestions.cat.' + label` (which `scripts/test-i18n.js` cannot see) — plus the global `function t` recursion trap, are documented in [i18n.md](docs/agent/i18n.md). The rule: **every** `window.t()` call needs an English fallback, literal or computed. `locales/en.json` is never fetched, so `window.t(key)` with no fallback returns the key itself.
 
 ### Icons (SVG)
 Icons are stored as raw SVG strings in `icons.js`.
 *   **Size:** Designed for **32x32** pixel grid.
 *   **Stroke:** `stroke-width="2"` (Standard) or `"1.5"` for detail.
 *   **Style:** `fill="none"` `stroke="black"` OR `fill="black"` `stroke="none"`.
-
-## JavaScript Global `t` Naming Conflict
-
-Do **not** define a global `function t(key, fallback)` in page scripts. `js/i18n.js` already exposes the translation helper as `window.t`. Because a global `function t` declaration also attaches itself to `window.t`, it overwrites the i18n helper and calls itself recursively, causing a `RangeError: Maximum call stack size exceeded`.
-
-**Example of broken code (`akinator.html` before fix):**
-```javascript
-function t(key, fallback) {
-    if (typeof window.t === 'function') {
-        return window.t(key, fallback || key); // window.t is itself, infinite loop
-    }
-    return fallback || key;
-}
-```
-
-**Fix:** Use a different local name (e.g., `translate`) and call `window.t` inside it, or use `window.t` directly with a fallback guard.
-```javascript
-function translate(key, fallback) {
-    if (typeof window.t === 'function') {
-        return window.t(key, fallback || key);
-    }
-    return fallback || key;
-}
-```
 
 ## Cloudflare Pages Functions Routing for Subpaths
 
