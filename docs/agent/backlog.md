@@ -46,8 +46,9 @@ root, `firebase-functions/`, `akinator-service/` and `workers/rekindle-reader/`.
 (`akinator-service/` Dockerfile runs `npm ci`).
 
 **Fixed — CodeQL:**
-* `js/bad-tag-filter` `build-automation.js:483` — the inline `<script>` matcher now uses
-  `</script\s*>`, so `</script >` (valid to a browser, skipped by the old filter) is rewritten.
+* `js/bad-tag-filter` `build-automation.js:485` — the inline `<script>` matcher now uses
+  `</script[^>]*>`, so every end tag a browser accepts (`</script >`, `</script\t\n bar>`) is
+  rewritten, not just `</script>`.
 * `js/incomplete-sanitization` `scripts/test-kindle.js:50` — the version regex escapes every
   metacharacter, not only dots, so a version like `1.2.3+build(4)` cannot change the pattern.
 * `js/incomplete-multi-character-sanitization` `akinator-service/akinator.js` (`parseQuestion`,
