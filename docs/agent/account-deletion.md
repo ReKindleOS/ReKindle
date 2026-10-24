@@ -29,7 +29,6 @@ writes), and a browser-side sweep dies when the tab closes.
 | `firebase-functions/index.js` | Exports `deleteAccount` with `timeoutSeconds: 540`, `memory: "512MiB"` |
 | `scripts/test-account-deletion.js` | Pure helpers + handler precondition tests (runs in `npm test`) |
 | `rtdb-social-rules.json` | RTDB indexes used by the deletion queries |
-| `firestore-social.indexes.json` | Optional collection-group indexes for comment sweeps (fallback scan works without them) |
 
 ## Callable contract
 
@@ -163,17 +162,13 @@ warning and continues; the modal warns users to cancel a recurring plan on
 #    before this makes deletion fail safely (Auth stays), so order matters.
 npm run deploy:rules:social:rtdb
 
-# 2. Optional but recommended: collection-group indexes for comments. Without
-#    them the function logs a warning and uses the slower per-topic/post scan.
-npm run deploy:indexes:social
-
-# 3. The callable.
+# 2. The callable.
 firebase deploy --only functions:deleteAccount --project rekindle-dd1fa
 
-# 4. Optional: enable Stripe auto-cancel.
+# 3. Optional: enable Stripe auto-cancel.
 #    Add STRIPE_KEY=... to firebase-functions/.env, then redeploy the function.
 
-# 5. Deploy the site (settings.html changed; no shared JS/CSS URL bump needed).
+# 4. Deploy the site (settings.html changed; no shared JS/CSS URL bump needed).
 npm run deploy:prod   # or deploy:beta
 ```
 
@@ -218,15 +213,16 @@ Manual with a throwaway account:
 * **Free-tier Firestore quota:** deleting many comments can return
   `RESOURCE_EXHAUSTED`. The function reports `internal`, Auth stays, and a retry
   after the midnight-Pacific reset finishes the job.
-* **Comment sweeps prefer collection-group indexes.** `collectionGroup('comments')
-  .where('authorId'|'uid','==',uid)` turns the comment cleanup into one indexed
-  query (see `firestore-social.indexes.json`). If those indexes are not
-  deployed, the function logs a warning and falls back to one `comments` query
-  per topic/post, which is fine at current scale but can time out on a very
-  large social dataset. A timeout aborts before Auth is deleted and resumes on
-  retry, but a collection big enough to exceed 8 minutes *every* time would
-  never finish. Topic poll votes still require the topic list scan because
-  `pollVotes` has no per-user index.
+* **Comment sweeps use collection-group queries.** `collectionGroup('comments')
+  .where('authorId'|'uid','==',uid)` is served by Firestore's automatic
+  single-field collection-group indexes — do **not** declare a composite
+  index for these; the API rejects it with "this index is not necessary,
+  configure using single field index controls". If the query is ever rejected
+  for a missing index, the function logs a warning and falls back to one
+  `comments` query per topic/post. That fallback is fine at current scale but
+  can time out on a very large social dataset; a timeout aborts before Auth is
+  deleted and resumes on retry. Topic poll votes still require the topic list
+  scan because `pollVotes` has no per-user index.
 * **Storage / entitlement failures are fatal before Auth.** A wrong bucket, a
   permission error, or a failed `config/supporters` / `config/moderators` write
   aborts the sweep while the account still exists; retry after fixing the

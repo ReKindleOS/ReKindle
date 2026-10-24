@@ -289,9 +289,10 @@ async function cleanupSocialFirestore(ctx) {
         return doc.get('authorId') !== uid;
     });
 
-    // Comments the user left on other people's topics. A collection-group
-    // index makes this one query; if it has not been deployed yet, fall back to
-    // one comments query per topic (correct, just slower).
+    // Comments the user left on other people's topics. Firestore's automatic
+    // single-field collection-group index serves this as one query; if the
+    // query is rejected for a missing index, fall back to one comments query
+    // per topic (correct, just slower).
     let usedTopicCollectionGroup = false;
     try {
         const commentsSnap = await socialDb.collectionGroup('comments')
