@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta charset="UTF-8">
+
+    <title>Cookie Clicker</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="js/i18n.js?v=3"></script>
+    <style>
+        :root {
+            --shadow: 4px 4px 0px #000000;
+            --stripe-pattern: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 3px, #000 4px);
+        }
+
+        * {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        body {
+            background-color: #e5e5e5;
+            font-family: "Geneva", "Verdana", sans-serif;
+            image-rendering: pixelated;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .window {
+            background: white;
+            border: 2px solid black;
+            box-shadow: var(--shadow);
+            width: 95%;
+            max-width: 620px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .title-bar {
+            height: 35px;
+            border-bottom: 2px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .title-stripes {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            background-image: var(--stripe-pattern);
+            z-index: 0;
+        }
+
+        .title-text {
+            background: white;
+            padding: 0 15px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            z-index: 1;
+            display: inline-flex;
+            align-items: center;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .close-box {
+            position: absolute;
+            left: 10px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid black;
+            background: white;
+            z-index: 2;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            line-height: 1;
+            box-shadow: 2px 2px 0 black;
+            text-decoration: none;
+            color: black;
+        }
+
+        .close-box:active {
+            background: black;
+            color: white;
+            transform: translate(1px, 1px);
+            box-shadow: none;
+        }
+
+        /* Mode tabs: Cookies (idle) and Stimulation (a run-based parody mode). */
+        .mode-bar {
+            display: flex;
+            border-bottom: 2px solid black;
+            flex-shrink: 0;
+            background: #eee;
+        }
+
+        .mode-tab {
+            flex: 1;
+            border: none;
+            border-right: 2px solid black;
+            background: #eee;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding: 9px 6px;
+            cursor: pointer;
+            color: black;
+        }
+
+        .mode-tab:last-child {
+            border-right: none;
+        }
+
+        .mode-tab.active {
+            background: white;
+            text-decoration: underline;
+        }
+
+        .mode-tab:active {
+            background: black;
+            color: white;
+        }
+
+        .stim-hero {
+            text-align: center;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+        }
+
+        .stim-score {
+            font-size: 1.9rem;
+            font-weight: bold;
+            line-height: 1.1;
+        }
+
+        .stim-rate {
+            font-size: 0.8rem;
+            color: #333;
+            margin-top: 4px;
+        }
+
+        .stim-button {
+            width: 230px;
+            max-width: 100%;
+            min-height: 100px;
+            border: 4px solid black;
+            background: white;
+            box-shadow: 6px 6px 0 #000;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin: 12px auto 6px auto;
+            display: block;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .stim-button small {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: normal;
+            margin-top: 3px;
+        }
+
+        .stim-button:active {
+            background: black;
+            color: white;
+            transform: translate(3px, 3px);
+            box-shadow: none;
+        }
+
+        .stim-button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .stim-progress {
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 6px;
+        }
+
+        .stim-feed {
+            border: 2px solid black;
+            background: #fafafa;
+            height: 130px;
+            overflow-y: auto;
+            padding: 6px;
+            font-size: 0.75rem;
+            line-height: 1.35;
+            margin-top: 6px;
+        }
+
+        .stim-line {
+            border-bottom: 1px dotted #bbb;
+            padding: 2px 0;
+        }
+
+        .stim-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            border: 2px solid black;
+            background: white;
+            padding: 8px;
+            margin-top: 6px;
+            font-family: inherit;
+            text-align: left;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+
+        .stim-row:active {
+            background: black;
+            color: white;
+        }
+
+        .stim-row.locked {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .stim-row.active-row {
+            background: #eee;
+        }
+
+        .stim-row.can-buy {
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        .stim-row:disabled {
+            cursor: default;
+            color: #000;
+        }
+
+        .stim-row-main {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .stim-row-name {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .stim-row-desc {
+            font-size: 0.72rem;
+            color: #555;
+            margin-top: 2px;
+        }
+
+        .stim-row-side {
+            margin-left: 8px;
+            text-align: right;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+
+        .stim-row-side b {
+            font-size: 0.85rem;
+        }
+
+        .stim-ending {
+            border: 3px solid black;
+            padding: 16px;
+            margin: 10px 0;
+            text-align: center;
+            background: white;
+            box-shadow: 5px 5px 0 #000;
+        }
+
+        .stim-ending h2 {
+            margin: 0 0 8px 0;
+            font-size: 1.3rem;
+        }
+
+        .stim-ending p {
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .cookie-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .hero {
+            text-align: center;
+            border-bottom: 2px solid black;
+            padding-bottom: 10px;
+        }
+
+        .cookie-total {
+            font-size: 2rem;
+            font-weight: bold;
+            line-height: 1.1;
+            word-break: break-word;
+        }
+
+        .cookie-rate {
+            font-size: 0.85rem;
+            color: #333;
+            margin-top: 4px;
+        }
+
+        .cookie-button {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: 4px solid black;
+            background: white;
+            padding: 0;
+            margin: 12px auto 6px auto;
+            display: block;
+            cursor: pointer;
+            box-shadow: 5px 5px 0 #000;
+            touch-action: manipulation;
+        }
+
+        .cookie-button:active {
+            background: black;
+            transform: translate(3px, 3px);
+            box-shadow: none;
+        }
+
+        .cookie-button svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .cookie-hint {
+            font-size: 0.8rem;
+            color: #555;
+        }
+
+        .golden-wrap {
+            margin-top: 10px;
+        }
+
+        .golden-btn {
+            border: 3px solid black;
+            background: white;
+            box-shadow: 3px 3px 0 black;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding: 10px 12px;
+            cursor: pointer;
+            max-width: 100%;
+        }
+
+        .golden-btn:active {
+            background: black;
+            color: white;
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .status-line {
+            min-height: 1.2em;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .shop-title {
+            font-size: 1rem;
+            font-weight: bold;
+            margin: 16px 0 6px 0;
+        }
+
+        .shop-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            border: 2px solid black;
+            background: white;
+            padding: 8px;
+            margin-top: 6px;
+            font-family: inherit;
+            text-align: left;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+
+        .shop-row:active {
+            background: black;
+            color: white;
+        }
+
+        .shop-row:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        .shop-row.can-buy {
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        .row-main {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .row-name {
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+
+        .row-desc {
+            font-size: 0.75rem;
+            color: #555;
+            margin-top: 2px;
+        }
+
+        .row-cost {
+            font-weight: bold;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            margin-left: 10px;
+            text-align: right;
+        }
+
+        .row-owned {
+            font-size: 0.75rem;
+            font-weight: normal;
+            color: #555;
+            margin-left: 4px;
+        }
+
+        .upgrade-row .row-name {
+            font-size: 0.85rem;
+        }
+
+        .upgrade-row .row-desc {
+            font-size: 0.72rem;
+        }
+
+        .empty-note {
+            font-size: 0.8rem;
+            color: #666;
+            padding: 6px 0;
+        }
+
+        .cookie-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 2px solid black;
+            padding: 8px 10px;
+            flex-shrink: 0;
+            background: white;
+        }
+
+        .footer-note {
+            font-size: 0.7rem;
+            color: #555;
+            max-width: 55%;
+            line-height: 1.2;
+        }
+
+        .sys-btn {
+            background: white;
+            border: 2px solid black;
+            padding: 7px 10px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            color: black;
+        }
+
+        .sys-btn:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(2px, 2px);
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-box {
+            background: white;
+            border: 2px solid black;
+            box-shadow: 8px 8px 0 black;
+            padding: 20px;
+            width: 90%;
+            max-width: 480px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .modal-box h3 {
+            margin-top: 0;
+        }
+
+        .modal-box p {
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            margin-top: 16px;
+        }
+
+        .modal-buttons .sys-btn {
+            margin: 0 5px;
+        }
+
+        @media (max-width: 420px) {
+            body {
+                padding: 8px;
+            }
+
+            .window {
+                height: 94vh;
+            }
+
+            .cookie-button {
+                width: 120px;
+                height: 120px;
+            }
+
+            .cookie-total {
+                font-size: 1.6rem;
+            }
+
+            .footer-note {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-stripes"></div>
+            <a class="close-box" href="index" aria-label="Close">X</a>
+            <span class="title-text" data-i18n="cookieclicker.title">Cookie Clicker</span>
+        </div>
+
+        <div class="mode-bar">
+            <button type="button" class="mode-tab active" id="mode-tab-cookies" onclick="setMode('cookies')"
+                data-i18n="cookieclicker.mode.cookies">Cookies</button>
+            <button type="button" class="mode-tab" id="mode-tab-stimulation" onclick="setMode('stimulation')"
+                data-i18n="cookieclicker.mode.stimulation">Stimulation</button>
+        </div>
+
+        <div class="cookie-body">
+            <div id="cookies-panel" class="mode-panel">
+            <div class="hero">
+                <div class="cookie-total"><span id="stat-cookies">0</span></div>
+                <div class="cookie-rate">
+                    <span id="stat-cps">0</span>
+                    <span data-i18n="cookieclicker.label.per_second">cookies per second</span>
+                    &middot;
+                    <span id="stat-total">0</span>
+                    <span data-i18n="cookieclicker.label.baked">baked all time</span>
+                </div>
+
+                <button type="button" class="cookie-button" onclick="bakeCookie()" aria-label="Bake a cookie"
+                    data-i18n-title="cookieclicker.btn.bake_title">
+                    <svg viewBox="0 0 100 100" aria-hidden="true">
+                        <circle cx="50" cy="50" r="44" fill="white" stroke="black" stroke-width="4"></circle>
+                        <circle cx="34" cy="34" r="5" fill="black"></circle>
+                        <circle cx="64" cy="28" r="4" fill="black"></circle>
+                        <circle cx="72" cy="56" r="5" fill="black"></circle>
+                        <circle cx="43" cy="67" r="4" fill="black"></circle>
+                        <circle cx="26" cy="58" r="4" fill="black"></circle>
+                        <circle cx="54" cy="46" r="4" fill="black"></circle>
+                    </svg>
+                </button>
+
+                <div class="cookie-hint" data-i18n="cookieclicker.hint.bake">Tap the cookie to bake. Buildings keep
+                    baking while you read.</div>
+
+                <div class="golden-wrap" id="golden-wrap" style="display:none;">
+                    <button type="button" class="golden-btn" id="golden-btn" onclick="takeGolden()"
+                        data-i18n="cookieclicker.btn.golden">Golden cookie! Tap for a bonus</button>
+                </div>
+
+                <div class="status-line" id="cookie-status" aria-live="polite"></div>
+            </div>
+
+            <div class="shop-title" data-i18n="cookieclicker.label.buildings">Buildings</div>
+            <div id="building-list"></div>
+
+            <div class="shop-title" data-i18n="cookieclicker.label.upgrades">Upgrades</div>
+            <div id="upgrade-list"></div>
+            </div>
+
+            <div id="stim-panel" class="mode-panel" style="display:none;">
+                <div class="stim-hero">
+                    <div class="stim-score"><span id="stim-points">0</span> <span
+                            data-i18n="cookieclicker.stim.label.points">stimulation</span></div>
+                    <div class="stim-rate">
+                        <span id="stim-rate">0</span>
+                        <span data-i18n="cookieclicker.stim.label.rate">per second</span>
+                        &middot;
+                        <span id="stim-earned">0</span>
+                        <span data-i18n="cookieclicker.stim.label.earned">earned this run</span>
+                    </div>
+
+                    <button type="button" class="stim-button" onclick="stimulate()">
+                        + stimulation
+                        <small data-i18n="cookieclicker.stim.btn.click">Click me</small>
+                    </button>
+
+                    <div class="stim-progress" id="stim-progress"></div>
+                    <div class="cookie-hint" data-i18n="cookieclicker.stim.hint">Buy stimuli, stack the noise, and
+                        reach the beach. This mode resets when the page reloads.</div>
+                    <div class="status-line" id="stim-status" aria-live="polite"></div>
+                </div>
+
+                <div id="stim-ending" class="stim-ending" style="display:none;">
+                    <h2 data-i18n="cookieclicker.stim.ending.title">You reached the beach.</h2>
+                    <p data-i18n="cookieclicker.stim.ending.body">The feed is quiet. No notifications, no autoplay, no
+                        algorithm. Stay a while.</p>
+                    <button type="button" class="sys-btn" onclick="restartStimulation()"
+                        data-i18n="cookieclicker.stim.btn.restart">Start a new run</button>
+                </div>
+
+                <div class="shop-title" data-i18n="cookieclicker.stim.label.feed">Feed</div>
+                <div class="stim-feed" id="stim-feed" aria-live="polite">
+                    <div class="stim-line" data-i18n="cookieclicker.stim.feed.start">The feed is empty. Click the button
+                        to begin.</div>
+                </div>
+
+                <div class="shop-title" data-i18n="cookieclicker.stim.label.stimuli">Stimuli</div>
+                <div id="stim-list"></div>
+            </div>
+        </div>
+
+        <div class="cookie-footer" id="cookies-footer">
+            <div class="footer-note" data-i18n="cookieclicker.note.save">Saves on this device. Sign in to sync your
+                cookies to your account.</div>
+            <div>
+                <button type="button" class="sys-btn" onclick="saveNow(true)" data-i18n="cookieclicker.btn.save">Save</button>
+                <button type="button" class="sys-btn" onclick="confirmReset()" data-i18n="cookieclicker.btn.reset">Reset</button>
+            </div>
+        </div>
+
+        <div class="cookie-footer" id="stim-footer" style="display:none;">
+            <div class="footer-note" data-i18n="cookieclicker.stim.note.reset">This mode is a single run. Reloading the
+                page starts over.</div>
+            <div>
+                <button type="button" class="sys-btn" onclick="confirmRestartStim()"
+                    data-i18n="cookieclicker.stim.btn.restart">Start a new run</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="cookie-modal">
+        <div class="modal-box">
+            <h3 id="cookie-modal-title">Cookie Clicker</h3>
+            <p id="cookie-modal-body"></p>
+            <div class="modal-buttons">
+                <button type="button" class="sys-btn" id="cookie-modal-ok" onclick="cookieModalOk()"
+                    data-i18n="cookieclicker.btn.ok">OK</button>
+                <button type="button" class="sys-btn" id="cookie-modal-cancel" onclick="cookieModalCancel()"
+                    style="display:none;" data-i18n="cookieclicker.btn.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="theme.js?v=23"></script>
+    <script>
+        // --- DATA ---
+        var BUILDINGS = [
+            { id: 'cursor', name: 'Cursor', cost: 15, cps: 0.1, desc: 'A steady hand that bakes on its own.' },
+            { id: 'grandma', name: 'Grandma', cost: 100, cps: 1, desc: 'Family recipes, one tray at a time.' },
+            { id: 'farm', name: 'Cookie Farm', cost: 1100, cps: 8, desc: 'Grows dough in neat rows.' },
+            { id: 'mine', name: 'Dough Mine', cost: 12000, cps: 47, desc: 'Digs up the good stuff.' },
+            { id: 'factory', name: 'Factory', cost: 130000, cps: 260, desc: 'Industrial-scale snacking.' },
+            { id: 'bank', name: 'Bank', cost: 1400000, cps: 1400, desc: 'Turns interest into cookies.' },
+            { id: 'temple', name: 'Cookie Temple', cost: 20000000, cps: 7800, desc: 'A quiet place to crumble.' },
+            { id: 'portal', name: 'Cookie Portal', cost: 330000000, cps: 44000, desc: 'Imports cookies from somewhere.' }
+        ];
+
+        var UPGRADES = [
+            { id: 'thumb', name: 'Reinforced thumb', cost: 100, clickMult: 2, req: function (s) { return s.clicks >= 10; }, desc: 'Double the cookies per tap.' },
+            { id: 'glove', name: 'Baking glove', cost: 500, clickMult: 2, req: function (s) { return s.clicks >= 50; }, desc: 'Double the cookies per tap again.' },
+            { id: 'grandma_recipe', name: "Grandma's cookbook", cost: 1000, building: 'grandma', mult: 2, req: function (s) { return (s.buildings.grandma || 0) >= 5; }, desc: 'Grandmas bake twice as fast.' },
+            { id: 'farm_irrigation', name: 'Sprinkler system', cost: 5000, building: 'farm', mult: 2, req: function (s) { return (s.buildings.farm || 0) >= 5; }, desc: 'Cookie Farms produce twice as much.' },
+            { id: 'mine_cart', name: 'Bigger mine cart', cost: 25000, building: 'mine', mult: 2, req: function (s) { return (s.buildings.mine || 0) >= 5; }, desc: 'Dough Mines produce twice as much.' },
+            { id: 'factory_robot', name: 'Robot arm', cost: 100000, building: 'factory', mult: 2, req: function (s) { return (s.buildings.factory || 0) >= 5; }, desc: 'Factories produce twice as much.' },
+            { id: 'bank_ledger', name: 'Special ledger', cost: 500000, building: 'bank', mult: 2, req: function (s) { return (s.buildings.bank || 0) >= 5; }, desc: 'Banks produce twice as much.' },
+            { id: 'temple_candle', name: 'Eternal candle', cost: 5000000, building: 'temple', mult: 2, req: function (s) { return (s.buildings.temple || 0) >= 5; }, desc: 'Cookie Temples produce twice as much.' },
+            { id: 'portal_energy', name: 'Portal battery', cost: 50000000, building: 'portal', mult: 2, req: function (s) { return (s.buildings.portal || 0) >= 5; }, desc: 'Cookie Portals produce twice as much.' },
+            { id: 'golden_touch', name: 'Golden touch', cost: 1000000, clickMult: 2, req: function (s) { return (s.goldenClicks || 0) >= 1; }, desc: 'Double the cookies per tap.' },
+            { id: 'kitten', name: 'Cookie kitten', cost: 10000000, globalMult: 1.1, req: function (s) { return s.total >= 100000; }, desc: 'All production +10%.' }
+        ];
+
+        // Stimulation mode: a short, run-based parody of Neal.fun's
+        // Stimulation Clicker. Original names, no audio/video and no
+        // animation - the "chaos" is a text feed so e-ink can keep up.
+        var STIMULI = [
+            { id: 'dvd', name: 'DVD logo', unlock: 10, cost: 10, rate: 0.5, desc: 'It bounces. You watch.', log: 'The DVD logo hits the corner.' },
+            { id: 'podcast', name: 'True-crime podcast', unlock: 40, cost: 40, rate: 1.5, desc: 'A 45-minute episode, starting now.', log: 'The host says "and then..." for the ninth time.' },
+            { id: 'gameplay', name: 'Gameplay video', unlock: 120, cost: 120, rate: 4, desc: 'A tiny runner plays in the corner of your eye.', log: 'The runner jumps. The runner falls.' },
+            { id: 'duolingo', name: 'Language reminder', unlock: 300, cost: 300, rate: 10, desc: 'The owl is disappointed in you.', log: 'The owl asks why you stopped.' },
+            { id: 'notifications', name: 'Notification stack', unlock: 700, cost: 700, rate: 25, desc: 'Every app wants a moment.', log: '3 new notifications. 12 new notifications.' },
+            { id: 'autoplay', name: 'Autoplay video', unlock: 1600, cost: 1600, rate: 60, desc: 'It starts before you arrive.', log: 'A video starts playing by itself.' },
+            { id: 'comments', name: 'Comment section', unlock: 4000, cost: 4000, rate: 150, desc: 'Someone is wrong on the internet.', log: 'A stranger replies "actually..."' },
+            { id: 'scroll', name: 'Infinite scroll', unlock: 10000, cost: 10000, rate: 380, desc: 'There is no bottom.', log: 'You are 400 posts deep.' },
+            { id: 'algorithm', name: 'The algorithm', unlock: 26000, cost: 26000, rate: 950, desc: 'It knows what you want before you do.', log: 'The algorithm recommends more of this.' },
+            { id: 'everything', name: 'Everything app', unlock: 70000, cost: 70000, rate: 2400, desc: 'One app to do it all badly.', log: 'The everything app adds another tab.' }
+        ];
+
+        var SAVE_KEY = 'rekindle_cookie_v1';
+        var FIREBASE_CONFIG = {
+            apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
+            authDomain: "rekindle-dd1fa.firebaseapp.com",
+            projectId: "rekindle-dd1fa",
+            storageBucket: "rekindle-dd1fa.firebasestorage.app",
+            messagingSenderId: "748026882518",
+            appId: "1:748026882518:web:6877dd4329318070c11c77"
+        };
+
+        var db = null;
+        var auth = null;
+        var currentUser = null;
+        var state = null;
+        var cloudLoaded = false;
+        var stateDirty = false;
+        var lastTick = Date.now();
+        var saveTimer = null;
+        var lastCloudSave = 0;
+        var statusTimer = null;
+        var goldenTimer = null;
+        var goldenHideTimer = null;
+        var modalOkHandler = null;
+        var modalCancelHandler = null;
+
+        // Stimulation mode state is deliberately in-memory only: it is a run,
+        // not an idle save. Cookie progress still persists in the background.
+        var stimState = null;
+        var stimMode = false;
+        var stimFeedTimer = 0;
+        var stimStatusTimer = null;
+        var stimUnlockedShown = -1;
+
+        function tr(key, fallback) {
+            return window.t ? window.t(key, fallback) : fallback;
+        }
+
+        function defaultState() {
+            var s = {
+                version: 1,
+                cookies: 0,
+                total: 0,
+                clicks: 0,
+                goldenClicks: 0,
+                buildings: {},
+                upgrades: {},
+                lastSeen: Date.now(),
+                savedAt: 0
+            };
+            for (var i = 0; i < BUILDINGS.length; i++) s.buildings[BUILDINGS[i].id] = 0;
+            return s;
+        }
+
+        function num(value, fallback) {
+            return (typeof value === 'number' && isFinite(value)) ? value : fallback;
+        }
+
+        function normalizeState(raw) {
+            var s = defaultState();
+            if (!raw || typeof raw !== 'object') return s;
+
+            s.cookies = Math.max(0, num(raw.cookies, 0));
+            s.total = Math.max(0, num(raw.total, 0));
+            s.clicks = Math.max(0, Math.floor(num(raw.clicks, 0)));
+            s.goldenClicks = Math.max(0, Math.floor(num(raw.goldenClicks, 0)));
+            s.lastSeen = num(raw.lastSeen, Date.now());
+            s.savedAt = num(raw.savedAt, 0);
+
+            for (var i = 0; i < BUILDINGS.length; i++) {
+                var id = BUILDINGS[i].id;
+                s.buildings[id] = Math.max(0, Math.floor(num(raw.buildings && raw.buildings[id], 0)));
+            }
+            if (raw.upgrades && typeof raw.upgrades === 'object') {
+                for (var u = 0; u < UPGRADES.length; u++) {
+                    if (raw.upgrades[UPGRADES[u].id]) s.upgrades[UPGRADES[u].id] = true;
+                }
+            }
+            return s;
+        }
+
+        // --- NUMBER FORMATTING (no Intl: the Kindle clock/locale APIs are unreliable) ---
+        function formatNumber(value) {
+            var n = Number(value) || 0;
+            if (n < 1000) {
+                if (n < 10) return (Math.round(n * 100) / 100).toString();
+                return Math.floor(n).toString();
+            }
+            var units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+            var idx = -1;
+            while (n >= 1000 && idx < units.length - 1) {
+                n = n / 1000;
+                idx++;
+            }
+            var digits = n >= 100 ? 0 : (n >= 10 ? 1 : 2);
+            return n.toFixed(digits) + units[idx];
+        }
+
+        // --- ECONOMY ---
+        function buildingCost(b, count) {
+            return Math.floor(b.cost * Math.pow(1.15, count));
+        }
+
+        function buildingMultiplier(buildingId, s) {
+            var mult = 1;
+            for (var i = 0; i < UPGRADES.length; i++) {
+                var u = UPGRADES[i];
+                if (u.building === buildingId && s.upgrades[u.id]) mult *= u.mult;
+            }
+            return mult;
+        }
+
+        function globalMultiplier(s) {
+            var mult = 1;
+            for (var i = 0; i < UPGRADES.length; i++) {
+                var u = UPGRADES[i];
+                if (u.globalMult && s.upgrades[u.id]) mult *= u.globalMult;
+            }
+            return mult;
+        }
+
+        function clickPowerFor(s) {
+            var mult = globalMultiplier(s);
+            for (var i = 0; i < UPGRADES.length; i++) {
+                var u = UPGRADES[i];
+                if (u.clickMult && s.upgrades[u.id]) mult *= u.clickMult;
+            }
+            return Math.max(1, mult);
+        }
+
+        function cpsFor(s) {
+            var global = globalMultiplier(s);
+            var total = 0;
+            for (var i = 0; i < BUILDINGS.length; i++) {
+                var b = BUILDINGS[i];
+                total += (s.buildings[b.id] || 0) * b.cps * buildingMultiplier(b.id, s);
+            }
+            return total * global;
+        }
+
+        // --- RENDERING ---
+        function renderStats() {
+            var cookiesEl = document.getElementById('stat-cookies');
+            var cpsEl = document.getElementById('stat-cps');
+            var totalEl = document.getElementById('stat-total');
+            if (cookiesEl) cookiesEl.textContent = formatNumber(state.cookies);
+            if (cpsEl) cpsEl.textContent = formatNumber(cpsFor(state));
+            if (totalEl) totalEl.textContent = formatNumber(state.total);
+        }
+
+        function renderBuildings() {
+            var list = document.getElementById('building-list');
+            if (!list) return;
+            list.innerHTML = '';
+
+            for (var i = 0; i < BUILDINGS.length; i++) {
+                var b = BUILDINGS[i];
+                var count = state.buildings[b.id] || 0;
+                var cost = buildingCost(b, count);
+                var row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'shop-row';
+                row.id = 'buy-' + b.id;
+                row.setAttribute('data-cost', String(cost));
+                row.onclick = (function (building) {
+                    return function () { buyBuilding(building.id); };
+                })(b);
+
+                var main = document.createElement('span');
+                main.className = 'row-main';
+                var name = document.createElement('span');
+                name.className = 'row-name';
+                name.textContent = b.name;
+                var owned = document.createElement('span');
+                owned.className = 'row-owned';
+                owned.textContent = 'x' + count;
+                name.appendChild(owned);
+                var desc = document.createElement('span');
+                desc.className = 'row-desc';
+                desc.textContent = formatNumber(b.cps) + ' / sec each';
+                main.appendChild(name);
+                main.appendChild(desc);
+
+                var price = document.createElement('span');
+                price.className = 'row-cost';
+                price.textContent = formatNumber(cost);
+
+                row.appendChild(main);
+                row.appendChild(price);
+                list.appendChild(row);
+            }
+            updateAffordability();
+        }
+
+        function renderUpgrades() {
+            var list = document.getElementById('upgrade-list');
+            if (!list) return;
+            list.innerHTML = '';
+
+            var shown = 0;
+            for (var i = 0; i < UPGRADES.length; i++) {
+                var u = UPGRADES[i];
+                if (state.upgrades[u.id]) continue;
+                if (u.req && !u.req(state)) continue;
+
+                shown++;
+                var row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'shop-row upgrade-row';
+                row.id = 'upgrade-' + u.id;
+                row.setAttribute('data-cost', String(u.cost));
+                row.onclick = (function (upgrade) {
+                    return function () { buyUpgrade(upgrade.id); };
+                })(u);
+
+                var main = document.createElement('span');
+                main.className = 'row-main';
+                var name = document.createElement('span');
+                name.className = 'row-name';
+                name.textContent = u.name;
+                var desc = document.createElement('span');
+                desc.className = 'row-desc';
+                desc.textContent = u.desc;
+                main.appendChild(name);
+                main.appendChild(desc);
+
+                var price = document.createElement('span');
+                price.className = 'row-cost';
+                price.textContent = formatNumber(u.cost);
+
+                row.appendChild(main);
+                row.appendChild(price);
+                list.appendChild(row);
+            }
+
+            if (!shown) {
+                var note = document.createElement('div');
+                note.className = 'empty-note';
+                note.textContent = state.total > 0
+                    ? tr('cookieclicker.msg.no_upgrades', 'No upgrades available yet. Keep baking.')
+                    : tr('cookieclicker.msg.start', 'Bake your first cookie to get started.');
+                list.appendChild(note);
+            }
+            updateAffordability();
+        }
+
+        function updateAffordability() {
+            var rows = document.querySelectorAll('.shop-row');
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                var cost = Number(row.getAttribute('data-cost')) || 0;
+                var canBuy = state.cookies >= cost;
+                row.disabled = !canBuy;
+                if (canBuy) {
+                    row.classList.add('can-buy');
+                } else {
+                    row.classList.remove('can-buy');
+                }
+            }
+        }
+
+        function renderGolden() {
+            var wrap = document.getElementById('golden-wrap');
+            if (!wrap) return;
+            wrap.style.display = state.goldenActive ? 'block' : 'none';
+        }
+
+        function renderAll() {
+            renderStats();
+            renderBuildings();
+            renderUpgrades();
+            renderGolden();
+        }
+
+        // --- ACTIONS ---
+        function flash(message) {
+            var el = document.getElementById('cookie-status');
+            if (!el) return;
+            el.textContent = message;
+            if (statusTimer) clearTimeout(statusTimer);
+            statusTimer = setTimeout(function () {
+                el.textContent = '';
+            }, 1500);
+        }
+
+        function bakeCookie() {
+            var gain = clickPowerFor(state);
+            state.cookies += gain;
+            state.total += gain;
+            state.clicks++;
+            stateDirty = true;
+            renderStats();
+            updateAffordability();
+            flash('+' + formatNumber(gain));
+            scheduleSave();
+        }
+
+        function findBuilding(id) {
+            for (var i = 0; i < BUILDINGS.length; i++) {
+                if (BUILDINGS[i].id === id) return BUILDINGS[i];
+            }
+            return null;
+        }
+
+        function findUpgrade(id) {
+            for (var i = 0; i < UPGRADES.length; i++) {
+                if (UPGRADES[i].id === id) return UPGRADES[i];
+            }
+            return null;
+        }
+
+        function buyBuilding(id) {
+            var b = findBuilding(id);
+            if (!b) return;
+            var count = state.buildings[b.id] || 0;
+            var cost = buildingCost(b, count);
+            if (state.cookies < cost) {
+                flash(tr('cookieclicker.msg.not_enough', 'Not enough cookies yet.'));
+                return;
+            }
+            state.cookies -= cost;
+            state.buildings[b.id] = count + 1;
+            stateDirty = true;
+            renderAll();
+            scheduleSave();
+        }
+
+        function buyUpgrade(id) {
+            var u = findUpgrade(id);
+            if (!u || state.upgrades[u.id]) return;
+            if (u.req && !u.req(state)) return;
+            if (state.cookies < u.cost) {
+                flash(tr('cookieclicker.msg.not_enough', 'Not enough cookies yet.'));
+                return;
+            }
+            state.cookies -= u.cost;
+            state.upgrades[u.id] = true;
+            stateDirty = true;
+            renderAll();
+            scheduleSave();
+        }
+
+        // --- GOLDEN COOKIE ---
+        function scheduleGolden() {
+            if (goldenTimer) clearTimeout(goldenTimer);
+            var delay = 60000 + Math.floor(Math.random() * 120000);
+            goldenTimer = setTimeout(showGolden, delay);
+        }
+
+        function showGolden() {
+            if (state.goldenActive) return;
+            state.goldenActive = true;
+            renderGolden();
+            if (goldenHideTimer) clearTimeout(goldenHideTimer);
+            goldenHideTimer = setTimeout(function () {
+                state.goldenActive = false;
+                renderGolden();
+                scheduleGolden();
+            }, 20000);
+        }
+
+        function takeGolden() {
+            if (!state.goldenActive) return;
+            var bonus = Math.max(50, Math.floor(state.cookies * 0.1) + 13);
+            state.cookies += bonus;
+            state.total += bonus;
+            state.goldenClicks++;
+            state.goldenActive = false;
+            stateDirty = true;
+            if (goldenHideTimer) clearTimeout(goldenHideTimer);
+            renderAll();
+            flash(tr('cookieclicker.msg.golden', 'Golden cookie! Bonus cookies added.') + ' +' + formatNumber(bonus));
+            scheduleSave();
+            scheduleGolden();
+        }
+
+        // --- SAVE / LOAD ---
+        function loadLocal() {
+            try {
+                var raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return defaultState();
+                return normalizeState(JSON.parse(raw));
+            } catch (e) {
+                return defaultState();
+            }
+        }
+
+        function saveLocal() {
+            state.lastSeen = Date.now();
+            state.savedAt = Date.now();
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+            } catch (e) {
+                // Kindle storage can be full; the cloud copy is the backup.
+            }
+        }
+
+        function saveCloud() {
+            if (!currentUser || !db) return;
+            state.lastSeen = Date.now();
+            state.savedAt = Date.now();
+            lastCloudSave = Date.now();
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('cookieSave')
+                .set({ state: state, updated: firebase.firestore.FieldValue.serverTimestamp() })
+                .catch(function (err) {
+                    console.warn('Cookie cloud save failed:', err && err.message);
+                });
+        }
+
+        function scheduleSave() {
+            if (saveTimer) return;
+            saveTimer = setTimeout(function () {
+                saveTimer = null;
+                saveLocal();
+                if (currentUser && Date.now() - lastCloudSave > 30000) saveCloud();
+            }, 3000);
+        }
+
+        function saveNow(announce) {
+            saveLocal();
+            saveCloud();
+            if (announce) flash(tr('cookieclicker.msg.saved', 'Saved.'));
+        }
+
+        function loadCloudSave() {
+            if (!currentUser || !db || cloudLoaded) return;
+            cloudLoaded = true;
+            db.collection('users').doc(currentUser.uid).collection('settings').doc('cookieSave').get()
+                .then(function (doc) {
+                    if (!doc.exists) {
+                        saveCloud();
+                        return;
+                    }
+                    var data = doc.data() || {};
+                    var cloud = normalizeState(data.state);
+                    // Do not overwrite clicks made while the auth round-trip was in flight.
+                    if (!stateDirty && cloud.savedAt > (state.savedAt || 0)) {
+                        state = cloud;
+                        applyOffline(state);
+                        renderAll();
+                        flash(tr('cookieclicker.msg.cloud_loaded', 'Cloud save loaded.'));
+                    } else if ((state.savedAt || 0) > cloud.savedAt) {
+                        saveCloud();
+                    }
+                })
+                .catch(function (err) {
+                    console.warn('Cookie cloud load failed:', err && err.message);
+                });
+        }
+
+        function applyOffline(s) {
+            var now = Date.now();
+            var last = num(s.lastSeen, now);
+            var seconds = Math.max(0, Math.min(8 * 3600, (now - last) / 1000));
+            var gain = cpsFor(s) * seconds * 0.5;
+            s.lastSeen = now;
+            if (seconds >= 60 && gain >= 1) {
+                s.cookies += gain;
+                s.total += gain;
+                showCookieModal(
+                    tr('cookieclicker.msg.offline_title', 'While you were away'),
+                    tr('cookieclicker.msg.offline_body', 'Your buildings baked some cookies.') + '\n\n+' + formatNumber(gain),
+                    tr('cookieclicker.btn.ok', 'OK'),
+                    null
+                );
+            }
+        }
+
+        // --- MODAL ---
+        function showCookieModal(title, body, okText, onOk, cancelText, onCancel) {
+            var overlay = document.getElementById('cookie-modal');
+            var titleEl = document.getElementById('cookie-modal-title');
+            var bodyEl = document.getElementById('cookie-modal-body');
+            var okBtn = document.getElementById('cookie-modal-ok');
+            var cancelBtn = document.getElementById('cookie-modal-cancel');
+            if (!overlay || !titleEl || !bodyEl || !okBtn || !cancelBtn) return;
+
+            titleEl.textContent = title;
+            bodyEl.textContent = body;
+            okBtn.textContent = okText || tr('cookieclicker.btn.ok', 'OK');
+            modalOkHandler = onOk || null;
+            modalCancelHandler = onCancel || null;
+
+            if (cancelText) {
+                cancelBtn.textContent = cancelText;
+                cancelBtn.style.display = '';
+            } else {
+                cancelBtn.style.display = 'none';
+            }
+            overlay.style.display = 'flex';
+        }
+
+        function hideCookieModal() {
+            var overlay = document.getElementById('cookie-modal');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function cookieModalOk() {
+            var handler = modalOkHandler;
+            modalOkHandler = null;
+            modalCancelHandler = null;
+            hideCookieModal();
+            if (handler) handler();
+        }
+
+        function cookieModalCancel() {
+            var handler = modalCancelHandler;
+            modalOkHandler = null;
+            modalCancelHandler = null;
+            hideCookieModal();
+            if (handler) handler();
+        }
+
+        function confirmReset() {
+            showCookieModal(
+                tr('cookieclicker.msg.reset_title', 'Reset Cookie Clicker?'),
+                tr('cookieclicker.msg.reset_body', 'This clears your cookies, buildings and upgrades on this device and in your account save.'),
+                tr('cookieclicker.btn.reset', 'Reset'),
+                function () {
+                    localStorage.removeItem(SAVE_KEY);
+                    state = defaultState();
+                    stateDirty = true;
+                    saveLocal();
+                    saveCloud();
+                    renderAll();
+                    flash(tr('cookieclicker.msg.reset_done', 'Cookie Clicker reset.'));
+                },
+                tr('cookieclicker.btn.cancel', 'Cancel')
+            );
+        }
+
+        // --- STIMULATION MODE ---
+        function newStimState() {
+            return {
+                points: 0,
+                earned: 0,
+                clicks: 0,
+                active: {},
+                boosts: {},
+                ended: false
+            };
+        }
+
+        function ensureStim() {
+            if (!stimState) stimState = newStimState();
+        }
+
+        function stimRate() {
+            if (!stimState) return 0;
+            var rate = 0;
+            for (var i = 0; i < STIMULI.length; i++) {
+                var s = STIMULI[i];
+                if (stimState.active[s.id]) {
+                    rate += s.rate * (stimState.boosts[s.id] ? 2 : 1);
+                }
+            }
+            return rate;
+        }
+
+        function stimActiveCount() {
+            if (!stimState) return 0;
+            var n = 0;
+            for (var i = 0; i < STIMULI.length; i++) {
+                if (stimState.active[STIMULI[i].id]) n++;
+            }
+            return n;
+        }
+
+        function stimUnlockedCount() {
+            if (!stimState) return 0;
+            var n = 0;
+            for (var i = 0; i < STIMULI.length; i++) {
+                if (stimState.earned >= STIMULI[i].unlock) n++;
+            }
+            return n;
+        }
+
+        function boostCost(s) {
+            return Math.floor(s.cost * 3);
+        }
+
+        function getStimBest() {
+            try {
+                return Number(localStorage.getItem('rekindle_stimulation_best') || 0) || 0;
+            } catch (e) {
+                return 0;
+            }
+        }
+
+        function saveStimBest() {
+            if (!stimState) return;
+            try {
+                if (stimState.earned > getStimBest()) {
+                    localStorage.setItem('rekindle_stimulation_best', String(Math.floor(stimState.earned)));
+                }
+            } catch (e) {
+                // Ignore storage failures.
+            }
+        }
+
+        function setMode(mode) {
+            stimMode = (mode === 'stimulation');
+            var cookiesPanel = document.getElementById('cookies-panel');
+            var stimPanel = document.getElementById('stim-panel');
+            var cookiesFooter = document.getElementById('cookies-footer');
+            var stimFooter = document.getElementById('stim-footer');
+            var cookiesTab = document.getElementById('mode-tab-cookies');
+            var stimTab = document.getElementById('mode-tab-stimulation');
+
+            if (cookiesPanel) cookiesPanel.style.display = stimMode ? 'none' : 'block';
+            if (stimPanel) stimPanel.style.display = stimMode ? 'block' : 'none';
+            if (cookiesFooter) cookiesFooter.style.display = stimMode ? 'none' : 'flex';
+            if (stimFooter) stimFooter.style.display = stimMode ? 'flex' : 'none';
+            if (cookiesTab) cookiesTab.className = 'mode-tab' + (stimMode ? '' : ' active');
+            if (stimTab) stimTab.className = 'mode-tab' + (stimMode ? ' active' : '');
+
+            if (stimMode) {
+                ensureStim();
+                renderStim();
+            }
+        }
+
+        function renderStimStats() {
+            if (!stimState) return;
+            var pointsEl = document.getElementById('stim-points');
+            var rateEl = document.getElementById('stim-rate');
+            var earnedEl = document.getElementById('stim-earned');
+            var progressEl = document.getElementById('stim-progress');
+
+            if (pointsEl) pointsEl.textContent = formatNumber(stimState.points);
+            if (rateEl) rateEl.textContent = formatNumber(stimRate());
+            if (earnedEl) earnedEl.textContent = formatNumber(stimState.earned);
+
+            if (progressEl) {
+                var best = getStimBest();
+                var text = stimActiveCount() + ' / ' + STIMULI.length + ' stimuli';
+                if (best > 0) text += ' · best ' + formatNumber(best);
+                progressEl.textContent = text;
+            }
+        }
+
+        function renderStimList() {
+            var list = document.getElementById('stim-list');
+            if (!list || !stimState) return;
+            list.innerHTML = '';
+            stimUnlockedShown = stimUnlockedCount();
+
+            for (var i = 0; i < STIMULI.length; i++) {
+                var s = STIMULI[i];
+                var unlocked = stimState.earned >= s.unlock;
+                var active = !!stimState.active[s.id];
+                var boosted = !!stimState.boosts[s.id];
+
+                var row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'stim-row';
+                if (!unlocked) row.className += ' locked';
+                if (active) row.className += ' active-row';
+                if (unlocked && !(active && boosted)) row.className += ' can-buy';
+
+                var main = document.createElement('span');
+                main.className = 'stim-row-main';
+                var name = document.createElement('span');
+                name.className = 'stim-row-name';
+                name.textContent = s.name + (active ? ' [on]' : '');
+                var desc = document.createElement('span');
+                desc.className = 'stim-row-desc';
+                desc.textContent = s.desc;
+                main.appendChild(name);
+                main.appendChild(desc);
+
+                var side = document.createElement('span');
+                side.className = 'stim-row-side';
+
+                if (!unlocked) {
+                    side.textContent = 'Unlocks at ' + formatNumber(s.unlock);
+                    row.disabled = true;
+                    row.setAttribute('data-cost', '0');
+                    row.setAttribute('data-done', '1');
+                } else if (active) {
+                    side.textContent = '+' + formatNumber(s.rate * (boosted ? 2 : 1)) + '/s';
+                    if (boosted) {
+                        row.setAttribute('data-cost', '0');
+                        row.setAttribute('data-done', '1');
+                        row.disabled = true;
+                    } else {
+                        var bc = boostCost(s);
+                        var boostLine = document.createElement('div');
+                        boostLine.textContent = 'Boost x2: ' + formatNumber(bc);
+                        side.appendChild(boostLine);
+                        row.setAttribute('data-cost', String(bc));
+                        row.setAttribute('data-done', '0');
+                        row.onclick = (function (stim) {
+                            return function () { boostStimulus(stim.id); };
+                        })(s);
+                    }
+                } else {
+                    side.textContent = formatNumber(s.cost);
+                    row.setAttribute('data-cost', String(s.cost));
+                    row.setAttribute('data-done', '0');
+                    row.onclick = (function (stim) {
+                        return function () { activateStimulus(stim.id); };
+                    })(s);
+                }
+
+                row.appendChild(main);
+                row.appendChild(side);
+                list.appendChild(row);
+            }
+
+            updateStimAffordability();
+        }
+
+        function updateStimAffordability() {
+            if (!stimState) return;
+            var rows = document.querySelectorAll('#stim-list .stim-row');
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                if (row.getAttribute('data-done') === '1') {
+                    row.disabled = true;
+                    continue;
+                }
+                var cost = Number(row.getAttribute('data-cost')) || 0;
+                var canBuy = cost > 0 && stimState.points >= cost;
+                row.disabled = !canBuy;
+                if (canBuy) {
+                    row.classList.add('can-buy');
+                } else {
+                    row.classList.remove('can-buy');
+                }
+            }
+        }
+
+        function renderStim() {
+            renderStimStats();
+            renderStimList();
+            var ending = document.getElementById('stim-ending');
+            if (ending) ending.style.display = (stimState && stimState.ended) ? 'block' : 'none';
+            var clickBtn = document.querySelector('.stim-button');
+            if (clickBtn) clickBtn.disabled = !!(stimState && stimState.ended);
+        }
+
+        function flashStim(message) {
+            var el = document.getElementById('stim-status');
+            if (!el) return;
+            el.textContent = message;
+            if (stimStatusTimer) clearTimeout(stimStatusTimer);
+            stimStatusTimer = setTimeout(function () {
+                el.textContent = '';
+            }, 1500);
+        }
+
+        function addStimLine(text) {
+            if (!text) return;
+            var feed = document.getElementById('stim-feed');
+            if (!feed) return;
+            var line = document.createElement('div');
+            line.className = 'stim-line';
+            line.textContent = text;
+            feed.appendChild(line);
+            while (feed.children.length > 8) feed.removeChild(feed.firstChild);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function stimulate() {
+            ensureStim();
+            if (stimState.ended) return;
+            stimState.points += 1;
+            stimState.earned += 1;
+            stimState.clicks += 1;
+            if (stimState.clicks === 1) {
+                var feed = document.getElementById('stim-feed');
+                if (feed) feed.innerHTML = '';
+                addStimLine(tr('cookieclicker.stim.feed.first', 'You click. The feed wakes up.'));
+            }
+            renderStimStats();
+            updateStimAffordability();
+            if (stimUnlockedCount() !== stimUnlockedShown) renderStimList();
+        }
+
+        function activateStimulus(id) {
+            ensureStim();
+            var s = null;
+            for (var i = 0; i < STIMULI.length; i++) {
+                if (STIMULI[i].id === id) { s = STIMULI[i]; break; }
+            }
+            if (!s || stimState.active[s.id]) return;
+            if (stimState.earned < s.unlock) {
+                flashStim(tr('cookieclicker.stim.msg.locked', 'Keep going to unlock this one.'));
+                return;
+            }
+            if (stimState.points < s.cost) {
+                flashStim(tr('cookieclicker.stim.msg.not_enough', 'Not enough stimulation yet.'));
+                return;
+            }
+            stimState.points -= s.cost;
+            stimState.active[s.id] = true;
+            addStimLine(s.log);
+            renderStim();
+            checkStimEnd();
+        }
+
+        function boostStimulus(id) {
+            ensureStim();
+            var s = null;
+            for (var i = 0; i < STIMULI.length; i++) {
+                if (STIMULI[i].id === id) { s = STIMULI[i]; break; }
+            }
+            if (!s || !stimState.active[s.id] || stimState.boosts[s.id]) return;
+            var cost = boostCost(s);
+            if (stimState.points < cost) {
+                flashStim(tr('cookieclicker.stim.msg.not_enough', 'Not enough stimulation yet.'));
+                return;
+            }
+            stimState.points -= cost;
+            stimState.boosts[s.id] = true;
+            addStimLine(s.name + ' is now twice as loud.');
+            renderStim();
+        }
+
+        function checkStimEnd() {
+            if (!stimState || stimState.ended) return;
+            if (stimActiveCount() < STIMULI.length) return;
+            stimState.ended = true;
+            saveStimBest();
+            addStimLine(tr('cookieclicker.stim.feed.end', 'The feed goes quiet. You can hear the sea.'));
+            renderStim();
+        }
+
+        function restartStimulation() {
+            saveStimBest();
+            stimState = newStimState();
+            stimFeedTimer = 0;
+            stimUnlockedShown = -1;
+            var feed = document.getElementById('stim-feed');
+            if (feed) {
+                feed.innerHTML = '';
+                addStimLine(tr('cookieclicker.stim.feed.first', 'You click. The feed wakes up.'));
+            }
+            var ending = document.getElementById('stim-ending');
+            if (ending) ending.style.display = 'none';
+            renderStim();
+        }
+
+        function confirmRestartStim() {
+            ensureStim();
+            if (stimState.earned < 1 && !stimState.ended) {
+                restartStimulation();
+                return;
+            }
+            showCookieModal(
+                tr('cookieclicker.stim.msg.restart_title', 'Start a new stimulation run?'),
+                tr('cookieclicker.stim.msg.restart_body', 'This run will be lost. Best run is kept on this device.'),
+                tr('cookieclicker.stim.btn.restart', 'Start a new run'),
+                function () { restartStimulation(); },
+                tr('cookieclicker.btn.cancel', 'Cancel')
+            );
+        }
+
+        function stimTick() {
+            if (!stimState || !stimMode || stimState.ended) return;
+            var rate = stimRate();
+            if (rate > 0) {
+                stimState.points += rate;
+                stimState.earned += rate;
+            }
+            stimFeedTimer++;
+            if (stimFeedTimer >= 7) {
+                stimFeedTimer = 0;
+                var activeLogs = [];
+                for (var i = 0; i < STIMULI.length; i++) {
+                    if (stimState.active[STIMULI[i].id]) activeLogs.push(STIMULI[i].log);
+                }
+                if (activeLogs.length) {
+                    addStimLine(activeLogs[Math.floor(Math.random() * activeLogs.length)]);
+                } else if (stimState.clicks > 0) {
+                    addStimLine('You are still here. The button is still here.');
+                }
+            }
+            renderStimStats();
+            updateStimAffordability();
+            if (stimUnlockedCount() !== stimUnlockedShown) renderStimList();
+        }
+
+        // --- TICK ---
+        function tick() {
+            var now = Date.now();
+            var dt = (now - lastTick) / 1000;
+            lastTick = now;
+            if (dt < 0) dt = 0;
+            if (dt > 10) dt = 10;
+
+            var gain = cpsFor(state) * dt;
+            if (gain > 0) {
+                state.cookies += gain;
+                state.total += gain;
+            }
+            state.lastSeen = now;
+            renderStats();
+            updateAffordability();
+            stimTick();
+            scheduleSave();
+        }
+
+        // --- INIT ---
+        window.onload = function () {
+            if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
+
+            try {
+                firebase.initializeApp(FIREBASE_CONFIG);
+                auth = firebase.auth();
+                db = firebase.firestore();
+            } catch (e) {
+                console.warn('Cookie Clicker Firebase init failed:', e && e.message);
+            }
+
+            state = loadLocal();
+            applyOffline(state);
+            lastTick = Date.now();
+            renderAll();
+            scheduleGolden();
+
+            ensureStim();
+            setMode('cookies');
+            var modeParam = null;
+            try {
+                modeParam = new URLSearchParams(window.location.search).get('mode');
+            } catch (e) {
+                modeParam = null;
+            }
+            if (modeParam === 'stimulation') setMode('stimulation');
+
+            if (auth) {
+                auth.onAuthStateChanged(function (user) {
+                    currentUser = user || null;
+                    if (currentUser) loadCloudSave();
+                });
+            }
+
+            setInterval(tick, 1000);
+            window.addEventListener('pagehide', function () {
+                saveLocal();
+                saveCloud();
+                saveStimBest();
+            });
+        };
+    </script>
+</body>
+
+</html>

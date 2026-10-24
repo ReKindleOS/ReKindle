@@ -215,6 +215,79 @@
             margin-top: 10px;
         }
 
+        /* Triage strip: points first-time posters at the FAQ, changelog and
+           billing help, and nudges them to search before adding a duplicate. */
+        .triage-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 6px 10px;
+            border-bottom: 1px solid #ccc;
+            background: #f7f7f7;
+            font-size: 0.75rem;
+            line-height: 1.4;
+        }
+
+        .triage-bar>*+* {
+            margin-left: 10px;
+        }
+
+        .triage-bar a {
+            color: black;
+            text-decoration: underline;
+            white-space: nowrap;
+        }
+
+        .triage-bar .triage-label {
+            font-weight: bold;
+        }
+
+        .list-footer {
+            text-align: center;
+            padding: 10px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .list-footer button {
+            margin-top: 6px;
+        }
+
+        /* Similar-idea suggestions inside the New Idea modal */
+        #similar-suggestions {
+            display: none;
+            text-align: left;
+            border: 1px solid #999;
+            background: #f7f7f7;
+            padding: 6px;
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+        }
+
+        #similar-suggestions .similar-head {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        #similar-suggestions .similar-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: 1px solid #ccc;
+            background: white;
+            padding: 4px 6px;
+            margin-top: 4px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+
+        #similar-suggestions .similar-item:active {
+            background: black;
+            color: white;
+        }
+
         .suggestion-item {
             border: 2px solid black;
             padding: 10px;
@@ -659,6 +732,14 @@
                 <div class="tab" onclick="switchTab('closed')" data-i18n="suggestions.tab.closed">Closed</div>
             </div>
 
+            <div class="triage-bar" id="triage-bar">
+                <span class="triage-label" data-i18n="suggestions.triage.label">Before you post:</span>
+                <span data-i18n="suggestions.triage.search">search first and upvote an existing idea.</span>
+                <a href="help#faq" data-i18n="suggestions.triage.faq">FAQ</a>
+                <a href="changelog" data-i18n="suggestions.triage.news">What's new</a>
+                <a href="help#support" data-i18n="suggestions.triage.billing">Billing &amp; refunds</a>
+            </div>
+
             <div id="suggestion-list">
                 <!-- Items injected here -->
                 <div style="text-align:center; padding:20px; color:#666;" data-i18n="suggestions.msg.loading">Loading...
@@ -764,7 +845,8 @@
                 maxlength="100" style="display:none;" data-i18n-placeholder="suggestions.ph.app">
 
             <input type="text" id="new-title" class="modal-input" placeholder="Title (e.g. Add Calculator)"
-                maxlength="100" data-i18n-placeholder="suggestions.ph.title">
+                maxlength="100" oninput="updateSimilarSuggestions()" data-i18n-placeholder="suggestions.ph.title">
+            <div id="similar-suggestions" aria-live="polite"></div>
             <textarea id="new-desc" class="modal-input" placeholder="Description..."
                 style="height:200px; resize:vertical;" maxlength="5000"
                 data-i18n-placeholder="suggestions.ph.desc"></textarea>
@@ -903,6 +985,7 @@
                     }
 
                     document.getElementById('login-overlay').style.display = 'none';
+                    mySuggestionsLoaded = false;
                     fetchSupporters(loadSuggestions);
                 } else {
                     currentUser = null;
@@ -997,6 +1080,16 @@
             let currentSort = 'popular';
             let currentFilter = 'suggestion'; // Default to suggestions
 
+            // Pagination: the old app fetched every suggestion (and every
+            // comment) on each tab switch - ~1 MB / 751 records by 2026-10.
+            // Load a chronological window once, then extend it on demand.
+            const SUGGESTIONS_PAGE_SIZE = 120;
+            let suggestionsLoaded = false;
+            let loadingSuggestions = false;
+            let hasMoreSuggestions = true;
+            let oldestLoadedCreatedAt = null;
+            let mySuggestionsLoaded = false;
+
             let searchTimeout = null;
             window.onSearchInput = function() {
                 const searchEl = document.getElementById('search-input');
@@ -1053,26 +1146,106 @@
                 document.querySelectorAll('.tab-bar .tab').forEach(t => t.classList.remove('active'));
                 var activeTabEl = document.querySelector(`.tab-bar .tab[onclick="switchTab('${tab}')"]`);
                 if (activeTabEl) activeTabEl.classList.add('active');
-                loadSuggestions();
+                if (tab === 'mine') {
+                    // "My Suggestions" cannot rely on the newest-120 window:
+                    // a user's own idea may be much older. Query by authorUid
+                    // (indexed in rtdb-rules.json) and merge into the cache.
+                    loadMySuggestions();
+                } else {
+                    loadSuggestions(false);
+                }
             };
 
-            // LOAD SUGGESTIONS (RTDB: load all, filter client-side)
-            function loadSuggestions() {
+            function loadMySuggestions() {
+                if (!currentUser) {
+                    document.getElementById('login-overlay').style.display = 'flex';
+                    return;
+                }
+                if (mySuggestionsLoaded) {
+                    renderList();
+                    return;
+                }
                 const listEl = document.getElementById('suggestion-list');
                 listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;" data-i18n="suggestions.msg.loading">Loading...</div>';
-                allSearchSuggestions = null; // Reset search cache on reload
 
-                rtdb.ref('suggestions').once('value').then(function (snapshot) {
-                    allSuggestions = [];
+                rtdb.ref('suggestions').orderByChild('authorUid').equalTo(currentUser.uid).once('value').then(function (snapshot) {
                     snapshot.forEach(function (child) {
                         var data = child.val();
                         data.id = child.key;
-                        allSuggestions.push(data);
+                        var duplicate = false;
+                        for (var i = 0; i < allSuggestions.length; i++) {
+                            if (allSuggestions[i].id === data.id) { duplicate = true; break; }
+                        }
+                        if (!duplicate) allSuggestions.push(data);
                     });
+                    mySuggestionsLoaded = true;
+                    renderList();
+                }).catch(function (error) {
+                    console.error("Error loading my suggestions:", error);
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:red;">Failed to load your suggestions.</div>';
+                });
+            }
+
+            // LOAD SUGGESTIONS (RTDB: chronological window, filter client-side)
+            // append=true loads the next older page. Tab switches reuse the
+            // window already in memory instead of re-downloading ~1 MB.
+            function loadSuggestions(append) {
+                if (!append && suggestionsLoaded) {
+                    renderList();
+                    return;
+                }
+                if (loadingSuggestions) return;
+                loadingSuggestions = true;
+
+                const listEl = document.getElementById('suggestion-list');
+                if (!append) {
+                    allSuggestions = [];
+                    allSearchSuggestions = null;
+                    oldestLoadedCreatedAt = null;
+                    hasMoreSuggestions = true;
+                    suggestionsLoaded = false;
+                    mySuggestionsLoaded = false;
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;" data-i18n="suggestions.msg.loading">Loading...</div>';
+                } else {
+                    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:#666;" data-i18n="suggestions.msg.loading_more">Loading older...</div>';
+                }
+
+                var query = rtdb.ref('suggestions').orderByChild('createdAt');
+                if (append && oldestLoadedCreatedAt !== null) {
+                    query = query.endAt(oldestLoadedCreatedAt - 1);
+                }
+
+                query.limitToLast(SUGGESTIONS_PAGE_SIZE).once('value').then(function (snapshot) {
+                    var added = 0;
+                    snapshot.forEach(function (child) {
+                        var data = child.val();
+                        data.id = child.key;
+                        var duplicate = false;
+                        for (var i = 0; i < allSuggestions.length; i++) {
+                            if (allSuggestions[i].id === data.id) { duplicate = true; break; }
+                        }
+                        if (!duplicate) allSuggestions.push(data);
+                        if (typeof data.createdAt === 'number' &&
+                            (oldestLoadedCreatedAt === null || data.createdAt < oldestLoadedCreatedAt)) {
+                            oldestLoadedCreatedAt = data.createdAt;
+                        }
+                        added++;
+                    });
+
+                    // A short page means the oldest record has been reached.
+                    hasMoreSuggestions = snapshot.numChildren() >= SUGGESTIONS_PAGE_SIZE;
+                    suggestionsLoaded = true;
+                    loadingSuggestions = false;
+                    if (append) allSearchSuggestions = null;
                     renderList();
                 }).catch(function (error) {
                     console.error("Error loading suggestions:", error);
-                    document.getElementById('suggestion-list').innerHTML = '<div style="text-align:center; padding:20px; color:red;">Failed to load suggestions. <br> ' + error.message + '</div>';
+                    loadingSuggestions = false;
+                    if (!append) {
+                        document.getElementById('suggestion-list').innerHTML = '<div style="text-align:center; padding:20px; color:red;">Failed to load suggestions. <br> ' + error.message + '</div>';
+                    } else {
+                        renderList();
+                    }
                 });
             }
 
@@ -1272,8 +1445,43 @@
                 });
 
                 if (finalSorted.length === 0) {
-                    listEl.innerHTML = `<div style="text-align:center; padding:20px;">${window.t ? window.t('suggestions.msg.empty', "No suggestions yet. Be the first!") : 'No suggestions yet. Be the first!'}</div>`;
+                    const empty = document.createElement('div');
+                    empty.style.textAlign = 'center';
+                    empty.style.padding = '20px';
+                    empty.textContent = searchBoxValue
+                        ? (window.t ? window.t('suggestions.msg.no_search_in_window', "No matches in the loaded ideas. Try Load older below.") : 'No matches in the loaded ideas. Try Load older below.')
+                        : (window.t ? window.t('suggestions.msg.empty', "No suggestions yet. Be the first!") : 'No suggestions yet. Be the first!');
+                    listEl.appendChild(empty);
                 }
+
+                renderListFooter(listEl, searchBoxValue);
+            }
+
+            function renderListFooter(listEl, searchBoxValue) {
+                if (currentFilter === 'mine') return;
+                if (!hasMoreSuggestions && allSuggestions.length === 0) return;
+
+                const foot = document.createElement('div');
+                foot.className = 'list-footer';
+
+                if (searchBoxValue) {
+                    const scope = document.createElement('div');
+                    scope.textContent = (window.t
+                        ? window.t('suggestions.msg.search_scope', "Search covers the {count} loaded ideas.")
+                        : 'Search covers the {count} loaded ideas.').replace('{count}', String(allSuggestions.length));
+                    foot.appendChild(scope);
+                }
+
+                if (hasMoreSuggestions) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'sys-btn';
+                    btn.textContent = window.t ? window.t('suggestions.msg.load_older', "Load older") : 'Load older';
+                    btn.onclick = function () { loadSuggestions(true); };
+                    foot.appendChild(btn);
+                }
+
+                if (foot.childNodes.length) listEl.appendChild(foot);
             }
 
             // OPEN DETAIL
@@ -1283,6 +1491,7 @@
                 document.getElementById('suggestion-list').style.display = 'none'; // Hide list
                 document.getElementById('main-toolbar').style.display = 'none';
                 document.getElementById('tab-bar').style.display = 'none'; // Hide tabs
+                document.getElementById('triage-bar').style.display = 'none';
 
                 const censoredTitle = censorText(data.title);
                 const censoredDescription = censorText(data.description);
@@ -1640,6 +1849,7 @@
                 document.getElementById('suggestion-list').style.display = 'flex';
                 document.getElementById('main-toolbar').style.display = 'flex';
                 document.getElementById('tab-bar').style.display = 'flex';
+                document.getElementById('triage-bar').style.display = 'flex';
                 currentSuggestionId = null;
                 if (commentsRefListener) {
                     commentsRefListener.off('value');
@@ -1810,7 +2020,88 @@
             window.openCreateModal = function () {
                 document.getElementById('modal-overlay').style.display = 'flex';
                 updateFormFields(); // Init fields
+                updateSimilarSuggestions();
                 document.getElementById('new-title').focus();
+            };
+
+            // Client-side "similar idea" finder. Suggestions are already in
+            // memory, so this costs no extra Firebase reads and stops the
+            // 3x Cookie Clicker / 6x group-chat duplicate posts.
+            function similarTitleTokens(text) {
+                var stop = { add: 1, the: 1, for: 1, and: 1, with: 1, app: 1, game: 1, please: 1, pls: 1, new: 1, idea: 1, suggestion: 1, problem: 1 };
+                var parts = String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ');
+                var out = [];
+                for (var i = 0; i < parts.length; i++) {
+                    if (parts[i].length > 2 && !stop[parts[i]]) out.push(parts[i]);
+                }
+                return out;
+            }
+
+            function similarTitleScore(query, candidate) {
+                var q = String(query || '').toLowerCase().trim();
+                var c = String(candidate || '').toLowerCase().trim();
+                if (!q || !c) return 0;
+                if (q === c) return 100;
+                if (c.indexOf(q) > -1 || q.indexOf(c) > -1) return 60;
+
+                var qt = similarTitleTokens(q);
+                var ct = similarTitleTokens(c);
+                if (!qt.length || !ct.length) return 0;
+                var set = {};
+                for (var i = 0; i < ct.length; i++) set[ct[i]] = true;
+                var common = 0;
+                for (var j = 0; j < qt.length; j++) if (set[qt[j]]) common++;
+                var base = Math.min(qt.length, ct.length);
+                return Math.round(40 * common / base);
+            }
+
+            window.updateSimilarSuggestions = function () {
+                var box = document.getElementById('similar-suggestions');
+                var input = document.getElementById('new-title');
+                if (!box || !input) return;
+
+                box.innerHTML = '';
+                box.style.display = 'none';
+                var query = input.value.trim();
+                if (query.length < 3 || !allSuggestions.length) return;
+
+                var matches = [];
+                for (var i = 0; i < allSuggestions.length; i++) {
+                    var item = allSuggestions[i];
+                    var score = similarTitleScore(query, item.title);
+                    if (score >= 20) matches.push({ item: item, score: score });
+                }
+                if (!matches.length) return;
+
+                matches.sort(function (a, b) {
+                    if (b.score !== a.score) return b.score - a.score;
+                    return Object.keys(b.item.upvotes || {}).length - Object.keys(a.item.upvotes || {}).length;
+                });
+                matches = matches.slice(0, 3);
+
+                var head = document.createElement('div');
+                head.className = 'similar-head';
+                head.textContent = window.t
+                    ? window.t('suggestions.msg.similar', "Already suggested? Upvote it instead.")
+                    : 'Already suggested? Upvote it instead.';
+                box.appendChild(head);
+
+                matches.forEach(function (match) {
+                    var item = match.item;
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'similar-item';
+                    var votes = Object.keys(item.upvotes || {}).length;
+                    var status = item.status ? ' [' + String(item.status).toUpperCase() + ']' : '';
+                    btn.textContent = '▲ ' + votes + ' · ' + (item.title || '') + status;
+                    btn.onclick = function () {
+                        closeModal();
+                        openSuggestion(item.id, item);
+                    };
+                    box.appendChild(btn);
+                });
+
+                box.style.display = 'block';
             };
 
             window.updateFormFields = function () {
@@ -1858,6 +2149,11 @@
                 document.getElementById('modal-overlay').style.display = 'none';
                 document.getElementById('new-title').value = '';
                 document.getElementById('new-desc').value = '';
+                var similar = document.getElementById('similar-suggestions');
+                if (similar) {
+                    similar.innerHTML = '';
+                    similar.style.display = 'none';
+                }
             };
 
             window.submitSuggestion = function () {
@@ -1950,7 +2246,25 @@
                         btn.style.opacity = '1';
                         btn.style.cursor = 'pointer';
                     }
+                    // Show the new idea immediately instead of waiting for a
+                    // reload (the old code left the list stale until refresh).
+                    allSuggestions.push({
+                        id: newRef.key,
+                        title: title,
+                        description: desc,
+                        type: type,
+                        category: category,
+                        device: (type === 'problem') ? device : null,
+                        app: (type === 'translation') ? app : null,
+                        authorUid: currentUser.uid,
+                        authorName: currentUser.displayName || currentUser.email.split('@')[0],
+                        isPro: isPro,
+                        upvotes: {},
+                        createdAt: Date.now()
+                    });
+                    allSearchSuggestions = null;
                     closeModal();
+                    switchTab(type === 'problem' ? 'problem' : (type === 'translation' ? 'translation' : 'suggestion'));
                 }).catch(function (err) {
                     console.error(err);
                     showMessage("Error", "Error submitting. Content too long?");

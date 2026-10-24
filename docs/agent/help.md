@@ -90,3 +90,15 @@ top-menu Help link (and the About-panel Help link) opens the page. Help is inten
    `icons.js?v=4`) and in `sw.js` `ASSETS_TO_CACHE`.
 4. Bump `help-data.js?v=` in `help.html`.
 5. Run `npm test` and rebuild.
+
+## FAQ: billing and refunds (2026-10-24)
+
+The FAQ had cancel instructions but no refund answer, which is why billing
+complaints kept arriving as public Suggestions posts. Added a **"I paid but Pro
+is missing, or I need a refund"** section: email `support@rekindle.ink` from the
+checkout address with username/date/amount, never post card details, check
+Manage Subscription first, and treat cancellation (stops renewal) separately
+from a refund (case by case). The Suggestions board's triage strip links to
+`help#faq` and `help#support`, and its Suggest an idea guide now explains the
+"Load older" window and the duplicate finder. Bump `help-data.js?v=` in
+`help.html` after any copy edit (currently `?v=3`).

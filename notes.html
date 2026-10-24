@@ -406,6 +406,7 @@
                     <option value="alpha_desc" data-i18n="notes.sort.z_a">Title (Z-A)</option>
                 </select>
                 <button class="sys-btn" onclick="createNote()" data-i18n="notes.btn.new">+ New</button>
+                <button class="sys-btn" onclick="downloadAllTXT()" data-i18n="notes.btn.export_all">Export All</button>
             </div>
             <div class="title-controls">
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
@@ -823,33 +824,58 @@
             });
         }
 
-        function downloadTXT() {
-            if (!currentNoteId) return;
-            const note = notes.find(n => n.id === currentNoteId);
-            if (!note) return;
-
+        function notePlainText(note) {
+            if (!note) return '';
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = note.content;
-            
+            tempDiv.innerHTML = note.content || '';
+
             tempDiv.style.position = 'absolute';
             tempDiv.style.left = '-9999px';
             tempDiv.style.whiteSpace = 'pre-wrap';
             document.body.appendChild(tempDiv);
-            
+
             const textContent = tempDiv.innerText || tempDiv.textContent || "";
             document.body.removeChild(tempDiv);
+            return textContent;
+        }
 
+        function downloadTextFile(filename, textContent) {
             const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
-            
+
             const a = document.createElement('a');
             a.href = url;
-            a.download = (note.title || window.t('notes.label.untitled', 'Untitled')) + '.txt';
+            a.download = filename;
             a.style.display = 'none';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+
+        function downloadTXT() {
+            if (!currentNoteId) return;
+            const note = notes.find(n => n.id === currentNoteId);
+            if (!note) return;
+
+            downloadTextFile(
+                (note.title || window.t('notes.label.untitled', 'Untitled')) + '.txt',
+                notePlainText(note)
+            );
+        }
+
+        function downloadAllTXT() {
+            if (!notes.length) return;
+
+            const parts = [];
+            for (let i = 0; i < notes.length; i++) {
+                const note = notes[i];
+                const title = note.title || window.t('notes.label.untitled', 'Untitled');
+                parts.push(title + '\n' + '====================\n' + notePlainText(note));
+            }
+
+            const stamp = new Date().toISOString().slice(0, 10);
+            downloadTextFile('rekindle-notes-' + stamp + '.txt', parts.join('\n\n'));
         }
 
     </script>

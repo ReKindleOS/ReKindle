@@ -1083,10 +1083,12 @@
             z-index: 10;
             display: none;
             flex-direction: row;
+            flex-wrap: wrap;
+            max-width: 320px;
         }
 
-        #reaction-selection-modal>*+* {
-            margin-left: 5px;
+        #reaction-selection-modal>* {
+            margin: 2px;
         }
 
         .reaction-option {
@@ -1657,7 +1659,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
-    <script src="emojis.js?v=6"></script>
+    <script src="emojis.js?v=7"></script>
     <script src="js/emoji-render.js?v=1"></script>
 
     <script src="bad_words.js?v=4"></script>
@@ -2278,7 +2280,7 @@
         var currentUserRulesVersion = 0;
 
         // --- Reaction Keys (use new SVG-based keys) ---
-        var FONT_REACTIONS = ['rekindle', 'thumbsup', 'thumbsdown', 'heart', 'question', 'exclaim', 'laugh', 'sad'];
+        var FONT_REACTIONS = ['rekindle', 'thumbsup', 'thumbsdown', 'heart', 'question', 'exclaim', 'laugh', 'sad', 'angry', 'wave'];
 
 
         // --- INIT ---
@@ -2290,11 +2292,36 @@
             fetchSupporters(); // Load supporters list
 
             // Check Auth
+            // authInitHandled marks the first auth decision. It must NOT stop a
+            // later onAuthStateChanged(user) from replacing the guest screen:
+            // e-ink browsers can take longer than the 2.5s/6s grace to restore
+            // the session, and the old code latched the guest overlay forever
+            // (the "I am logged in but KindleChat says log in" reports).
             var authInitHandled = false;
+            var activeAuthUid = null;
+            var guestScreenShown = false;
+
+            function activateKindlechatForUser(user) {
+                if (!user || activeAuthUid === user.uid) return;
+                activeAuthUid = user.uid;
+                authInitHandled = true;
+                guestScreenShown = false;
+                var overlay = document.getElementById('guest-overlay');
+                if (overlay) overlay.style.display = 'none';
+                var appLayout = document.getElementById('app-layout');
+                if (appLayout) appLayout.style.display = '';
+                handleKindlechatAuth(user);
+            }
 
             function handleKindlechatAuth(user) {
                 currentUser = user;
                 currentUsername = (user.email || user.uid).split('@')[0];
+
+                // A late auth restore can land after the guest overlay was shown.
+                var guestOverlay = document.getElementById('guest-overlay');
+                if (guestOverlay) guestOverlay.style.display = 'none';
+                var layout = document.getElementById('app-layout');
+                if (layout) layout.style.display = '';
 
                 // Check active timeout and show banner
                 rtdb.ref('timeouts/' + user.uid).once('value').then(function (snap) {
@@ -2401,6 +2428,7 @@
 
             function handleKindlechatGuest() {
                 currentUser = null;
+                guestScreenShown = true;
                 var titleEl = document.querySelector('.title-text');
                 if (titleEl) titleEl.innerText = 'KindleChat';
                 document.getElementById('app-layout').style.display = 'none';
@@ -2440,29 +2468,38 @@
             }
 
             auth.onAuthStateChanged(function (user) {
-                if (authInitHandled) return;
                 if (user) {
-                    authInitHandled = true;
-                    handleKindlechatAuth(user);
-                } else {
-                    // KINDLE COMPATIBILITY: E-ink browsers are slow to restore auth state
-                    // from IndexedDB/localStorage. Give it a moment before showing guest UI.
-                    setTimeout(function () {
-                        if (authInitHandled) return;
-                        if (auth.currentUser) {
-                            authInitHandled = true;
-                            handleKindlechatAuth(auth.currentUser);
-                        } else {
-                            authInitHandled = true;
-                            handleKindlechatGuest();
-                        }
-                    }, 2500);
+                    // Always allow a late restore to take over from the guest
+                    // screen (idempotent per uid).
+                    activateKindlechatForUser(user);
+                    return;
                 }
+                if (activeAuthUid) {
+                    // Signed out in another tab after a successful load.
+                    activeAuthUid = null;
+                    authInitHandled = false;
+                    handleKindlechatGuest();
+                    return;
+                }
+                if (authInitHandled) return;
+
+                // KINDLE COMPATIBILITY: E-ink browsers are slow to restore auth state
+                // from IndexedDB/localStorage. Give it a moment before showing guest UI.
+                setTimeout(function () {
+                    if (activeAuthUid || authInitHandled) return;
+                    if (auth.currentUser) {
+                        activateKindlechatForUser(auth.currentUser);
+                    } else {
+                        authInitHandled = true;
+                        handleKindlechatGuest();
+                    }
+                }, 2500);
             });
 
             // Never leave the chat on "Connecting..." if auth never resolves.
+            // Do not latch: a slower auth restore may still replace this screen.
             setTimeout(function () {
-                if (authInitHandled) return;
+                if (activeAuthUid || guestScreenShown) return;
                 authInitHandled = true;
                 handleKindlechatGuest();
             }, 6000);
@@ -4870,7 +4907,7 @@
                 '</div>' +
                 headerHtml +
                 '<div style="padding: 15px;">' +
-                '<img src="' + safeSrc + '" style="width:512px; height:512px; max-width:100%; border:2px solid black; image-rendering:pixelated; image-rendering:crisp-edges; display:block; margin:0 auto;">' +
+                '<img src="' + safeSrc + '" alt="' + escapeHtml(caption || 'Pixel art') + '" style="width:512px; height:512px; max-width:100%; border:2px solid black; image-rendering:pixelated; image-rendering:crisp-edges; display:block; margin:0 auto;">' +
                 (safeCaption ? '<div style="margin-top:10px; font-size:0.9rem; word-break:break-word;">' + safeCaption + '</div>' : '') +
                 galleryActionsHtml +
                 '</div>';
@@ -5526,7 +5563,7 @@
 
                 bubbleContent = '<div class="msg-bubble art-bubble" style="padding: 5px; background: white !important; color: black !important; border: 2px solid black !important; outline: none !important;">' +
                     '<a href="pixel?source=kindlechat" style="font-weight:bold; margin-bottom:5px; font-size:0.8rem; display:block; text-decoration:none; color:black;">' + window.t('kindlechat.art.pixel', 'Pixel Art') + '</a>' +
-                    '<img src="' + escapeHtml(msg.pixel_art) + '" onclick="openGalleryItem(\'' + escapeJsString(msgId) + '\')" style="' +
+                    '<img src="' + escapeHtml(msg.pixel_art) + '" alt="' + escapeHtml(messageText || 'Pixel art') + '" onclick="openGalleryItem(\'' + escapeJsString(msgId) + '\')" style="' +
                     'image-rendering: -webkit-optimize-contrast; ' +
                     'image-rendering: crisp-edges; ' +
                     'image-rendering: pixelated; ' +

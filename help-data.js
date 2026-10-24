@@ -399,7 +399,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'start',
         title: 'Frequently asked questions',
         summary: 'Short answers to the questions people ask most often.',
-        tags: 'faq questions free account kindle kobo desktop offline dark mode emoji cancel pro delete data games',
+        tags: 'faq questions free account kindle kobo desktop offline dark mode emoji cancel pro refund billing payment delete data games',
         related: ['welcome', 'account', 'pro', 'troubleshooting'],
         body: `
             <h2>Is ReKindle free?</h2>
@@ -418,6 +418,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>The Kindle browser has no colour emoji font. Use ASCII emoticons like <code>:)</code> or the KindleChat emoji picker, which inserts OpenMoji images instead of Unicode characters. See <a href="#kindlechat">KindleChat</a>.</p>
             <h2>How do I cancel ReKindle+?</h2>
             <p>Open the ReKindle+ page while signed in and use <b>Manage Subscription</b>. It opens the Stripe billing portal. Access continues until the end of the paid period.</p>
+            <h2>I paid but Pro is missing, or I need a refund</h2>
+            <p>Email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> from the address used at checkout. Include your ReKindle username, the purchase date and the amount. Do not post card details or receipts on the Suggestions board or in chat.</p>
+            <p>If Pro disappeared after a renewal, open the ReKindle+ page and confirm the subscription is active under <b>Manage Subscription</b> first; the membership webhook can take a minute to land. A refund is handled case by case - a cancelled subscription stops future renewals but does not automatically refund the current period.</p>
             <h2>How do I delete my account or data?</h2>
             <p>There is no self-service delete button yet. Email support with your username and ask for account and data deletion. Guest data can be removed by clearing the browser's site data.</p>
             <h2>Why is a game or app missing?</h2>
@@ -2018,6 +2021,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Sign in, then tap <b>+ New Idea</b>.</li>
                 <li>Choose a type: Suggestion, Problem or Translation.</li>
+                <li>Start typing a title. If a similar idea is already loaded, ReKindle shows it under the title - tap it to upvote instead of posting a duplicate.</li>
                 <li>Write a title and details. For a bug, include the app, device and steps.</li>
                 <li>Submit. You can edit your own posts later.</li>
             </ol>
@@ -2027,8 +2031,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>My Suggestions</b> filters to your own posts.</li>
                 <li>Status labels show where an item stands: New, Deferred, Done or Closed.</li>
                 <li>Switch type to see Suggestions, Problems or Translation issues separately.</li>
+                <li>The board loads recent ideas first. Tap <b>Load older</b> at the bottom to search further back; the search box covers the ideas currently loaded.</li>
             </ul>
-            <div class="note"><b>Before posting:</b> search for an existing item and vote on it instead. Duplicates make the board harder to use. For urgent account or safety issues, email support rather than posting publicly.</div>
+            <p>Answers to common questions live in the <a href="#faq">FAQ</a>, recent changes are on the <a href="changelog.html">Changelog</a>, and billing questions are covered under <a href="#faq">refunds and Pro</a> and <a href="#support">Support</a>.</p>
+            <div class="note"><b>Before posting:</b> search for an existing item and vote on it instead. Duplicates make the board harder to use. For urgent account, billing or safety issues, email support rather than posting publicly.</div>
         `
     },
 
@@ -3321,6 +3327,34 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Progress</h2>
             <p>The level menu shows your best percentage per level and your gear count. Portals switch between cube and ship modes. Spikes, blocks and pillars kill on contact; pads and rings launch or protect you. Reach the end gate to complete a level.</p>
             <div class="note"><b>No settings:</b> rendering is forced to a strict one-bit mode because grey anti-aliased pixels cause constant e-ink full refreshes. The tight jump windows are intentional. If a level feels impossible, watch the pattern and jump earlier than you think.</div>
+        `
+    },
+    {
+        id: 'cookieclicker',
+        cat: 'games',
+        title: 'Cookie Clicker',
+        summary: 'Tap the big cookie, buy buildings and upgrades, and let the cookies pile up.',
+        tags: 'cookie clicker idle incremental tycoon clicker buildings upgrades golden cookie save offline',
+        sub: 'Action & arcade',
+        badges: ['NEW'],
+        appHref: 'cookieclicker',
+        appName: 'Cookie Clicker',
+        related: ['surfer', 'jumpy', 'cubedash'],
+        body: `
+            <p>Cookie Clicker is a quiet idle game built for e-ink. Tap the big cookie to bake; buildings then bake on their own while you read or play something else.</p>
+            <h2>Playing</h2>
+            <ul>
+                <li>Tap the cookie for cookies. Each tap is worth more after click upgrades.</li>
+                <li><b>Buildings</b> produce cookies per second. Each one gets more expensive after you buy it.</li>
+                <li><b>Upgrades</b> unlock as you reach click, building and total-cookie milestones. They double a building, double your taps, or raise all production.</li>
+                <li>Every minute or two a <b>Golden cookie</b> may appear. Tap it for a bonus worth about 10% of your current cookies.</li>
+            </ul>
+            <h2>Stimulation mode</h2>
+            <p>The <b>Stimulation</b> tab is a short, run-based parody of Neal.fun's <i>Stimulation Clicker</i>. Click the big button to earn stimulation, then buy stimuli: a DVD logo, a podcast, autoplay video, an algorithm and so on. Active stimuli generate points while a text feed fills with their noise. Activate all ten to reach the beach.</p>
+            <p>This mode is deliberately original and silent: no audio, video or animation, just text and the same once-a-second update as the cookie game. A run lasts about ten minutes, is not saved, and resets when the page reloads. Your best run is kept on the device. Boosts double one stimulus permanently for the rest of the run.</p>
+            <h2>Saving</h2>
+            <p>The cookie game saves on this device automatically. When you are signed in it also syncs to <code>users/&lt;uid&gt;/settings/cookieSave</code>, so your cookies follow your account. Offline production is capped at eight hours and pays half the normal rate. <b>Reset</b> clears both the local and cloud save.</p>
+            <div class="note"><b>No leaderboard:</b> idle games can be edited offline, so a shared score would not be meaningful. Progress is personal. The page avoids animation and only redraws the numbers once a second to keep e-ink refreshes down.</div>
         `
     },
     {

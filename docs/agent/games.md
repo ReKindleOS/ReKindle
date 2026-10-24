@@ -381,3 +381,63 @@ New findings for this area go here, not in `AGENTS.md` (65,536-byte budget).
 
 When adding another live game, copy `listenToMatch()` from `liveuno.html` (migration + `isHost`
 line) rather than the older scaffold - the drift is what produced the six bugs above.
+
+## Cookie Clicker (cookieclicker.html) — 2026-10-24
+
+The first single-player idle game. Two modes in one page, switched by the
+`Cookies` / `Stimulation` tabs (or `?mode=stimulation`):
+
+- **Cookies** — classic tap + buildings + upgrades, one tick per second for
+  e-ink. Buildings: 8, costs scale at `1.15^owned`. Upgrades: 11, unlocked by
+  clicks, building counts, golden cookies and total baked. A golden cookie
+  appears on a 60–180 s timer and pays ~10% of the bank. Local save
+  (`rekindle_cookie_v1`) plus `users/{uid}/settings/cookieSave`; offline
+  production is capped at 8 h at 50%. No leaderboard: idle saves are editable
+  offline, so a server-validated score would be meaningless.
+- **Stimulation** — a short, run-based parody of Neal.fun's *Stimulation
+  Clicker* (original names/visuals, no audio/video). Click for stimulation,
+  then activate 10 stimuli (DVD logo, podcast, autoplay, algorithm, …). Active
+  stimuli generate points; the "chaos" is a capped text feed refreshed every
+  7 s, not animation. Activate all 10 → "You reached the beach" ending. Run
+  state is in-memory only and resets on reload; best run is
+  `rekindle_stimulation_best`. Boosts cost 3× the activation cost and double
+  that stimulus for the rest of the run.
+
+**E-ink rules:** no canvas, no `requestAnimationFrame`, no CSS animation; the
+cookie tick redraws numbers once per second and only rebuilds the shop on a
+purchase/unlock. The stimulation feed caps at 8 lines and is only appended
+while that tab is open (`stimMode`), so the cookie tab does not keep churning
+DOM.
+
+**Saves are separate:** stimulation never writes to the cookie save, and the
+cookie save never touches the stimulation run. `theme.js` handles scaling
+normally because there are no touch-coordinate games on this page.
+
+## Neal.fun-inspired candidates (2026-10-24)
+
+*Stimulation Clicker* is now the **Stimulation** tab in `cookieclicker.html`:
+an original, silent, text-feed adaptation (no audio/video/animation), played as
+a ~10-minute run with an ocean ending. The source game is [Neal.fun's Stimulation
+Clicker](https://neal.fun/stimulation-clicker/); its loop is documented on
+[Wikipedia](https://en.wikipedia.org/wiki/Stimulation_Clicker) (click for points,
+buy upgrades that generate points, all upgrades unlock a beach ending, no saves).
+
+Other Neal.fun games were assessed for ReKindle feasibility:
+
+| Game | Fit | Effort | Notes |
+| :--- | :--- | :--- | :--- |
+| Spend Bill Gates' Money | High | 2–4 h | Pure catalogue + cart math, no backend; a natural Tools app. |
+| Absurd Trolley Problems | High | 2–3 h | Text dilemmas + choices; content authoring is the main cost. |
+| The Password Game | Medium | 1–2 days | Rules engine is intricate; high retention but needs careful validation. |
+| Color Match / Higher Lower | High | 2–3 h | Tiny single-player games; low content cost. |
+| The Deep Sea / Space Elevator | Medium | 1 day | Scroll-to-scale data; text/ASCII works on e-ink, canvas does not. |
+| Design the Universe | Medium | 1 day | Simple controls, but brand-new UI patterns. |
+| Internet Artifacts | Low | 1–2 days | Image-heavy; Kindle cache and slow decode work against it. |
+| Infinite Craft | Low | Multi-day | Needs an LLM/combination backend and cost control; also already requested. |
+| Draw a Perfect Circle | Done | — | `circle.html` already covers it. |
+| Stimulation Clicker | Done | — | Stimulation tab in `cookieclicker.html`. |
+
+Rule of thumb: copy the *interaction idea*, never the assets, audio, exact copy or
+branding. Credit Neal Agarwal in Help. e-ink pages should translate motion into
+text/state changes (as Stimulation mode does) rather than hiding animations
+behind `animation: none`.

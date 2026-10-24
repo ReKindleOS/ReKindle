@@ -116,3 +116,50 @@ truth for the toggle label.
 `commentCount` in the same code path, or the feed silently lies. `deleteComment()` and the worker
 were the only two paths when this landed.
 
+
+## Suggestions board pagination — 2026-10-24
+
+**Symptom:** `suggestions.html` ran `rtdb.ref('suggestions').once('value')` on
+every load *and every tab switch*. By 2026-10-24 the board held 751 records
+(224 open + comments) and the full snapshot was **1.10 MB**; comments alone were
+**577 KB (55%)**, even though comments are only read when a detail view opens.
+On a Kindle that is a slow first paint and a full re-download for every tab.
+
+**Fix:** load one chronological window with
+`orderByChild('createdAt').limitToLast(120)` (about **110 KB**, a 90% cut),
+keep it in `allSuggestions`, and make tab switches call
+`loadSuggestions(false)`, which just re-renders the cached window. A
+**Load older** footer appends the next 120 with
+`endAt(oldestLoadedCreatedAt - 1)`. A short page (`numChildren() < 120`) means
+the end of the list. Search still filters the loaded window; the footer says so
+(`suggestions.msg.search_scope`), and the new-idea duplicate finder searches the
+same window.
+
+**My Suggestions:** the Mine tab does **not** use the newest-120 window. It runs a
+one-shot `orderByChild('authorUid').equalTo(uid)` query (indexed in
+`rtdb-rules.json`) and merges those records into the cache, so a user's older
+ideas still appear. The footer suppresses "Load older" on that tab.
+
+**Trade-off:** "Popular" now means popular among the loaded window, not all
+time. That is intentional — the newest ideas are what the board is for, and
+`Load older` reaches the rest. If all-time popularity becomes a requirement,
+denormalise a numeric `voteCount` per suggestion and load a second
+`orderByChild('voteCount').limitToLast(50)` page rather than restoring the 1 MB
+fetch.
+
+**Rules for future additions:** never add a listener to the bare
+`suggestions` ref; always bound it. Comments stay inline in each record for now
+(no migration); if the payload needs another cut, move them to
+`suggestion_comments/{id}` and load on detail open, which would halve the
+remaining page again.
+
+### Suggestions shipped-status sweep (2026-10-24)
+
+`admin/mark_shipped_suggestions.js` is a dry-run-by-default admin script that
+marks a **title-checked** allowlist of suggestions `done` (`--apply` writes via
+the Admin SDK). On 2026-10-24 it closed 7 records: the three Cookie Clicker
+posts, Add FAQ, Update log, app search and more reactions. It deliberately does
+not touch `FAQ in suggestions` — that record asks for answers *inside* the
+board, and the current implementation links to the FAQ/refund answer from the
+triage strip rather than rendering it inline. Add a row only after verifying
+the feature in the built output; the script refuses a title mismatch.

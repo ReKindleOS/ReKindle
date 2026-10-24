@@ -385,3 +385,42 @@ avatars: first render `CANVAS,CANVAS` with 2 cache entries, an immediate `render
 **Testing gotcha:** forcing `#app-layout { display:flex !important }` in a test/stub (e.g. to counter the
 guest-mode `display:none`) silently overrides the split grid and stacks the panes — hide the guest overlay
 and reset `style.display` instead.
+
+## Late auth restore must replace the guest screen (2026-10-24)
+
+**Symptom:** users reported "KindleChat says I need to be logged in even though I
+am logged in" (2026-10-22, 10-23, 10-24). The dashboard link can open chat while
+Firebase is still restoring IndexedDB auth. The old flow showed the guest overlay
+after a 2.5 s grace, then **latched** `authInitHandled = true`; the
+`onAuthStateChanged` handler returned early forever, so an auth restore at 3 s+
+left the guest overlay up until the user reloaded.
+
+**Fix (2026-10-24):** `authInitHandled` now only marks the first decision. A
+signed-in `onAuthStateChanged(user)` always calls
+`activateKindlechatForUser(user)`, which is idempotent per uid, hides
+`#guest-overlay`, restores `#app-layout`, and enters `handleKindlechatAuth()`.
+The 2.5 s/6 s timers still show the guest screen, but do not prevent recovery;
+the 6 s timer also stops if `guestScreenShown` is already true. Signing out
+after a successful load clears `activeAuthUid` and shows the guest screen again.
+Keep this recovery path when changing the auth gate — the grace period is for
+slow e-ink auth, not a permanent latch.
+
+## Pixel-art captions are alt text (2026-10-24)
+
+The Post to KindleChat confirm modal (`pixel.html`) now has an optional
+`#pixel-caption-input` (200 chars). Its value is sent as the message `text`
+(falling back to `pixel.status.shared`), so it goes through the existing
+moderation/URL/promo checks with no new worker field. KindleChat renders it as
+the visible caption and as the `<img alt>` in both the chat bubble and
+`showPixelArtModal()`. The gallery index already stores `text`, so no migration
+or rule change was needed; keep using `text` rather than adding an unmoderated
+`alt` field.
+
+## Reaction set (2026-10-24)
+
+`FONT_REACTIONS` gained `angry` and `wave` (SVGs in `emojis.js`'s
+`REACTION_SVGS`). The picker wraps (`flex-wrap`) with a 320 px cap so ten
+options fit a 600 px window. Reaction keys are not whitelisted by the RTDB
+rules (only `reaction` + `username` are validated), so no rules change was
+needed. Bump `emojis.js?v=` in `kindlechat.html` whenever this list or the SVGs
+change.
