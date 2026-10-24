@@ -104,7 +104,12 @@ try {
     }
 
     const sw = read('sw.js');
-    assert.match(sw, /'\.\/theme\.js\?v=23'/, 'sw.js must precache theme.js?v=23');
+    // Derive the cache-busting version instead of hard-coding it: bumping
+    // theme.js?v= in the HTML must be paired with sw.js precaching the same URL,
+    // and a hard-coded number turns every bump into a false failure.
+    const themeVersion = (read('index.html').match(/theme\.js\?v=(\d+)/) || [])[1];
+    assert.ok(themeVersion, 'index.html must load a versioned theme.js');
+    assert.ok(sw.includes(`'./theme.js?v=${themeVersion}'`), `sw.js must precache theme.js?v=${themeVersion}`);
 
     const guide = read('kindle.html');
     for (const needle of [
@@ -124,7 +129,7 @@ try {
         'rekindleApplyWallpaper',
         'kindlemodding.org/jailbreak-wizard.html',
         'normal framed layout',
-        'theme.js?v=23'
+        `theme.js?v=${themeVersion}`
     ]) {
         assert.ok(guide.includes(needle), `kindle.html is missing: ${needle}`);
     }

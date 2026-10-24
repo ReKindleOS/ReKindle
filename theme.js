@@ -254,6 +254,12 @@
         var autoEnabled = localStorage.getItem(SCALE_AUTO_KEY) !== 'false'; // Default to true
 
         if (autoEnabled) {
+            // Kindle Paperwhite baseline: below 800x906 the UI is scaled down to
+            // fit. 732x762 (Kobo Libra Colour) therefore lands on 0.75, which is
+            // kept deliberately: at 1.0 the home screen loses its two-column
+            // featured grid and pushes "All Applications" below the fold, and the
+            // real Kobo layout bugs were the missing scroll (applyOverflowFallback)
+            // and the 2009 box model in the old builds, not the zoom itself.
             var targetW = 800;
             var targetH = 906;
             var currentW = window.innerWidth;
@@ -284,6 +290,54 @@
             applyScale();
         }
     }
+
+    // --- OVERFLOW FALLBACK ---
+    // Pages size their window in vh and set body { overflow: hidden }. When the
+    // content is taller than the viewport (Settings, Chess, KindleChat on a
+    // short screen) the bottom is clipped with no scrollbar and no way to reach
+    // it. After paint, if the document really is taller than the viewport,
+    // switch the page to a normal scrolling document.
+    //
+    // The class goes on <html>, never on <body>: post-load <body> class changes
+    // drop elements on the Kobo/QtWebKit repaint path (see legacy-build.md).
+    var OVERFLOW_CLASS = 'rekindle-page-scroll';
+
+    function injectOverflowStyle() {
+        if (document.getElementById('rekindle-overflow-style')) return;
+        var style = document.createElement('style');
+        style.id = 'rekindle-overflow-style';
+        style.textContent =
+            'html.' + OVERFLOW_CLASS + ' { height: auto !important; overflow-x: hidden !important; overflow-y: auto !important; } ' +
+            'html.' + OVERFLOW_CLASS + ' body { height: auto !important; min-height: 100vh !important; overflow-x: hidden !important; overflow-y: auto !important; } ' +
+            // The window must be allowed to grow past the 95vh budget, otherwise
+            // the page scrolls around a window that still clips its own content.
+            'html.' + OVERFLOW_CLASS + ' .window { max-height: none !important; margin-top: 10px !important; margin-bottom: 10px !important; }';
+        document.head.appendChild(style);
+    }
+
+    function applyOverflowFallback() {
+        if (!document.body) return;
+        var root = document.documentElement;
+        if ((' ' + root.className + ' ').indexOf(' ' + OVERFLOW_CLASS + ' ') !== -1) return;
+        // Stay off pages that intentionally lock the viewport (position: fixed
+        // bodies) and pages where the content already fits.
+        if (root.scrollHeight <= window.innerHeight + 2) return;
+        injectOverflowStyle();
+        root.className += ' ' + OVERFLOW_CLASS;
+    }
+    window.rekindleApplyOverflowFallback = applyOverflowFallback;
+
+    function scheduleOverflowFallback() {
+        if (document.readyState === 'complete') applyOverflowFallback();
+        else window.addEventListener('load', applyOverflowFallback);
+        // Late content (Firebase lists, i18n re-flow, images) changes the height
+        // after load, so re-check once the quiet period has passed.
+        setTimeout(applyOverflowFallback, 1200);
+        setTimeout(applyOverflowFallback, 3000);
+        window.addEventListener('resize', applyOverflowFallback);
+        window.addEventListener('orientationchange', applyOverflowFallback);
+    }
+    scheduleOverflowFallback();
 
     // --- UNIT SYSTEM ---
     var UNIT_KEY = 'rekindle_unit_system'; // 'metric', 'imperial', 'auto'

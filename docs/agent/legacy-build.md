@@ -153,6 +153,71 @@ cell-size patches for months. Match the minified form (either quote style), not 
 `crossword.html` also gained an English fallback for `crossword.direction.*`; the clue bar used to
 show the raw key.
 
+## Kobo layout at 732×762 (2026-10-24)
+
+A Kobo Libra Colour user reported the site loads but "the apps don't fit on my screen properly".
+Reproduced in the WebKit harness against `_deploy/legacy` at the device's measured 732×762 CSS
+viewport — two real causes, fixed in two places. A third candidate (the zoom level) was investigated
+and deliberately **not** changed; see below.
+
+### 1. Auto-scaling: investigated, left at 800×906 (`theme.js`)
+
+`autoDetectScale()` targets the Kindle Paperwhite viewport (800×906). At 732×762 that gives
+`min(0.915, 0.841) = 0.84`, which snaps to **0.75**, so a Libra Colour draws every window at
+three-quarters size. The value is written to `localStorage.rekindle_scale`, so `index.html`'s
+load-time call propagates it to every app.
+
+Lowering the target to 700×700 makes 732×762 render at 1.0, and that was tried first. It was
+reverted the same day: at 1.0 the home screen drops to **one featured card per row** and pushes
+"All Applications" below the fold, losing more density than the smaller text gained, and the
+overflow problems it seemed to explain had other causes (the `.window` is 604px against a 600px
+`max-width` at 1.0 — the 0.75 zoom was what made it *look* shrunken). If you revisit this, change
+`targetW`/`targetH` and screenshot the home page at 732×762 before committing: the 700×700 version
+is genuinely worse there.
+
+### 2. Tall pages were clipped with no scrollbar (`theme.js`)
+
+Pages set `body { overflow: hidden }` and size `.window` in `vh` (`max-height: 95/scale vh`). Settings
+measured `documentElement.scrollHeight` 2125 against a 762px viewport: the bottom third was
+unreachable. `applyOverflowFallback()` now adds `rekindle-page-scroll` to **`<html>`** (never
+`<body>` — post-load body class changes drop elements on the Kobo repaint path) when
+`scrollHeight > innerHeight + 2`. The class releases the body height/overflow and the `.window`
+max-height so the page scrolls normally. It re-checks on `load`, at 1.2 s and 3 s (late Firebase/i18n
+re-flow), on `resize` and on `orientationchange`, and is sticky once set.
+
+### 3. Old builds shipped only the 2009 box model (`build-automation.js` + `scripts/legacy-patch.js`)
+
+`_deploy/legacy/settings.html` contained **zero** `display:flex`. PostCSS's Chrome 12 target rewrites
+`display: flex` to `display: -webkit-box` and drops the standard value, so
+`addOldEngineLayoutFallbacks()`'s prefix rules had nothing to match; then `legacy-patch.js` (which runs
+last) prefixed every surviving `display:flex` again without keeping it, and doubled declarations the
+build pass had already prefixed (`display:-webkit-box;display:-webkit-box`).
+
+Both passes now emit `display:-webkit-box;display:flex` (`inline-flex` likewise), collapse duplicated
+`-webkit-box` declarations, and skip values that are already prefixed. QtWebKit 538.1 ignores the
+standard value and uses `-webkit-box`; modern engines use the standard flexbox, which is also what the
+visual-audit harness shows.
+
+Verify after a build:
+
+```bash
+grep -c 'display:-webkit-box;display:-webkit-box' _deploy/legacy/settings.html   # 0
+grep -c 'display:flex' _deploy/legacy/settings.html                              # >0
+scripts/shot-webkit.sh "http://127.0.0.1:8991/index.html" 732 762 /tmp/kobo-732.png
+```
+
+**Deliberately not changed:** the old-box `body` centring. The original theory was that
+`-webkit-box` shrink-wrapped `.window`; measured at scale 1.0, Settings' window is 604px against a
+600px `max-width`, so it was always the 0.75 zoom, not the box model. Forcing `body { display:block }`
+would only move short windows to the top of the screen.
+
+### Still broken on old engines
+
+- **Calculator** keypad writes five buttons in one row (the fifth, "7", is clipped by the window
+  edge) — the build's `.keypad button { width:23% }` patch does not survive `-webkit-box`; needs an
+  `inline-block` rewrite like the game grids above.
+- **Chess** board is blank until the New Game dialog is dismissed; squares rely on flex/grid sizing.
+
 ## Follow-up from the Lite visual audit (2026-10-22)
 
 - **Browser empty state** — `browser.html` declared a page-local `let history`, which shadowed

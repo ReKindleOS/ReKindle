@@ -17,18 +17,23 @@ function fixCss() {
         let count = 0;
         const basename = path.relative(LEGACY_DIR, htmlPath);
 
-        // Handle display: flex (in both <style> blocks and inline style attributes)
-        html = html.replace(/display:\s*flex\s*(!important)?/gi, (match) => {
+        // Handle display: flex (in both <style> blocks and inline style attributes).
+        // Keep the standard value after the prefixed one: QtWebKit 538.1 ignores
+        // `display:flex` and uses -webkit-box, while a modern engine takes the
+        // standard flexbox that follows it. Emitting only -webkit-box — and
+        // re-prefixing values the build pass had already prefixed — is what kept
+        // the whole legacy build on the 2009 box model with doubled declarations.
+        html = html.replace(/(?<!-webkit-box;)display:\s*flex\s*(!important)?/gi, (match, important) => {
             count++;
-            const isImportant = match.toLowerCase().includes('!important');
-            return `display: -webkit-box${isImportant ? ' !important' : ''}`;
+            const imp = important ? ' !important' : '';
+            return `display:-webkit-box${imp};display:flex${imp}`;
         });
 
         // Handle display: inline-flex
-        html = html.replace(/display:\s*inline-flex\s*(!important)?/gi, (match) => {
+        html = html.replace(/(?<!-webkit-inline-box;)display:\s*inline-flex\s*(!important)?/gi, (match, important) => {
             count++;
-            const isImportant = match.toLowerCase().includes('!important');
-            return `display: -webkit-inline-box${isImportant ? ' !important' : ''}`;
+            const imp = important ? ' !important' : '';
+            return `display:-webkit-inline-box${imp};display:inline-flex${imp}`;
         });
 
         // Index.html specific layout fixes

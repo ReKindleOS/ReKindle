@@ -454,7 +454,18 @@ function addOldEngineLayoutFallbacks(html) {
         .replace(/\bflex-direction\s*:\s*column-reverse\b/gi, '-webkit-box-orient:vertical;-webkit-box-direction:reverse;flex-direction:column-reverse')
         .replace(/\bflex-direction\s*:\s*row-reverse\b/gi, '-webkit-box-orient:horizontal;-webkit-box-direction:reverse;flex-direction:row-reverse')
         .replace(/\bflex-grow\s*:\s*1\b/gi, '-webkit-box-flex:1;flex-grow:1')
-        .replace(/\bflex\s*:\s*1\b/gi, '-webkit-box-flex:1;flex:1');
+        .replace(/\bflex\s*:\s*1\b/gi, '-webkit-box-flex:1;flex:1')
+        // PostCSS (Chrome 12 target) already rewrote `display: flex` to
+        // `display: -webkit-box` and dropped the standard value, so the prefix
+        // rules above had nothing left to match and every old-build page was
+        // left with the 2009 box model only. Collapse the duplicate -webkit-box
+        // declarations PostCSS emits and re-append the standard value, so
+        // modern engines keep real flexbox while 538.1 still falls back to
+        // -webkit-box. Negative lookahead keeps an existing pair untouched.
+        .replace(/(?:display\s*:\s*-webkit-box\s*;\s*)+/gi, 'display:-webkit-box;')
+        .replace(/(display\s*:\s*-webkit-box)(?!\s*;\s*display\s*:\s*flex)/gi, '$1;display:flex')
+        .replace(/(?:display\s*:\s*-webkit-inline-box\s*;\s*)+/gi, 'display:-webkit-inline-box;')
+        .replace(/(display\s*:\s*-webkit-inline-box)(?!\s*;\s*display\s*:\s*inline-flex)/gi, '$1;display:inline-flex');
 
     const fixJsText = (js) => {
         // Replace every quoted flex value in a style.display assignment, including
@@ -2015,15 +2026,19 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
         let finalMinifiedHtml = await minifyHtmlContent(finalHtml);
 
         // Final Legacy CSS Patch (Run AFTER minification to ensure it persists)
-        // Manual Fallback for Flexbox (Chrome 12 requires display: -webkit-box)
-        const flexRegexVal = /display:\s*flex(!important)?/gi;
+        // Manual Fallback for Flexbox (Chrome 12 requires display: -webkit-box).
+        // Only a *bare* display:flex needs prefixing here — the ones
+        // addOldEngineLayoutFallbacks already prefixed sit behind
+        // `display:-webkit-box;`, and re-prefixing them is what produced
+        // `display:-webkit-box;display:-webkit-box;display:flex`.
+        const flexRegexVal = /(?<!-webkit-box;)display:\s*flex(!important)?/gi;
         const flexMatches = finalMinifiedHtml.match(flexRegexVal) || [];
         if (flexMatches.length > 0) {
-            console.log(`    [Legacy HTML] Found ${flexMatches.length} 'display:flex' instances. Injecting fallbacks...`);
-            // Nuclear Option: Brute Force Replacement for reliability
-            // Replace ALL occurrences with the fallback + original. 
-            // Minified output is simple: display:flex -> display:-webkit-box;display:flex
-            finalMinifiedHtml = finalMinifiedHtml.replace(flexRegexVal, 'display:-webkit-box;display:flex');
+            console.log(`    [Legacy HTML] Found ${flexMatches.length} bare 'display:flex' instances. Injecting fallbacks...`);
+            finalMinifiedHtml = finalMinifiedHtml.replace(flexRegexVal, (match, important) => {
+                const imp = important ? ' !important' : '';
+                return `display:-webkit-box${imp};display:flex${imp}`;
+            });
         }
 
         return finalMinifiedHtml;
