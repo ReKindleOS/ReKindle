@@ -428,3 +428,55 @@ was correctly hidden. `check()` now initialises Firebase first, then takes the
 cache shortcut. Repro/verification: log in, open any gated page to seed the
 cache, then open Bluesky — the error disappears with the patched file. Bumped
 `pro-gate.js?v=3` on all 14 gated pages.
+
+## 📌 Pinterest connection sync (`pinterest.html`, 2026-10-24)
+
+**Symptom:** Pinterest could be connected on a phone or PC but never on a Kindle —
+tapping **Connect Pinterest** on a Paperwhite/Scribe showed a **blank screen**, and a
+connection made on another device never appeared. Reported by `takinha`
+(RTDB suggestions `-OxvIdfe-PjCiChFpliq`, "cant connect", 2026-07-19, 7 upvotes,
+comments `samee` / `same`) and again by SRJ (2026-10-24: *"I have it on my PC but
+cant open pinterest on kindle… is the pinterest login syncable?"*).
+
+**Two independent causes:**
+
+1. `connect()` redirects to `https://www.pinterest.com/oauth/…` — Pinterest's own
+   login/consent page. The Kindle experimental browser cannot render it, so no
+   `?code=` ever comes back. It presents as a blank screen, not an error.
+2. The tokens were only ever written to `localStorage`
+   (`pinterest_access_token` / `pinterest_refresh_token` / `pinterest_token_expiry`).
+   There was no Firestore code in the page at all, so a successful login could not
+   leave the device that made it.
+
+This is **not** an API-key/client-ID limit: the client id + secret live in
+`workers/rekindle-pinterest/worker.js` and are shared by every user, and Pinterest
+access tokens are device-agnostic.
+
+**Fix (same pattern as Dropbox/Bluesky):** the connection is mirrored to
+`users/{uid}/pro_data/pinterest` = `{accessToken, refreshToken, expiry, updatedAt}`.
+`firestore.rules` already allows that path for owner + `isProUser()`, so no rules
+change was needed.
+
+- `restoreFromCloud()` — called from `init()` when there is no local token: waits for
+  auth (`awaitUser()`), reads the doc, adopts the tokens, and refreshes if they are
+  within 5 minutes of expiry.
+- `exchangeCode()` / `doRefresh()` → `persistLocal()` + `cloudSaveTokens()`. The
+  refresh path matters because Pinterest rotates refresh tokens.
+- `logout()` → also deletes the cloud doc, so **Disconnect means everywhere** (same
+  as Dropbox). On an e-ink device `showEinkHint()` then explains that reconnecting
+  needs a phone or computer.
+- `maybeBackfillCloud()` — one-time migration for connections made before this
+  change, guarded by `pinterest_cloud_stamp` so it costs at most one write per token.
+- `showEinkHint()` — `isEinkBrowser()` matches `/Kindle|Silk|Kobo/` and shows a note
+  on the login card instead of leaving the user at a dead-end button.
+
+**Gotcha for future work:** `pro-gate.js` can invoke its `check()` callback **twice**
+for cached Pro users — once from the cache (before auth resolves) and once from
+`onAuthStateChanged`. `init()` now returns early on the second call (`this.started`),
+but `restoreFromCloud()` is started by the *first* call and defers its work through
+`awaitUser()`. Do not "simplify" that by reading `firebase.auth().currentUser`
+directly in `restoreFromCloud()` — it is `null` at that point and the restore would
+silently do nothing.
+
+**Help text:** the "Connecting" steps in `help-data.js` now say to authorise on a
+phone/computer first (`help-data.js?v=4` in `help.html`).

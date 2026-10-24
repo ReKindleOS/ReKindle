@@ -237,6 +237,19 @@
             margin-top: 0;
         }
 
+        /* Shown only on e-ink browsers: Pinterest's own login page cannot
+           render there, so the connection has to be made elsewhere first. */
+        .login-hint {
+            margin-top: 16px;
+            margin-bottom: 0;
+            padding: 8px;
+            border: 2px solid black;
+            background: white;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            text-align: left;
+        }
+
         .sys-btn {
             background: white;
             border: 2px solid black;
@@ -755,6 +768,7 @@
                     <button class="sys-btn" onclick="app.connect()" data-i18n="pinterest.login.btn">Connect
                         Pinterest</button>
                     <div id="login-status" class="status-msg"></div>
+                    <div id="login-hint" class="login-hint" style="display:none;"></div>
                 </div>
             </div>
 
@@ -847,6 +861,7 @@
             token: null,
             refreshToken: null,
             tokenExpiry: 0,
+            started: false,
             currentTab: 'search',
             currentBoardId: null,
             currentBoardName: '',
@@ -860,6 +875,11 @@
                 if (window.I18n) window.I18n.init();
                 if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
                 if (window.rekindleApplyScale) window.rekindleApplyScale();
+
+                // pro-gate.js can invoke its callback twice for cached Pro users
+                // (cache hit, then the resolved auth state). Only run once.
+                if (this.started) return;
+                this.started = true;
 
                 // Check for OAuth callback
                 const urlParams = new URLSearchParams(window.location.search);
@@ -896,6 +916,10 @@
                     this.refreshToken = savedRefresh;
                     this.tokenExpiry = parseInt(savedExpiry || '0', 10);
 
+                    // Push a connection made before cloud sync existed (or by an
+                    // older build) up to the account, once per token.
+                    this.maybeBackfillCloud();
+
                     // Refresh if expired or about to expire (within 5 min)
                     if (this.tokenExpiry && Date.now() >= this.tokenExpiry - 300000) {
                         this.doRefresh();
@@ -903,7 +927,162 @@
                         this.showApp();
                     }
                 } else {
-                    this.showLogin();
+                    // No local connection: fall back to the copy saved on the
+                    // account, so a login made on a phone/PC also opens here.
+                    this.restoreFromCloud();
+                }
+            },
+
+            // --- Cross-device connection (2026-10-24) ---
+            // Pinterest's own login/consent page cannot render in the Kindle
+            // browser (users saw a blank screen), so a token can only be won on
+            // a phone or PC. That token is device-agnostic, so we mirror it to
+            // users/{uid}/pro_data/pinterest - the same place Dropbox and
+            // Bluesky keep theirs - and any other signed-in device picks it up.
+            // Firestore rules already allow this: owner + isProUser().
+
+            uid() {
+                try {
+                    if (window.rekindleProGate && typeof window.rekindleProGate.getUser === 'function') {
+                        const user = window.rekindleProGate.getUser();
+                        if (user && user.uid) return user.uid;
+                    }
+                    if (window.firebase && firebase.auth && firebase.auth().currentUser) {
+                        return firebase.auth().currentUser.uid;
+                    }
+                } catch (e) { }
+                return null;
+            },
+
+            // Resolve once Firebase auth has settled (the Pro gate's cache branch
+            // can call us before onAuthStateChanged has fired).
+            awaitUser(timeoutMs) {
+                const self = this;
+                if (self.uid()) return Promise.resolve(self.uid());
+                return new Promise(function (resolve) {
+                    let settled = false;
+                    const finish = function (value) {
+                        if (settled) return;
+                        settled = true;
+                        resolve(value);
+                    };
+                    const timer = setTimeout(function () { finish(self.uid()); }, timeoutMs || 6000);
+                    try {
+                        if (!window.firebase || !firebase.auth) {
+                            clearTimeout(timer);
+                            finish(null);
+                            return;
+                        }
+                        firebase.auth().onAuthStateChanged(function () {
+                            clearTimeout(timer);
+                            finish(self.uid());
+                        });
+                    } catch (e) {
+                        clearTimeout(timer);
+                        finish(null);
+                    }
+                });
+            },
+
+            isEinkBrowser() {
+                const ua = navigator.userAgent || '';
+                return /Kindle|Silk|Kobo/i.test(ua);
+            },
+
+            showEinkHint() {
+                const hint = document.getElementById('login-hint');
+                if (!hint || !this.isEinkBrowser()) return;
+                hint.textContent = "Pinterest's sign-in page cannot open in the Kindle browser, so it has to be done on a phone or computer. Connect there once, then reload this page and the connection carries over.";
+                hint.style.display = 'block';
+            },
+
+            persistLocal() {
+                localStorage.setItem('pinterest_access_token', this.token);
+                localStorage.setItem('pinterest_refresh_token', this.refreshToken || '');
+                localStorage.setItem('pinterest_token_expiry', this.tokenExpiry.toString());
+            },
+
+            async cloudLoadTokens() {
+                if (!this.uid()) return null;
+                try {
+                    const db = firebase.firestore();
+                    const doc = await db.collection('users').doc(this.uid())
+                        .collection('pro_data').doc('pinterest').get();
+                    if (!doc.exists) return null;
+                    const data = doc.data() || {};
+                    if (!data.accessToken) return null;
+                    return data;
+                } catch (e) {
+                    return null;
+                }
+            },
+
+            async cloudSaveTokens() {
+                if (!this.uid() || !this.token) return false;
+                try {
+                    const db = firebase.firestore();
+                    await db.collection('users').doc(this.uid())
+                        .collection('pro_data').doc('pinterest').set({
+                            accessToken: this.token,
+                            refreshToken: this.refreshToken || '',
+                            expiry: this.tokenExpiry || 0,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    localStorage.setItem('pinterest_cloud_stamp', this.token.slice(-12) + ':' + this.tokenExpiry);
+                    return true;
+                } catch (e) {
+                    // Rules require Pro + owner. A failure here must not break the
+                    // device that is already connected.
+                    console.warn('[Pinterest] Could not save connection to account:', e && e.message);
+                    return false;
+                }
+            },
+
+            async cloudDeleteTokens() {
+                if (!this.uid()) return;
+                try {
+                    const db = firebase.firestore();
+                    await db.collection('users').doc(this.uid())
+                        .collection('pro_data').doc('pinterest').delete();
+                } catch (e) { }
+            },
+
+            async maybeBackfillCloud() {
+                const stamp = (this.token || '').slice(-12) + ':' + this.tokenExpiry;
+                if (localStorage.getItem('pinterest_cloud_stamp') === stamp) return;
+                // Auth may not have settled yet on the cached-Pro path.
+                await this.awaitUser(6000);
+                await this.cloudSaveTokens();
+            },
+
+            async restoreFromCloud() {
+                this.showLogin();
+                const statusEl = document.getElementById('login-status');
+
+                const uid = await this.awaitUser(6000);
+                if (!uid) {
+                    this.showEinkHint();
+                    return;
+                }
+
+                statusEl.textContent = "Checking your account for a saved connection...";
+                const data = await this.cloudLoadTokens();
+                this.showEinkHint();
+                if (!data) {
+                    statusEl.textContent = "";
+                    return;
+                }
+
+                this.token = data.accessToken;
+                this.refreshToken = data.refreshToken || null;
+                this.tokenExpiry = parseInt(data.expiry || '0', 10) || 0;
+                this.persistLocal();
+                statusEl.textContent = "Connection restored from your account.";
+
+                if (this.tokenExpiry && Date.now() >= this.tokenExpiry - 300000) {
+                    await this.doRefresh();
+                } else {
+                    this.showApp();
                 }
             },
 
@@ -943,9 +1122,9 @@
                         const expiresIn = data.expires_in || (30 * 24 * 60 * 60);
                         this.tokenExpiry = Date.now() + (expiresIn * 1000);
 
-                        localStorage.setItem('pinterest_access_token', this.token);
-                        localStorage.setItem('pinterest_refresh_token', this.refreshToken || '');
-                        localStorage.setItem('pinterest_token_expiry', this.tokenExpiry.toString());
+                        this.persistLocal();
+                        // Mirror to the account so other devices (Kindle) work.
+                        this.cloudSaveTokens();
 
                         // Clean URL
                         window.history.replaceState({}, document.title, window.location.pathname);
@@ -974,12 +1153,12 @@
                         this.token = data.access_token;
                         const expiresIn = data.expires_in || (30 * 24 * 60 * 60);
                         this.tokenExpiry = Date.now() + (expiresIn * 1000);
-                        localStorage.setItem('pinterest_access_token', this.token);
-                        localStorage.setItem('pinterest_token_expiry', this.tokenExpiry.toString());
                         if (data.refresh_token) {
                             this.refreshToken = data.refresh_token;
-                            localStorage.setItem('pinterest_refresh_token', this.refreshToken);
                         }
+                        this.persistLocal();
+                        // Refresh tokens rotate; keep the account copy current.
+                        this.cloudSaveTokens();
                         this.showApp();
                     } else {
                         this.logout();
@@ -1038,9 +1217,14 @@
                 localStorage.removeItem('pinterest_access_token');
                 localStorage.removeItem('pinterest_refresh_token');
                 localStorage.removeItem('pinterest_token_expiry');
+                localStorage.removeItem('pinterest_cloud_stamp');
+                // "Disconnect" means everywhere: drop the account copy too, or the
+                // next page load would silently restore it.
+                this.cloudDeleteTokens();
                 document.getElementById('boards-list').dataset.loaded = 'false';
                 document.getElementById('saved-results').dataset.loaded = 'false';
                 this.showLogin();
+                this.showEinkHint();
             },
 
             // --- API Helpers ---

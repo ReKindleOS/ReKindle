@@ -1744,9 +1744,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Pinterest brings your boards and ideas to the e-reader: browse pins, search, open a board and save an image to one of your boards.</p>
             <h2>Connecting</h2>
             <ol>
-                <li>Tap <b>Connect Pinterest</b> and authorise ReKindle.</li>
-                <li>After connecting, the home view shows your saved boards and a search box.</li>
-                <li>Use <b>Disconnect</b> to remove the connection.</li>
+                <li>Sign in on a <b>phone or computer</b> and tap <b>Connect Pinterest</b>, then authorise ReKindle.</li>
+                <li>The connection is saved to your ReKindle account, so opening Pinterest on your Kindle picks it up automatically - you only authorise once.</li>
+                <li>Pinterest's own sign-in page cannot run in the Kindle browser, so connecting directly on a Kindle shows a blank page.</li>
+                <li>Use <b>Disconnect</b> to remove the connection from every device.</li>
             </ol>
             <h2>Browsing</h2>
             <ul>
