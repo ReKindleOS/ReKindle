@@ -480,7 +480,9 @@ function addOldEngineLayoutFallbacks(html) {
     });
 
     // Inline scripts: assignments plus HTML strings passed to innerHTML.
-    out = out.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (m, open, js, close) => {
+    // `</script\s*>` also matches "</script >", which a browser accepts as an
+    // end tag but the old filter left untouched (CodeQL js/bad-tag-filter).
+    out = out.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script\s*>)/gi, (m, open, js, close) => {
         return open + fixJsText(js) + close;
     });
 

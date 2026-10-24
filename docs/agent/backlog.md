@@ -35,6 +35,37 @@ Details are recorded in the matching `docs/agent/*.md`.
 
 ---
 
+## Security re-audit 2026-10-24 (Dependabot + code scanning)
+
+**Fixed — GHSA-27r3-jxmh-p828** (`body-parser` DoS via trailing bytes after a compressed body):
+`firebase-functions/package-lock.json` 2.3.0 → 2.4.0 and `akinator-service/package-lock.json`
+1.20.8 → 1.20.9 (plain `npm audit fix`; no manifest changes). `npm audit` reports **0** in the
+root, `firebase-functions/`, `akinator-service/` and `workers/rekindle-reader/`.
+**Deploy note:** CI only publishes Cloudflare Pages, so the Functions package needs a manual
+`firebase deploy --only functions`; the Akinator relay needs a Northflank rebuild
+(`akinator-service/` Dockerfile runs `npm ci`).
+
+**Fixed — CodeQL:**
+* `js/bad-tag-filter` `build-automation.js:483` — the inline `<script>` matcher now uses
+  `</script\s*>`, so `</script >` (valid to a browser, skipped by the old filter) is rewritten.
+* `js/incomplete-sanitization` `scripts/test-kindle.js:50` — the version regex escapes every
+  metacharacter, not only dots, so a version like `1.2.3+build(4)` cannot change the pattern.
+* `js/incomplete-multi-character-sanitization` `akinator-service/akinator.js` (`parseQuestion`,
+  `parseAnswerLabels`) — new `stripHtmlTags()` repeats tag removal until stable and escapes any
+  leftover `<`, so nested markup (`<<script>script>`) cannot leave `<script` behind. Entities are
+  still left for the client's `decodeHtml()`; `scripts/test-akinator.js` covers the nested case
+  and a lone `<`.
+
+**Accepted — 3 × `js/clear-text-storage-of-sensitive-data`** (`time.js:491`,
+`settings.html:988`, `settings.html:994`), dismissed "won't fix" on 2026-10-24 with the same
+rationale as #182: the blob is the user's chosen timezone city (name, lat/lon, UTC offset) in
+same-origin `localStorage`, with no credentials or cross-user data. `time.js`, `theme.js`,
+`js/i18n.js`, `index.html`, `weather.html` and `maps.html` all require plain JSON — the old
+base64-XOR storage broke them — so obfuscating it is not an option. Do not "fix" this by
+re-encrypting the value without updating every reader.
+
+---
+
 ## P1 — correctness / user-visible
 
 ### BL-01 · NOT APPLICABLE — the Lite dashboard has no live-lobby UI

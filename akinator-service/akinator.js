@@ -122,11 +122,30 @@ function extractFirst(text, patterns) {
     return best;
 }
 
+/**
+ * Reduce scraped HTML to the plain text the client renders with textContent.
+ *
+ * This is defence in depth rather than the only guard: one `replace` pass can
+ * be defeated by nested markup (`<<script>script>` leaves `<script>`), so the
+ * tag strip repeats until stable and any leftover "<" is escaped. The result
+ * therefore cannot contain an HTML tag at all. Entities stay encoded on
+ * purpose - akinator.html decodes them with decodeHtml().
+ */
+function stripHtmlTags(html) {
+    let text = String(html);
+    let previous;
+    do {
+        previous = text;
+        text = text.replace(/<[^>]*>/g, "");
+    } while (text !== previous);
+    return text.replace(/</g, "&lt;").trim();
+}
+
 function parseQuestion(html) {
     const match =
         html.match(/<p[^>]*id=["']question-label["'][^>]*>([\s\S]*?)<\/p>/i) ||
         html.match(/id=["']question-label["'][^>]*>([\s\S]*?)<\/(?:p|div)/i);
-    return match ? match[1].replace(/<[^>]*>/g, "").trim() : "";
+    return match ? stripHtmlTags(match[1]) : "";
 }
 
 function parseAnswerLabels(html) {
@@ -135,7 +154,7 @@ function parseAnswerLabels(html) {
     for (let i = 0; i < ids.length; i++) {
         const regex = new RegExp("<a[^>]*id=[\"']" + ids[i] + "[\"'][^>]*>([\\s\\S]*?)<\\/a>", "i");
         const match = html.match(regex);
-        answers.push(match && match[1] ? match[1].replace(/<[^>]*>/g, "").trim() : null);
+        answers.push(match && match[1] ? stripHtmlTags(match[1]) : null);
     }
     return answers;
 }

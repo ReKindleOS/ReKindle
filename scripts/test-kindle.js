@@ -47,7 +47,11 @@ try {
         assert.match(code, /^# Name: /m, `${file} is missing scriptlet metadata`);
         assert.match(code, /^# Author: /m, `${file} is missing author metadata`);
         assert.match(code, /^# DontUseFBInk$/m, `${file} must use # DontUseFBInk`);
-        assert.match(code, new RegExp(`^# Version: ${version.replace(/\./g, '\\.')}$`, 'm'), `${file} version must match version.json`);
+        // Escape every regex metacharacter, not just dots: version.json is repo
+        // data, but a future value such as "1.2.3+build(4)" must not alter the
+        // pattern or throw "Invalid regular expression".
+        const versionPattern = String(version).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        assert.match(code, new RegExp(`^# Version: ${versionPattern}$`, 'm'), `${file} version must match version.json`);
         execFileSync('bash', ['-n', path.join(kindleDir, file)], { stdio: 'pipe' });
     }
 

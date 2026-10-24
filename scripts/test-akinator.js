@@ -87,6 +87,22 @@ test("parseQuestion leaves HTML entities for the client to decode", function () 
     assert.strictEqual(parseQuestion(html), "Don&#039;t know?");
 });
 
+test("parseQuestion cannot leave a tag behind", function () {
+    // An unclosed "<script" survives a plain tag strip because there is no ">"
+    // to match; escaping the leftover "<" is what makes the result inert.
+    assert.strictEqual(parseQuestion('<p id="question-label"><script</p>'), "&lt;script");
+
+    // Nested markup must not survive either.
+    const nested = parseQuestion(
+        '<p id="question-label"><<script>script>alert(1)<</script>/script></p>'
+    );
+    assert.ok(nested.indexOf("<") === -1, nested);
+
+    // A lone "<" in real question text is escaped, not dropped, so the client's
+    // decodeHtml() still displays it.
+    assert.strictEqual(parseQuestion('<p id="question-label">is 5 < 6?</p>'), "is 5 &lt; 6?");
+});
+
 test("parseAnswerLabels reads all five ids in order", function () {
     const html =
         '<a id="a_yes">Yes</a>' +
