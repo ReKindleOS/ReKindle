@@ -480,3 +480,46 @@ silently do nothing.
 
 **Help text:** the "Connecting" steps in `help-data.js` now say to authorise on a
 phone/computer first (`help-data.js?v=4` in `help.html`).
+
+## ✉️ Mail: Outlook.com/Hotmail cannot use app passwords (2026-10-24)
+
+**Reported by Wendy (Kindle Scribe Colorsoft):** chose Outlook / Hotmail in `mail.html`,
+clicked "Generate App Password", and got *"My Microsoft Account requires JavaScript to
+sign in. This Web Browser either does not support JavaScript or Scripts are being
+blocked."*
+
+**This is not a ReKindle bug, and an app password would not fix it.** Two independent
+Microsoft changes:
+
+1. **Basic authentication is gone.** Microsoft shut down Basic Auth (username +
+   password, including app passwords) for Outlook.com IMAP/POP/SMTP on
+   **2024-09-16**; the service now requires OAuth2/Modern Auth. Microsoft's own
+   settings article lists `Authentication Method: OAuth2/Modern Auth` for all three
+   protocols: <https://support.microsoft.com/en-us/outlook/pop-imap-and-smtp-settings-for-outlook-com>.
+   The `firebase-functions` mail callables use `ImapFlow`/`Nodemailer` with
+   `auth: { user, pass }` only, so a Hotmail IMAP login can never succeed.
+2. **Microsoft's account pages reject the Kindle browser.** The JavaScript error is
+   emitted by Microsoft's sign-in page itself, not by ReKindle. App passwords are
+   created behind that sign-in, so they cannot be generated on-device. (Even if one
+   were generated on a computer, point 1 means IMAP would still reject it.)
+
+**What the app does now (2026-10-24):**
+
+* `mail.html` `PROVIDERS.outlook` is marked `unsupported: true`; the button says
+  "Outlook / Hotmail (not supported)" and `selectProvider()` calls
+  `showOutlookNotice()` instead of opening the login form.
+* `login()` refuses Microsoft IMAP/SMTP hosts (`isMicrosoftMailHost()` matches
+  `outlook.office365.com`, `smtp.office365.com`, `outlook.com`, `hotmail.com`,
+  `live.com`) with the same notice. This catches Custom (IMAP) users who paste the
+  Office 365 servers manually. Do **not** remove this guard without adding OAuth2.
+* The notice explains the JavaScript error and suggests forwarding Hotmail to a
+  Gmail/Yahoo/iCloud address, which Mail can still connect to.
+* `help-data.js` no longer lists Outlook as supported and documents the limitation
+  (`help-data.js?v=7` in `help.html`).
+
+**If Microsoft support is ever added:** it needs an OAuth2 authorization-code flow
+(PKCE), an Azure app registration, and XOAUTH2 tokens passed to `ImapFlow`
+(`authenticationMethod: 'XOAUTH2'`) and `Nodemailer` (`auth: { type: 'OAuth2' }`).
+The Kindle browser still has to load `login.microsoftonline.com`, which is the same
+class of problem as Pinterest's OAuth page — plan for a "connect on a phone/PC, sync
+tokens to Firestore" flow like `pinterest.html`, not an on-device redirect.

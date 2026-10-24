@@ -688,7 +688,7 @@
                 <button class="provider-btn" onclick="selectProvider('gmail')"
                     style="margin-bottom:10px;">Gmail</button>
                 <button class="provider-btn" onclick="selectProvider('outlook')" style="margin-bottom:10px;">Outlook /
-                    Hotmail</button>
+                    Hotmail (not supported)</button>
                 <button class="provider-btn" onclick="selectProvider('yahoo')" style="margin-bottom:10px;">Yahoo
                     Mail</button>
                 <button class="provider-btn" onclick="selectProvider('icloud')"
@@ -730,6 +730,17 @@
                     <button id="btn-login" class="sys-btn" onclick="login()" data-i18n="mail.btn.connect"
                         style="flex:2;">Connect</button>
                 </div>
+            </div>
+
+            <!-- STEP 2b: Unsupported provider notice (Microsoft) -->
+            <div id="provider-notice-step"
+                style="display:none; width:100%; max-width:340px; flex-direction:column; text-align:left;">
+                <h3 id="provider-notice-title" style="margin:0 0 10px 0; text-align:center;"></h3>
+                <div id="provider-notice-body"
+                    style="font-size:0.9rem; line-height:1.45; background:#f9f9f9; border:1px solid #ccc; padding:12px;">
+                </div>
+                <button class="sys-btn" onclick="showProviderList()"
+                    style="background:#eee; margin-top:15px; width:100%;">&lt; Back</button>
             </div>
         </div>
     </div>
@@ -930,9 +941,14 @@
             },
             outlook: {
                 name: 'Outlook / Hotmail',
+                // Microsoft retired password/app-password IMAP and SMTP for
+                // Outlook.com on 2024-09-16; Modern Auth (OAuth2) is required.
+                // The login form is never shown for this provider - see
+                // showOutlookNotice().
+                unsupported: true,
                 imapHost: 'outlook.office365.com', imapPort: 993,
                 smtpHost: 'smtp.office365.com', smtpPort: 587,
-                helpHtml: 'Use your Microsoft account password. If 2FA is enabled, you must generate an <b>App Password</b>.<br><a href="https://account.live.com/proofs/AppPassword" target="_blank">Generate App Password here</a>.'
+                helpHtml: ''
             },
             yahoo: {
                 name: 'Yahoo Mail',
@@ -1000,14 +1016,45 @@
             document.getElementById('auth-overlay').style.display = 'none';
         }
 
+        const OUTLOOK_NOTICE_HTML =
+            '<b>Microsoft has retired password and app-password sign-in for Hotmail and Outlook.com.</b><br><br>' +
+            'Since September 2024, Microsoft requires OAuth2 (modern authentication) for IMAP and SMTP. ' +
+            'ReKindle Mail only supports password / app-password sign-in, so a Hotmail or Outlook.com account cannot be added yet.<br><br>' +
+            '<b>About the JavaScript error:</b> that message is from Microsoft\'s own sign-in page, which blocks the Kindle browser. ' +
+            'An app password cannot be created on the device, and it would not work for IMAP even if you made one on a computer.<br><br>' +
+            '<b>Workaround:</b> add a Gmail, Yahoo or iCloud account instead. To keep your Hotmail mail, set up forwarding in Outlook.com ' +
+            '(Settings &rarr; Mail &rarr; Forwarding) to that address.';
+
         function showProviderList() {
             document.getElementById('provider-step').style.display = 'flex';
             document.getElementById('login-step').style.display = 'none';
+            document.getElementById('provider-notice-step').style.display = 'none';
+        }
+
+        function showOutlookNotice() {
+            document.getElementById('auth-overlay').style.display = 'flex';
+            document.getElementById('provider-step').style.display = 'none';
+            document.getElementById('login-step').style.display = 'none';
+            document.getElementById('provider-notice-step').style.display = 'flex';
+            document.getElementById('provider-notice-title').innerText = 'Outlook / Hotmail is not supported';
+            document.getElementById('provider-notice-body').innerHTML = OUTLOOK_NOTICE_HTML;
+        }
+
+        // Microsoft hosts that only accept OAuth2 now. Catches Custom (IMAP)
+        // users who paste the Office 365 servers manually.
+        function isMicrosoftMailHost(host) {
+            const h = String(host || '').toLowerCase();
+            return /(^|\.)(outlook\.office365\.com|smtp\.office365\.com|outlook\.com|hotmail\.com|live\.com)$/.test(h);
         }
 
         function selectProvider(key) {
             const config = PROVIDERS[key];
             if (!config) return;
+
+            if (config.unsupported) {
+                showOutlookNotice();
+                return;
+            }
 
             document.getElementById('provider-step').style.display = 'none';
             document.getElementById('login-step').style.display = 'flex';
@@ -1034,6 +1081,11 @@
             const imapPort = parseInt(document.getElementById('imap-port').value);
             const smtpHost = document.getElementById('smtp-host').value;
             const smtpPort = parseInt(document.getElementById('smtp-port').value);
+
+            if (isMicrosoftMailHost(imapHost) || isMicrosoftMailHost(smtpHost)) {
+                showOutlookNotice();
+                return;
+            }
 
             if (!user || !pass) {
                 showModal("Please enter email and password");

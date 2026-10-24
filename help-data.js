@@ -573,12 +573,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Mail is a full email client for ReKindle+. It connects directly to your mailbox over IMAP for reading and SMTP for sending, so your normal provider keeps working.</p>
             <h2>Connecting an account</h2>
             <ol>
-                <li>Open Mail and choose your provider: Gmail, Outlook/Hotmail, Yahoo, iCloud or Custom (IMAP).</li>
+                <li>Open Mail and choose your provider: Gmail, Yahoo, iCloud or Custom (IMAP).</li>
                 <li>Enter the email address and an <b>app password</b>, not your normal account password.</li>
                 <li>For Custom, also enter the IMAP and SMTP hosts and ports.</li>
                 <li>Tap Connect. If the connection works, credentials are encrypted and saved on this device.</li>
             </ol>
-            <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Outlook/iCloud users with 2FA need an app password too.</div>
+            <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Yahoo and iCloud users with 2FA need an app password too.</div>
+            <div class="note"><b>Outlook / Hotmail is not supported:</b> Microsoft retired password and app-password sign-in for Outlook.com in September 2024 and now requires OAuth2 (modern authentication) for IMAP and SMTP. ReKindle Mail does not support Microsoft OAuth yet. The "JavaScript required" error is Microsoft's own sign-in page blocking the Kindle browser, so an app password cannot be created on the device either. Workaround: forward your Hotmail to a Gmail, Yahoo or iCloud address and connect that account.</div>
             <h2>Reading and organising</h2>
             <ul>
                 <li>Folders include Inbox, Sent, Drafts, Starred, All Mail/Archive, Spam, Trash and Important, plus any custom folders your provider exposes.</li>
@@ -588,6 +589,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <h2>Limitations</h2>
             <ul>
+                <li><b>Outlook/Hotmail accounts cannot be connected.</b> Microsoft requires OAuth2 for IMAP/SMTP and no longer accepts app passwords (since September 2024).</li>
                 <li>Attachments are not supported in the current client; use your provider's own app for heavy attachments.</li>
                 <li>Mail needs ReKindle+ and a working network. It will not work offline.</li>
                 <li>Very large mailboxes load one folder at a time, which keeps e-ink rendering manageable.</li>
