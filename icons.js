@@ -925,6 +925,10 @@ const APPS = [
         new: true,
         icon: '<rect x="3" y="13" width="13" height="13" fill="white" stroke="black" stroke-width="2"/><rect x="6" y="16" width="7" height="7" fill="black" stroke="none"/><path d="M18 26 L23 13 L28 26 Z" fill="white" stroke="black" stroke-width="2"/><line x1="1" y1="29" x2="31" y2="29" stroke="black" stroke-width="2"/>'
     },
+    /* HIDDEN 2026-10-24: Cookie Clicker is still directly playable at
+       /cookieclicker (and documented in Help), but the home-screen entry is
+       deliberately removed for now. Uncomment this block to show it again. */
+    /*
     {
         id: 'cookieclicker',
         name: 'Cookie Clicker',
@@ -933,6 +937,7 @@ const APPS = [
         desc: 'Bake cookies, or survive Stimulation mode.',
         icon: '<circle cx="16" cy="16" r="12" fill="white" stroke="black" stroke-width="2"/><circle cx="11" cy="12" r="1.5" fill="black"/><circle cx="20" cy="10" r="1.2" fill="black"/><circle cx="22" cy="19" r="1.5" fill="black"/><circle cx="14" cy="22" r="1.2" fill="black"/><circle cx="9" cy="19" r="1" fill="black"/>'
     },
+    */
     {
         id: 'cargames',
         name: 'Car Games',

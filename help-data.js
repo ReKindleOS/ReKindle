@@ -3336,7 +3336,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'games',
         title: 'Cookie Clicker',
         summary: 'Tap the big cookie, buy buildings and upgrades, and let the cookies pile up.',
-        tags: 'cookie clicker idle incremental tycoon clicker buildings upgrades golden cookie save offline',
+        tags: 'cookie clicker idle incremental tycoon clicker buildings upgrades golden cookie save offline unlisted',
         sub: 'Action & arcade',
         badges: ['NEW'],
         appHref: 'cookieclicker',
@@ -3344,6 +3344,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         related: ['surfer', 'jumpy', 'cubedash'],
         body: `
             <p>Cookie Clicker is a quiet idle game built for e-ink. Tap the big cookie to bake; buildings then bake on their own while you read or play something else.</p>
+            <div class="note"><b>Unlisted:</b> the home-screen icon is hidden for now while the game settles. It is still playable directly at <code>/cookieclicker</code>; open it from this guide or type the address.</div>
             <h2>Playing</h2>
             <ul>
                 <li>Tap the cookie for cookies. Each tap is worth more after click upgrades.</li>

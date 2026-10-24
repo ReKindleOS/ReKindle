@@ -384,6 +384,11 @@ line) rather than the older scaffold - the drift is what produced the six bugs a
 
 ## Cookie Clicker (cookieclicker.html) — 2026-10-24
 
+**Hidden from the home screen (2026-10-24):** the APPS entry in `icons.js` is
+commented out, so the icon, search result, Recent tile and folder entry all
+disappear while `/cookieclicker` remains playable and documented in Help.
+Uncomment the block in `icons.js` and bump `icons.js?v=` to restore it.
+
 The first single-player idle game. Two modes in one page, switched by the
 `Cookies` / `Stimulation` tabs (or `?mode=stimulation`):
 

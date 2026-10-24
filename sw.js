@@ -2,7 +2,7 @@ const CACHE_NAME = 'rekindle-cache-v26'; // Bumped 2026-10-20: force client cach
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './icons.js?v=6',
+    './icons.js?v=7',
     './theme.js?v=23',
     './logo.svg',
     './discord.svg',
