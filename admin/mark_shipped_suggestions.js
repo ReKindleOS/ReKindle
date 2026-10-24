@@ -56,6 +56,26 @@ const SHIPPED = [
         id: '-P2Z8GbuWZFk4GMPDDlx',
         title: 'we need more reactions',
         why: 'KindleChat reaction picker gained mad and wave reactions (laugh already existed) on 2026-10-24.'
+    },
+    // Sweep 2 - 2026-10-24 evening (after 9091c88's own sweep).
+    {
+        id: '-OxvIdfe-PjCiChFpliq',
+        title: 'cant connect',
+        why: 'Pinterest connections now sync through users/{uid}/pro_data/pinterest, so a phone/PC connection works on Kindle, and Kindle users get a connect-elsewhere hint (651b123, 2026-10-24).'
+    },
+    // Note: the "KindleChat error" report (-P4bTr1y4HEjFkn8j10I) covering the
+    // same late-auth guest overlay was deleted from the board while this sweep
+    // ran, so there is nothing left to mark. The fix is the same 9091c88
+    // change described above.
+    {
+        id: '-P4feLBiofRbpS5f9KSL',
+        title: 'FAQ in suggestions',
+        why: 'The Suggestions board gained a triage strip linking the Help FAQ, changelog and billing/refund answers, and Help gained the paid-but-Pro-missing/refund FAQ (9091c88, 2026-10-24).'
+    },
+    {
+        id: '-OyumHhfjFTnq0CwPmvu',
+        title: 'CAN YOU PLEASE ADD ALT TEXT TO PIXEL ART?',
+        why: 'The pixel-art post dialog gained an optional caption that is shown with the art and used as the image alt text in KindleChat (9091c88, 2026-10-24).'
     }
 ];
 
