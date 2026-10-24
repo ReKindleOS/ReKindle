@@ -380,13 +380,12 @@ https://us-central1-rekindle-dd1fa.cloudfunctions.net/substack?path=/api/v1/...&
   the host is not limited to `*.substack.com`. Redirect targets are re-checked.
 * `X-Substack-SID` is forwarded only as the `substack.sid` cookie; it is never
   logged or stored. 2 attempts on 429/5xx; no response caching (per-user data).
-* `minInstances: 1` keeps one instance warm — cold starts added 10-30s to the
-  first feed load of a session (`maxInstances: 10` still caps scale). This is the
-  functions package's only always-on cost, roughly $10/month at 0.167 vCPU /
-  256MiB and partly inside the monthly free tier; drop it to 0 if the first-load
-  latency matters less than the cost. **Deploying it needs `--force`** because
-  Firebase blocks functions that raise the minimum bill; until that deploy runs,
-  the live function still has `minInstances: 0`.
+* No warm instance: a cold start adds 10-30s to the first feed load of a
+  session. `minInstances: 1` would remove that, but it is an always-on cost
+  (~$10/month at 0.167 vCPU / 256MiB, partly inside the free tier), so it is
+  deliberately left at 0; `maxInstances: 10` still caps scale. Deploying a warm
+  instance later requires `--force` (Firebase blocks functions that raise the
+  minimum bill).
 * Guards: `node scripts/test-substack.js` (wired into `npm test`).
 
 **Client (`substack.html`):** `apiCall()` now sends a fresh ID token to the
@@ -404,8 +403,8 @@ console/page errors. Guard probes (`metadata.google.internal`,
 
 **Rollback:** `workers/rekindle-substack/worker.js` is intentionally left in the
 repo, but the page no longer calls it. Deploy the function with
-`npx firebase deploy --only functions:substack --force` (`--force` is required
-for the `minInstances: 1` warm instance).
+`npx firebase deploy --only functions:substack` (no `--force` needed while
+`minInstances` stays 0).
 
 **Not yet live:** the `substack.html` change still needs a Pages deploy. The
 working tree has unrelated uncommitted work, so do not run `npm run deploy:prod`

@@ -1467,13 +1467,7 @@ exports.substack = onRequest(
         region: "us-central1",
         memory: "256MiB",
         timeoutSeconds: 30,
-        // One warm instance removes the 10-30s cold-start wait a cold relay
-        // added to a first feed load. This is the only always-on cost in the
-        // functions package: ~$10/month at 0.167 vCPU / 256MiB (partly covered
-        // by the monthly free tier). Set back to 0 if that cost matters more
-        // than the first-load latency.
-        minInstances: 1,
-        maxInstances: 10 // hard ceiling, so a traffic spike cannot scale cost
+        maxInstances: 10 // hard cost ceiling; idle cost is zero (no minInstances)
     },
     substackHandler
 );
