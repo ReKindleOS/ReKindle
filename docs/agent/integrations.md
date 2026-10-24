@@ -326,3 +326,106 @@ New findings for this area go here, not in `AGENTS.md` (65,536-byte budget).
 - **`mail.html`** appends a page of rows on "load more" instead of rebuilding the whole list.
 - **`sheetmusic.html`** composer images are LRU-capped at 100 `localStorage` entries.
 - **`functions/api/price.js`** already had the edge cache/stale fallback from the previous pass.
+
+## 2026-10-24: Substack relay moved to Firebase (two independent breaks)
+
+**Symptom:** Substack users saw an empty feed ("No posts found."), so a broken
+proxy looked like an empty account.
+
+### Break 1 — the legacy endpoint stopped working
+
+`/api/v1/subscriptions` now returns
+`400 {"errors":[{"param":"tvOnly","msg":"Invalid value"}]}` without a `tvOnly`
+param, and with `tvOnly` present it returns
+`{"subscriptions":[],"publications":[]}` for an account that really has three
+subscriptions. Substack's own web app uses **`/api/v1/subscriptions/page_v2`**,
+which returns the same `{subscriptions, publications, ...}` shape the client
+already merged (three publications for the test account). `/api/v1/feed/following`
+only returns publication IDs, and `/api/v1/reader/feed` is the modern mixed
+notes/comments home feed — neither is a drop-in for the per-publication posts the
+app renders.
+
+### Break 2 — Cloudflare Worker egress is rate-limited
+
+`workers/rekindle-substack` forwarded `substack.com/api/v1/...` from Cloudflare
+Worker egress. Substack answered a large share of those requests with
+`429 Too Many Requests` (17-byte body, `x-served-by: Substack`, no `Retry-After`):
+
+| Path | Result |
+| :--- | :--- |
+| Deployed worker, repeated probes | 2-3 of 10 replies `200`; the rest `429` |
+| Every endpoint (`/subscriptions`, `/posts`, `/publication/search`) | same mix |
+| Minimal UA vs full Chrome `sec-ch-*` / `Accept-Language` / `Referer` | no difference |
+| `wrangler dev --remote` (Cloudflare egress) with minimal headers | `429` |
+| Same requests from a residential IP | `200` 8/8 |
+
+A Worker cannot choose its egress, and in-worker retries only raise volume from
+an already limited IP. `substack.com` sends no CORS headers, so the browser cannot
+call it directly either.
+
+### Fix — `firebase-functions/substack.js` (Google Cloud, us-central1)
+
+Deployed as `exports.substack`:
+
+```
+https://us-central1-rekindle-dd1fa.cloudfunctions.net/substack?path=/api/v1/...&host=<publication host>
+```
+
+* `Authorization: Bearer <Firebase ID token>` is **required** (verified with
+  `admin.auth().verifyIdToken`) — otherwise this would be an open proxy on the
+  project's GCP egress. Per-uid token bucket: 300 capacity, 5/s refill.
+* `path` must start `/api/v1/`; `host` defaults to `substack.com` and is validated
+  as a public hostname (no IP literals, ports, `.local`/`.internal`/metadata,
+  wildcard-DNS rebinding suffixes). Publication custom domains work, which is why
+  the host is not limited to `*.substack.com`. Redirect targets are re-checked.
+* `X-Substack-SID` is forwarded only as the `substack.sid` cookie; it is never
+  logged or stored. 2 attempts on 429/5xx; no response caching (per-user data).
+* `minInstances: 1` keeps one instance warm — cold starts added 10-30s to the
+  first feed load of a session (`maxInstances: 10` still caps scale). This is the
+  functions package's only always-on cost, roughly $10/month at 0.167 vCPU /
+  256MiB and partly inside the monthly free tier; drop it to 0 if the first-load
+  latency matters less than the cost. **Deploying it needs `--force`** because
+  Firebase blocks functions that raise the minimum bill; until that deploy runs,
+  the live function still has `minInstances: 0`.
+* Guards: `node scripts/test-substack.js` (wired into `npm test`).
+
+**Client (`substack.html`):** `apiCall()` now sends a fresh ID token to the
+function and passes the target host as `host`; the subscriptions call uses
+`/subscriptions/page_v2`. `renderLoadError()` still surfaces failures instead of
+"No posts found." (401 from the relay says "log in again", 401/403 from Substack
+says "Check your SID", 429 distinguishes the relay bucket from Substack).
+
+**Verified 2026-10-24** with a real `substack.sid`: relay calls all `200`, three
+publications (Ukiyo, Emma, Jerome Blazé), 17 posts rendered, opening the first
+post loaded 1,242 characters of body HTML through `/api/v1/posts/{id}` with no
+console/page errors. Guard probes (`metadata.google.internal`,
+`169.254.169.254`, `localhost`, `foo.internal`, `substack.com:8080`, `/not-api`,
+`/api/v1/../../x`) all `403`; `www.thefp.com` custom-domain posts `200`.
+
+**Rollback:** `workers/rekindle-substack/worker.js` is intentionally left in the
+repo, but the page no longer calls it. Deploy the function with
+`npx firebase deploy --only functions:substack --force` (`--force` is required
+for the `minInstances: 1` warm instance).
+
+**Not yet live:** the `substack.html` change still needs a Pages deploy. The
+working tree has unrelated uncommitted work, so do not run `npm run deploy:prod`
+until that is ready to ship.
+
+### Pro gate init order (2026-10-24)
+
+`pro-gate.js` `check()` used to invoke the page callback from the
+`rekindle_pro_expiry` cache branch **before** `initFirebase()`. Pro pages whose
+callback calls `firebase.auth()` / `firestore()` synchronously (Bluesky,
+Mastodon) threw `Firebase: No Firebase App '[DEFAULT]' has been created` for
+
+### Pro gate init order (2026-10-24)
+
+`pro-gate.js` `check()` used to invoke the page callback from the
+`rekindle_pro_expiry` cache branch **before** `initFirebase()`. Pro pages whose
+callback calls `firebase.auth()` / `firestore()` synchronously (Bluesky,
+Mastodon) threw `Firebase: No Firebase App '[DEFAULT]' has been created` for
+returning Pro users and fell back to their login screen, even though the paywall
+was correctly hidden. `check()` now initialises Firebase first, then takes the
+cache shortcut. Repro/verification: log in, open any gated page to seed the
+cache, then open Bluesky — the error disappears with the patched file. Bumped
+`pro-gate.js?v=3` on all 14 gated pages.

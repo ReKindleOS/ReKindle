@@ -1,3 +1,9 @@
+/**
+ * RETIRED 2026-10-24: substack.html now calls the Google Cloud relay
+ * (firebase-functions/substack.js, `exports.substack`) because Substack
+ * rate-limits a large share of Cloudflare Worker egress with 429. This worker
+ * is kept only for rollback; the page no longer references it.
+ */
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);

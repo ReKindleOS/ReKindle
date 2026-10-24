@@ -188,7 +188,18 @@
     }
 
     function check(callback) {
-        // 1. Quick cache check
+        // 1. Initialize Firebase BEFORE the cache shortcut. Pro apps run their
+        // own init inside this callback and many call firebase.auth()/
+        // firestore() synchronously; if the cached `rekindle_pro_expiry` hit
+        // first, those pages threw "No Firebase App '[DEFAULT]' has been
+        // created" and showed their login screen to returning Pro users.
+        if (!initFirebase()) {
+            showPaywall('Error: Firebase not loaded.');
+            if (callback) callback(false);
+            return;
+        }
+
+        // 2. Quick cache check
         try {
             const cached = localStorage.getItem(CACHE_KEY);
             if (cached && parseInt(cached) > Date.now()) {
@@ -198,13 +209,6 @@
                 // Still verify in background
             }
         } catch (e) { }
-
-        // 2. Initialize Firebase
-        if (!initFirebase()) {
-            showPaywall('Error: Firebase not loaded.');
-            if (callback) callback(false);
-            return;
-        }
 
         // 3. Wait for auth
         firebase.auth().onAuthStateChanged(async (user) => {
