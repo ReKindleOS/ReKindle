@@ -422,7 +422,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> from the address used at checkout. Include your ReKindle username, the purchase date and the amount. Do not post card details or receipts on the Suggestions board or in chat.</p>
             <p>If Pro disappeared after a renewal, open the ReKindle+ page and confirm the subscription is active under <b>Manage Subscription</b> first; the membership webhook can take a minute to land. A refund is handled case by case - a cancelled subscription stops future renewals but does not automatically refund the current period.</p>
             <h2>How do I delete my account or data?</h2>
-            <p>There is no self-service delete button yet. Email support with your username and ask for account and data deletion. Guest data can be removed by clearing the browser's site data.</p>
+            <p>Sign in, open <b>Settings</b> and tap <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account plus its content - notes, files, posts, chat messages, DMs, scores and suggestions - from both Firebase projects.</p>
+            <p>If you subscribe to ReKindle+, check <b>Manage Subscription</b> on the ReKindle+ page afterwards and cancel there if the plan is still active. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Guest data can be removed by clearing the browser's site data.</p>
             <h2>Why is a game or app missing?</h2>
             <p>Check Settings for <b>Disable Games</b>, check whether the app is hidden in Edit mode, and check the A-Z index for a renamed app. Some unlisted pages are described in <a href="#hidden-legacy">Unlisted &amp; legacy pages</a>.</p>
             <h2>Why is the clock or date wrong?</h2>

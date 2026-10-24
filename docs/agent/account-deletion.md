@@ -146,6 +146,11 @@ Also not deleted: `interactive_blacklist`, `config/supporters` for other users,
 * No `alert()`/`confirm()`; errors render inline inside the modal.
 * `firebase-functions-compat.js` is loaded in `<head>` (the page previously
   only loaded app/firestore/auth).
+* The Help FAQ article (`help-data.js`, "How do I delete my account or data?")
+  describes the button, so it must change with the flow. On 2026-10-24 it still
+  said "there is no self-service delete button yet" after the feature shipped;
+  the article was rewritten and `help-data.js?v=` bumped to 5 in `help.html`.
+  Bump that query string whenever the article changes (shared-asset cache rule).
 
 ## Stripe
 
