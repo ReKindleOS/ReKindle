@@ -16,6 +16,53 @@ const path = require('path');
 
 const lib = require('../firebase-functions/account-deletion-lib');
 
+/*
+ * CI (and a fresh clone) installs only the root dependencies, so the
+ * `firebase-functions` package is NOT in node_modules - it lives in
+ * firebase-functions/node_modules only after `npm ci` inside that folder.
+ * `account-deletion.js` imports its runtime at load time
+ * (`firebase-functions/logger`, `firebase-functions/v2/https`), which made this
+ * test die with MODULE_NOT_FOUND in GitHub Actions while passing locally.
+ *
+ * The runtime is not under test, so when the package is absent we inject
+ * minimal stand-ins. When it IS installed (local dev, functions deploy
+ * checkout) the real modules load, so a broken import path in the handler
+ * still fails loudly instead of being masked here.
+ */
+function ensureFunctionsRuntime() {
+    try {
+        require.resolve('firebase-functions/logger', {
+            paths: [path.join(__dirname, '..', 'firebase-functions')]
+        });
+        return;
+    } catch (e) {
+        if (e.code !== 'MODULE_NOT_FOUND' && e.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw e;
+    }
+
+    class HttpsError extends Error {
+        constructor(code, message, details) {
+            super(message);
+            this.name = 'HttpsError';
+            this.code = code;
+            this.details = details;
+        }
+    }
+    function noop() {}
+    const stubs = {
+        'firebase-functions/logger': { log: noop, info: noop, warn: noop, error: noop, debug: noop },
+        'firebase-functions/v2/https': { HttpsError: HttpsError }
+    };
+    const Module = require('module');
+    const originalLoad = Module._load;
+    Module._load = function (request) {
+        if (Object.prototype.hasOwnProperty.call(stubs, request)) return stubs[request];
+        return originalLoad.apply(this, arguments);
+    };
+    console.log('note: firebase-functions is not installed; using runtime stubs for handler preconditions');
+}
+
+ensureFunctionsRuntime();
+
 const problems = [];
 function check(name, fn) {
     try {
