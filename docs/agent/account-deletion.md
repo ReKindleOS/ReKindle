@@ -193,6 +193,20 @@ window, uid/path safety, the primary/social RTDB path inventory, report
 ownership, and the handler preconditions (unauthenticated, no social project,
 stale login, wrong/blank confirmation).
 
+**Test-run dependency (2026-10-24):** both CI workflows install only the root
+dependencies (`npm ci` at the repo root), so `firebase-functions` is absent from
+node_modules there — it only exists in `firebase-functions/node_modules` after
+`npm ci` inside that folder. `account-deletion.js` imports
+`firebase-functions/logger` and `firebase-functions/v2/https` at load time, so
+`npm test` failed in GitHub Actions with `Cannot find module
+'firebase-functions/logger'` while passing locally. The test now resolves those
+ids from `firebase-functions/` first; when the package is missing it injects
+minimal `logger` / `HttpsError` stand-ins via `Module._load` before requiring the
+handler. When the package is installed the real runtime is used, so a renamed
+import path still fails the test instead of being masked. Do not "fix" a future
+MODULE_NOT_FOUND here by adding a functions `npm ci` to the site deploy
+workflow — the shim is deliberate.
+
 Manual with a throwaway account:
 
 1. Register `deletetest`, then create: a KindleChat message, a topic + comment
