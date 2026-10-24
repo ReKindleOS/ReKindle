@@ -1087,8 +1087,9 @@ async function transpileHtml(htmlContent, filename = '') {
              /* Fix View Header in Flex Container */
              /* Old -webkit-box shrinks a 220px flex child to its content width,
                 which clipped "MULTIPLAYER GAMES". Float the sidebar and let the
-                BFC app view sit beside it. Do NOT target .app-view: legacy-patch
-                rewrites every .app-view rule after the build. */
+                BFC app view sit beside it. Any .app-view rule in this block is
+                replaced on Legacy: legacy-patch rewrites every .app-view rule
+                after the build. */
              .dashboard { display: block !important; }
              .sidebar { float: left !important; width: 220px !important; min-width: 220px !important; height: 100% !important; -webkit-box-sizing: border-box !important; box-sizing: border-box !important; }
              .nav-item { white-space: normal !important; }
@@ -1097,6 +1098,21 @@ async function transpileHtml(htmlContent, filename = '') {
              }
              .view-header { width: 100% !important; flex: none !important; margin-top: 25px !important; margin-bottom: 15px !important; }
              @media (max-width: 520px) { #featured-grid .featured-card { width: 96% !important; margin: 2% !important; } }
+             /* Scroll fix (2026-10-24). With .dashboard laid out as a block the
+                auto-height .app-view was not a scroll container, and the fixed
+                overflow:hidden body clipped the ~3,700px home page at the fold
+                with no scrollbar. Bound the app view to the dashboard and let it
+                scroll; legacy-patch.js already does the same for the legacy
+                build. Do not drop height/box-sizing: they are what makes
+                overflow-y:auto actually scroll. */
+             .app-view { display: block !important; height: 100% !important; -webkit-box-sizing: border-box !important; box-sizing: border-box !important; overflow-y: auto !important; }
+             /* Narrow screens stack the sidebar above the app view, so a bounded
+                app view would clip again. Fall back to a normal page scroll. */
+             @media (max-width: 520px) {
+                 html, body { position: static !important; height: auto !important; overflow: visible !important; }
+                 .dashboard { height: auto !important; margin: 0 auto !important; }
+                 .app-view { height: auto !important; overflow: visible !important; }
+             }
              `;
             finalHtml = finalHtml.replace('</style>', homeCss + '</style>');
         }
@@ -1727,8 +1743,9 @@ async function transpileLegacyHtml(htmlContent, filename = '') {
               /* Fix View Header in Flex Container */
               /* Old -webkit-box shrinks a 220px flex child to its content width,
                 which clipped "MULTIPLAYER GAMES". Float the sidebar and let the
-                BFC app view sit beside it. Do NOT target .app-view: legacy-patch
-                rewrites every .app-view rule after the build. */
+                BFC app view sit beside it. Any .app-view rule in this block is
+                replaced on Legacy: legacy-patch rewrites every .app-view rule
+                after the build. */
              .dashboard { display: block !important; }
              .sidebar { float: left !important; width: 220px !important; min-width: 220px !important; height: 100% !important; -webkit-box-sizing: border-box !important; box-sizing: border-box !important; }
              .nav-item { white-space: normal !important; }

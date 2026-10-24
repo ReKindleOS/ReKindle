@@ -82,7 +82,8 @@ Babel has run, so `let`/arrow/template-literal syntax would parse-fail on the ta
 Old `-webkit-box` shrinks a fixed-width flex child: at 600px the 220px sidebar laid out at
 166px even with `width: 220px !important` and `-webkit-box-flex: 0`, clipping "MULTIPLAYER
 GAMES". The home CSS injection in both transpilers now switches `.dashboard` to `display: block`,
-floats a 220px `.sidebar`, gives `.app-view` a 220px left margin, and stacks the sidebar above
+floats a 220px `.sidebar` and lets the app view's own block formatting context (its `overflow-y:
+auto`, plus the bounded height added for Lite below) sit beside it, and stacks the sidebar above
 the app view below 520px. Re-check at 600×800 and 732×762.
 
 ### The home layout is the user's choice — settings toggles must not switch it (2026-10-22)
@@ -95,6 +96,48 @@ Both dashboards hide games already (`areGamesDisabled()` in `icons.js` → `upda
 so the layout switch was redundant and has been removed. Any account that picked up
 `homeLayout: 'old'` from the old build stays on the Classic page until Settings → Appearance →
 Home Layout is set back to Modern.
+
+## The Lite home had no scroll container (fixed 2026-10-24)
+
+Symptom: on `lite.rekindle.ink` the home page (Lite/Legacy build `index.html` = `index_old.html`)
+stopped at the fold — no scrollbar, dragging did nothing, "All Applications" was unreachable.
+Measured at 800×1000 and 600×800: `documentElement.scrollHeight === innerHeight`, `.dashboard`
+scrollHeight 3721 against 944, and **`.app-view` `offsetHeight === scrollHeight === 3727`**.
+
+Cause: the home injection above lays `.dashboard` out as a block (floated sidebar). `.app-view` is
+then a normal block, so its `height` computes to `auto` and its existing `overflow-y: auto` has no
+bounded box to scroll. The fixed, `overflow:hidden` body (the centred desktop frame) simply clipped
+the rest. `theme.js` `applyOverflowFallback()` cannot rescue this page: a `position: fixed` body
+reports `scrollHeight == innerHeight`, so the overflow check never fires.
+
+Fix: the **Lite** home CSS injection in `build-automation.js` (`transpileHtml`) now binds the pane,
+the same contract `scripts/legacy-patch.js` already applies to the legacy build:
+
+```css
+.app-view { display: block !important; height: 100% !important;
+            -webkit-box-sizing: border-box !important; box-sizing: border-box !important;
+            overflow-y: auto !important; }
+```
+
+`height` + `box-sizing` are what make `overflow-y: auto` scroll; dropping either re-clips the page.
+Below 520px the sidebar stacks above the app view, so a bounded pane would clip again — the same
+injection switches `html`/`body` to a normal page scroll (static position, auto height, visible
+overflow) and `.dashboard` to `height: auto` at that breakpoint. Legacy is untouched: its
+`legacy-patch.js` already sets `height:100%` on `.app-view`.
+
+Verify after `node build-automation.js`:
+
+```bash
+grep -o '\.app-view{[^}]*}' _deploy/lite/index.html   # last rule: display:block + height:100% + overflow-y:auto
+scripts/shot-webkit.sh "http://127.0.0.1:8990/lite/index" 800 1000 /tmp/lite.png
+```
+
+`.app-view` `clientHeight` must be ~940 against `scrollHeight` ~3696, and scrolling it to the
+bottom must reveal the last tile (Yatzy) with Settings/Login still in the sidebar.
+
+**Serve `_deploy`, not `_deploy/lite`, when testing.** The build deletes and recreates the target
+directories; a `scripts/serve-local.py` whose cwd is inside one dies with `FileNotFoundError` on
+the next request and the harness then screenshots a stale/cached page.
 
 ## Build order and verification
 
