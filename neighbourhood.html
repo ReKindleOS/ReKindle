@@ -7,7 +7,7 @@
     <meta charset="UTF-8">
 
     <title>Neighbourhood</title>
-    <script src="js/reports.js?v=1"></script>
+    <script src="js/reports.js?v=2"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -783,6 +783,8 @@
     <script src="theme.js?v=24"></script>
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
+    <script src="js/social-endpoints.js?v=1"></script>
+    <script src="js/worker-client.js?v=1"></script>
     <link rel="stylesheet" href="css/custom-select.css">
     <script src="js/i18n.js?v=3"></script>
     <script src="js/ui-kit.js?v=2"></script>
@@ -1232,7 +1234,8 @@
         const mainDb = firebase.firestore();
         const socialDb = socialApp.firestore();
         const socialAuth = socialApp.auth();
-        const MODERATION_WORKER_URL = "https://rekindle-moderate.timjarnott.workers.dev";
+        const MODERATION_WORKER_URL = (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.moderation)
+            || "https://rekindle-moderate.rekindle-social.workers.dev";
 
         // Mock Kindle+ check (In real app, check claims or subscription status)
         // For now, let's treat everyone as potentially plus if they have the flag, 
@@ -1253,7 +1256,8 @@
         let isPlus = false;
         let myProfile = {};
 
-        var TRANSLATION_WORKER_URL = "https://rekindle-translate.timjarnott.workers.dev";
+        var TRANSLATION_WORKER_URL = (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.translation)
+            || "https://rekindle-translate.rekindle-social.workers.dev";
         function resolveUserLanguage() {
             var lang = localStorage.getItem('rekindle_language') || 'auto';
             if (lang === 'auto') {
@@ -3508,7 +3512,11 @@
                         return tokenSource.getIdToken(true).then(postWith);
                     }
                     return resp;
-                }).then(function (resp) { return resp.json(); });
+                }).then(function (resp) {
+                    return window.rekindleWorkerClient
+                        ? window.rekindleWorkerClient.readJson(resp)
+                        : resp.json();
+                });
             }).then(function (result) {
                 if (result.error) {
                     showAlertModal(result.error);
@@ -3518,7 +3526,10 @@
                 input.value = '';
                 input.disabled = false;
             }).catch(err => {
-                if (err && err.code === 'PERMISSION_DENIED') {
+                var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
+                if (outage) {
+                    showAlertModal(outage);
+                } else if (err && err.code === 'PERMISSION_DENIED') {
                     showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
                 } else if (err && err.message && err.message.toLowerCase().indexOf('moderation') !== -1) {
                     showAlertModal(err.message);
@@ -3828,7 +3839,11 @@
                         return tokenSource.getIdToken(true).then(postWith);
                     }
                     return resp;
-                }).then(function (resp) { return resp.json(); });
+                }).then(function (resp) {
+                    return window.rekindleWorkerClient
+                        ? window.rekindleWorkerClient.readJson(resp)
+                        : resp.json();
+                });
             }).then(function (result) {
                 if (result.error) {
                     if (btn) btn.disabled = false;
@@ -3864,7 +3879,10 @@
                     });
                 }
             }).catch(function (err) {
-                if (err && err.code === 'PERMISSION_DENIED') {
+                var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
+                if (outage) {
+                    showAlertModal(outage);
+                } else if (err && err.code === 'PERMISSION_DENIED') {
                     showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
                 } else if (err && err.message && err.message.toLowerCase().indexOf('moderation') !== -1) {
                     showAlertModal(err.message);

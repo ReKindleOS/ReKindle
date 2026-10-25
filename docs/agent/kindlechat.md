@@ -2,6 +2,44 @@
 
 Area notes for `kindlechat.html` and its supporting assets (`emojis.js`, `sw.js`, `_headers`, the moderation worker's emoji list). Cross-cutting rules are in [AGENTS.md](../../AGENTS.md); read that first.
 
+**Worker endpoints (2026-10-25):** the moderation and translation Workers live in the
+separate **ReKindle Social** Cloudflare account. Read the URLs from
+[`js/social-endpoints.js`](../../js/social-endpoints.js) (literal fallbacks are in
+`kindlechat.html`); do not reintroduce the old `*.timjarnott.workers.dev` URLs. Deploy
+details and the account ID are in [usage-limits.md](usage-limits.md#2026-10-25-split--socials-moved-to-a-separate-cloudflare-account).
+
+## Worker Outage Handling — never show "Load failed" (2026-10-25)
+
+When the Cloudflare account exhausts its 100k/day Workers Free allowance, **every**
+worker URL returns the `error code: 1027` page: HTTP 429, plain text, and **no CORS
+headers**. The browser therefore rejects the `fetch` itself (`TypeError: Load failed`
+in Safari, `Failed to fetch` in Chrome), so `resp.json()` never runs and there is no
+status code or worker error to show. The 2026-10-25 incident was exactly this (see
+[usage-limits.md](usage-limits.md#2026-10-25-1027-outage--kindlechat-unable-to-post-load-failed-fixed-same-day)).
+
+`kindlechat.html` now has a small outage layer (search for `SERVICE_OUTAGE_MESSAGE`):
+
+- `readWorkerJson(resp)` parses `resp.text()` itself. JSON is returned (with
+  `__status`); a non-JSON `429`/`5xx` arms a **two-minute cooldown** and returns
+  `null`. Do not go back to `resp.json()` — it throws an opaque parse error on the
+  1027 page (when CORS lets the body through at all).
+- `isTransportFailure(e)` recognises `Load failed` / `Failed to fetch` / `TypeError`.
+- While the cooldown is active, `doSendMessage`, `sendDmMessage` and
+  `fireTranslationRequest` show **one** "Chat is temporarily unavailable. Please try
+  again in a few minutes." message and do not fire more requests. This is what stops
+  the alert-per-click behaviour reported in Suggestions ("Remove the alerts").
+- A failed post keeps the typed text in the composer (`inputEl.innerHTML` is only
+  cleared on success), so the user can retry after the cooldown.
+- The translation retry ladder checks the same cooldown: it schedules its next
+  (bounded) attempt instead of firing four requests into a dead worker.
+- `js/worker-client.js` provides the same logic to `neighbourhood.html` and
+  `topics.html` (`window.rekindleWorkerClient.readJson` / `errorMessage`). Keep the
+  message and cooldown in sync if you change either copy.
+
+Rule for future worker calls: parse with the outage helper, never expose a raw
+transport error, and keep writes idempotent — the user *will* retry once the cooldown
+expires.
+
 ## KindleChat Translations Listener Must Be Key-Scoped
 
 **Never attach a bare-ref listener to `kindlechat/translations_by_lang/{lang}`.** Each language node holds every translation ever written (~25,000 entries / ~1.2 MB per language as of 2026-07, growing unboundedly). A bare `.on('child_added')` forces every client to download ~1 MB and process ~25k callbacks on every page load, which effectively kills the Kindle browser — this was the root cause of "translations not showing" even though the `rekindle-translate` worker was writing them correctly.

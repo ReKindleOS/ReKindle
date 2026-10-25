@@ -771,11 +771,16 @@ export default {
             'Access-Control-Allow-Origin': isAllowed ? origin : allowedOrigins[1],
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            // Cache the preflight for a day so a chat post does not cost two
+            // Worker invocations (OPTIONS + POST). See the 2026-10-25 quota
+            // incident in docs/agent/usage-limits.md.
+            'Access-Control-Max-Age': '86400',
+            'Vary': 'Origin',
             'Content-Type': 'application/json'
         };
 
         if (request.method === 'OPTIONS') {
-            return new Response(null, { headers });
+            return new Response(null, { status: 204, headers });
         }
 
         if (!isAllowed && origin !== null) {

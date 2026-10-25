@@ -68,7 +68,11 @@
         if (typeof MODERATION_WORKER_URL !== 'undefined' && MODERATION_WORKER_URL) {
             return MODERATION_WORKER_URL;
         }
-        return 'https://rekindle-moderate.timjarnott.workers.dev';
+        if (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.moderation) {
+            return window.rekindleSocialEndpoints.moderation;
+        }
+        // Social Workers live in the separate "ReKindle Social" account.
+        return 'https://rekindle-moderate.rekindle-social.workers.dev';
     }
 
     function getAuthToken() {

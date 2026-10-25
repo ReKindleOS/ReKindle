@@ -7,7 +7,7 @@
     <meta charset="UTF-8">
 
     <title>KindleChat</title>
-    <script src="js/reports.js?v=1"></script>
+    <script src="js/reports.js?v=2"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -1665,6 +1665,7 @@
 
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
+    <script src="js/social-endpoints.js?v=1"></script>
     <script src="js/spam-guard.js?v=1"></script>
     <script src="time.js?v=4"></script>
     <script src="theme.js?v=24"></script>
@@ -2139,10 +2140,14 @@
         var currentUser = null;
         var currentUsername = "";
 
-        // TODO: START HERE - User must deploy cloudflare-worker.js and paste URL here
-        var TRANSLATION_WORKER_URL = "https://rekindle-translate.timjarnott.workers.dev";
-        var MODERATION_WORKER_URL = "https://rekindle-moderate.timjarnott.workers.dev";
-        // Example: "https://rekindle-chat-worker.timothyarnott.workers.dev"
+        // Social Workers live in the separate "ReKindle Social" Cloudflare
+        // account, so social traffic cannot exhaust the main account's free
+        // quota. js/social-endpoints.js is the single switch; the literal is
+        // the fallback if that file fails to load.
+        var TRANSLATION_WORKER_URL = (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.translation)
+            || "https://rekindle-translate.rekindle-social.workers.dev";
+        var MODERATION_WORKER_URL = (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.moderation)
+            || "https://rekindle-moderate.rekindle-social.workers.dev";
         var currentRoomId = 'general';
         var isPro = false; // Pro Status
         var unsubscribeMsg = null;
@@ -4070,10 +4075,11 @@
                     body: JSON.stringify(payload)
                 });
             }).then(function (resp) {
-                return resp.json().then(function (data) {
-                    data = data || {};
-                    data.__status = resp.status;
-                    return data;
+                // readWorkerJson() returns null for the platform 1027/429 page,
+                // which has no CORS headers; flag it instead of letting
+                // resp.json() throw a misleading parsing error.
+                return readWorkerJson(resp).then(function (data) {
+                    return data || { __outage: true, __status: resp.status };
                 });
             });
         }
@@ -4081,6 +4087,10 @@
         function sendDmMessage() {
             if (isSendingMessage) return;
             if (!dmThreadState) return;
+            if (serviceOutageActive()) {
+                showServiceOutage();
+                return;
+            }
             if (dmThreadState.status !== 'accepted') {
                 showModal(dmT('kindlechat.dm.not_open', 'This conversation is not open.'), false);
                 return;
@@ -4110,6 +4120,10 @@
                 var threadId = currentRoomId;
                 callDmWorker({ type: 'dm_message', threadId: threadId, text: text }).then(function (result) {
                     resetSendState();
+                    if (result.__outage) {
+                        showServiceOutage();
+                        return;
+                    }
                     if (result.error || result.allowed === false) {
                         if (result.code === 'dm_disabled') {
                             dmEnabled = false;
@@ -4123,7 +4137,12 @@
                 })['catch'](function (e) {
                     resetSendState();
                     console.error('DM send failed:', e);
-                    showModal(dmT('kindlechat.dm.send_failed', 'Unable to send message.'), false);
+                    if (isTransportFailure(e) || serviceOutageActive()) {
+                        noteServiceOutage();
+                        showServiceOutage();
+                    } else {
+                        showModal(dmT('kindlechat.dm.send_failed', 'Unable to send message.'), false);
+                    }
                 });
             });
         }
@@ -4133,6 +4152,10 @@
             var threadId = currentRoomId;
             var run = function () {
                 callDmWorker({ type: 'dm_' + action, threadId: threadId }).then(function (result) {
+                    if (result.__outage) {
+                        showServiceOutage();
+                        return;
+                    }
                     if (result.error) {
                         showModal(result.error, false);
                         return;
@@ -4165,7 +4188,12 @@
                     }
                 })['catch'](function (e) {
                     console.error('DM action failed:', e);
-                    showModal(dmT('kindlechat.dm.action_failed', 'That action failed. Please try again.'), false);
+                    if (isTransportFailure(e) || serviceOutageActive()) {
+                        noteServiceOutage();
+                        showServiceOutage();
+                    } else {
+                        showModal(dmT('kindlechat.dm.action_failed', 'That action failed. Please try again.'), false);
+                    }
                 });
             };
 
@@ -5782,6 +5810,62 @@
             }
         }
 
+        // --- WORKER OUTAGE HANDLING ---
+        // Cloudflare's Workers Free plan allows 100k requests/day across ALL
+        // Workers *and* Pages Functions. When that is used up, every worker URL
+        // answers 429 with the plain-text "error code: 1027" page, which carries
+        // no CORS headers. The browser therefore rejects the fetch itself with
+        // Safari's "Load failed" / Chrome's "Failed to fetch", so the user used
+        // to see "Unable to post: Load failed" on every attempt, with a fresh
+        // alert each time (suggestions reports 2026-10-24: "Failed To fetch" and
+        // "Remove the alerts in ... KindleChat").
+        //
+        // Treat any transport failure, or a non-JSON 429/5xx, as a temporary
+        // service outage: show ONE plain message and stop hitting the worker for
+        // two minutes so a quota-exhausted day is not made worse.
+        var SERVICE_OUTAGE_COOLDOWN_MS = 120000;
+        var SERVICE_OUTAGE_MESSAGE = 'Chat is temporarily unavailable. Please try again in a few minutes.';
+        var serviceOutageUntil = 0;
+
+        function isTransportFailure(e) {
+            if (!e) return false;
+            var msg = String(e.message || '');
+            return e.name === 'TypeError' || /load failed|failed to fetch|networkerror|network request failed/i.test(msg);
+        }
+
+        function serviceOutageActive() {
+            return serviceOutageUntil > Date.now();
+        }
+
+        function noteServiceOutage() {
+            serviceOutageUntil = Date.now() + SERVICE_OUTAGE_COOLDOWN_MS;
+        }
+
+        function showServiceOutage() {
+            showModal(SERVICE_OUTAGE_MESSAGE, false);
+        }
+
+        // Parses a worker response. Returns the JSON body (with __status), or
+        // null when the response is a platform outage (non-JSON 429/5xx) after
+        // arming the cooldown. Throws for other non-JSON responses.
+        function readWorkerJson(resp) {
+            return resp.text().then(function (raw) {
+                var data = null;
+                if (raw) {
+                    try { data = JSON.parse(raw); } catch (e) { data = null; }
+                }
+                if (!data) {
+                    if (resp.status === 429 || resp.status >= 500) {
+                        noteServiceOutage();
+                        return null;
+                    }
+                    throw new Error('HTTP ' + resp.status);
+                }
+                data.__status = resp.status;
+                return data;
+            });
+        }
+
         var isSendingMessage = false;
 
         function resetSendState() {
@@ -5855,6 +5939,11 @@
 
         function doSendMessage(inputEl, text) {
             if (isSendingMessage) return;
+            if (serviceOutageActive()) {
+                // One message per cooldown instead of an alert on every click.
+                showServiceOutage();
+                return;
+            }
             isSendingMessage = true;
             markSendBusy();
             // Escape hatch only for a genuinely stuck request: every settle path
@@ -5891,8 +5980,13 @@
                         return tokenSource.getIdToken(true).then(postWith);
                     }
                     return resp;
-                }).then(function (resp) { return resp.json(); });
+                }).then(readWorkerJson);
             }).then(function (result) {
+                if (!result) {
+                    resetSendState();
+                    showServiceOutage();
+                    return;
+                }
                 if (result.allowed === false) {
                     var waitSec = Math.ceil((result.retryAfter || 20000) / 1000);
                     // The worker now sends a specific reason for repeat-spam
@@ -5916,7 +6010,13 @@
             }).catch(function (e) {
                 resetSendState();
                 console.error('Error posting message:', e);
-                if (e && e.code === 'PERMISSION_DENIED') {
+                if (isTransportFailure(e) || serviceOutageActive()) {
+                    // A transport failure here is almost always the quota-limited
+                    // Cloudflare 1027 page (no CORS headers), not a real bug in
+                    // the message. Do not surface "Load failed" to the user.
+                    noteServiceOutage();
+                    showServiceOutage();
+                } else if (e && e.code === 'PERMISSION_DENIED') {
                     showModal('Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.', false);
                 } else {
                     showModal('Unable to post: ' + (e && e.message ? e.message : 'Unknown error') + '. Please try again.', false);
@@ -5997,9 +6097,11 @@
                         reprocess: true
                     })
                 })
-                    .then(function (resp) { return resp.json(); })
+                    .then(readWorkerJson)
                     .then(function (data) {
-                        if (data.success) {
+                        if (!data) {
+                            showServiceOutage();
+                        } else if (data.success) {
                             // No need to reload, RTDB listener will update the translation
                         } else {
                             console.error("Reprocess error:", data);
@@ -6008,7 +6110,12 @@
                     })
                 ['catch'](function (err) {
                     console.error("Reprocess network error:", err);
-                    showModal("Network error during reprocess.");
+                    if (isTransportFailure(err) || serviceOutageActive()) {
+                        noteServiceOutage();
+                        showServiceOutage();
+                    } else {
+                        showModal("Network error during reprocess.");
+                    }
                 });
             });
         }
@@ -6291,6 +6398,13 @@
                 }, delay);
             };
 
+            // Do not add more requests while the account is quota-limited: the
+            // next scheduled attempt re-checks after the cooldown.
+            if (serviceOutageActive()) {
+                scheduleRetry(missingLangs || null, sourceLang || null);
+                return;
+            }
+
             var tokenSource = socialAuth.currentUser || currentUser;
             tokenSource.getIdToken(true).then(function (token) {
                 fetch(TRANSLATION_WORKER_URL, {
@@ -6301,15 +6415,24 @@
                     },
                     body: JSON.stringify(body)
                 }).then(function (resp) {
+                    // 1027/429 comes from the Cloudflare edge as plain text with
+                    // no CORS headers. There is nothing to retry for a few
+                    // minutes, so arm the cooldown and drop this attempt.
+                    if (resp.status === 429 || resp.status >= 500) {
+                        noteServiceOutage();
+                        return null;
+                    }
                     if (!resp.ok) throw new Error("HTTP " + resp.status);
                     return resp.json();
                 }).then(function (json) {
+                    if (!json) return;
                     var missing = (json && json.missing) || [];
                     var src = (json && json.sourceLang) || sourceLang || null;
                     if (missing.length > 0) {
                         scheduleRetry(missing, src);
                     }
                 })['catch'](function (err) {
+                    if (isTransportFailure(err)) noteServiceOutage();
                     console.warn("Translation request failed (attempt " + attempt + "):", err);
                     scheduleRetry(missingLangs || null, sourceLang || null);
                 });

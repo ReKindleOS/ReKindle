@@ -34,6 +34,15 @@ function corsHeaders(origin) {
         "Access-Control-Allow-Origin": allowed ? origin : "null",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        // Cache the preflight for a day. Without this every JSON POST from the
+        // chat costs TWO Worker requests (OPTIONS + POST), which is what pushed
+        // the account over the 100k/day Workers Free limit on 2026-10-25 and
+        // took KindleChat down with a CORS-less Cloudflare 429 (error 1027).
+        // Chromium caps this at 2h, Safari at 10min; either is a huge cut.
+        "Access-Control-Max-Age": "86400",
+        // The allowed origin is reflected, so caches/intermediaries must key
+        // on it. Cheap insurance; this worker never caches POSTs itself.
+        "Vary": "Origin",
         "Content-Type": "application/json"
     };
 }
@@ -1617,117 +1626,9 @@ function checkRateLimit(key, maxTokens, refillMs) {
     return { allowed: true };
 }
 
-/* ------------------------------------------------------------------ */
-/*  DISCORD NOTIFICATIONS                                              */
-/* ------------------------------------------------------------------ */
-async function sendDiscordReportNotification(env, reportData) {
-    const botToken = env.DISCORD_BOT_TOKEN;
-    const channelId = env.DISCORD_CHANNEL_ID;
-    
-    if (!botToken || !channelId) {
-        console.log("[REPORT] DISCORD_BOT_TOKEN or DISCORD_CHANNEL_ID not configured, skipping notification");
-        return;
-    }
-    
-    const truncatedSnapshot = reportData.contentSnapshot
-        ? reportData.contentSnapshot.substring(0, 500).replace(/```/g, "` ` `") + (reportData.contentSnapshot.length > 500 ? "..." : "")
-        : "No preview available";
-    
-    const isAutoDeleted = reportData.autoDeleted === true;
-    const title = isAutoDeleted
-        ? (reportData.deleteSuccess ? "AUTO-DELETED: Content Removed" : "AUTO-DELETE FAILED")
-        : "New Content Report";
-    const color = isAutoDeleted
-        ? (reportData.deleteSuccess ? 3066993 : 15158332)
-        : 15158332;
-    
-    const fields = [
-        { name: "Reporter", value: `${reportData.reporterName} (${reportData.reporterId})`, inline: true },
-        { name: "Reported User", value: `${reportData.reportedUserName || "Unknown"} (${reportData.reportedUserId})`, inline: true },
-        { name: "Content Type", value: reportData.contentType, inline: true },
-        { name: "Reason", value: reportData.reason, inline: true }
-    ];
-    
-    if (isAutoDeleted) {
-        fields.push({ name: "Auto-Delete", value: reportData.deleteSuccess ? (reportData.resolutionNote || "Content was automatically deleted") : "Auto-delete failed, manual action required", inline: false });
-    }
-    
-    fields.push(
-        { name: "Content ID", value: reportData.contentId, inline: false },
-        { name: "Content Path", value: reportData.contentPath, inline: false },
-        { name: "Comment", value: reportData.comment || "None", inline: false },
-        { name: "Content Preview", value: "```\n" + truncatedSnapshot + "\n```", inline: false }
-    );
-
-    // Report-scoped DM context, so moderators can judge the exchange without
-    // blanket access to private conversations.
-    if (Array.isArray(reportData.dmContext) && reportData.dmContext.length) {
-        const contextText = reportData.dmContext.map(function (m) {
-            const who = m.uid ? m.uid.substring(0, 8) : "unknown";
-            return who + ": " + String(m.text || "").substring(0, 120);
-        }).join("\n").substring(0, 1000);
-        fields.push({ name: "DM Context (last 10)", value: "```\n" + contextText + "\n```", inline: false });
-    }
-    
-    const embed = {
-        title,
-        color,
-        fields,
-        timestamp: new Date().toISOString(),
-        footer: { text: "ReKindle Moderation" }
-    };
-    
-    const payload = { embeds: [embed] };
-    
-    // Add action buttons for normal reports AND for failed auto-deletes, so
-    // moderators can still remove content the worker could not delete.
-    if (!isAutoDeleted || reportData.deleteSuccess === false) {
-        const actionId = `${reportData.contentType}:${reportData.contentId}:${reportData.reportedUserId || ""}`;
-        payload.components = [{
-            type: 1,
-            components: [
-                {
-                    type: 2,
-                    style: 4,
-                    label: "Delete Content",
-                    custom_id: `delete:${actionId}`,
-                    emoji: { name: "🗑️" }
-                },
-                {
-                    type: 2,
-                    style: 3,
-                    label: "Timeout User (24h)",
-                    custom_id: `timeout:${actionId}`,
-                    emoji: { name: "⏰" }
-                },
-                {
-                    type: 2,
-                    style: 2,
-                    label: "Dismiss Report",
-                    custom_id: `dismiss:${actionId}`,
-                    emoji: { name: "✅" }
-                }
-            ]
-        }];
-    }
-    
-    try {
-        const resp = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bot ${botToken}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-            const errText = await resp.text();
-            console.error("[REPORT] Discord bot notification failed:", resp.status, errText);
-        }
-    } catch (e) {
-        console.error("[REPORT] Discord notification failed:", e.message);
-    }
-}
+/* Discord report notifications were removed 2026-10-25 by request: reports
+   stay in /reports and the moderation console, but no Discord embed is sent.
+   The /discord-interaction endpoint (buttons) remains for the old Worker. */
 
 /* ------------------------------------------------------------------ */
 /*  DISCORD INTERACTIONS                                               */
@@ -1896,7 +1797,7 @@ export default {
         }
 
         if (request.method === "OPTIONS") {
-            return new Response(null, { headers });
+            return new Response(null, { status: 204, headers });
         }
 
         if (request.method !== "POST") {
@@ -2774,18 +2675,10 @@ export default {
                         // Deletion failed — keep reports pending so moderators can act
                         reportData.resolutionNote = "Auto-delete failed";
                     }
-                    
-                    // Send Discord notification about auto-deletion
-                    await sendDiscordReportNotification(env, {
-                        ...reportData,
-                        autoDeleted: true,
-                        deleteSuccess: deleted
-                    });
-                } else {
-                    // Send normal Discord notification for first report
-                    await sendDiscordReportNotification(env, reportData);
                 }
-                
+
+                // No Discord embed is sent: reports are visible in /reports and
+                // the moderation console (notifications removed 2026-10-25).
                 return new Response(JSON.stringify({ success: true, id: reportId }), { status: 200, headers });
             }
 
@@ -2798,9 +2691,11 @@ export default {
     }
 };
 
-// Exported for scripts/test-chat-spam.js and scripts/test-dm.js (unit tests).
-// Wrangler only uses the default export, so these are inert in production.
+// Exported for scripts/test-chat-spam.js, scripts/test-dm.js and
+// scripts/test-worker-cors.js (unit tests). Wrangler only uses the default
+// export, so these are inert in production.
 export {
+    corsHeaders,
     chatTextShapes,
     chatTokenOverlap,
     evaluateChatRepetition,

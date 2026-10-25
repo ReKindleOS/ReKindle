@@ -189,11 +189,105 @@ own RTDB writes); batching would require the client to queue messages, which was
 done. Deploy with `cd workers/rekindle-translate && npx wrangler deploy`, then watch
 `execution_count` errors and the client-side retry volume for a day.
 
-Free Workers allowance is **100,000 requests/day account-wide**. Oct 22-24 exceeded it if
-this account is on Free. The analytics show zero Pages errors, and `usageModel` is
-`standard` for every script, which is consistent with either Free or a paid account using
-the bundled model — confirm the plan in the dashboard before assuming the overage failed
-requests. After the middleware removal the account has ~75k/day of headroom either way.
+Free Workers allowance is **100,000 requests/day account-wide**. This account is
+confirmed **Free**: on 2026-10-25 every worker began answering Cloudflare
+`error code: 1027` ("Worker exceeded free tier daily request limit"). Oct 22-24 were
+over the limit too, which is why KindleChat failed intermittently before the
+middleware removal. After the middleware removal the account is back to ~55k/day;
+the preflight-cache fix below should take it to ~30-35k/day.
+
+### 2026-10-25 1027 outage — KindleChat "Unable to post: Load failed" (fixed same day)
+
+**Symptom:** every KindleChat post failed with *"Unable to post: Load failed. Please
+try again."* The browser console showed
+`Origin https://rekindle.ink is not allowed by Access-Control-Allow-Origin. Status code: 429`
+from `rekindle-moderate.timjarnott.workers.dev`, not the worker's normal JSON error.
+
+**Cause:** Pages Functions and Workers share the same 100k/day Free allowance
+([Cloudflare docs](https://developers.cloudflare.com/pages/functions/pricing/): "you
+could use 50,000 Functions requests and 50,000 Workers requests to use your full
+100,000 daily request usage"). The old `functions/_middleware.js` had already burned
+~62k by the 07:16 UTC deploy; normal Workers traffic (~55k/day) crossed 100k around
+09:00 UTC. Cloudflare then answered with the `error code: 1027` page — a **plain-text
+429 with no CORS headers** — so the browser rejected the fetch itself (`TypeError:
+Load failed` in Safari, `Failed to fetch` in Chrome) and `resp.json()` never ran. The
+client surfaced that raw TypeError, once per attempt (the "Remove the alerts" report).
+The counter resets at 00:00 UTC; there is no way to buy back requests mid-day on Free.
+
+**Fix (deployed 2026-10-25):**
+1. `functions/_middleware.js` is gone (the KPM Worker took over `repo.rekindle.ink`),
+   which removed ~95k Pages Function invocations/day.
+2. Both chat Workers now send `Access-Control-Max-Age: 86400` (and `Vary: Origin`) on
+   preflights. Without it every JSON POST cost **two** Worker requests (OPTIONS +
+   POST); with it the browser reuses the preflight (Chromium caps at 2h, Safari at
+   10min), roughly halving moderation + translation request counts.
+3. KindleChat (`kindlechat.html`) treats a transport failure or a non-JSON 429/5xx as
+   a two-minute outage: it shows *"Chat is temporarily unavailable. Please try again
+   in a few minutes."* once instead of a raw "Load failed" alert per click, pauses the
+   translation retry ladder, and keeps the typed message. `js/worker-client.js` gives
+   Neighbourhood and Topics the same handling via `rekindleWorkerClient.readJson()` /
+   `errorMessage()`.
+4. `OPTIONS` now answers `204` (was `200`) in both Workers; content is unchanged.
+
+**Do not remove `Access-Control-Max-Age` or `Vary: Origin` from either Worker.** Both
+are covered by `scripts/test-worker-cors.js` (runs in `npm test`). Any new cross-origin
+worker call must send those headers too, or it re-creates the double-invocation cost.
+Check the quota any morning with the GraphQL queries below; a 429 + `error code: 1027`
+from any worker means the account is out for the UTC day.
+
+### 2026-10-25 split — socials moved to a separate Cloudflare account
+
+To stop free social usage from ever consuming the paying-customer account's quota, the
+two social Workers now live in a **second Free account** (officially supported: up to
+five additional Free accounts, see
+[Create account](https://developers.cloudflare.com/fundamentals/account/create-account/)):
+
+| | Value |
+| :--- | :--- |
+| Account | **ReKindle Social** — `8d69e380e0c4e0580c47f21d9757c71c` |
+| workers.dev subdomain | `rekindle-social` |
+| Moderation Worker | `https://rekindle-moderate.rekindle-social.workers.dev` |
+| Translation Worker | `https://rekindle-translate.rekindle-social.workers.dev` |
+| Client switch | [`js/social-endpoints.js`](../../js/social-endpoints.js) (`?v=1`), with literal fallbacks in the five social pages and `js/reports.js` |
+
+The main account now carries only Pages + Pages Functions (`/api/*`), the reader,
+Stripe, KPM and the other low-volume Workers — roughly **1–2k requests/day**, so
+paying customers have almost the whole 100k/day allowance. The social account carries
+~30–35k/day after the preflight cache, leaving ~3x headroom; if it ever exhausts its
+own quota, only socials break (and the client shows the outage message), never the
+main site.
+
+**Deploy/ops (the token is outside the repo, `~/.cloudflare-social-token`):**
+
+```bash
+export CLOUDFLARE_API_TOKEN=$(cat ~/.cloudflare-social-token)
+export CLOUDFLARE_ACCOUNT_ID=8d69e380e0c4e0580c47f21d9757c71c
+cd workers/rekindle-moderate && npx wrangler deploy
+cd ../rekindle-translate && npx wrangler deploy
+```
+
+Secrets on both Workers: `SOCIAL_SERVICE_ACCOUNT_JSON` (from
+`service-account-social.json`), `FIREBASE_PROJECT_ID=rekindle-dd1fa` (this makes
+`verifyFirebaseToken` accept **both** the primary and social token audiences; the social
+RTDB helpers are hard-coded to `rekindle-socials-default-rtdb`), and for moderation
+`OPENAI_API_KEY` (from `firebase-functions/.env`).
+
+**Discord:** report notifications were **removed** on 2026-10-25 by request. The
+`sendDiscordReportNotification` function and its two call sites are gone from the
+worker source, and `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` / `DISCORD_WEBHOOK_URL`
+were deleted from the old Worker. Reports still write to `/reports` and appear in the
+moderation console. The old Worker's `/discord-interaction` endpoint + `DISCORD_PUBLIC_KEY`
+remain but are dormant (no notification messages → no buttons); the new Worker does not
+need the public key. Re-enable per [moderation-reports.md](moderation-reports.md#discord-bot-setup-removed-2026-10-25--historical-only).
+
+**Verified 2026-10-25:** `/health` (`ok:true`, social service account, OpenAI key set),
+`OPTIONS` 204 with the CORS allowlist + `Access-Control-Max-Age`, unauthenticated POST
+401, and end-to-end smoke tests (a real chat post was written and deleted; a translation
+request wrote the `en` entry and correctly reported Google's 429 misses).
+
+**Rollback:** the old Workers are still deployed on the main account. Point
+`js/social-endpoints.js` (and the five fallbacks + `js/reports.js`) back at the old
+`*.timjarnott.workers.dev` URLs and redeploy Pages.
 
 KV (story): 4,020 reads / 3,540 writes / 420 deletes per 30 days — negligible against
 100k reads/day and 1k writes/day. No D1, R2, or AI usage of note.
@@ -210,23 +304,34 @@ KV (story): 4,020 reads / 3,540 writes / 420 deletes per 30 days — negligible 
 
 ## Deploying the 2026-10-25 changes
 
-These are source changes; production still runs the old code until each is deployed.
+**Deployed 2026-10-25 ~22:50 UTC** (Pages + both chat Workers). The checklist, kept
+for the next change of this kind:
 
 1. **Pages:** `npm run deploy:prod` (the build has passed; `_deploy/main` has no
    `functions/_middleware.js`). This ships the middleware removal, the 60-topic
-   sidebar, the translation-listener bound and `js/social-token-cache.js`. Beta:
-   `npm run deploy:beta`.
+   sidebar, the translation-listener bound, `js/social-token-cache.js`,
+   `js/worker-client.js` and the outage handling in KindleChat / Neighbourhood /
+   Topics. Beta: `npm run deploy:beta`.
 2. **Cleanup function:** `firebase deploy --only functions:cleanupSocial --project
    rekindle-dd1fa`.
 3. **KPM Worker:** already deployed with `cd workers/rekindle-kpm && npx wrangler
    deploy` (route `repo.rekindle.ink/*`). Re-deploy only if the Worker source changes.
-4. **Translation Worker:** already deployed on 2026-10-25
-   (`cd workers/rekindle-translate && npx wrangler deploy`; smoke test: an
-   unauthenticated POST returns 401 with the `rekindle.ink` CORS header).
+4. **Moderation + translation Workers (ReKindle Social account):** use the
+   `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` pair from the split section above:
+   `cd workers/rekindle-moderate && npx wrangler deploy` and
+   `cd workers/rekindle-translate && npx wrangler deploy`. Smoke test: `GET /health`
+   returns `ok:true`, an `OPTIONS` returns `204` with `Access-Control-Max-Age: 86400`,
+   and an unauthenticated `POST` returns `401` with the `rekindle.ink` CORS header.
+
+If the **main** account is already over the daily limit, **wait for 00:00 UTC** before smoke
+testing: every worker request (including `OPTIONS` and `/health`) returns
+`error code: 1027` until the counter resets. Deploying the Worker itself still works
+because Wrangler uses the Cloudflare API, not the Worker runtime.
 
 After a day, re-check `pagesFunctionsInvocationsAdaptiveGroups` (expect ~2k/day),
-social `document/read_count` (expect ~130k/day or lower), social `monthly_sent`
-(expect the ~0.4 GB/day slope to flatten).
+`workersInvocationsAdaptive` (expect ~30-35k/day once the preflight cache takes
+effect), social `document/read_count` (expect ~130k/day or lower), social
+`monthly_sent` (expect the ~0.4 GB/day slope to flatten).
 
 ## How to re-measure
 

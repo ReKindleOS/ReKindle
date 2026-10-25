@@ -1,16 +1,16 @@
 # Reports & Moderation
 
-Report UI -> `rekindle-moderate` worker -> RTDB -> Discord. Read before touching `js/reports.js`, any report button, `moderation.html`, or the worker's `report` handler.
+Report UI -> `rekindle-moderate` worker -> RTDB `/reports`. Read before touching `js/reports.js`, any report button, `moderation.html`, or the worker's `report` handler.
 
 ## 📋 Reporting System
 
-Users can report content across all social apps. Reports are stored in Firestore and trigger Discord notifications.
+Users can report content across all social apps. Reports are stored in RTDB and read by the moderation console.
 
 ### Architecture
 - **Client Module:** `js/reports.js` — provides `rekindleOpenReportModal()` with System 7 styling
 - **Backend Handler:** `workers/rekindle-moderate/worker.js` handles `type: "report"` requests
 - **Storage:** RTDB `/reports` on the **social** project (`rekindle-socials`)
-- **Notifications:** Discord bot via `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` environment variables. Fires on every report submission. Includes action buttons (Delete, Timeout, Dismiss) for manual moderation.
+- **Notifications:** **none since 2026-10-25.** The Discord bot notification (embed + Delete/Timeout/Dismiss buttons) was removed at the owner's request, and the `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` / `DISCORD_WEBHOOK_URL` secrets were deleted from the old Worker. Reports are visible in `/reports` and the moderation console only. The `/discord-interaction` handler remains in the code for the old deployment, but with no notification messages there are no buttons to click.
 
 ### Data Model (`/reports` RTDB)
 Each entry is keyed by a Firebase push ID and contains:
@@ -63,26 +63,33 @@ Add this index in the Firebase Console under the social RTDB for the `/reports` 
 - `moderation.html` — added "User Reports" panel with pending/resolved/dismissed filters
 - `firestore-social.rules` — added `reports` collection rules
 
-### Discord Bot Setup
-Set `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` as Cloudflare Worker environment variables. **No fallback** — if not set, notifications are silently skipped. Never commit the bot token to the repository — use environment variables.
+### Discord Bot Setup (removed 2026-10-25 — historical only)
 
-**Setup Steps:**
-1. Create a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications)
-2. Go to "Bot" tab → Click "Reset Token" → Copy the token
-3. Invite the bot to your server with "Send Messages", "Embed Links", and "Use Application Commands" permissions
-4. Set `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` as Cloudflare Worker secrets
+The notification code (`sendDiscordReportNotification`) and the bot secrets were
+removed at the owner's request. Do not re-add them unless explicitly asked. Notes kept
+for a future re-enable:
 
-**Auto-Deletion:** When 2 different users report the same content (same `contentType` + `contentId`), the content is automatically deleted and both reports are marked as "resolved". The Discord notification will show a green embed indicating the auto-deletion.
+Set `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` on the **ReKindle Social**
+`rekindle-moderate` Worker. Never commit the bot token — use Worker secrets.
 
-**Discord Action Buttons:** Each Discord notification includes 3 buttons:
-- **Delete Content** — Manually deletes the reported content
-- **Timeout User (24h)** — Applies a 24-hour timeout to the reported user
-- **Dismiss Report** — Marks the report as resolved without action
+1. Create/choose a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications)
+2. "Bot" tab → Reset Token → copy it
+3. Invite the bot with "Send Messages" and "Embed Links"
+4. `npx wrangler secret put DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` from
+   `workers/rekindle-moderate` with the social account's `CLOUDFLARE_ACCOUNT_ID`/token
 
-To enable buttons, you must set up Discord Interactions:
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → Your Application
-2. Go to "General Information" → Set "Interactions Endpoint URL" to: `https://rekindle-moderate.timjarnott.workers.dev/discord-interaction`
-3. Set `DISCORD_PUBLIC_KEY` as a Cloudflare Worker environment variable (found in Discord Developer Portal under "General Information")
+**Auto-Deletion:** When 2 different users report the same content (same `contentType` + `contentId`), the content is automatically deleted and both reports are marked as "resolved" — independent of Discord. The notification, when enabled, showed a green embed.
+
+**Discord Action Buttons (historical):** the notification had 3 buttons:
+- **Delete Content** — manually deletes the reported content
+- **Timeout User (24h)** — applies a 24-hour timeout
+- **Dismiss Report** — marks the report resolved without action
+
+The buttons are handled by `POST /discord-interaction` (`DISCORD_PUBLIC_KEY`). The old
+Worker still has the public key and the endpoint; the ReKindle Social Worker does not,
+and it is unused while notifications are off. If re-enabling, set the Discord app's
+Interactions Endpoint URL to the **current** Worker:
+`https://rekindle-moderate.rekindle-social.workers.dev/discord-interaction`.
 
 ### RTDB Indexes Required
 Reports live under `/reports` in the social RTDB. The dashboard reads from RTDB and filters/sorts in memory, but the worker query for existing reports uses `orderByChild('contentId').equalTo(...)`, so an index on `contentId` is required for performance at scale.
@@ -92,7 +99,7 @@ Reports live under `/reports` in the social RTDB. The dashboard reads from RTDB 
     - **Index fields:** `contentId`
 
 ### Auto-Delete Behaviour
-When 2 different users report the same content (same `contentType` + `contentId`), the worker attempts to automatically delete the content. If deletion succeeds, both reports are marked as `resolved`. If deletion fails (e.g. RTDB permission issue), both reports remain `pending` so moderators can review them manually. The Discord notification will indicate whether the auto-delete succeeded or failed.
+When 2 different users report the same content (same `contentType` + `contentId`), the worker attempts to automatically delete the content. If deletion succeeds, both reports are marked as `resolved`. If deletion fails (e.g. RTDB permission issue), both reports remain `pending` so moderators can review them manually. (The Discord notification, when it existed, showed whether the auto-delete succeeded.)
 
 ### Security: Escaping for JS String Literals
 When passing user-generated text into `onclick` HTML attributes, **never rely solely on `escapeHtml()`**. HTML entity decoding happens before JS execution, so `&#039;` becomes `'` and breaks out of the string literal.

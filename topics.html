@@ -7,7 +7,7 @@
     <meta charset="UTF-8">
 
     <title>Topics</title>
-    <script src="js/reports.js?v=1"></script>
+    <script src="js/reports.js?v=2"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -836,6 +836,8 @@
     <script src="theme.js?v=24"></script>
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
+    <script src="js/social-endpoints.js?v=1"></script>
+    <script src="js/worker-client.js?v=1"></script>
     <link rel="stylesheet" href="css/custom-select.css">
     <script src="js/i18n.js?v=3"></script>
     <script src="js/custom-select.js?v=2"></script>
@@ -1098,7 +1100,8 @@
         var mainDb = firebase.firestore();
         var socialDb = socialApp.firestore();
         var socialAuth = socialApp.auth();
-        var MODERATION_WORKER_URL = "https://rekindle-moderate.timjarnott.workers.dev";
+        var MODERATION_WORKER_URL = (window.rekindleSocialEndpoints && window.rekindleSocialEndpoints.moderation)
+            || "https://rekindle-moderate.rekindle-social.workers.dev";
         var ADMIN_EMAIL = 'ukiyo@rekindle.ink';
         var supporterUsers = {};
 
@@ -2729,7 +2732,11 @@
                             return tokenSource.getIdToken(true).then(postWith);
                         }
                         return resp;
-                    }).then(function (resp) { return resp.json(); });
+                    }).then(function (resp) {
+                        return window.rekindleWorkerClient
+                            ? window.rekindleWorkerClient.readJson(resp)
+                            : resp.json();
+                    });
                 }).then(function (result) {
                     isPostingComment = false;
                     if (btnSend) {
@@ -2757,7 +2764,10 @@
                         btnSend.disabled = false;
                         btnSend.style.opacity = '1';
                     }
-                    if (err && err.code === 'PERMISSION_DENIED') {
+                    var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
+                    if (outage) {
+                        showAlertModal(outage);
+                    } else if (err && err.code === 'PERMISSION_DENIED') {
                         showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
                     } else if (err && err.message && err.message.toLowerCase().indexOf('moderation') !== -1) {
                         showAlertModal(err.message);
@@ -3185,7 +3195,11 @@
                             icon: selectedIconSvg,
                             poll: pollData
                         })
-                    }).then(function (resp) { return resp.json(); });
+                    }).then(function (resp) {
+                        return window.rekindleWorkerClient
+                            ? window.rekindleWorkerClient.readJson(resp)
+                            : resp.json();
+                    });
                 }).then(function (result) {
                     if (submitBtn) {
                         submitBtn.disabled = false;
@@ -3202,7 +3216,10 @@
                         submitBtn.disabled = false;
                         submitBtn.innerText = window.t ? window.t('topics.btn.new', 'Create') : 'Create';
                     }
-                    if (err && err.code === 'PERMISSION_DENIED') {
+                    var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
+                    if (outage) {
+                        showAlertModal(outage);
+                    } else if (err && err.code === 'PERMISSION_DENIED') {
                         showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
                     } else if (err && err.message && err.message.toLowerCase().indexOf('moderation') !== -1) {
                         showAlertModal(err.message);

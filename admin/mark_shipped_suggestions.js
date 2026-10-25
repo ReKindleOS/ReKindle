@@ -76,6 +76,22 @@ const SHIPPED = [
         id: '-OyumHhfjFTnq0CwPmvu',
         title: 'CAN YOU PLEASE ADD ALT TEXT TO PIXEL ART?',
         why: 'The pixel-art post dialog gained an optional caption that is shown with the art and used as the image alt text in KindleChat (9091c88, 2026-10-24).'
+    },
+    // Sweep 3 - 2026-10-25 1027 outage (KindleChat "Load failed").
+    // The account hit the Workers Free 100k/day limit, every worker returned the
+    // CORS-less "error code: 1027" page, and the client surfaced the raw
+    // TypeError once per send. The middleware removal + preflight cache keep the
+    // account under the cap; the client now shows one outage message per two
+    // minutes. See docs/agent/usage-limits.md.
+    {
+        id: '-P4hSc35dDUqJf_9FGgb',
+        title: 'Failed To fetch',
+        why: 'The 2026-10-25 1027 outage: KindleChat now recognises a transport failure or a non-JSON 429/5xx and shows one clear "temporarily unavailable" message instead of the raw "Failed to fetch"; the Pages middleware removal and the Workers\' Access-Control-Max-Age preflight cache keep the account under the 100k/day Free limit.'
+    },
+    {
+        id: '-P4htMUDUJx4Z1KzGXG9',
+        title: 'Remove the alerts in Neighborhood, Topics and KindleChat',
+        why: 'Sending during the 2026-10-25 quota outage no longer pops an alert on every attempt: KindleChat keeps the typed message and shows one message per two-minute cooldown, and Neighbourhood/Topics use js/worker-client.js for the same friendly error. Normal posting has no alert.'
     }
 ];
 

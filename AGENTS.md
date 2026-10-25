@@ -687,6 +687,8 @@ External APIs such as Reddit aggressively rate-limit shared cloud egress IPs (e.
 
 Example pattern: `functions/api/reddit.js`.
 
+**Worker quota + preflight (2026-10-25):** Workers Free is 100k requests/day shared with Pages Functions; over it every worker returns the CORS-less `error code: 1027` page (KindleChat showed "Load failed"). Cross-origin JSON POSTs cost 2 requests (OPTIONS + POST) unless the worker sends `Access-Control-Max-Age` + `Vary: Origin` — never remove them ([usage-limits.md](docs/agent/usage-limits.md), `scripts/test-worker-cors.js`). Socials: separate **ReKindle Social** account, URLs in `js/social-endpoints.js`.
+
 **Some hosts block Cloudflare egress outright — a proxy cannot fix it.** `standardebooks.org` answers every request from AS132892 (the Workers/Pages network, e.g. `2a06:98c0:3600::103`) with an Apache 403, whatever the User-Agent or headers, so `/api/proxy` and `/api/*` are dead ends for it. Relay through a Firebase function (Google Cloud egress) instead — see `firebase-functions/standardebooks.js` and [integrations.md](docs/agent/integrations.md#standard-ebooks-403s-every-cloudflare-egress-ip-2026-10-20). Same workaround family as the Akinator relay (`akinator-service/`).
 
 ## ⚠️ Deploying to Cloudflare Pages (do not deploy the repo root)
