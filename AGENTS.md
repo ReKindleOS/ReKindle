@@ -37,6 +37,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [account-deletion.md](docs/agent/account-deletion.md) | `settings.html` Delete Account, `deleteAccount` function, full user-data sweep |
 | [help.md](docs/agent/help.md) | `help.html`, `help-data.js`: adding/renaming app guides, search, A-Z index, help content coverage |
 | [social-cleanup.md](docs/agent/social-cleanup.md) | Daily `cleanupSocial` retention: KindleChat messages/translations/art, topics, neighbourhood posts, reports, automod & moderator logs |
+| [usage-limits.md](docs/agent/usage-limits.md) | Firebase/Cloudflare quota measurements, Spark limits, Pages Functions invocation traps |
 | [legacy-build.md](docs/agent/legacy-build.md) | Lite/Legacy pipeline: SRI on localized libs, extensionless links, Kobo/WebKit `/probe`, old-browser polyfills |
 | [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, cover, KPM |
 
@@ -529,7 +530,7 @@ The button no longer carries a `return` param, so a user who signs in from a pag
 Enforced client-side and in `workers/rekindle-moderate/worker.js` for every social app (KindleChat, Neighbourhood, Topics). Reporting UI and the `/reports` data model are in [moderation-reports.md](docs/agent/moderation-reports.md).
 
 ### 0. KindleChat Direct Messages (2026-10-20)
-DMs live **only** in the social RTDB (`rekindle-socials`): `kindlechat/dm_threads`, `dm_messages`, `dm_user_threads`, `dm_prefs`, `dm_blocks`. Only ReKindle+ members may start a conversation; every first contact requires recipient acceptance; all content is written by the moderation worker (clients may write only `lastReadAt` and `allowRequests`). Messages are text-only, capped at 1,000 chars, moderated, and block/report are always available. Never re-enable the legacy Firestore `rooms` collection and never grant moderators a blanket read on `dm_messages` — reports carry a scoped context instead. Kill switch: `kindlechat/config/dm_enabled` / `dm_beta_enabled`. Full design: [kindlechat.md](docs/agent/kindlechat.md#kindlechat-direct-messages-2026-10-20).
+DMs live **only** in the social RTDB (`rekindle-socials`): `kindlechat/dm_threads`, `dm_messages`, `dm_user_threads`, `dm_prefs`, `dm_blocks`. Only ReKindle+ members may start a conversation; every first contact requires recipient acceptance; all content is written by the moderation worker (clients may write only `lastReadAt` and `allowRequests`). Messages are text-only, capped at 1,000 chars, moderated, and block/report are always available; a block is reversible only by the person who set it (`dm_unblock`). Never re-enable the legacy Firestore `rooms` collection and never grant moderators a blanket read on `dm_messages` — reports carry a scoped context instead. Kill switch: `kindlechat/config/dm_enabled` / `dm_beta_enabled`. Full design: [kindlechat.md](docs/agent/kindlechat.md#kindlechat-direct-messages-2026-10-20).
 
 ### 1. URL / Link Blocking in Social Apps
 All social apps (KindleChat, Neighbourhood, Topics) block users from posting URLs and links. This is enforced **both client-side and server-side** (moderation worker).
@@ -633,9 +634,9 @@ Only include `firebase-database-compat.js` on pages that actually use Realtime D
 #### Reading Social RTDB Data from Non-Social Pages
 Any page that reads/writes data owned by the **social** project (e.g. `users_public/{uid}/birthday`, written by `neighbourhood.html`) must do the full social-auth setup — referencing `socialRtdb` without it crashes with `ReferenceError` (this was the `life.html` stuck-loading bug, 2026-07):
 
-1. Include `firebase-functions-compat.js` (needed for the callable).
+1. Include `firebase-functions-compat.js` and `js/social-token-cache.js?v=1` (the helper needs the Functions SDK).
 2. Init the secondary app: `const socialApp = firebase.initializeApp(socialConfig, 'social'); const socialRtdb = socialApp.database(); const socialAuth = socialApp.auth();` (config in `neighbourhood.html:1151`).
-3. Sign in before any RTDB access: `firebase.functions().httpsCallable('getSocialToken')({})` → `socialAuth.signInWithCustomToken(result.data.token)`. The callable (main project) mints a social custom token carrying `moderator`/`pro`/`ageVerified`/`email` claims; social RTDB rules on `users_public` require `auth.token.ageVerified == true` even for reads.
+3. Sign in before any RTDB access with `window.rekindleEnsureSocialAuth(auth, socialAuth)` — it signs in with the `getSocialToken` callable's custom token (which carries `moderator`/`pro`/`ageVerified`/`email` claims) and caches the token in `sessionStorage` for 50 minutes. Do **not** call `getSocialToken` directly on every page load: that was the top Cloud Function (~126k/month, 2026-10-25 audit) and the helper is the fix. Social RTDB rules on `users_public` require `auth.token.ageVerified == true` even for reads.
 4. Non-social pages should NOT force the `ensureAgeVerified()` flow — instead degrade gracefully (e.g. `life.html` falls back to `localStorage` key `rekindle_life_birthday`) so non-age-verified users can still use the app; their data just won't sync.
 
 ### 5. Repeated-Message Flood Guard (KindleChat, 2026-10-20)

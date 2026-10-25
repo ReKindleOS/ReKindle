@@ -831,6 +831,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
+    <script src="js/social-token-cache.js?v=1"></script>
     <script src="time.js?v=4"></script>
     <script src="theme.js?v=24"></script>
     <script src="bad_words.js?v=4"></script>
@@ -1237,6 +1238,13 @@
         var topicsListenerRef = null;
         var rulesListenerRef = null;
         var sidebarRenderTimer = null;
+        // Only the most recently active topics load by default. The previous
+        // limit(200) cost ~120k Firestore reads/day at ~600 topics page loads —
+        // more than half of the social project's reads, which sits on the Spark
+        // 50k reads/day tier. Older topics stay searchable and can be loaded
+        // explicitly with the "Show all topics" button.
+        var TOPICS_INITIAL_LIMIT = 60;
+        var showAllTopics = false;
         var fullTopicsSnapshot = null;    // one-time fetch for search (sorted desc, 5-min TTL)
         var fullTopicsSnapshotExpiry = 0;
         var isFetchingFullTopics = false;
@@ -1299,10 +1307,7 @@
 
             // Age verification check (server-side enforced)
             ensureAgeVerified(auth, { closable: false }).then(function () {
-                var getSocialToken = firebase.functions().httpsCallable('getSocialToken');
-                return getSocialToken({}).then(function (result) {
-                    return socialAuth.signInWithCustomToken(result.data.token);
-                });
+                return window.rekindleEnsureSocialAuth(auth, socialAuth);
             }).then(function () {
                 fetchSupporters().then(function () {
                     if (topicsLoaded) return;
@@ -1338,7 +1343,7 @@
                         // snapshot — no separate eager .get() (that would double-download).
                         var firstSnapshot = true;
                         topicsListenerRef = socialDb.collection('topics')
-                            .orderBy('lastActive', 'desc').limit(200)
+                            .orderBy('lastActive', 'desc').limit(TOPICS_INITIAL_LIMIT)
                             .onSnapshot(function(snapshot) {
                                 if (firstSnapshot) {
                                     allTopicsCache = [];
@@ -1643,6 +1648,8 @@
                     var subMatch = t.subheading && t.subheading.toLowerCase().indexOf(searchQuery) !== -1;
                     return titleMatch || subMatch;
                 });
+            } else if (showAllTopics && fullTopicsSnapshot) {
+                topicsToShow = fullTopicsSnapshot;
             } else {
                 topicsToShow = allTopicsCache;
             }
@@ -1658,7 +1665,7 @@
                 // Auto-sync: If this is the currently viewed topic, keep lastReadCount up to date
                 // locally so switching away won't show false unread badges. Persisted to RTDB
                 // only in selectTopic() and on pagehide — NOT here (this render fires on every
-                // comment posted to any of the top-200 topics).
+                // comment posted to any of the top-60 topics).
                 if (t.id === currentTopicId && topicStatesLoaded) {
                     var currentCount = t.commentCount || 0;
                     if (!userTopicStates[t.id]) userTopicStates[t.id] = {};
@@ -1732,6 +1739,22 @@
                 listEl.appendChild(el);
                 renderEmojis(el);
             });
+
+            // Older topics live outside the live 60-doc window. They remain
+            // available through search; this loads the full list once on demand.
+            if (!searchQuery && !showAllTopics && allTopicsCache.length >= TOPICS_INITIAL_LIMIT) {
+                var moreEl = document.createElement('div');
+                moreEl.className = 'topic-item';
+                moreEl.style.textAlign = 'center';
+                moreEl.style.cursor = 'pointer';
+                moreEl.innerHTML = '<div class="topic-item-title" style="font-weight:normal; text-decoration:underline;">' +
+                    window.t('topics.btn.show_all', 'Show all topics') + '</div>';
+                moreEl.onclick = function () {
+                    showAllTopics = true;
+                    fetchAllTopicsForSearch();
+                };
+                listEl.appendChild(moreEl);
+            }
         }
 
         function selectTopic(id, forceReload) {

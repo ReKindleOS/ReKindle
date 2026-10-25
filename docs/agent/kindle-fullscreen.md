@@ -1,10 +1,30 @@
 # ReKindle for Jailbroken Kindles
 
-Last updated: 2026-10-23. Status: v1.2.1, direct Chromium launch via Amazon's
-framework-user/chromium.sqsh setup.
+Last updated: 2026-10-25. Status: v1.2.1, **highly experimental** - labelled as such in
+every user-facing mention.
 
 This is the area doc for `kindle/`, `kindle.html`, the cover, the KPM package and the build
 packaging step. Read it before changing any of them.
+
+## "Highly experimental" labelling (2026-10-25)
+
+The add-on is a community experiment: it changes how a Kindle starts its browser, it has
+very little real-device testing, and a failed launch can leave the device stuck until it
+reboots. It is deliberately marked **highly experimental** everywhere a user can find it.
+Keep these in sync when the copy changes:
+
+| Where | What carries the label |
+| :--- | :--- |
+| `help-data.js` `kindle-fullscreen` | `badges: ['HIGHLY EXPERIMENTAL']`, the opening `.note warn` box, and the `Highly experimental:` summary prefix |
+| `help-data.js` `welcome` / `install` | the inline notes that link to `#kindle-fullscreen` |
+| `help.html` | `.badge.exp` (inverted badge) and `.note.warn` (left-bar warning box) |
+| `kindle.html` | `<title>` suffix, kicker, inverted "Highly experimental" pill, the warning callout under the lead, the safety list and the footer |
+| `README.md` | section heading suffix and the bold warning paragraph |
+| `kindle/README.txt` | `STATUS: HIGHLY EXPERIMENTAL` block, the recovery note and the EXPERIMENTAL SOFTWARE section |
+
+Do not soften or remove these labels until there has been on-device testing across models
+and the launcher is actually supported. Help text is English-only, so nothing here goes
+into `locales/`; bump `help-data.js?v=` in `help.html` after editing the article.
 
 ## What it is
 
@@ -101,10 +121,25 @@ or KPM indexes it with no artifacts (`Could not find artifact`). `install.sh` co
 scriptlet/cover to `/mnt/us/documents`, removes any old `ReKindleStop.sh`, and marks the
 script executable. Keep the manifest version in sync with `kindle/version.json`.
 
-`functions/_middleware.js` maps `repo.rekindle.ink/` to the repo manifest and
-`repo.rekindle.ink/*.kpkg` to the package. `repo.rekindle.ink` is a custom domain on the
-`rekindle` Pages project. Fallback:
-`https://rekindle.ink/downloads/kpm/repo.json`.
+`repo.rekindle.ink` is a custom domain on the `rekindle` Pages project, shadowed by
+the **`rekindle-kpm` Worker route** (`workers/rekindle-kpm/`, route
+`repo.rekindle.ink/*`). The Worker maps `/` and `/repo.json` to
+`/downloads/kpm/repo.json` and `/<name>.kpkg` to `/downloads/kpm/<name>.kpkg` on the
+main site, returning 200 with the right Content-Type. It only runs for repo-host
+requests (~1k/day). The documented repo URL is
+`https://rekindle.ink/downloads/kpm/repo.json`; the short
+`https://repo.rekindle.ink` also works. Deploy the Worker with
+`cd workers/rekindle-kpm && npx wrangler deploy` (the route is in its
+`wrangler.toml`). Pages `_redirects` cannot do this: domain-level rules are not
+supported, and a path rule would apply to every host on the project.
+
+**Do not re-add `functions/_middleware.js` to shorten the repo URL (2026-10-25).**
+Cloudflare Pages runs Pages Functions middleware for every request to the project,
+not just the paths it acts on. Adding it on 2026-10-22 to map the repo host took
+Pages Functions from ~2k to 96,188 / 101,275 / 89,327 invocations on Oct 22-24
+(zone traffic was flat), pushing the account to ~122k Worker invocations/day. The
+repo host itself gets ~1k requests/day. The Worker route does the same job with
+zero Pages Function invocations.
 
 KPM's search bar cannot pass a URL to `add-repo`: Amazon's `scriptExecutor` whitelists only
 `[A-Za-z0-9/_ -]`, so `:` and `.` are rejected. Use kterm (`;kpm install kterm`, then

@@ -1659,6 +1659,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
+    <script src="js/social-token-cache.js?v=1"></script>
     <script src="emojis.js?v=7"></script>
     <script src="js/emoji-render.js?v=1"></script>
 
@@ -1732,7 +1733,7 @@
                         onclick="switchKindlechatTab('messages')" data-i18n="kindlechat.dm.back">Back</button>
                     <div id="dm-thread-name" class="dm-thread-name">Messages</div>
                     <button type="button" id="dm-block-btn" class="dm-back-btn" style="margin-left:10px; margin-right:0;"
-                        onclick="dmAction('block')" data-i18n="kindlechat.dm.block">Block</button>
+                        onclick="dmHeaderBlockAction()" data-i18n="kindlechat.dm.block">Block</button>
                 </div>
 
                 <div id="dm-request-banner">
@@ -2380,10 +2381,7 @@
                 // Age verification check (server-side enforced)
                 ensureAgeVerified(auth, { closable: false }).then(function () {
                     // Authenticate with social project before loading social data
-                    var getSocialToken = firebase.functions().httpsCallable('getSocialToken');
-                    return getSocialToken({}).then(function (result) {
-                        return socialAuth.signInWithCustomToken(result.data.token);
-                    });
+                    return window.rekindleEnsureSocialAuth(auth, socialAuth);
                 }).then(function () {
                     // The social token carries the server-computed ``pro``
                     // claim. Use it (not the loose localStorage default) to
@@ -3367,12 +3365,16 @@
                 // listener here syncs the ENTIRE per-language node (~25k entries /
                 // ~1 MB) on every page load, which kills the Kindle browser. Push IDs
                 // sort chronologically, so startAt(oldestGeneralKey) covers the live
-                // window plus all future messages. Paginated older messages fetch
-                // their translations on demand in loadMoreGeneralFromRTDB().
+                // window plus all future messages. Bounded with limitToLast(200):
+                // in a dormant room the startAt range can span months, so without the
+                // limit the listener still syncs every translation created since the
+                // oldest rendered message. The newest 200 keys always include the 50
+                // rendered messages; paginated older messages fetch their translations
+                // on demand in loadMoreGeneralFromRTDB().
                 var transBaseRef = socialRtdb.ref('kindlechat/translations_by_lang/' + getEffectiveTranslationLang());
                 generalTransRef = oldestGeneralKey
-                    ? transBaseRef.orderByKey().startAt(oldestGeneralKey)
-                    : transBaseRef;
+                    ? transBaseRef.orderByKey().startAt(oldestGeneralKey).limitToLast(200)
+                    : transBaseRef.orderByKey().limitToLast(200);
 
                 kcTransAddedHandler = function (childSnap) {
                     if (currentRoomId !== 'general') return;
@@ -3599,6 +3601,9 @@
                 }
                 if (dmThreadState && dmThreads[currentRoomId]) {
                     dmThreadState = dmThreads[currentRoomId];
+                    // The header carries Block/Unblock, so it must follow a
+                    // status change that arrived from the other side too.
+                    updateDmHeader();
                     updateDmBanner();
                     updateDmComposer();
                 }
@@ -3914,9 +3919,20 @@
             header.style.display = 'flex';
             var blockBtn = document.getElementById('dm-block-btn');
             if (blockBtn) {
-                blockBtn.style.display = (dmThreadState.status === 'blocked' || dmThreadState.status === 'declined')
-                    ? 'none'
-                    : 'block';
+                var headerUid = currentUser ? currentUser.uid : '';
+                var threadStatus = dmThreadState.status;
+                var headerUnblock = threadStatus === 'blocked' && dmThreadState.blockedBy === headerUid;
+                var headerClosed = threadStatus === 'blocked' || threadStatus === 'declined';
+                blockBtn.style.display = (headerClosed && !headerUnblock) ? 'none' : 'block';
+                // The same button blocks, and unblocks the person you blocked.
+                var headerKey = headerUnblock ? 'kindlechat.dm.unblock' : 'kindlechat.dm.block';
+                if (blockBtn.getAttribute('data-i18n') !== headerKey) {
+                    blockBtn.setAttribute('data-i18n', headerKey);
+                }
+                var headerLabel = headerUnblock
+                    ? dmT('kindlechat.dm.unblock', 'Unblock')
+                    : dmT('kindlechat.dm.block', 'Block');
+                if (blockBtn.textContent !== headerLabel) blockBtn.textContent = headerLabel;
             }
             var nameEl = document.getElementById('dm-thread-name');
             if (!nameEl) return;
@@ -3928,6 +3944,17 @@
                     if (el && dmThreadState) el.textContent = name;
                     updateDmBanner();
                 });
+            }
+        }
+
+        // One header button serves both directions: Block while the
+        // conversation is open, Unblock once you have blocked the other person.
+        function dmHeaderBlockAction() {
+            var uid = currentUser ? currentUser.uid : '';
+            if (dmThreadState && dmThreadState.status === 'blocked' && dmThreadState.blockedBy === uid) {
+                dmAction('unblock');
+            } else {
+                dmAction('block');
             }
         }
 
@@ -3992,9 +4019,17 @@
             }
 
             if (status === 'blocked') {
-                textEl.textContent = dmThreadState.blockedBy === uid
-                    ? dmT('kindlechat.dm.blocked_banner', 'You blocked this person. They cannot contact you again.')
-                    : dmT('kindlechat.dm.closed_banner', 'This conversation is closed.');
+                var youBlocked = dmThreadState.blockedBy === uid;
+                if (youBlocked) {
+                    textEl.textContent = dmT('kindlechat.dm.blocked_banner', 'You blocked this person. They cannot send you messages until you unblock them.');
+                    // A block is reversible by the person who set it. The
+                    // worker restores the conversation to its previous state.
+                    if (actions) {
+                        actions.appendChild(makeDmBannerButton(dmT('kindlechat.dm.unblock', 'Unblock'), false, function () { dmAction('unblock'); }));
+                    }
+                } else {
+                    textEl.textContent = dmT('kindlechat.dm.closed_banner', 'This conversation is closed.');
+                }
                 banner.style.display = 'block';
             }
         }
@@ -4105,14 +4140,23 @@
                     var row = dmThreads[threadId];
                     if (row) {
                         row.status = result.status || (action === 'accept' ? 'accepted' : (action === 'decline' ? 'declined' : 'blocked'));
-                        if (action === 'block' && currentUser) row.blockedBy = currentUser.uid;
+                        if (action === 'block' && currentUser) {
+                            row.blockedBy = currentUser.uid;
+                        } else if (action === 'unblock') {
+                            // Normally the block is gone; if the other person
+                            // had blocked back, the thread stays closed under
+                            // their name.
+                            if (result.blockedBy) row.blockedBy = result.blockedBy;
+                            else delete row.blockedBy;
+                        }
                     }
                     dmThreadState = row || dmThreadState;
+                    updateDmHeader();
                     updateDmBanner();
                     updateDmComposer();
                     updateDmUnreadDot();
                     renderDmInbox();
-                    if (action === 'accept') {
+                    if (action === 'accept' || (action === 'unblock' && row && row.status === 'accepted')) {
                         var input = document.getElementById('msg-input');
                         if (input && input.focus) input.focus();
                     }
@@ -4129,6 +4173,8 @@
                 showConfirmModal(dmT('kindlechat.dm.confirm_decline', 'Decline this message request? This cannot be undone.'), run);
             } else if (action === 'block') {
                 showConfirmModal(dmT('kindlechat.dm.confirm_block', 'Block this person? They will not be able to message you again.'), run);
+            } else if (action === 'unblock') {
+                showConfirmModal(dmT('kindlechat.dm.confirm_unblock', 'Unblock this person? They will be able to contact you again.'), run);
             } else {
                 run();
             }

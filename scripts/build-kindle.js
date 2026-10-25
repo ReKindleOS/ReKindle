@@ -152,12 +152,12 @@ async function buildKindlePackage(options) {
             manifest_version: 2,
             id: 'rekindle',
             name: 'ReKindle',
-            description: 'ReKindle for jailbroken Kindles',
+            description: 'ReKindle for jailbroken Kindles (highly experimental)',
             packages: {
                 'rekindle': {
                     name: 'ReKindle',
                     author: 'ReKindle',
-                    description: 'Run ReKindle without the Kindle interface or browser chrome.',
+                    description: 'Highly experimental: run ReKindle without the Kindle interface or browser chrome.',
                     artifacts: [
                         {
                             url: 'https://rekindle.ink/downloads/kpm/' + kpkgName,

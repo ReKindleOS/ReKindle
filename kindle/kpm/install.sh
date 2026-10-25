@@ -12,4 +12,5 @@ chmod 755 "/mnt/us/documents/ReKindle Launcher.sh"
 chmod 644 /mnt/us/documents/ReKindleCover.png
 
 echo "ReKindle installed to /mnt/us/documents"
+echo "STATUS: highly experimental. If a launch fails, hold power to reboot."
 exit 0

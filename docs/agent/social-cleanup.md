@@ -62,7 +62,7 @@ remote config document.
 | `firestorePageSize` | 200 topics per page |
 | `deleteBatchSize` | 400 comment deletes per Firestore batch |
 | `maxTopicsPerRun` | 500 |
-| `maxChatMessagesPerRun` | 5000 |
+| `maxChatMessagesPerRun` | 25000 (RTDB deletes do not consume Firestore write quota; the 8-min budget is the stop) |
 | `maxCommentDeletesPerRun` | 4000 |
 | `maxPostDeletesPerRun` | 100 |
 | `maxReportDeletesPerRun` | 5000 |
@@ -229,6 +229,19 @@ tier (20k writes/day), so the caps were lowered to 4,000 topic comments / 100 po
 failing the scheduler invocation. The next daily run resumes after the quota resets at
 midnight Pacific Time. If this becomes a recurring problem, upgrading
 `rekindle-socials` to Blaze removes the cap for a few cents of delete charges.
+
+## 2026-10-25: chat backlog and the 25k/run cap
+
+`kindlechat/messages` held **1,070,698 keys** (a 29.98 MB shallow listing) because
+retention only started on 2026-10-21. At the old 5,000 messages/run the backlog alone
+would take ~7 months to prune, and every cleanup run pages the whole node. Raised
+`maxChatMessagesPerRun` to **25,000**: chat deletes are RTDB operations, not Firestore
+writes, so they do not compete with the 20k/day social write quota; the 8-minute budget
+still stops a slow run. Expected backlog clearance ~6 weeks.
+
+Watch the first runs in Cloud Logging: `"task":"chat"` should show `deleted` near 25,000
+and `truncated:true` when the cap (not the cutoff) stopped it. If `deleted` is far below
+25,000 because the time budget expired, lower the cap rather than the budget.
 
 ## Tests
 

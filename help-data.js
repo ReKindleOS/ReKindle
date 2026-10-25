@@ -62,7 +62,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>If you want sync, tap <b>LOG IN / REGISTER</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
                 <li>Star the apps you use most: tap <b>Edit</b> on the home screen, then the star on an app. See <a href="#home">The home screen</a>.</li>
             </ol>
-            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle launcher</a> is only for jailbroken Kindles that want the browser chrome gone.</div>
+            <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle launcher</a> is <b>highly experimental</b> and only for jailbroken Kindles that want the browser chrome gone.</div>
             <p>This Help app covers every app and game. Use the search box on the left (or the category buttons) and the <a href="#all">A-Z index</a> when you know the name of something.</p>
         `
     },
@@ -91,7 +91,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td>Phone, tablet, desktop</td><td>Full site. Keyboard shortcuts and a mouse work in most apps and games.</td></tr>
             </table>
             <div class="note"><b>Why firmware matters:</b> ReKindle targets the Chromium 75 browser shipped on newer Kindles. Very old browsers cannot run modern JavaScript features, which is why the Lite and Legacy builds exist.</div>
-            <div class="note"><b>Want no browser chrome?</b> On a jailbroken Kindle with firmware 5.16.4+, the optional <a href="#kindle-fullscreen">ReKindle launcher</a> hides the Kindle interface and browser chrome.</div>
+            <div class="note"><b>Want no browser chrome?</b> On a jailbroken Kindle with firmware 5.16.4+, the optional <a href="#kindle-fullscreen">ReKindle launcher</a> hides the Kindle interface and browser chrome. Treat it as <b>highly experimental</b>: it changes how the Kindle starts its browser, has very little real-device testing, and is not a supported ReKindle feature. Normal bookmark use needs none of it.</div>
             <h2>Offline use</h2>
             <p>The dashboard shell and some assets are cached by a service worker, but most apps need a network connection for their data. Games that store state locally keep working offline. Cloud sync resumes when you reconnect.</p>
             <h2>Storage and clearing data</h2>
@@ -102,17 +102,19 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'kindle-fullscreen',
         cat: 'start',
         title: 'ReKindle on a jailbroken Kindle',
-        summary: 'Run ReKindle fullscreen on a jailbroken Kindle and recover if the launcher gets stuck.',
-        tags: 'kindle fullscreen full screen jailbreak jailbroken scriptlet launcher appmgrd chromebar 5.16.4 usb documents kpm cover',
+        summary: 'Highly experimental: run ReKindle fullscreen on a jailbroken Kindle, and recover if the launcher gets stuck.',
+        tags: 'kindle fullscreen full screen jailbreak jailbroken scriptlet launcher appmgrd chromebar 5.16.4 usb documents kpm cover experimental unstable unsupported risky',
+        badges: ['HIGHLY EXPERIMENTAL'],
         related: ['install', 'settings', 'troubleshooting'],
         body: `
+            <div class="note warn"><b>Highly experimental - use at your own risk</b><br>This add-on is a community experiment, not a supported ReKindle feature. It has been tried on very few Kindle models and firmware versions, it changes how the device starts its browser, and a failed launch can leave the Kindle stuck until you reboot it. Do not install it on a Kindle you depend on, and do not expect support if it misbehaves. Nothing in ReKindle needs it: a bookmark works on every supported device.</div>
             <p>On a jailbroken Kindle with firmware 5.16.4 or newer, the optional <b>ReKindle</b> launcher mounts the stock Chromium image, stops the Kindle interface, and opens <code>rekindle.ink</code> as the <code>framework</code> user with Amazon's own flags. ReKindle keeps its normal framed layout.</p>
-            <div class="note"><b>Requirements:</b> a jailbroken Kindle on firmware 5.16.4+ with scriptlet support from the Universal Hotfix. Older Kindles use the WebKit browser and cannot run this launcher. Normal ReKindle use needs no jailbreak.</div>
+            <div class="note"><b>Requirements:</b> a jailbroken Kindle on firmware 5.16.4+ with scriptlet support from the Universal Hotfix. Older Kindles use the WebKit browser and cannot run this launcher. Normal ReKindle use needs no jailbreak, and this add-on is optional, unsupported and highly experimental.</div>
             <h2>Install</h2>
             <ol>
                 <li>Jailbreak the Kindle with the <a href="https://kindlemodding.org/jailbreak-wizard.html" target="_blank" rel="noopener">KindleModding wizard</a>, then block automatic updates.</li>
                 <li><b>Over USB (recommended):</b> download the ZIP from the <a href="kindle">ReKindle for Kindle guide</a>, unzip it, and copy the <code>documents</code> folder into the Kindle's root folder, merging with the existing one.</li>
-                <li><b>No computer, with kterm:</b> install kterm with <code>;kpm install kterm</code>, open kterm, then run <code>kpm add-repo https://repo.rekindle.ink</code>, <code>kpm update</code> and <code>kpm install rekindle</code>. Do not run <code>;kpm add-repo</code> from the search bar: Amazon's scriptExecutor rejects <code>.</code> and <code>:</code> in <code>;</code> commands, so the URL never reaches KPM.</li>
+                <li><b>No computer, with kterm:</b> install kterm with <code>;kpm install kterm</code>, open kterm, then run <code>kpm add-repo https://rekindle.ink/downloads/kpm/repo.json</code>, <code>kpm update</code> and <code>kpm install rekindle</code>. Do not run <code>;kpm add-repo</code> from the search bar: Amazon's scriptExecutor rejects <code>.</code> and <code>:</code> in <code>;</code> commands, so the URL never reaches KPM.</li>
                 <li>Open the library and tap <b>ReKindle</b> (it may be under Docs or Recent).</li>
             </ol>
             <p>Do not use the direct <code>.sh</code> or <code>.txt</code> links on a stock Kindle browser: it reports <b>Invalid file type</b> because only book formats are allowed. The <code>.txt</code> alias cannot bypass that, because the browser checks the saved filename/type. KPM or USB is required.</p>
@@ -355,7 +357,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Suggestions</h2>
             <p>The <a href="#suggestions">Suggestions</a> app is the official feature-request and bug tracker. You can post an idea, a problem or a translation issue, vote on others, and follow status changes. Search before posting - duplicates are merged or closed.</p>
             <h2>Reporting content or a person</h2>
-            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. Reports go to the moderation team with a snapshot of the content. In KindleChat you can also block a user from their profile or a direct message. For urgent safety issues, email support and say "safety" in the subject.</p>
+            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. Reports go to the moderation team with a snapshot of the content. In KindleChat you can also block a user from their profile or a direct message, and unblock them again from that conversation. For urgent safety issues, email support and say "safety" in the subject.</p>
             <div class="note"><b>Help app feedback:</b> every guide has a "Report a problem" link at the bottom that opens an email with the guide title filled in. Typos, outdated steps and missing apps are all worth reporting.</div>
         `
     },
@@ -2097,7 +2099,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Only ReKindle+ members can <b>start</b> a conversation. Anyone age-verified can receive a request and reply once accepted.</li>
                 <li>The first request is limited to 300 characters and is moderated before it is delivered.</li>
                 <li>Messages are text only (up to 1,000 characters). Links, pixel art and flipbooks are not allowed.</li>
-                <li>A declined or blocked pair cannot restart the conversation.</li>
+                <li>A declined pair cannot restart the conversation. A block stops contact until the person who set it unblocks.</li>
                 <li>Block and report are always available.</li>
             </ul>
             <h2>Using DMs</h2>
@@ -2105,7 +2107,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Open a user's profile or the DM panel in KindleChat and choose <b>Message</b>.</li>
                 <li>Write a short introduction and send the request.</li>
                 <li>The recipient accepts or declines. Once accepted, the thread opens for both.</li>
-                <li>Use the <b>Block</b> button to stop all further contact.</li>
+                <li>Use the <b>Block</b> button to stop all further contact. You can lift a block later with <b>Unblock</b> in that conversation (an accepted chat reopens; a blocked request returns to your inbox).</li>
             </ol>
             <h2>Request settings</h2>
             <p>In KindleChat Settings you can turn <b>Allow message requests</b> on or off. Turning it off does not delete existing accepted conversations; it stops new requests. Messages are moderated and stored on ReKindle's social service, not on your device.</p>
@@ -2180,7 +2182,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Reporting</h2>
             <p>Every message, post and comment has a <b>!</b> report control. A report sends the moderator team a snapshot of the content and who posted it. You can report content you see in chat, art, profiles, posts, comments and direct messages. False reports are themselves a rule violation.</p>
             <h2>Blocking</h2>
-            <p>In KindleChat you can block a user from their profile or a DM thread. Blocking ends the conversation and prevents new requests. In Neighbourhood, stop interacting and report the account; moderators can remove or restrict it.</p>
+            <p>In KindleChat you can block a user from their profile or a DM thread. Blocking ends the conversation and prevents new requests until you unblock them: open the conversation and tap <b>Unblock</b>, and it returns to how it was before (an accepted chat reopens; a message request goes back to your inbox). Only the person who set the block can lift it. In Neighbourhood, stop interacting and report the account; moderators can remove or restrict it.</p>
             <h2>What is not allowed</h2>
             <ul>
                 <li>Harassment, hate speech, threats, sexual content involving minors, or anything illegal.</li>

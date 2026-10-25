@@ -12,12 +12,14 @@ ReKindle is a Progressive Web App (PWA). No "installation" or jailbreak is requi
 2.  Navigate to `rekindle.ink`.
 3.  **Recommended:** Bookmark the page or add it to your device's home screen if supported.
 
-### Jailbroken Kindle: fullscreen
+### Jailbroken Kindle: fullscreen (highly experimental)
+
+**Highly experimental:** this add-on is a community experiment, not a supported ReKindle feature. It changes how the Kindle starts its browser, it has very little real-device testing, and a failed launch can leave the device stuck until you reboot it. Do not install it on a Kindle you depend on; nothing in ReKindle requires it, and a bookmark works on every supported device.
 
 Firmware 5.16.4+ can run ReKindle with **no Kindle interface and no browser chrome**. The optional scriptlet mounts `chromium.sqsh`, stops the Kindle GUI, and launches Chromium as the `framework` user with Amazon’s own flags. ReKindle keeps its normal framed layout; the Kindle UI and browser chrome are removed and restored on exit. It changes nothing on the root filesystem.
 
 *   Step-by-step guide, including jailbreaking: [ReKindle for Kindle](kindle.html)
-*   Install over USB: download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` to the Kindle. No computer? Install kterm with `;kpm install kterm`, then run `kpm add-repo https://repo.rekindle.ink`, `kpm update` and `kpm install rekindle` inside kterm. Do not run `;kpm add-repo` from the search bar: Amazon rejects `.` and `:` in `;` commands.
+*   Install over USB: download `downloads/ReKindle-Fullscreen.zip` and copy `documents/` to the Kindle. No computer? Install kterm with `;kpm install kterm`, then run `kpm add-repo https://rekindle.ink/downloads/kpm/repo.json`, `kpm update` and `kpm install rekindle` inside kterm. Do not run `;kpm add-repo` from the search bar: Amazon rejects `.` and `:` in `;` commands.
 *   The stock browser rejects direct `.sh`/`.txt` downloads as **Invalid file type**; KPM or USB is required.
 *   Source and recovery scripts: [`kindle/`](kindle/)
 

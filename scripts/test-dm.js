@@ -18,7 +18,8 @@ const root = path.join(__dirname, '..');
         dmThreadId,
         parseDmMessagePath,
         dmFlagKeyForOrigin,
-        isValidDmText
+        isValidDmText,
+        dmStatusAfterUnblock
     } = await import('../workers/rekindle-moderate/worker.js');
 
     /* ------------------------------------------------------------------ */
@@ -67,6 +68,27 @@ const root = path.join(__dirname, '..');
     assert.strictEqual(isValidDmText('   ', 1000), false);
     assert.strictEqual(isValidDmText('x'.repeat(1001), 1000), false);
     assert.strictEqual(isValidDmText(123, 1000), false);
+
+    /* ------------------------------------------------------------------ */
+    /* Unblock restores the status the block replaced                      */
+    /* ------------------------------------------------------------------ */
+    // A block overwrites status, so blockedFromStatus is the only way to put
+    // an accepted conversation back without a second acceptance gate. These
+    // cases pin the restore rules (and the legacy-thread fallback).
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', blockedFromStatus: 'accepted' }), 'accepted');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', blockedFromStatus: 'pending' }), 'pending',
+        'a blocked request must return to pending, never straight to accepted');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', blockedFromStatus: 'declined' }), 'declined',
+        'unblocking must not resurrect a declined request');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', acceptedAt: 1 }), 'accepted',
+        'legacy accepted block falls back on acceptedAt');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', declinedAt: 1 }), 'declined',
+        'legacy declined block falls back on declinedAt');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked' }), 'pending',
+        'legacy pending block falls back on pending');
+    assert.strictEqual(dmStatusAfterUnblock({ status: 'blocked', blockedFromStatus: 'nonsense', acceptedAt: 1 }), 'accepted',
+        'an unknown blockedFromStatus must fall back on the timestamps');
+    assert.strictEqual(dmStatusAfterUnblock(null), 'pending');
 
     /* ------------------------------------------------------------------ */
     /* Rules: no client writes to DM content, participant-only reads       */
@@ -118,6 +140,31 @@ const root = path.join(__dirname, '..');
     assert.ok(worker.includes('const DM_THREADS_PATH = "kindlechat/dm_threads"'), 'worker DM paths missing');
     assert.ok(worker.includes('kindlechat/dm_messages/${parsed.threadId}/${parsed.messageId}'), 'DM auto-delete must use the social RTDB helper path');
     assert.ok(!/dm_message[\s\S]{0,400}rtdbDeletePrimaryWithAccessToken/.test(worker), 'DM deletion must never target the primary RTDB');
+
+    /* ------------------------------------------------------------------ */
+    /* Unblock wiring: blocker-only, block record removed, rows refreshed  */
+    /* ------------------------------------------------------------------ */
+    assert.ok(worker.includes('type === "dm_unblock"'), 'worker must handle dm_unblock');
+    assert.ok(worker.includes('thread.blockedBy !== uid'), 'only the person who blocked may unblock');
+    assert.ok(worker.includes('rtdbDeleteWithAccessToken(`${DM_BLOCKS_PATH}/${uid}/${other}`'),
+        'unblock must delete the caller\'s dm_blocks entry');
+    assert.ok(worker.includes('updated.blockedFromStatus = thread.status'),
+        'dm_block must record the status it replaced');
+    assert.ok(worker.includes('"dm_unblock"]'), 'dm_unblock must be exempt from the timeout check');
+    assert.ok(worker.includes('writeDmStatusToIndexRows(uid, other, threadId, restored'),
+        'unblock must refresh both inbox rows');
+    assert.ok(worker.includes('restored.blockedBy = other'),
+        'a block-back by the other participant must keep the thread closed');
+
+    assert.ok(chat.includes("dmAction('unblock')"), 'client must offer the unblock action');
+    assert.ok(chat.includes('dmHeaderBlockAction'), 'the header button must block and unblock');
+    assert.ok(chat.includes("kindlechat.dm.confirm_unblock"), 'unblock must be confirmed first');
+    assert.ok(chat.includes("actions.appendChild(makeDmBannerButton(dmT('kindlechat.dm.unblock'"),
+        'the blocked banner must offer Unblock to the blocker');
+
+    const en = JSON.parse(fs.readFileSync(path.join(root, 'locales/en.json'), 'utf8'));
+    assert.ok(en['kindlechat.dm.unblock'], 'locales/en.json is missing kindlechat.dm.unblock');
+    assert.ok(en['kindlechat.dm.confirm_unblock'], 'locales/en.json is missing kindlechat.dm.confirm_unblock');
 
     console.log('PASS - direct message helpers, rules and social-RTDB wiring');
 })().catch(function (err) {

@@ -7,7 +7,7 @@ Area notes for `kindlechat.html` and its supporting assets (`emojis.js`, `sw.js`
 **Never attach a bare-ref listener to `kindlechat/translations_by_lang/{lang}`.** Each language node holds every translation ever written (~25,000 entries / ~1.2 MB per language as of 2026-07, growing unboundedly). A bare `.on('child_added')` forces every client to download ~1 MB and process ~25k callbacks on every page load, which effectively kills the Kindle browser — this was the root cause of "translations not showing" even though the `rekindle-translate` worker was writing them correctly.
 
 **Pattern (implemented in `kindlechat.html` `loadGeneralFromRTDB()`):**
-- Push IDs sort chronologically, so scope the listener to the rendered window: `ref.orderByKey().startAt(oldestGeneralKey)` where `oldestGeneralKey` is the first (oldest) key from the initial `limitToLast(50)` messages load. This covers the live window plus all future messages (new keys are always greater).
+- Push IDs sort chronologically, so scope the listener to the rendered window: `ref.orderByKey().startAt(oldestGeneralKey).limitToLast(200)` where `oldestGeneralKey` is the first (oldest) key from the initial `limitToLast(50)` messages load. This covers the live window plus all future messages (new keys are always greater). **The `limitToLast(200)` is required:** `startAt` alone has no upper bound, so in a dormant room (oldest rendered message months old) it still syncs every translation created since then — potentially the entire 25k-entry node. 200 keys always include the 50 rendered messages.
 - Paginated older messages (`loadMoreGeneralFromRTDB()`) are older than `startAt`, so fetch their translations individually on demand: `translations_by_lang/{lang}/{msgId}.once('value')`, cache into `langTranslations`, then re-render that bubble.
 - New translation features that add listener paths must follow the same scoping rule.
 
@@ -26,6 +26,7 @@ Current design in `workers/rekindle-translate/worker.js`:
 - **Client-scheduled retries (no cron — deliberate, to avoid idle Firebase usage):** every worker response includes `missing: [...]` (languages that failed retryably) and `sourceLang`. `fireTranslationRequest()` in `kindlechat.html` re-fires with `missingLangs` + `sourceLang` in the body after 20s/60s/180s (max 4 attempts), and the worker then translates ONLY those languages without re-detecting. Retries live and die with the sender's browser session — if the sender leaves, remaining languages stay untranslated. Google's per-IP 429s come in multi-minute bursts, so spreading retries over minutes is what fills the gaps; in-request backoff alone cannot.
 - **Confidence thresholds in `isProbablyEnglish()`:** `detectedLang === 'en'` → English; `confidence >= 0.85` → trust the non-English detection; identical/contained after stripping punctuation → English; `confidence < 0.85` with >85% Latin/ASCII chars → English (the `< 0.85` bound deliberately covers the 0.75-0.85 mid-confidence window where English slang was being force-translated from a mis-detected language into garbage `en` output).
 - **Every message should now produce all 10 language entries** (immediately in clear windows, within ~4 minutes via client retries during 429 storms). If an audit shows English messages stuck at en-only with no other entries appearing over time, the client retry loop is broken — that is the signature to look for.
+- **Translation cache (2026-10-25):** `translateToAllLanguages()` checks the Cloudflare Cache API before calling Google. `full/all/{sha256}` stores a complete map for the auto-detect path; `lang/{target}-{source}/{sha256}` stores individual values for `missingLangs` retries (source included so a client-supplied `knownSourceLang` cannot poison the shared entry); `detect/auto/{sha256}` stores detection only when Google answered (`ok !== false`). 7-day TTL. A full cache hit skips the detect call, all Google calls and the 75 ms stagger, but the handler still writes the per-message `translations_by_lang/{lang}/{msgId}` entries — one Worker invocation per message is unchanged. Bump the `/v1/` key prefix if `targetLangs` changes, otherwise old maps miss the new language.
 
 ## KindleChat Art Gallery & `kindlechat/art_index`
 
@@ -181,8 +182,8 @@ The previous implementation used a Firestore `rooms` collection. `room` create/u
 - Any age-verified user can receive a request. Recipients (including non-Pro) may accept/decline/block and reply once accepted.
 - First contact is one moderated request message (≤300 chars). The recipient must accept before the thread opens.
 - Text only, no links, no pixel art/flipbooks, no translations. Messages ≤1,000 chars.
-- A declined or blocked pair can never restart (deterministic thread ID + permanent state).
-- Safety actions (accept/decline/block) are exempt from the timeout check and the kill switch.
+- A declined pair can never restart (deterministic thread ID + permanent state). A block is reversible, but only by the person who set it — see [Unblocking](#unblocking-2026-10-25).
+- Safety actions (accept/decline/block/unblock) are exempt from the timeout check and the kill switch.
 
 ### Data model (social RTDB)
 
@@ -191,6 +192,8 @@ kindlechat/dm_threads/{threadId}
   participants: {uidA: true, uidB: true}
   requestedBy, status: pending|accepted|declined|blocked
   createdAt, acceptedAt?, declinedAt?, blockedAt?, blockedBy?
+  blockedFromStatus?   # status the block replaced (pending|accepted|declined)
+  unblockedAt?         # last time a block was lifted
 
 kindlechat/dm_messages/{threadId}/{messageId}
   uid, text, timestamp
@@ -216,7 +219,8 @@ kindlechat/config/dm_beta_enabled    # beta.rekindle.ink only (default false)
 | `dm_message` | participant | kill switch, accepted status only, 1,000-char limit, URL/promo/`dih`, OpenAI moderation, `dm` bucket + repetition guard |
 | `dm_accept` | recipient | `pending → accepted`, ETag write |
 | `dm_decline` | recipient | `pending → declined`, permanent |
-| `dm_block` | participant | `blocked` + `dm_blocks/{caller}/{other}`, both index rows updated |
+| `dm_block` | participant | `blocked`, records `blockedFromStatus` + `dm_blocks/{caller}/{other}`, both index rows updated |
+| `dm_unblock` | blocker only | deletes `dm_blocks/{caller}/{other}` and restores the pre-block status; see [Unblocking](#unblocking-2026-10-25) |
 
 Rate limits: `dm` = 8 tokens / 8 s; `dm_request` = 5 tokens / 2 h plus the hard 3-pending cap. DM text is never written to `automod_log` (`storeText:false`); categories only.
 
@@ -229,6 +233,7 @@ Reports: `contentType: 'dm_message'` is immediately auto-deleted on the first re
 - Separate `renderDmMessage()` — no reactions, replies, translations, art gallery or admin reprocess hooks.
 - The client only writes `dm_user_threads/{uid}/{threadId}/lastReadAt` and `dm_prefs/{uid}/allowRequests`. All thread/message content is written by the worker.
 - One-time safety modal (localStorage `rekindle_dm_safety_ack`), plus a per-request banner. Settings has “Allow message requests”.
+- The blocked banner and the thread header's Block button become **Unblock** for the blocker only (`dmAction('unblock')` → `dm_unblock`), behind the same confirm modal pattern as Block. The blocked party keeps seeing "This conversation is closed."
 - Listener pattern: inbox `limitToLast(50)` on `dm_user_threads/{uid}`; thread `limitToLast(50)` on messages with `child_added`, plus **`child_removed` on the bare thread ref** so window-slide events do not remove paginated messages. Older messages paginate with `endAt`.
 
 ### Cost / performance
@@ -249,6 +254,31 @@ Deploy order: worker → `npm run deploy:rules:social:rtdb` → Pages → enable
 
 - `node scripts/test-dm.js` (also in `npm test`) covers thread IDs, report-path parsing, rule invariants (no client content writes), and asserts client DM reads/writes use `socialRtdb`.
 - `admin/cleanup_user.js` and `admin/nuke_user.js` purge DM threads/messages/inbox rows/blocks with the service account. The moderation console intentionally cannot read DM threads; it shows only report-scoped context.
+
+### Unblocking (2026-10-25)
+
+Blocks were terminal: `dm_block` overwrote `status` with `blocked` and nothing could ever move it back, so one accidental tap removed a conversation permanently (only a moderator editing RTDB could undo it). The fix keeps the block just as strong but makes it **reversible by the person who set it** — never by the blocked party.
+
+**Recording the previous state.** `dm_block` now stores `blockedFromStatus = thread.status` before writing `blocked`, because RTDB has one status field and the old value is otherwise lost. For threads blocked before this field existed, `dmStatusAfterUnblock()` falls back on `acceptedAt` → `accepted`, `declinedAt` → `declined`, else `pending`.
+
+**`dm_unblock` (worker action, `{ type: 'dm_unblock', threadId }`):**
+
+1. Same participant check as the other safety actions; it is **not** behind the Pro check or the kill switch, and it is in `TIMEOUT_EXEMPT_TYPES`.
+2. If the thread is not blocked → `200 { success, status }` (idempotent; a retry costs one GET and writes nothing).
+3. If `thread.blockedBy !== uid` → `403 "This conversation is closed."` — the same generic text the blocked party already sees, so the action never reveals **who** blocked whom.
+4. Deletes `kindlechat/dm_blocks/{uid}/{other}` first. Order matters: if a later write fails, the block is still enforced by the thread status, never silently lifted without the record.
+5. Reads the reverse entry `dm_blocks/{other}/{uid}`. `dm_block`'s idempotent branch lets the blocked party block back, so if that entry exists the thread stays `blocked` with `blockedBy` switched to them (and `blockedFromStatus` preserved for their eventual unblock). A failed read fails closed → treated as blocked. Otherwise the status is restored from `blockedFromStatus`, `blockedBy`/`blockedAt`/`blockedFromStatus` are removed, and `unblockedAt` is stamped.
+6. Writes both inbox rows through `writeDmStatusToIndexRows()` (the same helper the other transitions now use), deleting `blockedBy` so neither inbox keeps showing "You blocked this person".
+
+**Restored states.** `accepted` reopens the conversation (composer enables, banners hide). `pending` returns the request to the recipient's inbox, where Accept/Decline/Block are offered again — deliberately **not** straight to `accepted`, because that would let a requestor skip the acceptance gate by getting blocked and unblocked. `declined` stays declined: unblocking removes the block record but does not resurrect a declined request.
+
+**Client (`kindlechat.html`).** `updateDmBanner()` appends an **Unblock** button to the "You blocked this person…" banner; the header's `#dm-block-btn` becomes Unblock too (`dmHeaderBlockAction()` decides by `status === 'blocked' && blockedBy === uid`, and the i18n key/label are switched together). `dmAction('unblock')` confirms first (`kindlechat.dm.confirm_unblock`), then applies `result.status`/`result.blockedBy` to the row, refreshes the header/banner/composer/inbox, and focuses the composer when the thread reopens. Unlike Block it does **not** jump back to the inbox — you stay in the thread you just reopened. The inbox listener now also calls `updateDmHeader()` so a status that changes remotely updates the header button.
+
+**No rules change:** `dm_threads` and `dm_blocks` writes remain service-account-only in `rtdb-social-rules.json`; the thread `.validate` already accepts every restored status. Unblock is a worker-only action, so the client still writes no DM content.
+
+**Deploy:** worker first (`cd workers/rekindle-moderate && npx wrangler deploy`), then the Pages build for the client. Until the worker is redeployed, the new client button gets the worker's "Unknown content type" error (unblock is a new `type`), so deploy the worker before the client.
+
+**Tests:** `scripts/test-dm.js` covers `dmStatusAfterUnblock()` (all three prior statuses, the legacy timestamp fallback, an unknown `blockedFromStatus`, null) and asserts the wiring: `dm_unblock` handled, `blockedBy !== uid` guard, block-record deletion, `blockedFromStatus` recorded, timeout exemption, both rows refreshed, and the client/locale keys present.
 
 ---
 

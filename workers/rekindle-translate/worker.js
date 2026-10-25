@@ -478,13 +478,13 @@ async function translateWithGoogle(text, targetLang = 'en', sourceLang = 'auto')
 
 async function detectLanguageInfo(text) {
     if (!text || text.trim().length === 0) {
-        return { detectedLang: 'en', confidence: 1, translatedToEn: text };
+        return { detectedLang: 'en', confidence: 1, translatedToEn: text, ok: true };
     }
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
     try {
         const response = await fetch(url);
         if (!response.ok) {
-            return { detectedLang: 'en', confidence: 1, translatedToEn: text };
+            return { detectedLang: 'en', confidence: 1, translatedToEn: text, ok: false };
         }
         const data = await response.json();
         const detectedLang = data[2] || 'en';
@@ -493,11 +493,132 @@ async function detectLanguageInfo(text) {
         if (data && data[0]) {
             translatedToEn = data[0].map(chunk => chunk[0]).join('');
         }
-        return { detectedLang, confidence, translatedToEn };
+        return { detectedLang, confidence, translatedToEn, ok: true };
     } catch (err) {
         console.error('Language detection failed:', err);
-        return { detectedLang: 'en', confidence: 1, translatedToEn: text };
+        return { detectedLang: 'en', confidence: 1, translatedToEn: text, ok: false };
     }
+}
+
+/* ------------------------------------------------------------------ */
+/*  TRANSLATION CACHE (2026-10-25)                                     */
+/* ------------------------------------------------------------------ */
+/*
+ * Chat repeats itself ("hello", "hi", "lol"), but every repeated message used
+ * to re-hit Google for all 9 target languages. Google rate-limits the shared
+ * Cloudflare egress IPs, which produced partial maps, client retries (up to 4
+ * requests per message) and the 18.5k `exceededResources`/timeout errors seen
+ * in the Oct 2026 audit.
+ *
+ * - Full map cached per text when the default language set is requested.
+ * - Per-language values cached for retry requests (`missingLangs`).
+ * - Detection result cached separately (never store a failed detection).
+ *
+ * The key is a SHA-256 of the exact text. Values are translations; the Cache
+ * API is internal to the Worker (no route serves the synthetic key host).
+ * 7-day TTL: chat text is already retained 30 days in RTDB, and translations
+ * are deterministic enough for a week.
+ */
+const TRANSLATION_CACHE_ORIGIN = 'https://translation-cache.rekindle.internal';
+const TRANSLATION_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Bump the /v1/ segment in translationCacheKey() whenever targetLangs or the
+// source-resolution rules change; otherwise old full maps miss new languages.
+
+async function hashTranslationText(text) {
+    try {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+        const bytes = new Uint8Array(digest);
+        let hex = '';
+        for (let i = 0; i < 16; i++) hex += bytes[i].toString(16).padStart(2, '0');
+        return hex;
+    } catch (e) {
+        // Never let the cache layer break translation.
+        return null;
+    }
+}
+
+function translationCacheKey(kind, suffix, textHash) {
+    return `${TRANSLATION_CACHE_ORIGIN}/v1/${kind}/${suffix}/${textHash}`;
+}
+
+async function translationCacheGet(key) {
+    try {
+        const cache = caches.default;
+        const response = await cache.match(new Request(key));
+        return response ? await response.text() : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function translationCachePut(key, value) {
+    try {
+        const cache = caches.default;
+        await cache.put(new Request(key), new Response(value, {
+            headers: { 'Cache-Control': `max-age=${TRANSLATION_CACHE_TTL_SECONDS}` }
+        }));
+    } catch (e) {
+        // Cache API unavailable/quota: translation still succeeds, just uncached.
+    }
+}
+
+async function getCachedFullTranslation(textHash) {
+    const raw = await translationCacheGet(translationCacheKey('full', 'all', textHash));
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.translations || typeof parsed.translations !== 'object') return null;
+        if (!Array.isArray(parsed.failed) || parsed.failed.length > 0) return null;
+        return parsed;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function putCachedFullTranslation(textHash, result) {
+    if (!result || !result.translations || Object.keys(result.translations).length === 0) return;
+    if (result.failed && result.failed.length > 0) return;
+    await translationCachePut(
+        translationCacheKey('full', 'all', textHash),
+        JSON.stringify({ translations: result.translations, failed: [], sourceLang: result.sourceLang })
+    );
+}
+
+async function getCachedDetection(textHash) {
+    const raw = await translationCacheGet(translationCacheKey('detect', 'auto', textHash));
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.detectedLang !== 'string') return null;
+        return parsed;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function detectLanguageInfoCached(text, textHash) {
+    const cached = await getCachedDetection(textHash);
+    if (cached) return cached;
+    const info = await detectLanguageInfo(text);
+    // A failed detection returns en + the original text; caching that would
+    // mark non-English text as English for a week.
+    if (info && info.ok !== false) {
+        await translationCachePut(translationCacheKey('detect', 'auto', textHash), JSON.stringify(info));
+    }
+    return info;
+}
+
+async function translateWithGoogleCached(text, textHash, targetLang, sourceLang) {
+    // Include the source language: a client-supplied knownSourceLang must not
+    // be able to poison the cache entry used by auto-detected requests.
+    const key = translationCacheKey('lang', targetLang + '-' + (sourceLang || 'auto'), textHash);
+    const cached = await translationCacheGet(key);
+    if (cached) {
+        return { text: cached, error: null, retryable: false, cached: true };
+    }
+    const result = await translateWithGoogle(text, targetLang, sourceLang);
+    if (result.text) await translationCachePut(key, result.text);
+    return result;
 }
 
 function isProbablyEnglish(original, detectedLang, confidence, translatedToEn) {
@@ -541,6 +662,19 @@ async function translateToAllLanguages(text, onlyLangs, knownSourceLang) {
     if (!text || text.trim().length === 0 || isAsciiEmoji(text)) return null;
 
     const targetLangs = ['en', 'es', 'pt', 'pl', 'de', 'it', 'fr', 'ru', 'zh', 'vi'];
+    const textHash = await hashTranslationText(text);
+    const cacheEnabled = !!textHash;
+    // Only trust the whole-map cache for the normal auto-detect path. A client
+    // can pass knownSourceLang; that must go through per-language keys (which
+    // include the source language) so it cannot poison the shared map.
+    const wantsDefaultSet = cacheEnabled && (!onlyLangs || onlyLangs.length === 0) && !knownSourceLang;
+
+    // Repeated chat phrases: one cache lookup replaces detect + 9 Google calls.
+    if (wantsDefaultSet) {
+        const cached = await getCachedFullTranslation(textHash);
+        if (cached) return cached;
+    }
+
     const translations = {};
     let sourceLang = knownSourceLang || null;
 
@@ -550,15 +684,17 @@ async function translateToAllLanguages(text, onlyLangs, knownSourceLang) {
         // One Google call doubles as the language detector AND the English
         // translation (sl=auto&tl=en returns detected lang, confidence, and
         // the English text), so non-English sources cost 9 calls, not 10-11.
-        const { detectedLang, confidence, translatedToEn } = await detectLanguageInfo(text);
-        sourceLang = resolveSourceLang(text, detectedLang, confidence, translatedToEn);
+        const detection = cacheEnabled
+            ? await detectLanguageInfoCached(text, textHash)
+            : await detectLanguageInfo(text);
+        sourceLang = resolveSourceLang(text, detection.detectedLang, detection.confidence, detection.translatedToEn);
 
         // Identity entry: readers whose language matches the source always
         // see the original text, never a machine "translation" of it.
         if (sourceLang === 'en') {
             translations.en = text;
-        } else if (translatedToEn && translatedToEn.toLowerCase().trim() !== text.toLowerCase().trim()) {
-            translations.en = translatedToEn; // reuse the detect call's English output
+        } else if (detection.translatedToEn && detection.translatedToEn.toLowerCase().trim() !== text.toLowerCase().trim()) {
+            translations.en = detection.translatedToEn; // reuse the detect call's English output
         }
         if (targetLangs.indexOf(sourceLang) !== -1) {
             translations[sourceLang] = text;
@@ -573,13 +709,18 @@ async function translateToAllLanguages(text, onlyLangs, knownSourceLang) {
     // identity entry still wrote, producing en-only coverage).
     const failed = [];
     for (const lang of remaining) {
-        const result = await translateWithGoogle(text, lang, sourceLang);
+        const result = cacheEnabled
+            ? await translateWithGoogleCached(text, textHash, lang, sourceLang)
+            : await translateWithGoogle(text, lang, sourceLang);
         if (result.text) translations[lang] = result.text;
         else if (result.retryable) failed.push(lang);
-        await new Promise(r => setTimeout(r, 75));
+        // A cache hit needs no stagger; only pace real Google calls.
+        if (!result.cached) await new Promise(r => setTimeout(r, 75));
     }
 
-    return { translations, failed, sourceLang };
+    const result = { translations, failed, sourceLang };
+    if (wantsDefaultSet) await putCachedFullTranslation(textHash, result);
+    return result;
 }
 
 async function writeTranslationsByLang(translations, msgId, accessToken) {
@@ -610,6 +751,9 @@ async function writeTranslationsByLang(translations, msgId, accessToken) {
 /* ------------------------------------------------------------------ */
 /*  MAIN HANDLER                                                       */
 /* ------------------------------------------------------------------ */
+// Exported for scripts/test-translate-cache.js; no runtime effect.
+export { translateToAllLanguages, hashTranslationText };
+
 export default {
     async fetch(request, env) {
         const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("x-forwarded-for") || "127.0.0.1";

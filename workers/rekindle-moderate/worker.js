@@ -1297,6 +1297,19 @@ function isValidDmText(text, maxLength) {
     return typeof text === "string" && text.trim().length > 0 && text.length <= maxLength;
 }
 
+// A block overwrites the thread status, so dm_block records the status it
+// replaced in blockedFromStatus. Unblocking puts the conversation back the way
+// it was: an accepted conversation reopens, a pending request returns to the
+// inbox for a fresh accept/decline. Threads blocked before blockedFromStatus
+// existed fall back on the transition timestamps.
+function dmStatusAfterUnblock(thread) {
+    const prior = thread && thread.blockedFromStatus;
+    if (prior === "pending" || prior === "accepted" || prior === "declined") return prior;
+    if (thread && thread.acceptedAt) return "accepted";
+    if (thread && thread.declinedAt) return "declined";
+    return "pending";
+}
+
 function dmIndexRow(otherUid, thread, lastMessageAt, lastMessageUid) {
     const row = {
         otherUid,
@@ -1315,6 +1328,38 @@ async function writeDmIndexRow(uid, threadId, row, accessToken) {
     // PATCH (not PUT): lastReadAt is written by the client and must survive
     // every new message. PATCH also creates the row on first contact.
     await rtdbPatchWithAccessToken(`${DM_USER_THREADS_PATH}/${uid}/${threadId}`, row, accessToken);
+}
+
+// Mirrors a thread status transition into both participants' inbox rows.
+// Two reads here are fine: transitions are rare, and a missing row is rebuilt
+// from the thread. blockedBy must be removed when the block is lifted or both
+// inboxes keep showing "You blocked this person".
+async function writeDmStatusToIndexRows(uid, other, threadId, thread, accessToken) {
+    const myRowPath = `${DM_USER_THREADS_PATH}/${uid}/${threadId}`;
+    const otherRowPath = `${DM_USER_THREADS_PATH}/${other}/${threadId}`;
+    const [myRowRes, otherRowRes] = await Promise.all([
+        rtdbSocialGet(myRowPath, accessToken).catch(function () { return { data: null }; }),
+        rtdbSocialGet(otherRowPath, accessToken).catch(function () { return { data: null }; })
+    ]);
+    const myRow = (myRowRes.data && typeof myRowRes.data === "object")
+        ? myRowRes.data
+        : dmIndexRow(other, thread, null, thread.requestedBy);
+    const otherRow = (otherRowRes.data && typeof otherRowRes.data === "object")
+        ? otherRowRes.data
+        : dmIndexRow(uid, thread, null, thread.requestedBy);
+    myRow.status = thread.status;
+    otherRow.status = thread.status;
+    if (thread.blockedBy) {
+        myRow.blockedBy = thread.blockedBy;
+        otherRow.blockedBy = thread.blockedBy;
+    } else {
+        delete myRow.blockedBy;
+        delete otherRow.blockedBy;
+    }
+    await Promise.all([
+        rtdbSetWithAccessToken(myRowPath, myRow, accessToken),
+        rtdbSetWithAccessToken(otherRowPath, otherRow, accessToken)
+    ]);
 }
 
 function otherDmParticipant(thread, uid) {
@@ -1881,10 +1926,10 @@ export default {
             const accessToken = await getCachedAccessToken(env);
 
             // --- TIMEOUT CHECK ---
-            // Reports and DM safety actions (accept/decline/block) must remain
-            // available even to a timed-out user; only content writes are
-            // blocked by a timeout.
-            const TIMEOUT_EXEMPT_TYPES = ["report", "dm_accept", "dm_decline", "dm_block"];
+            // Reports and DM safety actions (accept/decline/block/unblock) must
+            // remain available even to a timed-out user; only content writes
+            // are blocked by a timeout.
+            const TIMEOUT_EXEMPT_TYPES = ["report", "dm_accept", "dm_decline", "dm_block", "dm_unblock"];
             if (!TIMEOUT_EXEMPT_TYPES.includes(type)) {
                 const timeoutCheck = await checkTimeout(uid, env, token, accessToken);
                 if (timeoutCheck.timedOut) {
@@ -2216,11 +2261,11 @@ export default {
                 return new Response(JSON.stringify({ success: true, messageId: result.name }), { status: 200, headers });
             }
 
-            // --- DM ACCEPT / DECLINE / BLOCK ---
+            // --- DM ACCEPT / DECLINE / BLOCK / UNBLOCK ---
             // These are deliberately NOT behind the Pro check or the kill
-            // switch: a recipient must always be able to accept, decline or
-            // block, including while timed out.
-            if (type === "dm_accept" || type === "dm_decline" || type === "dm_block") {
+            // switch: a recipient must always be able to accept, decline,
+            // block or unblock, including while timed out.
+            if (type === "dm_accept" || type === "dm_decline" || type === "dm_block" || type === "dm_unblock") {
                 const threadId = typeof body.threadId === "string" ? body.threadId : "";
                 if (!/^dm_[A-Za-z0-9]+_[A-Za-z0-9]+$/.test(threadId)) {
                     return new Response(JSON.stringify({ error: "Invalid conversation." }), { status: 400, headers });
@@ -2234,6 +2279,68 @@ export default {
                 const other = otherDmParticipant(thread, uid);
                 if (!other) {
                     return new Response(JSON.stringify({ error: "Conversation not found." }), { status: 404, headers });
+                }
+
+                if (type === "dm_unblock") {
+                    if (thread.status !== "blocked") {
+                        // Idempotent: a retried unblock is not an error.
+                        return new Response(JSON.stringify({
+                            success: true,
+                            status: thread.status
+                        }), { status: 200, headers });
+                    }
+                    if (thread.blockedBy !== uid) {
+                        // Only the blocker can lift their own block. The blocked
+                        // party gets the same generic answer as their closed
+                        // banner, so this action never reveals who blocked whom.
+                        return new Response(JSON.stringify({ error: "This conversation is closed." }), { status: 403, headers });
+                    }
+
+                    // Remove the caller's block first: if a later write fails,
+                    // the thread status still enforces the block, never the
+                    // reverse.
+                    await rtdbDeleteWithAccessToken(`${DM_BLOCKS_PATH}/${uid}/${other}`, accessToken);
+
+                    // dm_block's idempotent branch lets the other participant
+                    // block back. Their block outlives this unblock, so the
+                    // thread stays closed and ownership moves to them.
+                    let otherBlocked = false;
+                    try {
+                        const reverse = await rtdbSocialGet(`${DM_BLOCKS_PATH}/${other}/${uid}`, accessToken);
+                        otherBlocked = reverse.data === true;
+                    } catch (e) {
+                        // Fail closed: an unreadable block list must not
+                        // resurrect a conversation someone may have blocked.
+                        console.error("[DM] reverse block check failed:", e.message);
+                        otherBlocked = true;
+                    }
+
+                    const restored = Object.assign({}, thread);
+                    restored.unblockedAt = { ".sv": "timestamp" };
+                    if (otherBlocked) {
+                        restored.status = "blocked";
+                        restored.blockedBy = other;
+                        restored.blockedAt = { ".sv": "timestamp" };
+                    } else {
+                        restored.status = dmStatusAfterUnblock(thread);
+                        delete restored.blockedBy;
+                        delete restored.blockedAt;
+                        delete restored.blockedFromStatus;
+                    }
+
+                    const unblockPut = await rtdbSocialPut(`${DM_THREADS_PATH}/${threadId}`, restored, etag, accessToken);
+                    if (!unblockPut.ok) {
+                        return new Response(JSON.stringify({ error: "Conversation changed. Please try again." }), { status: 409, headers });
+                    }
+
+                    await writeDmStatusToIndexRows(uid, other, threadId, restored, accessToken);
+                    console.log("[DM] unblocked:", threadId, restored.status);
+
+                    return new Response(JSON.stringify({
+                        success: true,
+                        status: restored.status,
+                        blockedBy: restored.blockedBy || null
+                    }), { status: 200, headers });
                 }
 
                 if (type === "dm_accept") {
@@ -2277,6 +2384,9 @@ export default {
                     updated.status = "blocked";
                     updated.blockedBy = uid;
                     updated.blockedAt = { ".sv": "timestamp" };
+                    // Remember what the block replaced so dm_unblock can put
+                    // the conversation back the way it was.
+                    updated.blockedFromStatus = thread.status;
                 }
 
                 const putResult = await rtdbSocialPut(`${DM_THREADS_PATH}/${threadId}`, updated, etag, accessToken);
@@ -2288,31 +2398,7 @@ export default {
                     await rtdbSetWithAccessToken(`${DM_BLOCKS_PATH}/${uid}/${other}`, true, accessToken);
                 }
 
-                // Preserve each side's last-message metadata while flipping the
-                // status. Two reads here are fine: transitions are rare, and a
-                // missing index row is rebuilt from the thread.
-                const myRowPath = `${DM_USER_THREADS_PATH}/${uid}/${threadId}`;
-                const otherRowPath = `${DM_USER_THREADS_PATH}/${other}/${threadId}`;
-                const [myRowRes, otherRowRes] = await Promise.all([
-                    rtdbSocialGet(myRowPath, accessToken).catch(function () { return { data: null }; }),
-                    rtdbSocialGet(otherRowPath, accessToken).catch(function () { return { data: null }; })
-                ]);
-                const myRow = (myRowRes.data && typeof myRowRes.data === "object")
-                    ? myRowRes.data
-                    : dmIndexRow(other, updated, null, thread.requestedBy);
-                const otherRow = (otherRowRes.data && typeof otherRowRes.data === "object")
-                    ? otherRowRes.data
-                    : dmIndexRow(uid, updated, null, thread.requestedBy);
-                myRow.status = updated.status;
-                otherRow.status = updated.status;
-                if (updated.blockedBy) {
-                    myRow.blockedBy = updated.blockedBy;
-                    otherRow.blockedBy = updated.blockedBy;
-                }
-                await Promise.all([
-                    rtdbSetWithAccessToken(myRowPath, myRow, accessToken),
-                    rtdbSetWithAccessToken(otherRowPath, otherRow, accessToken)
-                ]);
+                await writeDmStatusToIndexRows(uid, other, threadId, updated, accessToken);
 
                 return new Response(JSON.stringify({ success: true, status: updated.status }), { status: 200, headers });
             }
@@ -2712,8 +2798,8 @@ export default {
     }
 };
 
-// Exported for scripts/test-chat-spam.js (unit tests). Wrangler only uses the
-// default export, so these are inert in production.
+// Exported for scripts/test-chat-spam.js and scripts/test-dm.js (unit tests).
+// Wrangler only uses the default export, so these are inert in production.
 export {
     chatTextShapes,
     chatTokenOverlap,
@@ -2721,5 +2807,6 @@ export {
     dmThreadId,
     parseDmMessagePath,
     dmFlagKeyForOrigin,
-    isValidDmText
+    isValidDmText,
+    dmStatusAfterUnblock
 };

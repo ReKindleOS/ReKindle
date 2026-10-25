@@ -193,9 +193,21 @@ try {
     }
 
     section('kpm package');
-    const middleware = read('functions/_middleware.js');
-    assert.match(middleware, /repo\.rekindle\.ink/, 'middleware must handle the repo host');
-    assert.match(middleware, /ASSETS\.fetch/, 'middleware must serve repo artifacts');
+    const redirects = read('_redirects');
+    assert.ok(
+        !/repo\.rekindle\.ink\s+https:/.test(redirects),
+        'Pages _redirects cannot do domain-level rules; repo.rekindle.ink is the rekindle-kpm Worker route'
+    );
+    const kpmWorkerConfig = read('workers/rekindle-kpm/wrangler.toml');
+    assert.match(kpmWorkerConfig, /pattern = "repo\.rekindle\.ink\/\*"/, 'the KPM Worker must own the repo host route');
+    const kpmWorkerPath = path.join(tmp, 'kpm-worker.mjs');
+    fs.writeFileSync(kpmWorkerPath, read('workers/rekindle-kpm/worker.js'));
+    const kpmWorker = await import('file://' + kpmWorkerPath);
+    assert.strictEqual(kpmWorker.mapRepoPath('/'), '/downloads/kpm/repo.json');
+    assert.strictEqual(kpmWorker.mapRepoPath('/repo.json'), '/downloads/kpm/repo.json');
+    assert.strictEqual(kpmWorker.mapRepoPath('/rekindle_1.0.0_kindlehf.kpkg'), '/downloads/kpm/rekindle_1.0.0_kindlehf.kpkg');
+    assert.strictEqual(kpmWorker.mapRepoPath('/../secret'), null);
+    assert.strictEqual(kpmWorker.mapRepoPath('/nested/file.kpkg'), null);
     const kpmDir = path.join(outDir, 'kpm');
     const repo = JSON.parse(fs.readFileSync(path.join(kpmDir, 'repo.json'), 'utf8'));
     assert.strictEqual(repo.manifest_version, 2);
@@ -227,45 +239,6 @@ try {
     assert.match(installHook, /cp -f \.\/ReKindleCover\.png \/mnt\/us\/documents\/ReKindleCover\.png/);
     execFileSync('sh', ['-n', path.join(kpmExtract, 'install.sh')], { stdio: 'pipe' });
     execFileSync('sh', ['-n', path.join(kpmExtract, 'uninstall.sh')], { stdio: 'pipe' });
-
-
-    section('repo host middleware');
-    const mwPath = path.join(tmp, 'middleware.mjs');
-    fs.writeFileSync(mwPath, fs.readFileSync(path.join(root, 'functions', '_middleware.js'), 'utf8'));
-    const mw = await import('file://' + mwPath);
-    function repoContext(host, pathname) {
-        return {
-            request: new Request('https://' + host + pathname),
-            env: {
-                ASSETS: {
-                    fetch: async function (input) {
-                        const p = new URL(input).pathname;
-                        if (p === '/downloads/kpm/repo.json') {
-                            return new Response('{"manifest_version":2,"id":"rekindle","packages":{}}', {
-                                headers: { 'Content-Type': 'application/json' }
-                            });
-                        }
-                        if (p.endsWith('.kpkg')) {
-                            return new Response('PKG', { headers: { 'Content-Type': 'application/octet-stream' } });
-                        }
-                        return new Response('missing', { status: 404 });
-                    }
-                }
-            },
-            next: async function () { return new Response('APP'); }
-        };
-    }
-    let res = await mw.onRequest(repoContext('repo.rekindle.ink', '/'));
-    assert.strictEqual(res.status, 200);
-    assert.match(res.headers.get('Content-Type'), /application\/json/);
-    assert.match(await res.text(), /"id":"rekindle"/);
-    res = await mw.onRequest(repoContext('repo.rekindle.ink', '/rekindle_1.0.0_kindlehf.kpkg'));
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.headers.get('Content-Type'), 'application/octet-stream');
-    res = await mw.onRequest(repoContext('repo.rekindle.ink', '/../secret'));
-    assert.strictEqual(res.status, 404);
-    res = await mw.onRequest(repoContext('rekindle.ink', '/'));
-    assert.strictEqual(await res.text(), 'APP');
 
     console.log('PASS - ReKindle checks');
 } finally {

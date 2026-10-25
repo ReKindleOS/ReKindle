@@ -51,12 +51,19 @@ const CLEANUP_CONFIG = {
     keyPageSize: 1000,
 
     // Per-run caps; the time budget is the hard stop. The social Firestore
-    // project stays on the free tier (20k writes/day), so these Firestore
-    // caps are deliberately sized to leave headroom for post comments and
+    // project stays on the free tier (20k writes/day), so the Firestore caps
+    // are deliberately sized to leave headroom for post comments and
     // pollVotes. The daily 04:00 Australia/Sydney run lands after the
     // midnight-Pacific quota reset.
+    //
+    // Chat is RTDB, not Firestore: deletes there consume no Firestore write
+    // quota, so the chat cap is only bounded by the 8-minute budget. The room
+    // accumulated ~1.07M message keys (29 MB shallow listing), which at the old
+    // 5k/run would take ~7 months to prune. 25k/run clears it in ~6 weeks and
+    // shrinks RTDB storage (Spark limit: 1 GiB), which is what the daily full
+    // scan and any bare-node read have to page through.
     maxTopicsPerRun: 500,
-    maxChatMessagesPerRun: 5000,
+    maxChatMessagesPerRun: 25000,
     maxCommentDeletesPerRun: 4000,
     maxPostDeletesPerRun: 100,
     maxReportDeletesPerRun: 5000,

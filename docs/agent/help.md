@@ -10,9 +10,14 @@ browsing, deep links (`/help#tasks`) and an A-Z app index.
 | `help.html` | System 7 shell, routing, search, A-Z index, article renderer, text-size control. |
 | `help-data.js` | `HELP_CATEGORIES` and `HELP_ARTICLES` (currently ~140 guides, English copy). No network requests. |
 
-`help-data.js` is loaded with `?v=1` in `help.html`. **Bump that query when the
+`help-data.js` is loaded with `?v=9` in `help.html`. **Bump that query when the
 data changes** so edge/service-worker caches cannot serve an old guide set. The
 page itself is included in the generated sitemap automatically.
+
+Badge labels beyond the app-icon set render in the article header:
+`HIGHLY EXPERIMENTAL` gets the inverted `.badge.exp` style (used by the jailbreak
+launcher guide). Warning callouts use `<div class="note warn">` (white box with an
+8px left bar). Keep both in `help.html` when adding a warning article.
 
 ## Article model
 
@@ -24,7 +29,7 @@ page itself is included in the generated sitemap automatically.
   summary: 'One-line description used in lists/search.',
   body: '<p>Trusted HTML...</p>',
   tags: 'extra search words',
-  badges: ['REKINDLE+'],    // optional: REKINDLE+, BETA, NEW, 1P, 2P, LIVE
+  badges: ['REKINDLE+'],    // optional: REKINDLE+, NEW, HIGHLY EXPERIMENTAL, 1P, 2P, LIVE
   appHref: 'tasks',         // optional: page to launch (without .html)
   appName: 'Tasks',
   related: ['notes'],       // optional article ids
@@ -101,4 +106,4 @@ Manage Subscription first, and treat cancellation (stops renewal) separately
 from a refund (case by case). The Suggestions board's triage strip links to
 `help#faq` and `help#support`, and its Suggest an idea guide now explains the
 "Load older" window and the duplicate finder. Bump `help-data.js?v=` in
-`help.html` after any copy edit (currently `?v=3`).
+`help.html` after any copy edit (currently `?v=9`).
