@@ -481,45 +481,171 @@ silently do nothing.
 **Help text:** the "Connecting" steps in `help-data.js` now say to authorise on a
 phone/computer first (`help-data.js?v=4` in `help.html`).
 
-## ✉️ Mail: Outlook.com/Hotmail cannot use app passwords (2026-10-24)
+## ✉️ Mail: Outlook.com / Hotmail via OAuth2 device code (2026-10-26)
 
-**Reported by Wendy (Kindle Scribe Colorsoft):** chose Outlook / Hotmail in `mail.html`,
-clicked "Generate App Password", and got *"My Microsoft Account requires JavaScript to
-sign in. This Web Browser either does not support JavaScript or Scripts are being
-blocked."*
+**Was "not supported" until 2026-10-24; now supported.** Microsoft did not
+remove IMAP — it removed *Basic Authentication* (username + password, including
+app passwords) for every Outlook.com protocol on **2024-09-16**. IMAP on
+`outlook.office365.com:993` and SMTP on `smtp.office365.com:587` still work, but
+only with OAuth2 / SASL XOAUTH2:
 
-**This is not a ReKindle bug, and an app password would not fix it.** Two independent
-Microsoft changes:
+* <https://support.microsoft.com/en-us/support/known-issues/modern-authentication-methods-now-needed-to-continue-syncing-outlook-email-in-non-microsoft-email-ap>
+  — "September 16th, 2024: Basic Authentication no longer available to access any Outlook account."
+* <https://support.microsoft.com/en-us/outlook/pop-imap-and-smtp-settings-for-outlook-com>
+  — lists `Authentication Method: OAuth2/Modern Auth` for IMAP, POP and SMTP.
+* <https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>
+  — scopes and the XOAUTH2 exchange.
 
-1. **Basic authentication is gone.** Microsoft shut down Basic Auth (username +
-   password, including app passwords) for Outlook.com IMAP/POP/SMTP on
-   **2024-09-16**; the service now requires OAuth2/Modern Auth. Microsoft's own
-   settings article lists `Authentication Method: OAuth2/Modern Auth` for all three
-   protocols: <https://support.microsoft.com/en-us/outlook/pop-imap-and-smtp-settings-for-outlook-com>.
-   The `firebase-functions` mail callables use `ImapFlow`/`Nodemailer` with
-   `auth: { user, pass }` only, so a Hotmail IMAP login can never succeed.
-2. **Microsoft's account pages reject the Kindle browser.** The JavaScript error is
-   emitted by Microsoft's sign-in page itself, not by ReKindle. App passwords are
-   created behind that sign-in, so they cannot be generated on-device. (Even if one
-   were generated on a computer, point 1 means IMAP would still reject it.)
+### Why the sign-in happens on another device
 
-**What the app does now (2026-10-24):**
+Microsoft's sign-in is a **JavaScript app with no no-JS fallback**. Fetched with
+a Kindle UA, a Chrome 120 UA and a Chrome 75 UA, `login.live.com` returns the
+identical shell: **zero `<form>` elements, one `<input>`, and the text "Microsoft
+account requires JavaScript to sign in"** that the bundle replaces once it boots.
+`microsoft.com/devicelogin` is the same: the served page has no form at all and
+`<noscript>` redirects to `login.microsoftonline.com/jsdisabled`. So the Kindle
+cannot enter a device code either — the entry box is JS-rendered.
 
-* `mail.html` `PROVIDERS.outlook` is marked `unsupported: true`; the button says
-  "Outlook / Hotmail (not supported)" and `selectProvider()` calls
-  `showOutlookNotice()` instead of opening the login form.
-* `login()` refuses Microsoft IMAP/SMTP hosts (`isMicrosoftMailHost()` matches
-  `outlook.office365.com`, `smtp.office365.com`, `outlook.com`, `hotmail.com`,
-  `live.com`) with the same notice. This catches Custom (IMAP) users who paste the
-  Office 365 servers manually. Do **not** remove this guard without adding OAuth2.
-* The notice explains the JavaScript error and suggests forwarding Hotmail to a
-  Gmail/Yahoo/iCloud address, which Mail can still connect to.
-* `help-data.js` no longer lists Outlook as supported and documents the limitation
-  (`help-data.js?v=7` in `help.html`).
+There is no protocol escape hatch: **ROPC (`grant_type=password`) is not
+available for personal accounts** — "The Microsoft identity platform only
+supports the ROPC grant within Microsoft Entra tenants, not personal accounts …
+its parameter can't be set to `common` or `consumers`"
+(<https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth-ropc>).
 
-**If Microsoft support is ever added:** it needs an OAuth2 authorization-code flow
-(PKCE), an Azure app registration, and XOAUTH2 tokens passed to `ImapFlow`
-(`authenticationMethod: 'XOAUTH2'`) and `Nodemailer` (`auth: { type: 'OAuth2' }`).
-The Kindle browser still has to load `login.microsoftonline.com`, which is the same
-class of problem as Pinterest's OAuth page — plan for a "connect on a phone/PC, sync
-tokens to Firestore" flow like `pinterest.html`, not an on-device redirect.
+Therefore every Microsoft account needs **one interactive sign-in on some
+browser**, once. That is not a regression: Gmail/Yahoo/iCloud already require an
+app password generated on a phone/computer. Device code is the *easiest* of the
+lot — no password is typed into ReKindle, it works with 2FA, and it is
+revocable from the Microsoft account page.
+
+Flow: `mail.html` shows a short code → user opens `microsoft.com/devicelogin` on
+a phone/PC → `mailMicrosoftPoll` exchanges the code server-side → the refresh
+token is stored and the browser only ever holds the address.
+
+### Server side
+
+* `firebase-functions/mail-oauth-config.js` — dependency-free constants and the
+  two security-critical helpers: `endpointFor()` pins OAuth connections to
+  Microsoft's hosts (a client-supplied `host` is ignored, because an access
+  token is a bearer credential) and `authFor()` builds the exact auth objects
+  the libraries need (`{ user, accessToken }` → ImapFlow does XOAUTH2;
+  `{ type: 'OAuth2', user, accessToken }` → Nodemailer).
+* `firebase-functions/index.js`:
+  * `resolveMailConnection(uid, config, kind)` — the single place that turns a
+    client payload into connection details. OAuth accounts → `mail_oauth/{uid}`
+    + refresh; password accounts → the old `assertMailAuthConfig` +
+    `assertMailEndpoint` SSRF guard. **All six mail callables use it** —
+    `scripts/test-mail-oauth.js` fails if a new callable forgets.
+  * `getMicrosoftAccessToken(uid)` — refreshes with `grant_type=refresh_token`,
+    caches the access token in a module-level Map (55 min) and persists the
+    rotated refresh token. `invalid_grant` / `interaction_required` deletes the
+    dead token and tells the UI to reconnect.
+  * `mailMicrosoftStart` / `mailMicrosoftPoll` / `mailMicrosoftStatus` /
+    `mailMicrosoftDisconnect` — the device-code lifecycle. The device code lives
+    in `mail_oauth_pending/{uid}` (never returned to the browser), one poll per
+    `interval` (5 s), `authorization_pending` → `pending`, `slow_down` → longer
+    delay, `expired_token` → `expired`, `authorization_declined` → `denied`,
+    `consent_required` → `consent` (work/school tenant needs admin approval).
+  * On success the account is mirrored into `users/{uid}/pro_data/mail` as
+    `{ oauth: 'microsoft', imapUser, imapHost… }` with `imapPass` and
+    `encrypted` deleted, so any signed-in device can restore it without secrets.
+
+### Storage, scopes, cost
+
+* Refresh token: RTDB `mail_oauth/{uid}`. There is deliberately **no rule** for
+  it (and none for `mail_rate_limits`) — RTDB default-denies, the Admin SDK
+  bypasses rules, and no client can ever read it. Do not add a rules block.
+* Scopes: `openid profile email offline_access` plus IMAP/SMTP on **one**
+  audience, chosen by `MAIL_MS_SCOPE_AUDIENCE` (`graph` by default, `outlook`
+  optional) — see `mail-oauth-config.js` `microsoftScopes()`.
+  `https://graph.microsoft.com/IMAP.AccessAsUser.All` and
+  `https://graph.microsoft.com/SMTP.Send` are delegated Graph permissions
+  (652390e4-393a-48de-9484-05f9b1212954 / 258f6531-6087-4cc4-bb90-092c5fb3ed3f)
+  that personal Microsoft accounts can consent to, which is what makes a tenant
+  without the Exchange SP work. Never mix the two audiences in one request —
+  Entra rejects multi-resource token requests.
+* Cost: one device-code setup costs ≤180 `mailMicrosoftPoll` calls (5 s × 15 min,
+  once per account, ever) and each poll is one RTDB read. Polling runs with the
+  Pro check only (`assertMailAccess(request, 'none')`) because the 30/5 min IMAP
+  bucket would reject it. Token refresh is in-memory, so mail calls cost exactly
+  what they did before.
+
+### Setup: the Azure app registration (one-time, owner)
+
+1. <https://entra.microsoft.com> → **App registrations** → **New registration**.
+2. Name `ReKindle Mail`; supported account types **"Accounts in any
+   organizational directory and personal Microsoft accounts"** (personal =
+   hotmail/outlook/live).
+3. Redirect URI: **leave blank** (device code needs none). Register.
+4. Copy the **Application (client) ID**.
+5. **Authentication** → **Allow public client flows = Yes** → Save. This is what
+   enables the device-code grant. No client secret, no certificate.
+6. **API permissions** → Add a permission → **Microsoft APIs** → **Microsoft
+   Graph** → **Delegated permissions** → `IMAP.AccessAsUser.All` + `SMTP.Send`
+   → Add. No admin consent needed (personal accounts consent at sign-in; work
+   tenants may need theirs).
+   **Do not hunt for "Office 365 Exchange Online" under "APIs my organization
+   uses"** — a bare Entra directory has no Exchange Online service principal, so
+   that API is missing from the list (the 2026-10-26 setup hit exactly this).
+   Graph exposes both legacy-protocol permissions itself, so no provisioning is
+   needed. If a tenant *does* show the Exchange API and you would rather use
+   Thunderbird's audience, set `MAIL_MS_SCOPE_AUDIENCE=outlook`.
+7. Put the ID in `firebase-functions/.env` (gitignored). Optional:
+   `MAIL_MS_SCOPE_AUDIENCE=outlook` only for a tenant that has the Exchange
+   service principal. Then deploy:
+   `MAIL_MS_CLIENT_ID=<client-id>` → `firebase deploy --only functions`.
+   Leave it unset and the callables answer `failed-precondition` ("Outlook
+   sign-in is not configured yet") — the rest of Mail keeps working.
+
+**Deploy order matters:** functions first, then Pages. `mail.html` calls
+`mailMicrosoftStart`; if the page ships before the functions, the Outlook button
+fails with a callable "internal" error until the deploy lands.
+
+Probe the registration without a mailbox:
+
+```bash
+curl -s -X POST https://login.microsoftonline.com/common/oauth2/v2.0/devicecode \
+  -H 'content-type: application/x-www-form-urlencoded' \
+  --data-urlencode "client_id=<client-id>" \
+  --data-urlencode "scope=https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access"
+```
+
+A `user_code` means the registration is good; `invalid_client` means public
+client flows are off (or the ID is wrong). **Do not reuse another app's client
+ID** — Thunderbird's is fine for probing only.
+
+### Failure modes to keep in mind
+
+* **IMAP off in Outlook.com.** A valid token still fails to select INBOX. The
+  client's `onOutlookConnected()` says so explicitly: Settings → Mail →
+  Forwarding and IMAP → "Let devices and apps use IMAP".
+* **`invalid_grant` on refresh** (user revoked access, password change, 90 days
+  unused) → token deleted, UI asks to reconnect. `isUserProCached` is unaffected.
+* **Work/school mailbox** → `consent_required` until the tenant admin approves
+  the app; surfaced as "Your organisation needs to approve this app".
+* **Unverified publisher / "Publisher verification" banner.** The portal warns
+  "end users cannot grant consent to newly registered multitenant apps without
+  verified publishers". That policy is *risk-based step-up consent*, enforced by
+  the **user's** tenant for users in tenants other than the app's own, on apps
+  registered after 2020-11-08 that ask for more than basic sign-in. Personal
+  Microsoft accounts live in the consumer tenant and get the ordinary
+  "unverified publisher" consent screen, which still allows consent — so
+  Hotmail/Outlook.com sign-in is **not** blocked by it. It *does* affect
+  work/school users in other organisations: they either need their admin to
+  grant admin consent (which bypasses user consent) or the app needs publisher
+  verification. If a personal account is ever blocked, switch Supported account
+  types to **"Personal Microsoft accounts only"** (and set
+  `MAIL_MS_TENANT=consumers`) to leave the multitenant policy behind entirely.
+  Publisher verification itself is not quick: it needs a verified Partner
+  Center (CPP/MPN) account, a DNS-verified non-`onmicrosoft.com` publisher
+  domain, a *work* account (an MSA-registered app can't be verified), the
+  Application Administrator role and MFA.
+* **`isMicrosoftMailHost()` in `mail.html` is still needed.** It stops someone
+  pasting `outlook.office365.com` into **Custom (IMAP)** and expecting a
+  password to work; the notice now points them at the Outlook button.
+
+### The forwarding fallback (still valid for users who refuse a second device)
+
+Outlook.com → Settings → Mail → Forwarding to a Gmail address, then Gmail →
+"Send mail as" the Hotmail alias. Receive and send both work as
+`you@hotmail.com`; old mail and folders stay invisible in Mail.

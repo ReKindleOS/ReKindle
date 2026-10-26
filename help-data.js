@@ -568,7 +568,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'essentials',
         title: 'Mail',
         summary: 'A ReKindle+ IMAP/SMTP email client with folders, reading, archiving and composing.',
-        tags: 'mail email imap smtp gmail outlook yahoo icloud inbox compose send archive spam trash app password pro',
+        tags: 'mail email imap smtp gmail outlook hotmail yahoo icloud inbox compose send archive spam trash app password oauth pro',
         badges: ['REKINDLE+'],
         appHref: 'mail',
         appName: 'Mail',
@@ -577,13 +577,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Mail is a full email client for ReKindle+. It connects directly to your mailbox over IMAP for reading and SMTP for sending, so your normal provider keeps working.</p>
             <h2>Connecting an account</h2>
             <ol>
-                <li>Open Mail and choose your provider: Gmail, Yahoo, iCloud or Custom (IMAP).</li>
-                <li>Enter the email address and an <b>app password</b>, not your normal account password.</li>
+                <li>Open Mail and choose your provider: Gmail, Outlook / Hotmail, Yahoo, iCloud or Custom (IMAP).</li>
+                <li>For Gmail, Yahoo or iCloud, enter the email address and an <b>app password</b>, not your normal account password.</li>
                 <li>For Custom, also enter the IMAP and SMTP hosts and ports.</li>
                 <li>Tap Connect. If the connection works, credentials are encrypted and saved on this device.</li>
             </ol>
             <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Yahoo and iCloud users with 2FA need an app password too.</div>
-            <div class="note"><b>Outlook / Hotmail is not supported:</b> Microsoft retired password and app-password sign-in for Outlook.com in September 2024 and now requires OAuth2 (modern authentication) for IMAP and SMTP. ReKindle Mail does not support Microsoft OAuth yet. The "JavaScript required" error is Microsoft's own sign-in page blocking the Kindle browser, so an app password cannot be created on the device either. Workaround: forward your Hotmail to a Gmail, Yahoo or iCloud address and connect that account.</div>
+            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP").</div>
             <h2>Reading and organising</h2>
             <ul>
                 <li>Folders include Inbox, Sent, Drafts, Starred, All Mail/Archive, Spam, Trash and Important, plus any custom folders your provider exposes.</li>
@@ -593,13 +593,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <h2>Limitations</h2>
             <ul>
-                <li><b>Outlook/Hotmail accounts cannot be connected.</b> Microsoft requires OAuth2 for IMAP/SMTP and no longer accepts app passwords (since September 2024).</li>
                 <li>Attachments are not supported in the current client; use your provider's own app for heavy attachments.</li>
                 <li>Mail needs ReKindle+ and a working network. It will not work offline.</li>
                 <li>Very large mailboxes load one folder at a time, which keeps e-ink rendering manageable.</li>
             </ul>
             <h2>Security</h2>
-            <p>Credentials are stored encrypted in local storage and used through ReKindle's authenticated mail relay to reach your provider. They are not written to Firestore. Signing out and clearing site data removes them from the device.</p>
+            <p>App passwords are stored encrypted in local storage and used through ReKindle's authenticated mail relay to reach your provider. They are not written to Firestore. Outlook accounts store no password at all: Microsoft issues a refresh token that stays on ReKindle's server, and <b>Disconnect current account</b> in Mail settings deletes it.</p>
         `
     },
     {

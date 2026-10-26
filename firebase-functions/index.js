@@ -17,6 +17,7 @@ const dns = require("dns").promises;
 const { ImapFlow } = require("imapflow");
 const simpleParser = require("mailparser").simpleParser;
 const nodemailer = require("nodemailer");
+const mailOAuth = require("./mail-oauth-config");
 // jose removed — no longer needed after AgeVerif integration removal
 
 admin.initializeApp();
@@ -231,10 +232,158 @@ async function assertMailAccess(request, kind) {
     }
     if (kind === 'smtp') {
         await assertMailRate(auth.uid, 'smtp', 10, 60 * 60 * 1000);
-    } else {
+    } else if (kind === 'imap') {
         await assertMailRate(auth.uid, 'imap', 30, 5 * 60 * 1000);
+    } else if (kind === 'oauth') {
+        // Starting an Outlook device-code flow is rare; 20/hour is plenty.
+        await assertMailRate(auth.uid, 'oauth', 20, 60 * 60 * 1000);
     }
+    // kind === 'none' (device-code polling) runs the Pro check only: one poll
+    // per 5s for up to 15 minutes would blow through any sensible window, and
+    // the device code is single-use and expires on its own.
     return auth;
+}
+
+/*
+ * ── Outlook / Hotmail OAUTH2 ────────────────────────────────────────────────
+ *
+ * Microsoft retired Basic Auth for Outlook.com IMAP/SMTP on 2024-09-16, so a
+ * Hotmail account can only be reached with SASL XOAUTH2. The browser cannot do
+ * Microsoft's sign-in (their login page is a JS-only app with no form fallback,
+ * and ROPC is unavailable for personal accounts), so setup uses the OAuth2
+ * device-code grant: the Kindle shows a short code, the user enters it on a
+ * phone/computer, and this backend keeps the refresh token.
+ *
+ * Tokens live at `mail_oauth/{uid}` in RTDB, which has no rule (default deny)
+ * exactly like `mail_rate_limits` — only the Admin SDK can read it, and no
+ * callable ever returns the refresh token.
+ */
+
+const MS_ACCOUNT_PATH = 'mail_oauth';
+const MS_PENDING_PATH = 'mail_oauth_pending';
+
+// uid -> { email, accessToken, expiresAt }. Warm instances reuse the access
+// token instead of refreshing on every folder/message call.
+const msTokenCache = new Map();
+const msRefreshing = new Map();
+const MS_TOKEN_CACHE_MAX = 500;
+
+function decodeJwtPayload(jwt) {
+    try {
+        const part = String(jwt || '').split('.')[1];
+        if (!part) return null;
+        const padded = part.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    } catch (e) {
+        return null;
+    }
+}
+
+async function msPostForm(url, params) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params).toString(),
+        signal: AbortSignal.timeout(20000)
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) { /* handled by caller */ }
+    if (!json) {
+        throw new HttpsError('internal', 'Outlook sign-in returned an unexpected response.');
+    }
+    return { ok: res.ok, status: res.status, json };
+}
+
+async function getMicrosoftAccessToken(uid) {
+    const cached = msTokenCache.get(uid);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+
+    // Collapse concurrent refreshes inside one instance (mail.html fires folder
+    // list + message list together). Rotation across instances still races, but
+    // the access token cache makes a refresh a once-an-hour event.
+    if (msRefreshing.has(uid)) return msRefreshing.get(uid);
+
+    const pending = (async () => {
+        const clientId = mailOAuth.microsoftClientId();
+        if (!clientId) {
+            throw new HttpsError('failed-precondition', 'Outlook sign-in is not configured yet.');
+        }
+
+        const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`).get();
+        const account = snap.exists() ? snap.val() : null;
+        if (!account || !account.refreshToken) {
+            throw new HttpsError('failed-precondition', 'No Outlook account is connected.');
+        }
+
+        const { ok, json } = await msPostForm(mailOAuth.microsoftTokenUrl(), {
+            client_id: clientId,
+            grant_type: 'refresh_token',
+            refresh_token: account.refreshToken,
+            scope: mailOAuth.microsoftScopes()
+        });
+
+        if (!ok || !json.access_token) {
+            const code = String(json.error || '');
+            logger.warn('Microsoft token refresh failed', { uid, code, desc: json.error_description });
+            if (code === 'invalid_grant' || code === 'interaction_required' || code === 'consent_required') {
+                // Dead token: drop it so the UI can ask for a reconnect instead
+                // of retrying a credential Microsoft has already rejected.
+                await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`).remove().catch(() => { });
+                throw new HttpsError('permission-denied', 'Outlook connection expired. Reconnect it in Mail settings.');
+            }
+            throw new HttpsError('internal', 'Could not reach Outlook. Try again later.');
+        }
+
+        const idPayload = json.id_token ? decodeJwtPayload(json.id_token) : null;
+        const entry = {
+            email: (idPayload && (idPayload.preferred_username || idPayload.email)) || account.email,
+            accessToken: json.access_token,
+            expiresAt: Date.now() + Math.max(60, (Number(json.expires_in) || 3600) - 300) * 1000
+        };
+
+        if (json.refresh_token && json.refresh_token !== account.refreshToken) {
+            await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`)
+                .update({ refreshToken: json.refresh_token, updatedAt: Date.now() })
+                .catch(e => logger.warn('Could not persist rotated refresh token', e.message));
+        }
+
+        return entry;
+    })();
+
+    msRefreshing.set(uid, pending);
+    try {
+        const entry = await pending;
+        if (msTokenCache.size > MS_TOKEN_CACHE_MAX) msTokenCache.clear();
+        msTokenCache.set(uid, entry);
+        return entry;
+    } finally {
+        msRefreshing.delete(uid);
+    }
+}
+
+/**
+ * Resolve the real connection details for a mail callable.
+ *
+ * OAuth accounts: endpoint + auth come from mail-oauth-config (host is pinned
+ * to Microsoft, so a bearer token can never be aimed at another server).
+ * Password accounts: unchanged — validate creds, then SSRF-guard the host.
+ */
+async function resolveMailConnection(uid, config, kind) {
+    if (!config || typeof config !== 'object') {
+        throw new HttpsError('invalid-argument', `Missing ${String(kind).toUpperCase()} configuration.`);
+    }
+
+    if (mailOAuth.isMicrosoftOAuth(config)) {
+        const tokens = await getMicrosoftAccessToken(uid);
+        const endpoint = mailOAuth.endpointFor(config, kind);
+        return Object.assign({}, endpoint, { auth: mailOAuth.authFor(config, kind, tokens) });
+    }
+
+    assertMailAuthConfig(config);
+    const endpoint = mailOAuth.endpointFor(config, kind);
+    await assertMailEndpoint(endpoint.host, endpoint.port, kind);
+    return Object.assign({}, endpoint, { auth: config.auth });
 }
 
 // AgeVerif integration removed — replaced with self-declaration flow.
@@ -561,25 +710,24 @@ exports.verifyAge = onCall(callOptions, async (request) => {
  * }
  */
 exports.fetchEmails = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'imap');
+    const auth = await assertMailAccess(request, 'imap');
 
     const { imap: imapConfig, path = 'INBOX', cursor, limit = 20 } = request.data || {};
 
     if (!imapConfig) {
         throw new HttpsError('invalid-argument', 'Missing IMAP configuration');
     }
-    assertMailAuthConfig(imapConfig);
-    await assertMailEndpoint(imapConfig.host, imapConfig.port || 993, 'imap');
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
 
     const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
     const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
     const safeCursor = Number(cursor) > 0 ? Number(cursor) : null;
 
     const client = new ImapFlow({
-        host: imapConfig.host,
-        port: imapConfig.port || 993,
-        secure: imapConfig.secure !== false,
-        auth: imapConfig.auth,
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
         logger: false
     });
 
@@ -661,23 +809,22 @@ exports.fetchEmails = onCall(callOptions, async (request) => {
 
 
 exports.moveEmail = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'imap');
+    const auth = await assertMailAccess(request, 'imap');
 
     const { imap: imapConfig, path, uid, destination } = request.data || {};
     if (!imapConfig || !uid || !destination) {
         throw new HttpsError('invalid-argument', 'Missing IMAP config, UID, or destination.');
     }
-    assertMailAuthConfig(imapConfig);
-    await assertMailEndpoint(imapConfig.host, imapConfig.port || 993, 'imap');
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
 
     const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
     const safeDestination = String(destination).substring(0, 200);
 
     const client = new ImapFlow({
-        host: imapConfig.host,
-        port: imapConfig.port || 993,
-        secure: imapConfig.secure !== false,
-        auth: imapConfig.auth,
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
         logger: false
     });
 
@@ -699,24 +846,23 @@ exports.moveEmail = onCall(callOptions, async (request) => {
 });
 
 exports.modifyFlags = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'imap');
+    const auth = await assertMailAccess(request, 'imap');
 
     const { imap: imapConfig, path, uid, addFlags, removeFlags } = request.data || {};
     if (!imapConfig || !uid) {
         throw new HttpsError('invalid-argument', 'Missing IMAP config or UID.');
     }
-    assertMailAuthConfig(imapConfig);
-    await assertMailEndpoint(imapConfig.host, imapConfig.port || 993, 'imap');
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
 
     const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
     const safeAdd = Array.isArray(addFlags) ? addFlags.slice(0, 20).map(f => String(f).substring(0, 40)) : [];
     const safeRemove = Array.isArray(removeFlags) ? removeFlags.slice(0, 20).map(f => String(f).substring(0, 40)) : [];
 
     const client = new ImapFlow({
-        host: imapConfig.host,
-        port: imapConfig.port || 993,
-        secure: imapConfig.secure !== false,
-        auth: imapConfig.auth,
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
         logger: false
     });
 
@@ -751,23 +897,22 @@ exports.modifyFlags = onCall(callOptions, async (request) => {
  * }
  */
 exports.fetchEmailBody = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'imap');
+    const auth = await assertMailAccess(request, 'imap');
 
     const { imap: imapConfig, path = 'INBOX', uid } = request.data || {};
 
     if (!imapConfig || !uid) {
         throw new HttpsError('invalid-argument', 'Missing IMAP config or UID');
     }
-    assertMailAuthConfig(imapConfig);
-    await assertMailEndpoint(imapConfig.host, imapConfig.port || 993, 'imap');
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
 
     const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
 
     const client = new ImapFlow({
-        host: imapConfig.host,
-        port: imapConfig.port || 993,
-        secure: imapConfig.secure !== false,
-        auth: imapConfig.auth,
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
         logger: false
     });
 
@@ -843,15 +988,14 @@ exports.fetchEmailBody = onCall(callOptions, async (request) => {
  * }
  */
 exports.sendEmail = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'smtp');
+    const auth = await assertMailAccess(request, 'smtp');
 
     const { smtp: smtpConfig, message } = request.data || {};
 
     if (!smtpConfig || !message) {
         throw new HttpsError('invalid-argument', 'Missing SMTP config or message');
     }
-    assertMailAuthConfig(smtpConfig);
-    await assertMailEndpoint(smtpConfig.host, smtpConfig.port || 465, 'smtp');
+    const conn = await resolveMailConnection(auth.uid, smtpConfig, 'smtp');
 
     const recipients = Array.isArray(message.to) ? message.to.join(',') : String(message.to || '');
     if (!recipients.trim() || recipients.split(',').length > 10) {
@@ -865,15 +1009,18 @@ exports.sendEmail = onCall(callOptions, async (request) => {
     }
 
     const transporter = nodemailer.createTransport({
-        host: smtpConfig.host,
-        port: smtpConfig.port || 465,
-        secure: smtpConfig.secure !== false,
-        auth: smtpConfig.auth
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
+        // Microsoft SMTP (587) only offers STARTTLS; require it for OAuth so
+        // the bearer token can never be sent over a downgraded connection.
+        requireTLS: conn.requireTLS === true
     });
 
     try {
         const info = await transporter.sendMail({
-            from: message.from || smtpConfig.auth.user,
+            from: message.from || conn.auth.user,
             to: recipients,
             subject: message.subject,
             text: message.text,
@@ -894,21 +1041,20 @@ exports.sendEmail = onCall(callOptions, async (request) => {
  * }
  */
 exports.getFolders = onCall(callOptions, async (request) => {
-    await assertMailAccess(request, 'imap');
+    const auth = await assertMailAccess(request, 'imap');
 
     const { imap: imapConfig } = request.data || {};
 
     if (!imapConfig) {
         throw new HttpsError('invalid-argument', 'Missing IMAP configuration');
     }
-    assertMailAuthConfig(imapConfig);
-    await assertMailEndpoint(imapConfig.host, imapConfig.port || 993, 'imap');
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
 
     const client = new ImapFlow({
-        host: imapConfig.host,
-        port: imapConfig.port || 993,
-        secure: imapConfig.secure !== false,
-        auth: imapConfig.auth,
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
         logger: false
     });
 
@@ -934,6 +1080,191 @@ exports.getFolders = onCall(callOptions, async (request) => {
     } finally {
         if (client) await client.logout().catch(() => { });
     }
+});
+
+/**
+ * Outlook / Hotmail: begin a device-code sign-in.
+ *
+ * The Kindle cannot complete Microsoft's sign-in page (it is a JS-only app with
+ * no form fallback), so the user enters the returned code on a phone/computer.
+ * The device code itself stays server-side in `mail_oauth_pending/{uid}`
+ * (default-deny), so a leaked response cannot attach a mailbox to another
+ * ReKindle account. Returns { userCode, verificationUri, expiresIn, interval }.
+ */
+exports.mailMicrosoftStart = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'oauth');
+
+    const clientId = mailOAuth.microsoftClientId();
+    if (!clientId) {
+        throw new HttpsError('failed-precondition', 'Outlook sign-in is not configured yet.');
+    }
+
+    const { ok, json } = await msPostForm(mailOAuth.microsoftDeviceCodeUrl(), {
+        client_id: clientId,
+        scope: mailOAuth.microsoftScopes()
+    });
+
+    if (!ok || !json.device_code) {
+        logger.error('Microsoft device code request failed', {
+            status: json.status, error: json.error, desc: json.error_description
+        });
+        throw new HttpsError('internal', 'Could not start Outlook sign-in.');
+    }
+
+    const interval = Math.max(5, Number(json.interval) || 5);
+    const expiresIn = Number(json.expires_in) || 900;
+
+    await admin.database().ref(`${MS_PENDING_PATH}/${auth.uid}`).set({
+        deviceCode: json.device_code,
+        emailHint: String((request.data && request.data.email) || '').slice(0, 320),
+        createdAt: Date.now(),
+        expiresAt: Date.now() + expiresIn * 1000
+    });
+
+    return {
+        success: true,
+        userCode: json.user_code,
+        verificationUri: json.verification_uri || 'https://microsoft.com/devicelogin',
+        expiresIn,
+        interval
+    };
+});
+
+/**
+ * Outlook / Hotmail: poll the pending device code once.
+ *
+ * Returns { status: 'pending' | 'slow_down' | 'expired' | 'denied' | 'error' |
+ * 'ok', email? }. The client calls this every `interval` seconds. On 'ok' the
+ * refresh token is stored in `mail_oauth/{uid}` and the account is mirrored
+ * into the client-readable `users/{uid}/pro_data/mail` doc (password fields
+ * removed) so other devices can restore it.
+ */
+exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'none');
+
+    const clientId = mailOAuth.microsoftClientId();
+    if (!clientId) {
+        throw new HttpsError('failed-precondition', 'Outlook sign-in is not configured yet.');
+    }
+
+    const pendingRef = admin.database().ref(`${MS_PENDING_PATH}/${auth.uid}`);
+    const snap = await pendingRef.get();
+    const pending = snap.exists() ? snap.val() : null;
+
+    if (!pending || !pending.deviceCode) {
+        return { success: true, status: 'expired' };
+    }
+    if (pending.expiresAt && pending.expiresAt < Date.now()) {
+        await pendingRef.remove().catch(() => { });
+        return { success: true, status: 'expired' };
+    }
+
+    const { ok, json } = await msPostForm(mailOAuth.microsoftTokenUrl(), {
+        client_id: clientId,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        device_code: pending.deviceCode
+    });
+
+    if (!ok) {
+        const code = String(json.error || '');
+        if (code === 'authorization_pending') {
+            return { success: true, status: 'pending' };
+        }
+        if (code === 'slow_down') {
+            return { success: true, status: 'slow_down' };
+        }
+        if (code === 'expired_token' || code === 'code_expired' || code === 'bad_verification_code') {
+            await pendingRef.remove().catch(() => { });
+            return { success: true, status: 'expired' };
+        }
+        if (code === 'authorization_declined' || code === 'access_denied') {
+            await pendingRef.remove().catch(() => { });
+            return { success: true, status: 'denied' };
+        }
+        logger.warn('Microsoft device-code poll failed', {
+            uid: auth.uid, code, desc: json.error_description
+        });
+        // consent_required: a work/school tenant admin has to approve the app.
+        return { success: true, status: code === 'consent_required' ? 'consent' : 'error' };
+    }
+
+    const idPayload = json.id_token ? decodeJwtPayload(json.id_token) : null;
+    const email = String(
+        (idPayload && (idPayload.preferred_username || idPayload.email)) || pending.emailHint || ''
+    ).trim();
+
+    if (!email || !json.refresh_token) {
+        logger.warn('Microsoft device-code success without address/refresh token', {
+            uid: auth.uid, hasEmail: !!email, hasRefresh: !!json.refresh_token
+        });
+        return { success: true, status: 'error' };
+    }
+
+    await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).set({
+        provider: 'microsoft',
+        email,
+        refreshToken: json.refresh_token,
+        updatedAt: Date.now()
+    });
+    await pendingRef.remove().catch(() => { });
+    msTokenCache.delete(auth.uid);
+
+    const FieldValue = admin.firestore.FieldValue;
+    await admin.firestore().collection('users').doc(auth.uid).collection('pro_data').doc('mail').set({
+        imapUser: email,
+        oauth: 'microsoft',
+        imapHost: mailOAuth.MICROSOFT_IMAP.host,
+        imapPort: mailOAuth.MICROSOFT_IMAP.port,
+        smtpHost: mailOAuth.MICROSOFT_SMTP.host,
+        smtpPort: mailOAuth.MICROSOFT_SMTP.port,
+        imapPass: FieldValue.delete(),
+        encrypted: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true }).catch(e => logger.warn('Could not mirror Outlook account to settings', e.message));
+
+    return { success: true, status: 'ok', email };
+});
+
+/**
+ * Outlook / Hotmail: is an account linked? Never returns the refresh token.
+ */
+exports.mailMicrosoftStatus = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'none');
+
+    const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).get();
+    const account = snap.exists() ? snap.val() : null;
+
+    return {
+        success: true,
+        linked: !!(account && account.refreshToken),
+        email: (account && account.email) || null
+    };
+});
+
+/**
+ * Outlook / Hotmail: forget the linked account (refresh token + settings).
+ */
+exports.mailMicrosoftDisconnect = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'none');
+
+    await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).remove();
+    await admin.database().ref(`${MS_PENDING_PATH}/${auth.uid}`).remove().catch(() => { });
+    msTokenCache.delete(auth.uid);
+
+    const FieldValue = admin.firestore.FieldValue;
+    await admin.firestore().collection('users').doc(auth.uid).collection('pro_data').doc('mail').set({
+        oauth: FieldValue.delete(),
+        imapUser: FieldValue.delete(),
+        imapHost: FieldValue.delete(),
+        imapPort: FieldValue.delete(),
+        smtpHost: FieldValue.delete(),
+        smtpPort: FieldValue.delete(),
+        imapPass: FieldValue.delete(),
+        encrypted: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true }).catch(e => logger.warn('Could not clear mail settings', e.message));
+
+    return { success: true };
 });
 
 /**

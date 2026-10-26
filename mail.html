@@ -688,7 +688,7 @@
                 <button class="provider-btn" onclick="selectProvider('gmail')"
                     style="margin-bottom:10px;">Gmail</button>
                 <button class="provider-btn" onclick="selectProvider('outlook')" style="margin-bottom:10px;">Outlook /
-                    Hotmail (not supported)</button>
+                    Hotmail</button>
                 <button class="provider-btn" onclick="selectProvider('yahoo')" style="margin-bottom:10px;">Yahoo
                     Mail</button>
                 <button class="provider-btn" onclick="selectProvider('icloud')"
@@ -697,6 +697,9 @@
                     (IMAP)</button>
                 <button class="sys-btn" onclick="closeSettings()"
                     style="margin-top:10px; background:#ccc;">Cancel</button>
+                <button id="disconnect-link" class="sys-btn" onclick="disconnectMail()"
+                    style="display:none; margin-top:10px; background:#eee; font-size:0.8rem;">Disconnect current
+                    account</button>
             </div>
 
             <!-- STEP 2: Login Form -->
@@ -741,6 +744,45 @@
                 </div>
                 <button class="sys-btn" onclick="showProviderList()"
                     style="background:#eee; margin-top:15px; width:100%;">&lt; Back</button>
+            </div>
+
+            <!-- STEP 2c: Outlook / Hotmail (OAuth2 device-code sign-in) -->
+            <div id="outlook-step"
+                style="display:none; width:100%; max-width:340px; flex-direction:column; text-align:left;">
+                <p id="outlook-intro"
+                    style="font-size:0.85rem; line-height:1.4; margin:0 0 12px 0; background:#f9f9f9; border:1px solid #ccc; padding:10px;">
+                    Microsoft accounts need a sign-in code instead of a password.
+                </p>
+
+                <div id="outlook-form">
+                    <input type="email" id="outlook-email" class="login-input" placeholder="you@hotmail.com"
+                        autocomplete="off">
+                    <div style="display:flex; margin-top:10px;">
+                        <button class="sys-btn" onclick="showProviderList()"
+                            style="background:#eee; flex:1; margin-right:10px;">&lt; Back</button>
+                        <button id="btn-outlook-connect" class="sys-btn" onclick="startOutlookConnect()"
+                            style="flex:2;">Connect</button>
+                    </div>
+                </div>
+
+                <div id="outlook-code-panel" style="display:none;">
+                    <p style="font-size:0.9rem; margin:0 0 8px 0;">On a phone or computer, open:</p>
+                    <div id="outlook-verify-uri"
+                        style="border:2px solid black; padding:8px; font-family:'Courier New',monospace; background:#fff; word-break:break-all;">
+                        microsoft.com/devicelogin</div>
+                    <p style="font-size:0.9rem; margin:12px 0 8px 0;">and enter this code:</p>
+                    <div id="outlook-user-code"
+                        style="border:2px solid black; padding:10px; font-family:'Courier New',monospace; font-size:1.7rem; font-weight:bold; text-align:center; letter-spacing:3px; background:#fff;">
+                        --------</div>
+                    <p id="outlook-status" style="font-size:0.85rem; margin:12px 0 0 0;">Waiting for sign-in...</p>
+                    <div style="display:flex; margin-top:12px;">
+                        <button class="sys-btn" onclick="openOutlookLoginOnDevice()"
+                            style="background:#eee; flex:1; margin-right:10px; font-size:0.8rem;">Try on this
+                            Kindle</button>
+                        <button class="sys-btn" onclick="cancelOutlookConnect()"
+                            style="background:#ccc; flex:1; font-size:0.8rem;">Cancel</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -942,10 +984,10 @@
             outlook: {
                 name: 'Outlook / Hotmail',
                 // Microsoft retired password/app-password IMAP and SMTP for
-                // Outlook.com on 2024-09-16; Modern Auth (OAuth2) is required.
-                // The login form is never shown for this provider - see
-                // showOutlookNotice().
-                unsupported: true,
+                // Outlook.com on 2024-09-16; OAuth2 (XOAUTH2) is required. This
+                // provider never shows the password form - it runs the
+                // device-code flow in showOutlookStep().
+                oauth: 'microsoft',
                 imapHost: 'outlook.office365.com', imapPort: 993,
                 smtpHost: 'smtp.office365.com', smtpPort: 587,
                 helpHtml: ''
@@ -974,6 +1016,24 @@
             functions = firebase.functions();
 
             const savedUser = localStorage.getItem('rekindle_imap_user');
+            const oauthProvider = localStorage.getItem('rekindle_imap_oauth');
+
+            // Outlook / Hotmail keeps no password locally: the refresh token
+            // lives server-side at mail_oauth/{uid}, so a saved address is all
+            // this device needs.
+            if (savedUser && oauthProvider === 'microsoft') {
+                applyOAuthAccount(savedUser);
+                try {
+                    await loadFolders();
+                    await loadEmails();
+                } catch (e) {
+                    console.error("Outlook account could not be reopened", e);
+                    showModal("Could not reach your Outlook mailbox. Please reconnect it in Settings.");
+                    openSettings();
+                }
+                return;
+            }
+
             const encryptedPass = localStorage.getItem('rekindle_imap_pass');
             const savedUid = localStorage.getItem('rekindle_imap_uid');
 
@@ -1016,19 +1076,26 @@
             document.getElementById('auth-overlay').style.display = 'none';
         }
 
+        // Shown when someone pastes a Microsoft server into Custom (IMAP). Those
+        // hosts only accept OAuth2, so the password form can never succeed.
         const OUTLOOK_NOTICE_HTML =
-            '<b>Microsoft has retired password and app-password sign-in for Hotmail and Outlook.com.</b><br><br>' +
-            'Since September 2024, Microsoft requires OAuth2 (modern authentication) for IMAP and SMTP. ' +
-            'ReKindle Mail only supports password / app-password sign-in, so a Hotmail or Outlook.com account cannot be added yet.<br><br>' +
-            '<b>About the JavaScript error:</b> that message is from Microsoft\'s own sign-in page, which blocks the Kindle browser. ' +
-            'An app password cannot be created on the device, and it would not work for IMAP even if you made one on a computer.<br><br>' +
-            '<b>Workaround:</b> add a Gmail, Yahoo or iCloud account instead. To keep your Hotmail mail, set up forwarding in Outlook.com ' +
-            '(Settings &rarr; Mail &rarr; Forwarding) to that address.';
+            '<b>Use the Outlook / Hotmail button instead.</b><br><br>' +
+            'Microsoft stopped accepting passwords and app passwords for Outlook.com IMAP and SMTP in September 2024. ' +
+            'ReKindle connects these accounts with a Microsoft sign-in code: choose <b>Outlook / Hotmail</b> in the provider list, ' +
+            'then enter the code it shows at microsoft.com/devicelogin on a phone or computer.<br><br>' +
+            'A work or school Microsoft 365 mailbox can use the same flow.';
 
         function showProviderList() {
+            stopOutlookPolling();
             document.getElementById('provider-step').style.display = 'flex';
             document.getElementById('login-step').style.display = 'none';
             document.getElementById('provider-notice-step').style.display = 'none';
+            document.getElementById('outlook-step').style.display = 'none';
+
+            const link = document.getElementById('disconnect-link');
+            if (link) {
+                link.style.display = localStorage.getItem('rekindle_imap_user') ? 'block' : 'none';
+            }
         }
 
         function showOutlookNotice() {
@@ -1036,7 +1103,7 @@
             document.getElementById('provider-step').style.display = 'none';
             document.getElementById('login-step').style.display = 'none';
             document.getElementById('provider-notice-step').style.display = 'flex';
-            document.getElementById('provider-notice-title').innerText = 'Outlook / Hotmail is not supported';
+            document.getElementById('provider-notice-title').innerText = 'Outlook needs Microsoft sign-in';
             document.getElementById('provider-notice-body').innerHTML = OUTLOOK_NOTICE_HTML;
         }
 
@@ -1051,12 +1118,13 @@
             const config = PROVIDERS[key];
             if (!config) return;
 
-            if (config.unsupported) {
-                showOutlookNotice();
+            if (config.oauth === 'microsoft') {
+                showOutlookStep();
                 return;
             }
 
             document.getElementById('provider-step').style.display = 'none';
+            document.getElementById('outlook-step').style.display = 'none';
             document.getElementById('login-step').style.display = 'flex';
 
             document.getElementById('provider-help-text').innerHTML = config.helpHtml;
@@ -1071,6 +1139,202 @@
                 document.getElementById('imap-port').value = config.imapPort;
                 document.getElementById('smtp-host').value = config.smtpHost;
                 document.getElementById('smtp-port').value = config.smtpPort;
+            }
+        }
+
+
+        // ── Outlook / Hotmail: OAuth2 device-code sign-in ────────────────────
+        // Microsoft's sign-in page is a JavaScript app with no form fallback, so
+        // the Kindle cannot complete it (and ROPC is unavailable for personal
+        // accounts). Instead the backend starts a device-code flow and we show
+        // the short code; the user enters it on a phone or computer. The refresh
+        // token never reaches this browser: it stays at mail_oauth/{uid}.
+        let outlookFlow = null;
+        let outlookVerifyUri = 'https://microsoft.com/devicelogin';
+
+        function showOutlookStep() {
+            stopOutlookPolling();
+            document.getElementById('auth-overlay').style.display = 'flex';
+            document.getElementById('provider-step').style.display = 'none';
+            document.getElementById('login-step').style.display = 'none';
+            document.getElementById('provider-notice-step').style.display = 'none';
+            document.getElementById('outlook-step').style.display = 'flex';
+            document.getElementById('outlook-form').style.display = 'block';
+            document.getElementById('outlook-code-panel').style.display = 'none';
+            document.getElementById('outlook-intro').innerText =
+                'Microsoft accounts need a sign-in code instead of a password.';
+
+            const emailField = document.getElementById('outlook-email');
+            if (!emailField.value) {
+                emailField.value = localStorage.getItem('rekindle_imap_user') || '';
+            }
+            const btn = document.getElementById('btn-outlook-connect');
+            btn.disabled = false;
+            btn.innerText = 'Connect';
+        }
+
+        function outlookErrorText(e) {
+            const code = String((e && e.code) || '');
+            if (code.indexOf('failed-precondition') > -1) {
+                return 'Outlook sign-in is not set up on the server yet.';
+            }
+            if (code.indexOf('permission-denied') > -1) {
+                return 'ReKindle+ is required for Mail.';
+            }
+            if (code.indexOf('resource-exhausted') > -1) {
+                return 'Too many attempts. Wait a minute and try again.';
+            }
+            return (e && e.message) ? e.message : 'Could not start Outlook sign-in.';
+        }
+
+        async function startOutlookConnect() {
+            const email = document.getElementById('outlook-email').value.trim();
+            const btn = document.getElementById('btn-outlook-connect');
+            btn.disabled = true;
+            btn.innerText = 'Starting...';
+
+            try {
+                const start = functions.httpsCallable('mailMicrosoftStart');
+                const res = await start({ email: email });
+                const data = res.data || {};
+                if (!data.userCode) throw new Error('Microsoft did not return a code.');
+
+                document.getElementById('outlook-form').style.display = 'none';
+                document.getElementById('outlook-code-panel').style.display = 'block';
+                document.getElementById('outlook-user-code').innerText = data.userCode;
+
+                // Microsoft picks the short link per account type
+                // (microsoft.com/devicelogin, login.microsoft.com/device,
+                // microsoft.com/link) - show exactly the one it issued.
+                const verifyUri = String(data.verificationUri || 'https://microsoft.com/devicelogin');
+                outlookVerifyUri = verifyUri;
+                document.getElementById('outlook-verify-uri').innerText =
+                    verifyUri.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+                document.getElementById('outlook-status').innerText = 'Waiting for sign-in...';
+                document.getElementById('outlook-intro').innerText =
+                    'Keep this window open and finish the sign-in on your phone or computer.';
+
+                beginOutlookPolling(Math.max(5, data.interval || 5) * 1000);
+            } catch (e) {
+                console.error('Outlook start failed', e);
+                showModal(outlookErrorText(e));
+                btn.disabled = false;
+                btn.innerText = 'Connect';
+            }
+        }
+
+        function beginOutlookPolling(delayMs) {
+            stopOutlookPolling();
+            outlookFlow = { cancelled: false, timer: null };
+            let delay = delayMs;
+
+            const tick = async () => {
+                if (!outlookFlow || outlookFlow.cancelled) return;
+                try {
+                    const poll = functions.httpsCallable('mailMicrosoftPoll');
+                    const res = await poll({});
+                    const data = res.data || {};
+
+                    if (data.status === 'ok') {
+                        stopOutlookPolling();
+                        await onOutlookConnected(data.email);
+                        return;
+                    }
+                    if (data.status === 'expired') {
+                        outlookConnectFailed('That code expired. Press Connect for a new one.');
+                        return;
+                    }
+                    if (data.status === 'denied') {
+                        outlookConnectFailed('Sign-in was cancelled on the other device.');
+                        return;
+                    }
+                    if (data.status === 'consent') {
+                        outlookConnectFailed('Your organisation needs to approve this app before it can connect.');
+                        return;
+                    }
+                    if (data.status === 'error') {
+                        outlookConnectFailed('Microsoft did not complete the sign-in. Try again.');
+                        return;
+                    }
+                    if (data.status === 'slow_down') {
+                        delay = Math.min(delay + 5000, 30000);
+                    }
+                } catch (e) {
+                    // Transient callable/network failure: keep the flow alive and
+                    // retry next tick. Only a revoked/expired link is fatal.
+                    console.warn('Outlook poll failed, retrying', e);
+                    if (String((e && e.code) || '').indexOf('permission-denied') > -1) {
+                        outlookConnectFailed(outlookErrorText(e));
+                        return;
+                    }
+                }
+                if (outlookFlow && !outlookFlow.cancelled) {
+                    outlookFlow.timer = setTimeout(tick, delay);
+                }
+            };
+
+            outlookFlow.timer = setTimeout(tick, delay);
+        }
+
+        function stopOutlookPolling() {
+            if (outlookFlow && outlookFlow.timer) clearTimeout(outlookFlow.timer);
+            if (outlookFlow) outlookFlow.cancelled = true;
+            outlookFlow = null;
+        }
+
+        function outlookConnectFailed(message) {
+            stopOutlookPolling();
+            document.getElementById('outlook-status').innerText = message;
+            document.getElementById('outlook-code-panel').style.display = 'none';
+            document.getElementById('outlook-form').style.display = 'block';
+            const btn = document.getElementById('btn-outlook-connect');
+            btn.disabled = false;
+            btn.innerText = 'Connect';
+        }
+
+        function cancelOutlookConnect() {
+            stopOutlookPolling();
+            showProviderList();
+        }
+
+        function openOutlookLoginOnDevice() {
+            // Usually fails on the Kindle (Microsoft needs JavaScript this browser
+            // does not run), but when it does render the flow can finish here.
+            window.open(outlookVerifyUri || 'https://microsoft.com/devicelogin', '_blank');
+        }
+
+        function applyOAuthAccount(address) {
+            userEmail = address;
+            imapConfig = { oauth: 'microsoft' };
+            smtpConfig = { oauth: 'microsoft' };
+            try {
+                localStorage.setItem('rekindle_imap_oauth', 'microsoft');
+                localStorage.setItem('rekindle_imap_user', address);
+                localStorage.setItem('rekindle_imap_host', 'outlook.office365.com');
+                localStorage.setItem('rekindle_imap_port', '993');
+                localStorage.setItem('rekindle_smtp_host', 'smtp.office365.com');
+                localStorage.setItem('rekindle_smtp_port', '587');
+                localStorage.removeItem('rekindle_imap_pass');
+                localStorage.removeItem('rekindle_imap_uid');
+            } catch (e) {
+                console.warn('Could not persist the Outlook account locally', e);
+            }
+        }
+
+        async function onOutlookConnected(email) {
+            const address = String(email || document.getElementById('outlook-email').value || '').trim();
+            applyOAuthAccount(address);
+            document.getElementById('auth-overlay').style.display = 'none';
+
+            try {
+                await loadFolders();
+                await loadEmails();
+            } catch (e) {
+                console.error('Outlook connected but the mailbox did not open', e);
+                showModal('Connected to Microsoft, but the mailbox would not open. In Outlook.com, turn on ' +
+                    'Settings > Mail > Forwarding and IMAP > "Let devices and apps use IMAP", then reconnect.');
+                openSettings();
             }
         }
 
@@ -1151,11 +1415,25 @@
             }
         }
 
-        function logout() {
-            localStorage.removeItem('rekindle_imap_user');
-            localStorage.removeItem('rekindle_imap_pass');
-            localStorage.removeItem('rekindle_imap_uid');
+        // Unlink the account on this device. For Outlook the refresh token is
+        // also deleted server-side, otherwise "disconnect" would only hide it.
+        async function disconnectMail() {
+            const isOauth = localStorage.getItem('rekindle_imap_oauth') === 'microsoft';
+            if (isOauth && functions) {
+                try {
+                    await functions.httpsCallable('mailMicrosoftDisconnect')({});
+                } catch (e) {
+                    console.warn('Could not unlink the Outlook account on the server', e);
+                }
+            }
+            ['rekindle_imap_oauth', 'rekindle_imap_user', 'rekindle_imap_pass', 'rekindle_imap_uid',
+                'rekindle_imap_host', 'rekindle_imap_port', 'rekindle_smtp_host', 'rekindle_smtp_port']
+                .forEach(k => localStorage.removeItem(k));
             location.reload();
+        }
+
+        function logout() {
+            disconnectMail();
         }
 
         async function loadFolders() {
@@ -1781,6 +2059,18 @@
 
                 if (doc.exists) {
                     const data = doc.data();
+                    if (data.oauth === 'microsoft' && data.imapUser) {
+                        // Server-owned refresh token; nothing secret is stored here.
+                        localStorage.setItem('rekindle_imap_oauth', 'microsoft');
+                        localStorage.setItem('rekindle_imap_user', data.imapUser);
+                        localStorage.setItem('rekindle_imap_host', data.imapHost || 'outlook.office365.com');
+                        localStorage.setItem('rekindle_imap_port', data.imapPort || 993);
+                        localStorage.setItem('rekindle_smtp_host', data.smtpHost || 'smtp.office365.com');
+                        localStorage.setItem('rekindle_smtp_port', data.smtpPort || 587);
+                        localStorage.removeItem('rekindle_imap_pass');
+                        localStorage.removeItem('rekindle_imap_uid');
+                        return;
+                    }
                     if (data.imapUser && data.imapPass) {
                         // Decrypt password before storing locally
                         let password = data.imapPass;
