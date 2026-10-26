@@ -128,6 +128,51 @@ security_events/{uid}/{pushId} = {
 2. Deploy RTDB rules: `npm run deploy:rules:rtdb`. The nodes are already denied
    by default, so this is documentation/explicitness, but keep them in sync.
 
+### Deploy gotcha: a gen2 callable can land without its Cloud Run invoker (2026-10-26)
+
+The first deploy of `resetForgottenPassword` created an ACTIVE function but left
+its Cloud Run service (`resetforgottenpassword`) with **no IAM bindings**. Every
+browser request then failed as:
+
+```
+Origin https://rekindle.ink is not allowed by Access-Control-Allow-Origin. Status code: 401
+```
+
+That is not a CORS bug in this code: Google Frontend rejects the request before
+the functions framework runs, so the 401/403 has no `Access-Control-Allow-Origin`
+at all. The preflight was the tell:
+
+```bash
+# Working callable: 204 + access-control-allow-origin
+curl -sS -o /dev/null -D - -X OPTIONS \
+  https://us-central1-rekindle-dd1fa.cloudfunctions.net/deleteAccount \
+  -H 'Origin: https://rekindle.ink' -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type'
+
+# Broken callable: 403 + no CORS headers
+```
+
+`firebase-tools` normally calls `setInvokerCreate` for new HTTPS triggers
+(`release/fabricator.js`: `invoker = endpoint.httpsTrigger.invoker || ["public"]`),
+so this means the deploy's "set invoker" step failed or was skipped - the CLI
+prints `Unable to set the invoker for the IAM policy on the following functions`
+when it does. It is worth watching for that line.
+
+Fix (idempotent, no redeploy needed):
+
+```bash
+# Cloud Run -> resetforgottenpassword -> Permissions
+# add allUsers as Cloud Run Invoker (roles/run.invoker)
+```
+
+Then verify the preflight returns `204` with
+`access-control-allow-origin: https://rekindle.ink`, and an unauthenticated POST
+returns `401` **with** that header and the function's JSON error.
+
+Audit other services when this happens: `cleanupsocial` is the one service that
+is correctly private because it is an `onSchedule` trigger, not an HTTPS
+endpoint. All callables must have `roles/run.invoker` for `allUsers`.
+
 ## Manual verification (throwaway account)
 
 1. Sign in on a device, open Settings → Change Password → **Forgot your current
