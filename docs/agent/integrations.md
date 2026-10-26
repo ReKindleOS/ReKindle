@@ -697,6 +697,17 @@ Two behaviours to remember:
 
 ### Failure modes to keep in mind
 
+* **The sign-in address is not the mailbox address (2026-10-26).** A Microsoft
+  account can be signed in as a third-party address — the reported case was
+  signing in as `timjarnott@gmail.com` for the mailbox
+  `tim.biscuits@hotmail.com`. IMAP authenticates the **mailbox** address, so
+  storing the id_token's `preferred_username` made every call fail with "the
+  mail server rejected this account's login". The poll now probes the address the
+  user typed first, then the sign-in identity (`canOpenOutlookMailbox()`), and
+  stores only an address that actually opens the mailbox; if none do it returns
+  `status: 'imap'` and the dialog asks for the receiving address. Graph `/me`
+  would answer this authoritatively but needs the `User.Read` permission, which
+  is why the probe exists instead.
 * **IMAP off in Outlook.com.** A valid token still fails to select INBOX. The
   client's `onOutlookConnected()` says so explicitly: Settings → Mail →
   Forwarding and IMAP → "Let devices and apps use IMAP".

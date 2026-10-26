@@ -1098,6 +1098,35 @@ exports.getFolders = onCall(callOptions, async (request) => {
 });
 
 /**
+ * Can this address open its mailbox with that access token?
+ *
+ * A Microsoft account's sign-in identity is whatever address the user chose —
+ * it can be a Gmail address — while the mailbox has its own primary SMTP
+ * address (`timjarnott@gmail.com` signing in to `tim.biscuits@hotmail.com`).
+ * IMAP authenticates the *mailbox* address, so the two must not be conflated.
+ */
+async function canOpenOutlookMailbox(address, accessToken) {
+    const client = new ImapFlow({
+        host: mailOAuth.MICROSOFT_IMAP.host,
+        port: mailOAuth.MICROSOFT_IMAP.port,
+        secure: true,
+        auth: { user: address, accessToken },
+        logger: false,
+        greetingTimeout: 8000,
+        socketTimeout: 15000
+    });
+    try {
+        await client.connect();
+        return true;
+    } catch (e) {
+        logger.info('Outlook mailbox probe failed', { address, message: e.message });
+        return false;
+    } finally {
+        await client.logout().catch(() => { });
+    }
+}
+
+/**
  * Outlook / Hotmail: begin a device-code sign-in.
  *
  * The Kindle cannot complete Microsoft's sign-in page (it is a JS-only app with
@@ -1204,15 +1233,42 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
     }
 
     const idPayload = json.id_token ? decodeJwtPayload(json.id_token) : null;
-    const email = String(
-        (idPayload && (idPayload.preferred_username || idPayload.email)) || pending.emailHint || ''
+    const signInEmail = String(
+        (idPayload && (idPayload.preferred_username || idPayload.email)) || ''
     ).trim();
 
-    if (!email || !json.refresh_token) {
-        logger.warn('Microsoft device-code success without address/refresh token', {
-            uid: auth.uid, hasEmail: !!email, hasRefresh: !!json.refresh_token
-        });
+    if (!json.refresh_token) {
+        logger.warn('Microsoft device-code success without a refresh token', { uid: auth.uid });
         return { success: true, status: 'error' };
+    }
+
+    // Try the address the user typed first, then the sign-in identity. Only an
+    // address that actually opens the mailbox is safe to store: storing the
+    // sign-in identity made every later folder/message call fail with "the mail
+    // server rejected this account's login".
+    const candidates = [];
+    [pending.emailHint, signInEmail].forEach(value => {
+        const clean = String(value || '').trim();
+        if (clean && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)
+            && candidates.map(c => c.toLowerCase()).indexOf(clean.toLowerCase()) === -1) {
+            candidates.push(clean);
+        }
+    });
+
+    let email = null;
+    for (const candidate of candidates) {
+        if (await canOpenOutlookMailbox(candidate, json.access_token)) {
+            email = candidate;
+            break;
+        }
+    }
+
+    if (!email) {
+        await pendingRef.remove().catch(() => { });
+        logger.warn('Outlook sign-in succeeded but no candidate mailbox address opened', {
+            uid: auth.uid, candidates
+        });
+        return { success: true, status: 'imap', email: candidates[candidates.length - 1] || null };
     }
 
     // Re-running the flow for a mailbox that is already linked refreshes its
