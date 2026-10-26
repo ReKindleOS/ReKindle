@@ -147,7 +147,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Signing out does not delete cloud data. Signing back in restores it.</li>
             </ul>
             <h2>Changing your password</h2>
-            <p>Open <b>Settings</b> and use <b>Change Password</b> under Account. You need the current password. There is no self-service "forgot password" email flow because accounts do not require an email address; if you are locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username.</p>
+            <p>Open <b>Settings</b> and use <b>Change Password</b> under Account. Enter the current password, then the new one twice. Passwords must be at least 6 characters here.</p>
+            <p><b>Forgot the current password?</b> If you are still signed in on this device, choose <b>Forgot your current password?</b> in the same box, type your username to confirm, and set a new password (at least 8 characters). This works from the live session - there is no "forgot password" email because accounts do not require an email address. Only do this on a device you control: anyone who can use a device you are signed in on could reset the password too.</p>
+            <p>If you are signed out and locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
             <h2>Age verification for social apps</h2>
             <p>KindleChat, Neighbourhood and Topics require a one-time age check before posting. You enter your date of birth and country; ReKindle checks the minimum social-media age for that country. The check is a self-declaration, not an ID upload. You can browse some social content without it, but posting and messaging are blocked until it is complete.</p>
             <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used only for the age check. See the <a href="privacy.html">Privacy Policy</a>.</div>

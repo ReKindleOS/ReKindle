@@ -631,6 +631,85 @@
             margin-top: 10px;
         }
 
+        /* CHANGE PASSWORD / FORGOTTEN-PASSWORD RESET
+           The reset path changes the password from a live session, so it needs
+           its own explicit mode, warning and confirmation (see
+           docs/agent/password-recovery.md). */
+        #password-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 10001;
+            align-items: center;
+            justify-content: center;
+            font-family: "Geneva", "Verdana", sans-serif;
+        }
+
+        #password-modal-overlay .modal-box {
+            width: 90%;
+            max-width: 380px;
+            max-height: 92vh;
+            overflow-y: auto;
+            text-align: left;
+            /* Include the 20px padding in max-height so a short viewport does
+               not clip the top/bottom border. */
+            box-sizing: border-box;
+        }
+
+        #password-modal-overlay .modal-btn {
+            min-height: 48px;
+            box-sizing: border-box;
+        }
+
+        .pwd-link {
+            display: block;
+            width: 100%;
+            min-height: 48px;
+            box-sizing: border-box;
+            margin: 0 0 12px 0;
+            padding: 10px;
+            background: white;
+            color: black;
+            border: 2px solid black;
+            box-shadow: 2px 2px 0 black;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .pwd-link:active {
+            background: black;
+            color: white;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        .pwd-warn {
+            border: 2px solid black;
+            padding: 8px;
+            margin-bottom: 12px;
+            font-size: 0.75rem;
+            line-height: 1.35;
+            text-align: left;
+            background: white;
+        }
+
+        #pwd-error {
+            display: none;
+            border: 2px solid black;
+            background: white;
+            color: black;
+            font-weight: bold;
+            font-size: 0.8rem;
+            padding: 6px;
+            margin-bottom: 10px;
+        }
+
         /* Custom Select CSS moved to css/custom-select.css */
     </style>
     <link rel="stylesheet" href="css/custom-select.css">
@@ -903,10 +982,10 @@
 
             <div class="setting-row" id="change-password-row" style="display:none;">
                 <div class="setting-text">
-                    <strong>Change Password</strong>
-                    <div class="setting-desc">Update your ReKindle account password.</div>
+                    <strong data-i18n="settings.password.title">Change Password</strong>
+                    <div class="setting-desc" data-i18n="settings.password.row_desc">Update your password. If you have forgotten it, you can reset it while signed in.</div>
                 </div>
-                <button class="sys-btn" onclick="openPasswordModal()" style="width: auto; padding: 5px 15px;">Edit</button>
+                <button class="sys-btn" onclick="openPasswordModal()" style="width: auto; padding: 5px 15px;" data-i18n="settings.password.row_btn">Edit</button>
             </div>
 
             <div class="danger-row" id="delete-account-row" style="display:none;">
@@ -1151,60 +1230,240 @@
             document.getElementById('pro-status-banner').style.display = 'none';
         }
 
+        // --- PASSWORD CHANGE / FORGOTTEN-PASSWORD RESET ---
+        // Two modes share one modal:
+        //   current -> reauthenticate with the old password (normal change)
+        //   forgot  -> reset through the `resetForgottenPassword` callable.
+        // ReKindle accounts have no real email address, so a user who is still
+        // signed in but has forgotten the password has no reset link. The
+        // callable trusts the live session and adds a typed-username check, a
+        // strict password policy, a rate limit and an audit entry. See
+        // docs/agent/password-recovery.md.
+        let passwordMode = 'current';
+        let passwordBusy = false;
+
+        function passwordAccountName() {
+            const user = auth.currentUser;
+            if (!user || !user.email) return '';
+            return String(user.email).split('@')[0];
+        }
+
+        function setPasswordError(message) {
+            const el = document.getElementById('pwd-error');
+            if (!el) return;
+            if (message) {
+                el.textContent = message;
+                el.style.display = 'block';
+            } else {
+                el.textContent = '';
+                el.style.display = 'none';
+            }
+        }
+
+        function setPasswordBusy(isBusy) {
+            passwordBusy = !!isBusy;
+            const submit = document.getElementById('pwd-submit');
+            const cancel = document.getElementById('pwd-cancel');
+            if (submit) submit.disabled = passwordBusy;
+            if (cancel) cancel.disabled = passwordBusy;
+        }
+
+        function renderPasswordMode() {
+            const forgot = passwordMode === 'forgot';
+            const currentStep = document.getElementById('pwd-step-current');
+            const forgotStep = document.getElementById('pwd-step-forgot');
+            if (currentStep) currentStep.style.display = forgot ? 'none' : 'block';
+            if (forgotStep) forgotStep.style.display = forgot ? 'block' : 'none';
+
+            const submit = document.getElementById('pwd-submit');
+            if (submit) {
+                submit.innerText = forgot
+                    ? window.t('settings.password.reset_btn', 'Reset Password')
+                    : window.t('settings.password.save', 'Save');
+            }
+            const newInput = document.getElementById('pwd-new');
+            if (newInput) {
+                newInput.setAttribute('placeholder', forgot
+                    ? window.t('settings.password.new_placeholder_reset', 'New password (min 8 characters)')
+                    : window.t('settings.password.new_placeholder_current', 'New password (min 6 characters)'));
+            }
+        }
+
         function openPasswordModal() {
+            passwordMode = 'current';
+            setPasswordBusy(false);
             document.getElementById('pwd-current').value = '';
+            document.getElementById('pwd-username').value = '';
             document.getElementById('pwd-new').value = '';
             document.getElementById('pwd-confirm').value = '';
-            document.getElementById('pwd-error').style.display = 'none';
+            setPasswordError('');
+            renderPasswordMode();
             document.getElementById('password-modal-overlay').style.display = 'flex';
             document.getElementById('pwd-current').focus();
         }
 
         function closePasswordModal() {
+            if (passwordBusy) return;
             document.getElementById('password-modal-overlay').style.display = 'none';
+            setPasswordError('');
+        }
+
+        function showPasswordForgotMode() {
+            if (passwordBusy) return;
+            passwordMode = 'forgot';
+            // Never keep a typed current password after switching paths.
+            document.getElementById('pwd-current').value = '';
+            setPasswordError('');
+            renderPasswordMode();
+            document.getElementById('pwd-username').focus();
+        }
+
+        function showPasswordCurrentMode() {
+            if (passwordBusy) return;
+            passwordMode = 'current';
+            document.getElementById('pwd-username').value = '';
+            setPasswordError('');
+            renderPasswordMode();
+            document.getElementById('pwd-current').focus();
+        }
+
+        function passwordResetErrorText(err) {
+            const code = (err && err.code) ? err.code : '';
+            const details = (err && err.details) ? err.details : null;
+            const detailCode = (details && details.code) ? details.code : '';
+
+            if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' ||
+                code === 'auth/invalid-login-credentials') {
+                return window.t('settings.password.err_wrong_password', 'Current password is incorrect.');
+            }
+            if (code === 'functions/unauthenticated') {
+                return window.t('settings.password.err_signin', 'Please sign in first.');
+            }
+            if (code === 'functions/permission-denied') {
+                return window.t('settings.password.err_username', 'The username you typed does not match this account.');
+            }
+            if (code === 'functions/invalid-argument') {
+                if (detailCode === 'password-too-short') {
+                    return window.t('settings.password.err_short_8', 'New password must be at least 8 characters.');
+                }
+                if (detailCode === 'password-too-long') {
+                    return window.t('settings.password.err_long', 'New password is too long.');
+                }
+                if (detailCode === 'password-too-guessable') {
+                    return window.t('settings.password.err_guessable', 'Choose a password that is not your username.');
+                }
+                if (detailCode === 'password-rejected') {
+                    return window.t('settings.password.err_rejected', 'That password is not allowed. Choose a stronger one.');
+                }
+                return window.t('settings.password.err_fill', 'Please fill in all fields.');
+            }
+            if (code === 'functions/resource-exhausted') {
+                const retry = (details && details.retryAfterSeconds) ? Number(details.retryAfterSeconds) : 0;
+                if (retry > 0 && typeof window.tFormat === 'function') {
+                    const minutes = Math.max(1, Math.ceil(retry / 60));
+                    return window.tFormat('settings.password.err_rate_limited',
+                        { minutes: minutes },
+                        'Too many attempts. Try again in ${minutes} minute(s).');
+                }
+                return window.t('settings.password.err_rate_limited_generic', 'Too many attempts. Please wait and try again.');
+            }
+            if (code === 'functions/not-found' || code === 'functions/failed-precondition') {
+                return window.t('settings.password.err_unavailable', 'Password reset is temporarily unavailable. Please try again later.');
+            }
+            if (code === 'functions/unavailable' || code === 'auth/network-request-failed') {
+                return window.t('settings.password.err_network', 'Network error. Please try again.');
+            }
+            if (code === 'functions/internal' || code === 'functions/unknown') {
+                return window.t('settings.password.err_generic', 'Could not change your password. Please try again.');
+            }
+            if (err && err.message) return err.message;
+            return window.t('settings.password.err_generic', 'Could not change your password. Please try again.');
+        }
+
+        function finishPasswordChange(message) {
+            setPasswordBusy(false);
+            document.getElementById('password-modal-overlay').style.display = 'none';
+            setPasswordError('');
+            document.getElementById('pwd-current').value = '';
+            document.getElementById('pwd-username').value = '';
+            document.getElementById('pwd-new').value = '';
+            document.getElementById('pwd-confirm').value = '';
+            showModal(message);
         }
 
         function submitPasswordChange() {
-            const current = document.getElementById('pwd-current').value;
-            const newPwd = document.getElementById('pwd-new').value;
-            const confirm = document.getElementById('pwd-confirm').value;
-            const errorEl = document.getElementById('pwd-error');
-
-            errorEl.style.display = 'none';
-
-            if (!current || !newPwd || !confirm) {
-                errorEl.textContent = 'Please fill in all fields.';
-                errorEl.style.display = 'block';
-                return;
-            }
-            if (newPwd.length < 6) {
-                errorEl.textContent = 'New password must be at least 6 characters.';
-                errorEl.style.display = 'block';
-                return;
-            }
-            if (newPwd !== confirm) {
-                errorEl.textContent = 'New passwords do not match.';
-                errorEl.style.display = 'block';
-                return;
-            }
+            if (passwordBusy) return;
 
             const user = auth.currentUser;
-            if (!user) return;
+            if (!user) {
+                showModal(window.t('settings.password.err_signin', 'Please sign in first.'));
+                return;
+            }
 
-            const credential = firebase.auth.EmailAuthProvider.credential(user.email, current);
+            const forgot = passwordMode === 'forgot';
+            const newPwd = document.getElementById('pwd-new').value;
+            const confirmPwd = document.getElementById('pwd-confirm').value;
+            const currentPwd = forgot ? '' : document.getElementById('pwd-current').value;
+            const typedName = forgot ? document.getElementById('pwd-username').value.trim() : '';
+
+            setPasswordError('');
+
+            if (forgot) {
+                const expected = passwordAccountName();
+                if (!typedName) {
+                    setPasswordError(window.t('settings.password.err_username_required', 'Type your username to confirm.'));
+                    return;
+                }
+                if (expected && typedName.toLowerCase() !== expected.toLowerCase()) {
+                    setPasswordError(window.t('settings.password.err_username', 'The username you typed does not match this account.'));
+                    return;
+                }
+            } else if (!currentPwd) {
+                setPasswordError(window.t('settings.password.err_current_required', 'Please enter your current password.'));
+                return;
+            }
+
+            if (!newPwd || !confirmPwd) {
+                setPasswordError(window.t('settings.password.err_fill', 'Please fill in all fields.'));
+                return;
+            }
+            const minLength = forgot ? 8 : 6;
+            if (newPwd.length < minLength) {
+                setPasswordError(forgot
+                    ? window.t('settings.password.err_short_8', 'New password must be at least 8 characters.')
+                    : window.t('settings.password.err_short_6', 'New password must be at least 6 characters.'));
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                setPasswordError(window.t('settings.password.err_match', 'New passwords do not match.'));
+                return;
+            }
+
+            setPasswordBusy(true);
+
+            if (forgot) {
+                firebase.app().functions().httpsCallable('resetForgottenPassword')({
+                    username: typedName,
+                    newPassword: newPwd
+                }).then(function () {
+                    finishPasswordChange(window.t('settings.password.reset_success',
+                        'Password reset. Use your new password the next time you sign in.'));
+                }).catch(function (err) {
+                    setPasswordBusy(false);
+                    setPasswordError(passwordResetErrorText(err));
+                });
+                return;
+            }
+
+            const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPwd);
             user.reauthenticateWithCredential(credential)
-                .then(() => user.updatePassword(newPwd))
-                .then(() => {
-                    closePasswordModal();
-                    showModal('Password updated successfully.');
+                .then(function () { return user.updatePassword(newPwd); })
+                .then(function () {
+                    finishPasswordChange(window.t('settings.password.success_current', 'Password updated successfully.'));
                 })
-                .catch(err => {
-                    if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-                        errorEl.textContent = 'Current password is incorrect.';
-                    } else {
-                        errorEl.textContent = err.message || 'An error occurred.';
-                    }
-                    errorEl.style.display = 'block';
+                .catch(function (err) {
+                    setPasswordBusy(false);
+                    setPasswordError(passwordResetErrorText(err));
                 });
         }
 
@@ -2419,21 +2678,53 @@
 
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11"></script>
-    <!-- PASSWORD CHANGE MODAL -->
-    <div id="password-modal-overlay"
-        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.95); z-index:2000; align-items:center; justify-content:center;">
-        <div class="modal-box" style="width:90%; max-width:320px; text-align:left;">
-            <h3 style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:10px;">Change Password</h3>
-            <label class="dav-label" for="pwd-current">Current Password</label>
-            <input type="password" id="pwd-current" class="dav-input" placeholder="Current password" style="margin-bottom:10px;">
-            <label class="dav-label" for="pwd-new">New Password</label>
-            <input type="password" id="pwd-new" class="dav-input" placeholder="New password (min 6 chars)" style="margin-bottom:10px;">
-            <label class="dav-label" for="pwd-confirm">Confirm New Password</label>
-            <input type="password" id="pwd-confirm" class="dav-input" placeholder="Confirm new password" style="margin-bottom:15px;">
-            <div id="pwd-error" style="color:red; font-size:0.8rem; margin-bottom:10px; display:none;"></div>
-            <div class="settings-btn-row" style="display:flex;">
-                <button class="modal-btn" onclick="closePasswordModal()" style="flex:1;">Cancel</button>
-                <button class="modal-btn" onclick="submitPasswordChange()" style="flex:1; background:black; color:white;">Save</button>
+    <!-- PASSWORD CHANGE / FORGOTTEN-PASSWORD RESET MODAL -->
+    <div id="password-modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h3 style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:10px;"
+                data-i18n="settings.password.title">Change Password</h3>
+
+            <div id="pwd-step-current">
+                <label class="dav-label" for="pwd-current"
+                    data-i18n="settings.password.current_label">Current Password</label>
+                <input type="password" id="pwd-current" class="dav-input" autocomplete="current-password"
+                    data-i18n-placeholder="settings.password.current_placeholder"
+                    placeholder="Current password" style="margin-bottom:8px;">
+                <button type="button" class="pwd-link" onclick="showPasswordForgotMode()"
+                    data-i18n="settings.password.forgot_link">Forgot your current password?</button>
+            </div>
+
+            <div id="pwd-step-forgot" style="display:none;">
+                <div class="pwd-warn" data-i18n="settings.password.forgot_warning">
+                    This sets a new password without checking the old one. Anyone who can use this signed-in
+                    device could do the same, so only continue if this device is yours.
+                </div>
+                <label class="dav-label" for="pwd-username"
+                    data-i18n="settings.password.username_label">Type your username to confirm</label>
+                <input type="text" id="pwd-username" class="dav-input" autocomplete="off" autocapitalize="none"
+                    spellcheck="false" data-i18n-placeholder="settings.password.username_placeholder"
+                    placeholder="your username" style="margin-bottom:8px;">
+                <button type="button" class="pwd-link" onclick="showPasswordCurrentMode()"
+                    data-i18n="settings.password.use_current_link">Use my current password instead</button>
+            </div>
+
+            <label class="dav-label" for="pwd-new" data-i18n="settings.password.new_label">New Password</label>
+            <input type="password" id="pwd-new" class="dav-input" autocomplete="new-password"
+                placeholder="New password (min 6 characters)" style="margin-bottom:10px;">
+
+            <label class="dav-label" for="pwd-confirm"
+                data-i18n="settings.password.confirm_label">Confirm New Password</label>
+            <input type="password" id="pwd-confirm" class="dav-input" autocomplete="new-password"
+                data-i18n-placeholder="settings.password.confirm_placeholder"
+                placeholder="Confirm new password" style="margin-bottom:15px;">
+
+            <div id="pwd-error"></div>
+
+            <div class="settings-btn-row" style="display:flex; margin-top:12px;">
+                <button class="modal-btn" id="pwd-cancel" onclick="closePasswordModal()" style="flex:1;"
+                    data-i18n="settings.password.cancel">Cancel</button>
+                <button class="modal-btn" id="pwd-submit" onclick="submitPasswordChange()"
+                    style="flex:1; background:black; color:white;">Save</button>
             </div>
         </div>
     </div>

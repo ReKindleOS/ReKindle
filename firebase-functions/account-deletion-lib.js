@@ -49,7 +49,12 @@ const PRIMARY_USER_RTDB_ROOTS = [
     'moderators',
     // Written by the mail callables (firebase-functions/index.js
     // mail_rate_limits/{uid}/{kind}); no content, but it is uid-keyed.
-    'mail_rate_limits'
+    'mail_rate_limits',
+    // Written by resetForgottenPassword (password-reset.js): the per-uid
+    // attempt window and the "password changed without current password"
+    // audit entries. Both are uid-keyed and must not outlive the account.
+    'password_reset_limits',
+    'security_events'
 ];
 
 // Social-project RTDB nodes keyed by uid. DM threads/messages/blocks are not in

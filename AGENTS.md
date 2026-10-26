@@ -35,6 +35,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [i18n.md](docs/agent/i18n.md) | `window.t()` / `tFormat` calls, raw key or `${...}` text on screen, translated dropdown labels, the global `function t` trap |
 | [backlog.md](docs/agent/backlog.md) | Deferred 2026-10 audit work: skipped/partial fixes and verification steps |
 | [account-deletion.md](docs/agent/account-deletion.md) | `settings.html` Delete Account, `deleteAccount` function, full user-data sweep |
+| [password-recovery.md](docs/agent/password-recovery.md) | `settings.html` Change Password "forgot" path, `resetForgottenPassword`, session-as-authority policy |
 | [help.md](docs/agent/help.md) | `help.html`, `help-data.js`: adding/renaming app guides, search, A-Z index, help content coverage |
 | [social-cleanup.md](docs/agent/social-cleanup.md) | Daily `cleanupSocial` retention: KindleChat messages/translations/art, topics, neighbourhood posts, reports, automod & moderator logs |
 | [usage-limits.md](docs/agent/usage-limits.md) | Firebase/Cloudflare quota measurements, Spark limits, Pages Functions invocation traps |

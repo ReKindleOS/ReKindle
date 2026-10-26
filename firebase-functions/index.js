@@ -1351,6 +1351,19 @@ exports.deleteAccount = onCall(
 );
 
 /**
+ * resetForgottenPassword — change the password of the signed-in account
+ * without the current password, for users who forgot it but still have a
+ * session. Accounts have no real email address, so there is no reset link.
+ * Guarded by a typed username, a strict password policy, a per-uid rate limit
+ * and an audit entry. See firebase-functions/password-reset.js and
+ * docs/agent/password-recovery.md.
+ */
+const passwordReset = require("./password-reset");
+exports.resetForgottenPassword = onCall(callOptions, function (request) {
+    return passwordReset.resetForgottenPassword(request);
+});
+
+/**
  * createRssFeed — Server-enforced RSS feed creation for free users.
  * Pro users write directly to Firestore (rules allow it); free users call this.
  *
