@@ -43,6 +43,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [legacy-build.md](docs/agent/legacy-build.md) | Lite/Legacy pipeline: SRI on localized libs, extensionless links, Kobo/WebKit `/probe`, old-browser polyfills |
 | [payments.md](docs/agent/payments.md) | Stripe worker, Pro grants/revokes, reconciliation |
 | [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, cover, KPM |
+| [link-blocking.md](docs/agent/link-blocking.md) | URL/link ban: `js/link-guard.js`, `containsUrl()`, evasion forms, parity test |
 
 ## 🚫 Restrictions (Target: Chromium 75)
 
@@ -538,18 +539,13 @@ DMs live **only** in the social RTDB (`rekindle-socials`): `kindlechat/dm_thread
 ### 1. URL / Link Blocking in Social Apps
 All social apps (KindleChat, Neighbourhood, Topics) block users from posting URLs and links. This is enforced **both client-side and server-side** (moderation worker).
 
-**Client-side helper** (add to each social app HTML):
-```javascript
-function containsUrl(text) {
-    if (!text) return false;
-    var t = String(text).toLowerCase();
-    var protocolLike = /h\s*t\s*t\s*p\s*s?\s*[:/]{1,4}/.test(t);
-    var wwwLike = /\bwww\./.test(t);
-    var domainLike = /\b[a-z0-9-]+\s*\.\s*(com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link)\b/.test(t);
-    var ipLike = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(t);
-    return protocolLike || wwwLike || domainLike || ipLike;
-}
-```
+**Client-side helper:** `js/link-guard.js` (`window.rekindleContainsLink`, loaded by all three
+social pages; each page's `containsUrl()` delegates to it and keeps a legacy fallback). It
+normalises the usual evasions before matching - comma/space/dot-word/bracketed/full-width split
+domains (`nexora-chat-v12,netlify,app/ NEW WEBSITE v12`, 2026-10-26), `hxxp`/spaced protocols and
+IPs - while letting ordinary chat (`hello, me and my friend`) through. The worker carries a
+mirror; `node scripts/test-link-guard.js` (in `npm test`) checks both agree. Rules and
+trade-offs: [link-blocking.md](docs/agent/link-blocking.md).
 
 **Where to block:**
 *   **KindleChat:** `sendMessage()` in `kindlechat.html` (`doSendMessage()` is the only send path; the old unmoderated `sendGeneralMessageViaWorker()` was deleted 2026-10-20)

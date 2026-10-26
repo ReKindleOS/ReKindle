@@ -19,7 +19,7 @@ const sharedScripts = [
     'theme.js', 'icons.js', 'bad_words.js', 'time.js', 'pro-gate.js', 'icons-beta.js',
     'js/i18n.js', 'js/gamerules.js', 'js/custom-select.js', 'js/score-submit.js',
     'js/emoji-render.js', 'js/reports.js', 'js/ip-ban.js', 'js/anti-tamper.js',
-    'js/age-verification.js', 'js/promo-ban.js', 'js/spam-guard.js', 'emojis.js',
+    'js/age-verification.js', 'js/promo-ban.js', 'js/link-guard.js', 'js/spam-guard.js', 'emojis.js',
     'js/ui-kit.js'
 ];
 
