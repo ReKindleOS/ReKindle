@@ -799,8 +799,8 @@ Consequences observed in production: `kindlechat/translations_by_lang/*` stops a
 | Step | Provider | Limit |
 | :--- | :--- | :--- |
 | translate (primary) | `GET https://api.mymemory.translated.net/get?q=…&langpair=en\|es&de=hello@rekindle.ink` | **5,000 chars/day per IP anonymous, 50,000/day with a reachable contact address** — billed in characters, not requests ([usage limits](https://mymemory.translated.net/doc/usagelimits.php)) |
-| language detection ("Detect") | `POST https://translate.disroot.org/detect` | 3 requests/minute per IP |
-| translate (fallback) | `POST https://translate.disroot.org/translate` (LibreTranslate) | 3 requests/minute per IP, lower quality — fallback only |
+| language detection | **local heuristic** in `js/translate-client.js` (`detectSync`) | no network, no quota, works offline |
+| translate (retry) | one retry of the same MyMemory GET after 250 ms | a second provider is deliberately not used — see the WebKit CORS note below |
 
 Consumers: `translate.html` (the whole app), `kindlechat.html` `requestTranslation()`, and
 `neighbourhood.html` `requestPostTranslation()`. The helper caches in memory + `sessionStorage`
@@ -827,6 +827,29 @@ per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` 
    YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY"). `translate-client.js` rejects those with
    `BAD_RESULT` so a quota notice is never shown as a translation — keep that guard if you add a
    provider.
+### WebKit rejects the LibreTranslate CORS headers (2026-10-26)
+
+Beta reported this on `https://beta.rekindle.ink`:
+
+```
+Origin https://beta.rekindle.ink is not allowed by Access-Control-Allow-Origin. Status code: 200
+Fetch API cannot load https://translate.disroot.org/detect due to access control checks.
+```
+
+`translate.disroot.org` sends `Access-Control-Allow-Origin: *` **together with**
+`Access-Control-Allow-Credentials: true`. The Fetch spec forbids that pair and **WebKit — the Kindle
+and Safari engine — enforces it**, so every request fails even though the OPTIONS preflight looks
+correct and curl/desktop Chrome accept it. Reproduced in the repo's WKWebView harness: a POST to
+`/detect` throws "A network error occurred", while the MyMemory GET returns 200 in the same page.
+
+Consequences, which the code now reflects:
+* the LibreTranslate fallback and its `/detect` call are **gone** — do not add another cross-origin
+  **POST** provider without testing it inside WebKit first (a GET with a plain `*` header is fine);
+* language detection is local (`STOPWORDS` + script ranges for ja/ko/zh/ru), so "Detect" in the
+  Translator app and `auto` in KindleChat/Neighbourhood cost nothing and cannot fail this way;
+* `scripts/test-translate-detect.js` pins 21 sample strings and fails if detection ever touches the
+  network again.
+
 6. The client path needs no deploy beyond the Pages build. `workers/rekindle-translate` still exists on
    the social account and still serves `reprocess`/`translateOnly` requests from the admin "Rp" buttons,
    but no user-facing page calls it now.
