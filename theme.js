@@ -759,29 +759,44 @@
         });
     };
 
-    function autoInitPresence() {
-        if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length > 0) {
-            try {
-                var auth = firebase.auth();
-                var db = firebase.database();
-                if (auth && db) {
-                    if (window._rekindlePresenceInited) return true;
-                    window._rekindlePresenceInited = true;
+    // Presence is a realtime connection + a write on EVERY page load, but only
+    // index.html ever reads presence/ (for live-game listings). So it is opt-in
+    // as of 2026-10-26: set window.rekindlePresence = true before theme.js runs,
+    // or add data-presence="1" to <body>. Everything else skips the connection.
+    function presenceWanted() {
+        if (window.rekindlePresence === true) return true;
+        var body = document.body;
+        return !!(body && body.getAttribute && body.getAttribute('data-presence') === '1');
+    }
 
-                    auth.onAuthStateChanged(function (user) {
-                        if (user && window.rekindleInitGlobalPresence) {
-                            window.rekindleInitGlobalPresence(db, user.uid);
-                        } else if (!user && window._rekindlePresenceRef) {
-                            window._rekindlePresenceRef.remove();
-                            window._rekindlePresenceRef.onDisconnect().cancel();
-                            window._rekindlePresenceRef = null;
-                        }
-                    });
-                    return true;
-                }
-            } catch (e) {
-                return false;
+    // Returns true when no further attempt can help (including "not wanted" and
+    // "this page never loaded the RTDB SDK"), false while waiting for Firebase.
+    function autoInitPresence() {
+        if (!presenceWanted()) return true;
+        if (typeof firebase === 'undefined' || !firebase.apps || !firebase.apps.length) return false;
+        // Firebase is loaded but this page has no database SDK: stop immediately.
+        // Without this check the 500ms poller below ran 20 times on ~130 pages.
+        if (typeof firebase.database !== 'function') return true;
+        try {
+            var auth = firebase.auth();
+            var db = firebase.database();
+            if (auth && db) {
+                if (window._rekindlePresenceInited) return true;
+                window._rekindlePresenceInited = true;
+
+                auth.onAuthStateChanged(function (user) {
+                    if (user && window.rekindleInitGlobalPresence) {
+                        window.rekindleInitGlobalPresence(db, user.uid);
+                    } else if (!user && window._rekindlePresenceRef) {
+                        window._rekindlePresenceRef.remove();
+                        window._rekindlePresenceRef.onDisconnect().cancel();
+                        window._rekindlePresenceRef = null;
+                    }
+                });
+                return true;
             }
+        } catch (e) {
+            return false;
         }
         return false;
     }

@@ -27,7 +27,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | :--- | :--- |
 | [kindlechat.md](docs/agent/kindlechat.md) | `kindlechat.html`, `emojis.js`, `sw.js` + OpenMoji caching |
 | [games.md](docs/agent/games.md) | Any game page, `js/gamerules.js`, canvas sizing |
-| [performance.md](docs/agent/performance.md) | Slow-device / e-ink optimisation: containment, dirty-flag rendering, feed pagination, rect caching, denormalised comment counts (`neighbourhood_posts`/`topics` `commentCount`) |
+| [performance.md](docs/agent/performance.md) | Slow-device / e-ink optimisation: load path + caching, containment, dirty-flag rendering, feed pagination, rect caching, `commentCount` |
 | [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, Discord notifications |
 | [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs) |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |

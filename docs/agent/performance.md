@@ -163,3 +163,64 @@ not touch `FAQ in suggestions` — that record asks for answers *inside* the
 board, and the current implementation links to the FAQ/refund answer from the
 triage strip rather than rendering it inline. Add a row only after verifying
 the feature in the built output; the script refuses a title mismatch.
+
+## Load path: getting to the page (2026-10-26)
+
+The 2026-07 pattern list above is about *rendering*; this section is about *transport and boot*,
+measured on the repo on 2026-10-26. Read it before adding a script tag, a header rule or a SW route.
+
+### Baseline that drove the pass
+
+| Fact | Measurement |
+| :--- | :--- |
+| KindleChat boot | 28 requests, ~345 KB compressed: HTML 66 + local ~60 + **Firebase 176** |
+| Firebase SDK (compressed) | app 5.7 · auth 35.5 · firestore **84.2** · database 47.9 · functions 3.2 KB |
+| Parser-blocking scripts | 21 on KindleChat, `<body>` started at line 1681 |
+| Asset cache | `max-age=14400, must-revalidate` — every asset revalidated after 4 h |
+| Locales | 45–52 KB compressed **per page** for non-English users, cached 1 h |
+| `defer` usage | 129 of 141 pages used none |
+| `presence/` | written on all 141 `theme.js` pages, read by **only `index.html`** |
+| `counter.dev` | 95 pages, **90 blocking**, 30-minute cache |
+
+### Rules that now hold (and the guard that keeps them)
+
+1. **Every local script/stylesheet is versioned (`?v=N`).** `_headers` serves `/*.js` and `/*.css`
+   `max-age=31536000, immutable`, and the service worker serves those URLs cache-first. The only
+   exceptions are `mario_assets/*` (detached back to 4 h in `_headers`) — `scripts/test-load-budget.js`
+   fails the build on any new unversioned reference, and asserts the `! Cache-Control` detach lines
+   for `/sw.js`, `/mario_assets/*` and `/downloads/kpm/*` still exist.
+2. **Bump `?v=` when the bytes change.** A missed bump is now a *year-long* stale file, not a 4-hour one.
+3. **Versioned assets and `locales/*.json` are cache-first in `sw.js`.** Freshness across deploys comes
+   from the build-stamped `CACHE_NAME` + `activate` cleanup — never add a manual cache-bust there.
+4. **HTML is stale-while-revalidate with a 5-minute window** (`serveHtml`/`HTML_FRESH_MS`). Inside the
+   window the cached copy is served instantly and revalidated in the background; outside it, network
+   first. A failed navigation falls back to the *same* URL, not `index.html`.
+5. **Nothing third-party may block the parser** unless it is in `BLOCKING_ALLOWLIST` in
+   `scripts/test-load-budget.js` (Firebase SDKs + a few pinned libraries). Analytics and the Google
+   API loader are `defer`.
+6. **Preconnect, don't vendor.** gstatic already sends a one-year cache, so the only cost is the first
+   handshake: pages that load Firebase carry `<link rel="preconnect" href="https://www.gstatic.com" crossorigin>`
+   plus `firestore.googleapis.com` and the exact `*-default-rtdb.firebaseio.com` host(s) their config
+   uses (generated from `databaseURL`/`projectId`, so it is precise).
+7. **Scripts that are not needed for the shell go after the markup, not in `<head>`.** KindleChat,
+   Neighbourhood, Topics, Suggestions, Flipbook, AirType and Pixel keep only `theme.js` + `js/i18n.js`
+   in the head and load everything else immediately before their inline app script — order preserved,
+   first paint no longer waits for 176 KB of SDK. `scripts/test-load-budget.js` prints
+   "blocking in `<head>`" separately from "total" so the difference stays visible.
+8. **`bad_words.js` (~18 KB) is lazy.** Dashboard/login load it on first use via `ensureBadWords()`
+   (`await ensureBadWords()` before `isBadWord`); only the social pages that censor displayed text load
+   it eagerly.
+9. **Presence is opt-in.** `theme.js` writes `presence/{uid}` only when the page sets
+   `window.rekindlePresence = true` or `<body data-presence="1">` — today only `index.html`. Don't
+   re-enable it site-wide: it opened a realtime connection and a write on every navigation, and the
+   poller used to fire 20× on pages that never loaded the RTDB SDK.
+
+### Verifying a change
+
+```bash
+node scripts/test-load-budget.js      # versioning + blocking-third-party guard + per-page budget
+node scripts/test-kindle.js           # theme.js version must match sw.js + kindle.html
+scripts/shot-webkit.sh "http://127.0.0.1:8899/kindlechat.html?lang=en&theme=light" 758 1024 /tmp/chat.png
+```
+The WebKit harness takes an optional JS argument; throw inside it to get a `js error:` line on stdout,
+which is the cheapest way to assert "`firebase.apps.length > 0`" and friends after a boot reorder.

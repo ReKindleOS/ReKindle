@@ -10,14 +10,15 @@
     <link rel="manifest" href="manifest.json">
 
     <!-- Firebase Compat (no RTDB on this page to avoid Safari extension / polling errors) -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js" defer></script>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js" defer></script>
 
     <script src="time.js?v=5" defer></script>
-    <script src="theme.js?v=34" defer></script>
-    <script src="bad_words.js?v=4" defer></script>
+    <script src="theme.js?v=35" defer></script>
     <script src="js/i18n.js?v=4" defer></script>
     <script src="js/ip-ban.js?v=1" defer></script>
 
@@ -665,6 +666,22 @@
             return window.filterBadWords(u) !== u;
         }
 
+        // bad_words.js (~18 KB compressed) is only needed when someone
+        // registers, so it loads on first use instead of on every visit.
+        var badWordsPromise = null;
+        function ensureBadWords() {
+            if (window.filterBadWords) return Promise.resolve();
+            if (badWordsPromise) return badWordsPromise;
+            badWordsPromise = new Promise(function (resolve) {
+                var s = document.createElement('script');
+                s.src = 'bad_words.js?v=4';
+                s.onload = resolve;
+                s.onerror = resolve;
+                document.head.appendChild(s);
+            });
+            return badWordsPromise;
+        }
+
         async function doRegister() {
             if (!isFirebaseAvailable || !auth) {
                 showAlertModal(window.t ? window.t('login.error.offline', 'Firebase is not available. Please wait or refresh.') : 'Firebase is not available. Please wait or refresh.');
@@ -692,6 +709,7 @@
                 showAlertModal(window.t ? window.t('login.error.username_forbidden', 'Forbidden username.') : 'Forbidden username.');
                 return;
             }
+            await ensureBadWords();
             if (isBadWord(u)) {
                 showAlertModal(window.t ? window.t('login.error.username_bad_word', 'Username contains inappropriate language.') : 'Username contains inappropriate language.');
                 return;

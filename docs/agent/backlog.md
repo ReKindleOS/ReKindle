@@ -478,3 +478,42 @@ the Pages deploy + the moderation Worker deploy, then dry-run and `--apply`:
 | `-P4qSoQgU0ysrQuJRqZO` | make the mazes harder | Easy / Normal / Hard in `maze.html` |
 
 Anything else that is *partly* addressed (e.g. the friends/saved-users cluster) stays open.
+
+---
+
+## 2026-10-26 load-path pass — shipped, and the structural work left over
+
+Shipped (rules and measurements in [performance.md](performance.md#load-path-getting-to-the-page-2026-10-26)):
+immutable caching for versioned assets + `css/custom-select.css?v=1`; service-worker cache-first for
+versioned JS/CSS/locales and a 5-minute HTML stale-while-revalidate window; recents warm-up on the
+dashboard; preconnect (gstatic / Firestore / the exact RTDB hosts); presence turned into an opt-in
+write and the 20× poller stopped; the Firebase SDK moved after the markup on KindleChat,
+Neighbourhood, Topics, Suggestions, Flipbook, AirType and Pixel; lazy `bad_words.js` on the dashboard
+and login; `defer` on every analytics tag and the Google API loader; `scripts/test-load-budget.js` in
+`npm test`.
+
+### Deferred structural work (do these before more micro-optimising)
+
+1. **Per-page locale fragments.** `locales/*.json` are 45–52 KB compressed and every non-English page
+   parses one. A build step that emits only the namespaces a page actually uses (`suggestions.*` for
+   suggestions.html, `puzzle.*` for one game) would cut that to single-digit KB. Biggest remaining win.
+   Watch out for computed keys (`'x.' + label`) — they need a namespace whitelist, not a key grep.
+2. **Lazy-load Firestore for leaderboards.** 84 KB compressed + parse on every game page, used only
+   when a leaderboard opens. A shared `js/lazy-firebase.js` that loads a compat SDK on demand and
+   resolves when ready would let a game boot with `firebase-app` only (5.7 KB). Per-page judgement
+   needed: some pages read a personal best at boot.
+3. **Vendor + precache the Firebase SDKs** (594 KB of files, ~176 KB compressed) under `/vendor/` so
+   they are same-origin (no second TLS handshake), SW-precached and covered by the immutable rule.
+   gstatic already caches for a year, so this is about the first visit only.
+4. **Extend the after-the-markup script move to the remaining ~75 pages** that still load Firebase in
+   `<head>`. Mechanically identical to the seven-page pass; each needs the same screenshot check
+   (`scripts/test-load-budget.js` reports "blocking in `<head>`" per page).
+5. **Shared boot bundle.** theme + time + i18n + ui-kit + custom-select ≈ 26 KB compressed across five
+   requests. One concatenated, minified file at build time would save four requests and four parses on
+   every navigation — but it touches every page's script tags, so it needs the version-discipline test
+   to stay honest.
+6. **Extract each page's inline `<style>` into cached CSS.** KindleChat ships 60 KB of compressed HTML
+   with its CSS inline; a `.css` file is cached independently of the HTML.
+7. **Measure on a device.** Everything above was verified with the WebKit harness and static budgets.
+   A real Kindle (and a Kobo) number for first paint and repeat navigation would tell us whether to
+   keep going down this list at all.

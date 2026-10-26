@@ -3,7 +3,7 @@ const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './icons.js?v=8',
-    './theme.js?v=34',
+    './theme.js?v=35',
     './logo.svg',
     './discord.svg',
     './donate.svg',
@@ -170,6 +170,87 @@ self.addEventListener('activate', event => {
 });
 
 // Fetch Event: Strategy Router
+//
+// 2026-10-26 load-path pass. The old router only managed the ten precached
+// files; every other script, stylesheet, locale file and page went to the
+// network on every navigation. Now:
+//   - versioned app assets (?v=) and locale JSON are cache-first, because the
+//     URL identifies the bytes and activate() wipes them on every deploy
+//     (build-automation.js stamps CACHE_NAME per deploy);
+//   - HTML is stale-while-revalidate with a short freshness window, so
+//     dashboard -> app -> back no longer waits for the network;
+//   - a failed navigation falls back to the SAME page, not index.html.
+const HTML_FRESH_MS = 5 * 60 * 1000;
+const STAMP_HEADER = 'x-rk-cached-at';
+
+function isVersionedAsset(url) {
+    if (!/\.(js|css)$/.test(url.pathname)) return false;
+    return /[?&]v=/.test(url.search || '');
+}
+
+function isLocaleFile(url) {
+    return /^\/locales\/[^/]+\.json$/.test(url.pathname);
+}
+
+// Cache first, network only on a miss. Safe because the URL is versioned and
+// every deploy starts a new CACHE_NAME (activate deletes the previous one).
+function cacheFirst(event) {
+    return caches.open(CACHE_NAME).then(cache => {
+        return cache.match(event.request).then(cached => {
+            if (cached) return cached;
+            return fetch(event.request).then(response => {
+                if (response && response.status === 200 && response.type !== 'opaque') {
+                    cache.put(event.request, response.clone());
+                }
+                return response;
+            });
+        });
+    });
+}
+
+function stampResponse(response) {
+    try {
+        if (!response || !response.ok || response.redirected) return Promise.resolve(null);
+        const headers = new Headers(response.headers);
+        headers.set(STAMP_HEADER, String(Date.now()));
+        return response.clone().blob().then(body => new Response(body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: headers
+        }));
+    } catch (e) {
+        return Promise.resolve(null);
+    }
+}
+
+// Serve the page from cache when it is fresh (< 5 min) and revalidate in the
+// background; otherwise network first with the cached copy as a fallback.
+function serveHtml(event) {
+    return caches.open(CACHE_NAME).then(cache => {
+        return cache.match(event.request).then(cached => {
+            const network = fetch(event.request).then(response => {
+                if (response && response.status === 200 && !response.redirected) {
+                    stampResponse(response).then(stamped => {
+                        if (stamped) cache.put(event.request, stamped);
+                    }).catch(() => { });
+                }
+                return response;
+            });
+
+            if (!cached) {
+                return network.catch(() => caches.match('./index.html') || caches.match('./'));
+            }
+
+            const cachedAt = Number(cached.headers.get(STAMP_HEADER) || 0);
+            if (cachedAt && (Date.now() - cachedAt) < HTML_FRESH_MS) {
+                event.waitUntil(network.catch(() => { }));
+                return cached;
+            }
+            return network.catch(() => cached);
+        });
+    });
+}
+
 self.addEventListener('fetch', event => {
     // 0. ABSOLUTE IGNORE: Firestore & Google APIs
     // We must return immediately for these to let the browser handle the XHR/WebSockets natively.
@@ -190,14 +271,15 @@ self.addEventListener('fetch', event => {
 
     if (!url.origin.includes(self.location.origin) && !isWhitelistedOrigin) return;
 
-    // 1. HTML / Root -> Network First
+    // 1. HTML / Root -> stale-while-revalidate (5 minute freshness window)
     if (event.request.mode === 'navigate' || url.pathname.endsWith('index.html') || url.pathname === '/') {
-        event.respondWith(
-            fetch(event.request)
-                .catch(() => {
-                    return caches.match('./index.html') || caches.match('./');
-                })
-        );
+        event.respondWith(serveHtml(event));
+        return;
+    }
+
+    // 1a. Versioned app scripts/styles and locale JSON -> cache first
+    if (url.origin === self.location.origin && (isVersionedAsset(url) || isLocaleFile(url))) {
+        event.respondWith(cacheFirst(event));
         return;
     }
 

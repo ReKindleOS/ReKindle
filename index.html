@@ -62,7 +62,17 @@
     <title>ReKindle</title>
     <link rel="manifest" href="manifest.json">
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js" defer></script>
+    <!-- Presence is opt-in: this is the only page that reads presence/ (the live
+         game listings), so it is the only page that writes it. -->
+    <script>window.rekindlePresence = true;</script>
+
+    <!-- Firebase's CDN already caches these for a year; the handshake is the
+         cost, so open it while the HTML is still parsing. -->
+
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://rekindle-dd1fa-default-rtdb.firebaseio.com">
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js" defer></script>
@@ -71,8 +81,7 @@
     <script src="time.js?v=5" defer></script>
     <script src="icons.js?v=8" defer></script>
     <script src="icons-beta.js?v=1" defer></script>
-    <script src="theme.js?v=34" defer></script>
-    <script src="bad_words.js?v=4" defer></script>
+    <script src="theme.js?v=35" defer></script>
     <script src="js/i18n.js?v=4" defer></script>
     <script src="js/ui-kit.js?v=2" defer></script>
     <script src="js/ip-ban.js?v=1" defer></script>
@@ -1836,6 +1845,7 @@
                 document.getElementById('user-display').innerText = "Offline Mode";
             }
             updateNavVisibility();
+            warmRecentApp();
         };
 
         // ... [Helper functions like handleGuestMode, updateNavVisibility, etc. remain unchanged] ...
@@ -2640,6 +2650,26 @@
             renderRecentSection();
         }
 
+        // Warm the most-used app while the dashboard is idle: one fetch that the
+        // service worker caches, so the next tap on that tile is instant instead
+        // of waiting for a network round trip on a slow e-ink connection.
+        function warmRecentApp() {
+            if (!navigator.onLine || !recentApps.length) return;
+            try {
+                if (navigator.connection && navigator.connection.saveData) return;
+            } catch (e) { /* older browsers */ }
+            const id = recentApps[0];
+            if (!id || id === 'discord') return;
+            const run = function () {
+                fetch(id + '.html', { credentials: 'same-origin' }).catch(function () { });
+            };
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(run, { timeout: 4000 });
+            } else {
+                setTimeout(run, 2500);
+            }
+        }
+
         function clearRecentApps() {
             recentApps = [];
             try { localStorage.removeItem('rekindle_recent_apps'); } catch (e) { }
@@ -2988,6 +3018,22 @@
             }
         }
         const isForbiddenUsername = (u) => { const forbidden = ["root", "system", "admin", "administrator", "mod", "moderator", "support", "ukiyo", "rekindle", "wantban", "kindlehub", "khub", "unreader", "inkchat"]; const lowerU = u.toLowerCase(); return forbidden.some(word => lowerU.includes(word)); };
+        // bad_words.js is ~18 KB compressed and the dashboard only ever uses it
+        // for one username check on the register form, so it loads on first use
+        // instead of on every visit (2026-10-26 load-path pass).
+        let badWordsPromise = null;
+        function ensureBadWords() {
+            if (window.filterBadWords) return Promise.resolve();
+            if (badWordsPromise) return badWordsPromise;
+            badWordsPromise = new Promise(function (resolve) {
+                const s = document.createElement('script');
+                s.src = 'bad_words.js?v=4';
+                s.onload = resolve;
+                s.onerror = resolve;
+                document.head.appendChild(s);
+            });
+            return badWordsPromise;
+        }
         const isBadWord = (u) => {
             if (!window.filterBadWords) return false;
             return window.filterBadWords(u) !== u;
@@ -3001,6 +3047,7 @@
             if (!/^[a-zA-Z0-9]+$/.test(u)) { document.getElementById('login-msg').innerText = "Error: Username can only contain letters and numbers."; return; }
             if (u.includes('@')) { document.getElementById('login-msg').innerText = "Error: Please enter a username only, not an email."; return; }
             if (isForbiddenUsername(u)) { document.getElementById('login-msg').innerText = "Error: Forbidden username."; return; }
+            await ensureBadWords();
             if (isBadWord(u)) { document.getElementById('login-msg').innerText = "Error: Username contains inappropriate language."; return; }
 
             document.getElementById('login-msg').innerText = "Registering...";
