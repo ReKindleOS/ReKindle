@@ -1119,7 +1119,9 @@ async function canOpenOutlookMailbox(address, accessToken) {
         await client.connect();
         return true;
     } catch (e) {
-        logger.info('Outlook mailbox probe failed', { address, message: e.message });
+        // `message` is reserved by the structured logger and replaced the line
+        // above it, hiding the reason; log it as `error`.
+        logger.info('Outlook mailbox probe failed', { address, error: e.message });
         return false;
     } finally {
         await client.logout().catch(() => { });
@@ -1266,7 +1268,7 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
     if (!email) {
         await pendingRef.remove().catch(() => { });
         logger.warn('Outlook sign-in succeeded but no candidate mailbox address opened', {
-            uid: auth.uid, candidates
+            uid: auth.uid, candidates, hint: 'check IMAP is enabled in Outlook.com'
         });
         return { success: true, status: 'imap', email: candidates[candidates.length - 1] || null };
     }
