@@ -657,6 +657,12 @@
         .accounts-anchor #accounts-btn {
             position: relative;
             padding-right: 26px;
+            max-width: 210px;
+        }
+        #accounts-btn-label {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
         /* Same down-triangle as the folder picker's .custom-arrow. */
         .accounts-arrow {
@@ -1115,9 +1121,12 @@
             // The label is a child span: setting innerText on the button would
             // wipe the arrow (the same trap custom-select.js documents).
             const label = document.getElementById('accounts-btn-label');
+            const activeAccount = getActiveAccount();
             const text = unifiedMode
                 ? 'All inboxes'
-                : (accounts.length > 1 ? 'Accounts (' + accounts.length + ')' : 'Account');
+                : (activeAccount
+                    ? 'Account: ' + (activeAccount.label || activeAccount.email)
+                    : 'Account');
             if (label) label.innerText = text;
             else btn.innerText = text;
             const active = getActiveAccount();
@@ -3054,6 +3063,11 @@
                 const data = doc.data() || {};
                 if (Array.isArray(data.accounts)) {
                     const localActive = activeAccountId;   // set by loadAccountsLocal()
+                    // Keep anything this device already has. A mailbox added moments
+                    // ago can reach localStorage before its Firestore write lands,
+                    // and replacing the list here made that account vanish from the
+                    // app while it was still the saved active one.
+                    const localAccounts = accounts.slice();
                     accounts = data.accounts.filter(a => a && a.id && a.email).map(a => ({
                         id: a.id,
                         provider: a.provider || 'custom',
@@ -3065,6 +3079,14 @@
                         smtp: a.smtp || null,
                         passEnc: a.passEnc || null
                     }));
+                    localAccounts.forEach(local => {
+                        const key = local.email.toLowerCase() + '|' + (local.oauth || '');
+                        const exists = accounts.some(remote =>
+                            remote.id === local.id ||
+                            (remote.email.toLowerCase() + '|' + (remote.oauth || '')) === key);
+                        if (!exists) accounts.push(local);
+                    });
+
                     // This device's last choice wins as long as it still exists; a
                     // sync from another device only fills the gap.
                     const preferred = [localActive, data.activeId]
