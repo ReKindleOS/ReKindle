@@ -108,6 +108,61 @@ This is separate from the outage and explains the 30 stale `isPro` records.
   now Pro; the retries are idempotent. Resend them from Workbench to clear the
   pending count, or let Stripe's 3-day schedule finish.
 
+## 2026-10-26: a brand-new payer never got Pro (fixed)
+
+The report was "a user who just bought Pro did not get Pro status, and I cannot
+even grant Pro from moderation.html". Both failures were the same missing
+document.
+
+**A `users/{uid}` document is not created at sign-up.** It appears the first
+time someone saves a setting (or a favourite, `settings.html`, etc.). On
+2026-10-26 a US buyer created an account and bought the **$30 lifetime** plan
+one minute later (`edgarmr@rekindle.ink`, uid `WKMMWknuWGMgBaqowLf0cowuoVo2`,
+`evt_1UUiIQAetQspKPuSp1KA1sKw`, 07:25Z), so the account had no document:
+
+* The Stripe worker read `users/{uid}`, got 404, and returned
+  `user_not_found`. The webhook answered **500**, Stripe retried for three days
+  and then stopped. Nothing (`isPro`, `config/supporters`, `pro` claim,
+  `stripe_state`) was ever written. Roughly **4,250 accounts active in the last
+  30 days have no `users/{uid}` document**, so this was never a one-off.
+* The console's "Grant Pro" wrote the same document from the browser. For a
+  missing document that is a **create**, and the `match /users/{userId}` create
+  rule had no owner escape — only owner-self creation with `isPro` forbidden.
+  The owner's write failed with `Missing or insufficient permissions`. The
+  update path was allowed, which is why manual grants only ever worked for
+  users who already had a document.
+
+**Fix (all three deployed 2026-10-26):**
+
+1. `workers/rekindle-stripe/worker.js` — on a 404 the worker now asks Firebase
+   Auth (`lookupFirebaseAuthUser`) whether the uid is a real account. If it is,
+   the grant continues and the PATCH creates the document with just the
+   entitlement fields; only a uid with no Auth account is `user_not_found`.
+   Throws (→ Stripe retry) on an Auth lookup failure, so an outage cannot look
+   like a bogus uid. `scripts/test-stripe-webhook.js` case 5 covers it.
+2. `firestore.rules` — the `/users/{userId}` **create** rule now has the
+   `isDeveloper()` branch, so an owner-side console write can create the
+   document. Self-create still may not set `isPro`/`proExpiresAt`.
+3. `adminSetPro` (functions/index.js, owner-only onCall) — the console's
+   Grant/Revoke now goes through the Admin SDK, which upserts the document,
+   updates `config/supporters` and **merges** the `pro` custom claim in one
+   call. The browser write remains as a fallback only. That claim matters:
+   `storage.rules` checks `request.auth.token.pro`, and the old direct write
+   never updated it. `scripts/test-pro-grant.js` guards all three.
+
+**Repair:** the buyer was granted lifetime Pro (expiry `now + 36500d`, matching
+the worker's `mode=payment` term), added to `config/supporters`, given the
+merged `pro` claim, and `stripe_state/{uid}` was seeded with the checkout event
+time so later ordering checks behave as if the webhook had succeeded. Row in
+`admin/backups/pro-repair-2026-10-26-docless-buyer.csv`.
+
+**Finding future cases:** a doc-less payer leaves **no trace in Firestore** —
+no document, no supporters entry, no `stripe_state` — so the only source is
+Stripe. `GET /v1/events?created[gte]=…&delivery_success=false` over 90 days
+returned exactly two events on 2026-10-26: this checkout and the
+`FlM5OdFP…` renewal that was already applied. Use that query to audit any
+repeat; the buyer's `client_reference_id` / `metadata.uid` is the uid to repair.
+
 ## Pro entitlement audit (read-only, 2026-10-26)
 
 `node admin/audit_pro_entitlements.js` compares every effective Pro user with
@@ -165,9 +220,12 @@ CSV (all rows, review categories marked):
    `invoice.payment_succeeded`, `customer.subscription.updated` and
    `customer.subscription.deleted` fall back to that uid, and renewals repair
    `stripeCustomerId`.
-5. **An unknown uid created a partial `users/{uid}` document.** The PATCH now
-   returns `user_not_found` on a 404 and a read error throws (so Stripe retries)
-   instead of writing blind.
+5. **An unknown uid created a partial `users/{uid}` document.** A 404 from the
+   user read used to be treated as a bogus uid, but a missing document is normal
+   for a first purchase (see the 2026-10-26 section). The worker now confirms
+   the uid with Firebase Auth, writes the grant if the account is real, and
+   returns `user_not_found` only when Auth has no such account; a read error
+   still throws so Stripe retries.
 6. **Partial refunds revoked Pro.** `charge.refunded` now only revokes a fully
    refunded charge (`refunded === true` / `amount_refunded >= amount`).
 7. **A failed `config/supporters` removal was swallowed.** Firestore rules treat

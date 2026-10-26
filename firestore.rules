@@ -72,9 +72,16 @@ service cloud.firestore {
       allow read: if request.auth != null && (request.auth.uid == userId || isDeveloper());
       
       // Allow create, but strictly BLOCK setting 'isPro', 'proExpiresAt', or 'substack_sid' during creation.
-      allow create: if request.auth != null && 
-                       request.auth.uid == userId &&
-                       !request.resource.data.keys().hasAny(['isPro', 'proExpiresAt', 'substack_sid']);
+      // The owner may create any user document: plenty of accounts never save a
+      // setting, so users/{uid} does not exist yet, and a console Pro grant is a
+      // create (not an update) for them. Without the isDeveloper() branch that
+      // grant failed with "Missing or insufficient permissions".
+      allow create: if request.auth != null && (
+                       isDeveloper()
+                       ||
+                       (request.auth.uid == userId &&
+                        !request.resource.data.keys().hasAny(['isPro', 'proExpiresAt', 'substack_sid']))
+                     );
       
       // Allow update, but:
       // - BLOCK modifying 'isPro' or 'proExpiresAt' (unless admin)

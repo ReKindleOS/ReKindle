@@ -210,3 +210,27 @@ whole node on every open — several megabytes per page load. It now asks for
 * `reports` `.read` no longer accepts `auth.token.moderator === true` (reports include private DM
   excerpts and the console is owner-only).
 
+### Pro grants/revokes go through `adminSetPro` (2026-10-26)
+
+The Users tab's Grant Pro / Revoke Pro used to write `users/{uid}` and `config/supporters`
+directly from the browser. That fails for any account that has never saved a setting: the
+account has **no `users/{uid}` document**, so the write is a CREATE, and the create rule (self
+only, `isPro` forbidden) rejected even the owner with "Missing or insufficient permissions".
+It also left the `pro` custom claim — which `storage.rules` reads — untouched.
+
+Both buttons now call the owner-only **`adminSetPro`** callable (`firebase-functions/index.js`).
+It verifies `request.auth.token.email === 'ukiyo@rekindle.ink'`, confirms the uid exists in
+Firebase Auth, upserts the document (creating it when missing), writes/removes the
+`config/supporters` entry, and merges `{pro: true|false}` into the existing custom claims with
+`setCustomUserClaims` (never replacing them). Durations are computed server-side from
+`days | months | years | lifetime`, so the console cannot shorten a grant with a wrong clock.
+The response reports `createdDocument`, `supportersSynced` and the final expiry, and the console
+falls back to the old direct write only if the callable is unreachable.
+
+Deploy order for a fresh environment: **functions first** (`firebase deploy --only
+functions:adminSetPro`), then Firestore rules. The rules change is defence in depth — the
+`/users/{userId}` create rule now has an `isDeveloper()` branch — so the fallback path works too.
+Both are covered by `scripts/test-pro-grant.js`. See
+[payments.md](payments.md#2026-10-26-a-brand-new-payer-never-got-pro-fixed) for the incident that
+exposed it.
+

@@ -269,7 +269,7 @@ export default {
                     subscriptionId: subscriptionIdOf(session.subscription)
                 });
                 if (written && written.status === 'user_not_found') {
-                    return new Response('Retry: checkout uid has no user document', { status: 500 });
+                    return new Response('Retry: checkout uid is not a Firebase Auth account', { status: 500 });
                 }
                 return new Response(`Success: New ${session.mode} activated`, { status: 200 });
             }
@@ -574,17 +574,25 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (getRes.status === 404) {
-        // PATCH would create a partial users/{uid} document for a bogus uid.
-        console.warn('Stripe event references unknown uid:', uid);
-        return { status: 'user_not_found', uid };
-    }
-    if (!getRes.ok) {
+        // A users/{uid} document is only created when someone saves a setting
+        // or a favourite, so a brand-new account (the typical first purchase)
+        // has none. That used to return user_not_found, the webhook 500'd, and
+        // Stripe gave up after 3 days of retries even though the payment was
+        // real. Confirm the account exists in Firebase Auth instead; the PATCH
+        // below then creates the document with just the entitlement fields.
+        // A uid that is not in Auth is still treated as bogus (no partial doc).
+        const authUser = await lookupFirebaseAuthUser(env, uid, token);
+        if (!authUser) {
+            console.warn('Stripe event references unknown uid:', uid);
+            return { status: 'user_not_found', uid };
+        }
+        console.log('Granting to a payer with no users document yet:', uid);
+    } else if (!getRes.ok) {
         // Do not fall through to the write: a transient read error must make
         // the webhook return 500 so Stripe retries, not overwrite blind.
         const text = await getRes.text();
         throw new Error(`Firestore user lookup failed ${getRes.status}: ${text}`);
-    }
-    {
+    } else {
         const userDoc = await getRes.json();
         if (userDoc.fields && userDoc.fields.proExpiresAt && userDoc.fields.proExpiresAt.timestampValue) {
             currentExpiry = new Date(userDoc.fields.proExpiresAt.timestampValue).getTime();
@@ -1151,6 +1159,30 @@ async function resolveFirebaseUsers(env, uids) {
 
     // Return in same order as input, with nulls for not found
     return uids.map(uid => result[uid] || { uid, displayName: null, email: null });
+}
+
+// --- LOOKUP A SINGLE FIREBASE AUTH USER ---
+// Returns null when the uid has no Firebase Auth account. Throws on a transport
+// or permission error so the caller retries instead of silently treating an
+// outage as "no such user".
+async function lookupFirebaseAuthUser(env, uid, existingToken = null) {
+    const accessToken = existingToken || await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ localId: [uid] })
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Identity Toolkit lookup failed ${res.status}: ${text}`);
+    }
+    const data = await res.json();
+    const user = (data.users || [])[0];
+    return user ? { uid: user.localId, email: user.email || null } : null;
 }
 
 // --- GET EMAIL FOR UID ---

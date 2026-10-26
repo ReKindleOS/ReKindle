@@ -74,8 +74,24 @@ async function main() {
         if (url.indexOf(`${DB}/stripe_state/ghost`) === 0) {
             return new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 });
         }
+        // A real Firebase account that has never written a users/{uid} document.
+        if (url.indexOf(`${DB}/users/brandnew`) === 0) {
+            if (method === 'GET') return new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 });
+            return doc({});
+        }
+        if (url.indexOf(`${DB}/stripe_state/brandnew`) === 0) {
+            if (method === 'GET') return new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 });
+            return doc({});
+        }
         if (url.indexOf('identitytoolkit.googleapis.com') !== -1) {
-            return new Response(JSON.stringify({ users: [{ localId: 'uid1', email: 'payer@example.com', customAttributes: '{}' }] }), { status: 200 });
+            const body = JSON.parse((init && init.body) || '{}');
+            const ids = Array.isArray(body.localId) ? body.localId : [body.localId];
+            const known = {
+                uid1: { localId: 'uid1', email: 'payer@example.com' },
+                brandnew: { localId: 'brandnew', email: 'newpayer@example.com' }
+            };
+            const users = ids.map(id => known[id]).filter(Boolean);
+            return new Response(JSON.stringify({ users }), { status: 200 });
         }
         if (url.indexOf('/config/supporters') !== -1) {
             return doc({});
@@ -152,7 +168,24 @@ async function main() {
     const annualExpiry = new Date(annualBody.fields.proExpiresAt.timestampValue).getTime();
     assert.ok(annualExpiry > (now + 300 * 86400) * 1000, 'annual expiry should be ~1 year, got ' + annualBody.fields.proExpiresAt.timestampValue);
 
-    console.log('PASS - Stripe webhook ordering (stale vs fresh cancellation, unknown uid, annual invoice)');
+    // 5. A real Firebase account that has never written a users/{uid}
+    //    document (the typical first purchase - the document only appears when
+    //    someone saves a setting) must still be granted. Previously this 500'd
+    //    forever and Stripe gave up after its 3-day retry window.
+    calls.length = 0;
+    const brandNew = await deliver({
+        id: 'evt_brandnew', type: 'checkout.session.completed', created: now,
+        data: { object: { mode: 'subscription', client_reference_id: 'brandnew', customer: 'cus_new' } }
+    });
+    assert.strictEqual(brandNew.status, 200, brandNew.text);
+    const createdDoc = calls.find(c => c.method === 'PATCH' && c.url.indexOf('/users/brandnew') !== -1);
+    assert.ok(createdDoc, 'a doc-less payer must get a users document created by the grant');
+    const createdFields = JSON.parse(createdDoc.body).fields;
+    assert.strictEqual(createdFields.isPro.booleanValue, true);
+    assert.ok(createdFields.proExpiresAt.timestampValue, 'grant must carry an expiry');
+    assert.strictEqual(createdFields.stripeCustomerId.stringValue, 'cus_new');
+
+    console.log('PASS - Stripe webhook ordering (stale vs fresh cancellation, unknown uid, annual invoice, doc-less payer)');
 }
 
 main().catch(err => {

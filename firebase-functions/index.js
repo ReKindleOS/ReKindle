@@ -1982,6 +1982,108 @@ exports.getSocialToken = onCall(callOptions, async (request) => {
 });
 
 /**
+ * Owner-only manual Pro grant / revoke (moderation.html).
+ *
+ * The console used to write users/{uid} straight from the browser. That failed
+ * two ways: an account that has never saved a setting has no users/{uid}
+ * document, which makes the write a CREATE - and the create rule had no owner
+ * escape - and the `pro` custom claim (read by storage.rules) was never
+ * updated. The Admin SDK can do both here, so the console calls this and only
+ * falls back to a direct write if the function is unavailable.
+ *
+ * `type` matches the console dropdown: days | months | years | lifetime.
+ * Durations are computed server-side so a wrong device clock cannot change the
+ * term of a grant.
+ */
+exports.adminSetPro = onCall(callOptions, async (request) => {
+    const auth = request.auth;
+    if (!auth || auth.token.email !== 'ukiyo@rekindle.ink') {
+        throw new HttpsError('permission-denied', 'Owner only.');
+    }
+
+    const data = request.data || {};
+    const uid = typeof data.uid === 'string' ? data.uid.trim() : '';
+    if (!uid || uid.length > 128 || !/^[A-Za-z0-9_-]+$/.test(uid)) {
+        throw new HttpsError('invalid-argument', 'A Firebase uid is required.');
+    }
+    if (data.action !== 'grant' && data.action !== 'revoke') {
+        throw new HttpsError('invalid-argument', 'action must be grant or revoke.');
+    }
+
+    // Never create a users/{uid} document for an account that does not exist.
+    const userRecord = await admin.auth().getUser(uid).catch(() => null);
+    if (!userRecord) throw new HttpsError('not-found', 'No Firebase Auth account for that uid.');
+
+    const db = admin.firestore();
+    const userRef = db.collection('users').doc(uid);
+    const before = await userRef.get();
+    const isGrant = data.action === 'grant';
+    let expiresAt = new Date();
+    let subscriptionType = null;
+
+    if (isGrant) {
+        const type = data.type;
+        if (type === 'lifetime') {
+            subscriptionType = 'lifetime';
+            expiresAt = new Date(Date.UTC(2100, 0, 1));
+        } else {
+            const amount = Number(data.amount);
+            if (!Number.isInteger(amount) || amount <= 0 || amount > 1000) {
+                throw new HttpsError('invalid-argument', 'Amount must be a whole number between 1 and 1000.');
+            }
+            if (type !== 'days' && type !== 'months' && type !== 'years') {
+                throw new HttpsError('invalid-argument', 'type must be days, months, years or lifetime.');
+            }
+            subscriptionType = 'manual';
+            expiresAt = new Date();
+            if (type === 'days') expiresAt.setUTCDate(expiresAt.getUTCDate() + amount);
+            else if (type === 'months') expiresAt.setUTCMonth(expiresAt.getUTCMonth() + amount);
+            else expiresAt.setUTCFullYear(expiresAt.getUTCFullYear() + amount);
+        }
+    }
+
+    const fsExpiry = admin.firestore.Timestamp.fromDate(expiresAt);
+    const userUpdate = { isPro: isGrant, proExpiresAt: fsExpiry };
+    if (subscriptionType) userUpdate.subscriptionType = subscriptionType;
+    await userRef.set(userUpdate, { merge: true });
+
+    // config/supporters is an authorization source in firestore.rules, so it
+    // must agree with the document (a revoke deletes the entry).
+    let supportersSynced = false;
+    if (userRecord.email) {
+        const entry = {};
+        entry[userRecord.email] = isGrant
+            ? { expiresAt: fsExpiry, isLifetime: subscriptionType === 'lifetime' }
+            : admin.firestore.FieldValue.delete();
+        await db.collection('config').doc('supporters').set(entry, { merge: true });
+        supportersSynced = true;
+    }
+
+    // Merge, never replace: setCustomUserClaims overwrites the whole object,
+    // which is how Pro grants used to delete ageVerified/moderator.
+    const mergedClaims = Object.assign({}, userRecord.customClaims || {}, { pro: isGrant });
+    await admin.auth().setCustomUserClaims(uid, mergedClaims);
+
+    logger.info('adminSetPro', {
+        action: data.action,
+        uid,
+        expiresAt: expiresAt.toISOString(),
+        createdDocument: !before.exists,
+        by: auth.token.email
+    });
+
+    return {
+        uid,
+        isPro: isGrant,
+        expiresAt: expiresAt.toISOString(),
+        subscriptionType: subscriptionType || (before.exists ? before.get('subscriptionType') || null : null),
+        email: userRecord.email || null,
+        supportersSynced,
+        createdDocument: !before.exists
+    };
+});
+
+/**
  * Game leaderboards — server-authoritative score submission.
  *
  * The browser can no longer write `leaderboard_*` documents (firestore.rules

@@ -1899,6 +1899,7 @@
                 isIpBanned: isIpBanned,
                 isPro: isPro,
                 proExpiresAt: proExpiresAt,
+                hasUserDoc: proDoc.exists,
                 subscriptionType: subscriptionType,
                 stripeCustomerId: stripeCustomerId,
                 isFirebaseDisabled: isFirebaseDisabled,
@@ -1937,6 +1938,8 @@
             + '</div>'
             + '<div class="admin-badges">'
             + '<span class="admin-badge' + (u.isPro ? ' admin-badge-pro' : '') + '">Pro: ' + escapeHtml(proLabel) + '</span>'
+            + '<span class="admin-badge' + (u.hasUserDoc === false ? ' admin-badge-bad' : ' admin-badge-ok') + '">Record: '
+            + (u.hasUserDoc === false ? 'none yet' : 'present') + '</span>'
             + '<span class="admin-badge' + (u.ip ? (u.isIpBanned ? ' admin-badge-bad' : ' admin-badge-ok') : '') + '">IP: ' + escapeHtml(ipLabel) + '</span>'
             + '<span class="admin-badge' + (u.isFirebaseDisabled ? ' admin-badge-bad' : ' admin-badge-ok') + '">Firebase: ' + escapeHtml(firebaseLabel) + '</span>'
             + '<span class="admin-badge' + (u.isSocialFirebaseDisabled ? ' admin-badge-bad' : ' admin-badge-ok') + '">Social: ' + escapeHtml(socialFirebaseLabel) + '</span>'
@@ -2070,76 +2073,149 @@
         }
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  Pro grants                                                        */
+    /* ------------------------------------------------------------------ */
+    // Grant/revoke go through the owner-only adminSetPro callable. The Admin
+    // SDK can create a users/{uid} document that does not exist yet — most
+    // accounts have none until they save a setting, and a browser write to a
+    // missing document is a CREATE, which the rules used to deny — and it
+    // merges the `pro` custom claim that storage.rules checks. The old direct
+    // write stays as a fallback for a session where the function is not
+    // deployed yet.
+    function proExpiryFor(type, amount) {
+        var expiresAt = new Date();
+        if (type === 'lifetime') { expiresAt.setFullYear(2100, 0, 1); return expiresAt; }
+        if (type === 'days') expiresAt.setDate(expiresAt.getDate() + amount);
+        if (type === 'months') expiresAt.setMonth(expiresAt.getMonth() + amount);
+        if (type === 'years') expiresAt.setFullYear(expiresAt.getFullYear() + amount);
+        return expiresAt;
+    }
+
+    function proSubscriptionTypeFor(type) {
+        return type === 'lifetime' ? 'lifetime' : 'manual';
+    }
+
+    function errText(err) {
+        return err && err.message ? err.message : String(err);
+    }
+
+    async function adminSetProRemote(payload) {
+        var callable = firebase.functions().httpsCallable('adminSetPro');
+        var res = await callable(payload);
+        return res.data || {};
+    }
+
+    // Legacy browser-only write (pre-callable). Works now that the rules allow
+    // the owner to create a missing user document, but it cannot update the
+    // auth claim.
+    async function grantProDirect(u, type, amount) {
+        var expiresAt = proExpiryFor(type, amount);
+        var subscriptionType = proSubscriptionTypeFor(type);
+        var fsTs = firebase.firestore.Timestamp.fromDate(expiresAt);
+        await firestore.collection('users').doc(u.uid).set(
+            { isPro: true, proExpiresAt: fsTs, subscriptionType: subscriptionType },
+            { merge: true }
+        );
+        if (u.email) {
+            var supportersUpdate = {};
+            supportersUpdate[u.email] = { expiresAt: fsTs, isLifetime: subscriptionType === 'lifetime' };
+            await firestore.collection('config').doc('supporters').set(supportersUpdate, { merge: true });
+        }
+        return { expiresAt: expiresAt.toISOString(), subscriptionType: subscriptionType, claimSynced: false };
+    }
+
     async function adminGrantPro() {
         var u = adminTargetUser;
         if (!u) return;
 
         var type = document.getElementById('admin-pro-type').value;
         var amount = parseInt(document.getElementById('admin-pro-amount').value, 10);
-        var subscriptionType, expiresAt = new Date();
-
-        if (type === 'lifetime') {
-            subscriptionType = 'lifetime';
-            expiresAt.setFullYear(2100, 0, 1);
-        } else {
-            if (isNaN(amount) || amount <= 0) { setAdminStatus('Enter a valid duration.', true); return; }
-            subscriptionType = 'manual';
-            if (type === 'days') expiresAt.setDate(expiresAt.getDate() + amount);
-            if (type === 'months') expiresAt.setMonth(expiresAt.getMonth() + amount);
-            if (type === 'years') expiresAt.setFullYear(expiresAt.getFullYear() + amount);
+        if (type !== 'lifetime' && (isNaN(amount) || amount <= 0)) {
+            setAdminStatus('Enter a valid duration.', true);
+            return;
         }
 
+        var previewExpiry = proExpiryFor(type, amount);
         if (!await showConfirm('Grant Pro to ' + (u.emailHandle || u.uid) + '?\n\nExpires: '
-            + expiresAt.toDateString() + '\n\nThe auth claim updates when the user next signs in.')) return;
+            + previewExpiry.toDateString() + '\n\nThe Pro auth claim is updated immediately.')) return;
 
         setAdminStatus('Granting Pro...');
+        var result = null;
+        var callError = null;
         try {
-            var fsTs = firebase.firestore.Timestamp.fromDate(expiresAt);
-            await firestore.collection('users').doc(u.uid).set(
-                { isPro: true, proExpiresAt: fsTs, subscriptionType: subscriptionType },
-                { merge: true }
-            );
-            if (u.email) {
-                var supportersUpdate = {};
-                supportersUpdate[u.email] = { expiresAt: fsTs, isLifetime: subscriptionType === 'lifetime' };
-                await firestore.collection('config').doc('supporters').set(supportersUpdate, { merge: true });
-            }
-            adminTargetUser.isPro = true;
-            adminTargetUser.proExpiresAt = expiresAt;
-            adminTargetUser.subscriptionType = subscriptionType;
-            renderAdminUserInfo();
-            setAdminStatus('Pro granted to ' + (u.emailHandle || u.uid) + ' until ' + formatDate(expiresAt.getTime())
-                + '. The user must sign in again for the claim to apply.');
+            result = await adminSetProRemote({ uid: u.uid, action: 'grant', type: type, amount: amount });
         } catch (err) {
-            console.error(err);
-            setAdminStatus('Error granting Pro: ' + (err && err.message ? err.message : err), true);
+            callError = err;
+            console.warn('adminSetPro callable failed, falling back to a direct write:', err);
         }
+
+        if (!result) {
+            try {
+                result = await grantProDirect(u, type, amount);
+            } catch (err) {
+                console.error(err);
+                setAdminStatus('Error granting Pro: ' + errText(err)
+                    + (callError ? ' (server call: ' + errText(callError) + ')' : ''), true);
+                return;
+            }
+        }
+
+        var expiresMs = Date.parse(result.expiresAt) || previewExpiry.getTime();
+        adminTargetUser.isPro = true;
+        adminTargetUser.proExpiresAt = new Date(expiresMs);
+        adminTargetUser.subscriptionType = result.subscriptionType || proSubscriptionTypeFor(type);
+        renderAdminUserInfo();
+        setAdminStatus('Pro granted to ' + (u.emailHandle || u.uid) + ' until ' + formatDate(expiresMs)
+            + (result.createdDocument ? ' (created their user record)' : '')
+            + (result.claimSynced === false ? '. Claim not synced — sign out/in to apply.' : '.'));
+    }
+
+    async function revokeProDirect(u) {
+        await firestore.collection('users').doc(u.uid).set(
+            { isPro: false, proExpiresAt: firebase.firestore.Timestamp.fromDate(new Date()) },
+            { merge: true }
+        );
+        if (u.email) {
+            var supportersUpdate = {};
+            supportersUpdate[u.email] = firebase.firestore.FieldValue.delete();
+            await firestore.collection('config').doc('supporters').set(supportersUpdate, { merge: true });
+        }
+        return { claimSynced: false };
     }
 
     async function adminRevokePro() {
         var u = adminTargetUser;
         if (!u) return;
-        if (!await showConfirm('Revoke Pro from ' + (u.emailHandle || u.uid) + '?')) return;
+        if (!await showConfirm('Revoke Pro from ' + (u.emailHandle || u.uid) + '?\n\n'
+            + 'This clears the expiry, removes their supporters entry and turns the Pro claim off.')) return;
 
         setAdminStatus('Revoking Pro...');
+        var result = null;
+        var callError = null;
         try {
-            await firestore.collection('users').doc(u.uid).set(
-                { isPro: false, proExpiresAt: firebase.firestore.Timestamp.fromDate(new Date()) },
-                { merge: true }
-            );
-            if (u.email) {
-                var supportersUpdate = {};
-                supportersUpdate[u.email] = firebase.firestore.FieldValue.delete();
-                await firestore.collection('config').doc('supporters').set(supportersUpdate, { merge: true });
-            }
-            adminTargetUser.isPro = false;
-            adminTargetUser.proExpiresAt = null;
-            renderAdminUserInfo();
-            setAdminStatus('Pro revoked from ' + (u.emailHandle || u.uid) + '.');
+            result = await adminSetProRemote({ uid: u.uid, action: 'revoke' });
         } catch (err) {
-            console.error(err);
-            setAdminStatus('Error revoking Pro: ' + (err && err.message ? err.message : err), true);
+            callError = err;
+            console.warn('adminSetPro callable failed, falling back to a direct write:', err);
         }
+
+        if (!result) {
+            try {
+                result = await revokeProDirect(u);
+            } catch (err) {
+                console.error(err);
+                setAdminStatus('Error revoking Pro: ' + errText(err)
+                    + (callError ? ' (server call: ' + errText(callError) + ')' : ''), true);
+                return;
+            }
+        }
+
+        adminTargetUser.isPro = false;
+        adminTargetUser.proExpiresAt = null;
+        renderAdminUserInfo();
+        setAdminStatus('Pro revoked from ' + (u.emailHandle || u.uid) + '.'
+            + (result.claimSynced === false ? ' Claim not synced — sign out/in to apply.' : ''));
     }
 
     /* ------------------------------------------------------------------ */
