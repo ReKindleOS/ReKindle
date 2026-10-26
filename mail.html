@@ -188,6 +188,27 @@
         .toolbar>*+* {
             margin-left: 8px;
         }
+        /* One height for every toolbar control. The custom-select trigger is
+           content-box with its own padding, so without this the folder picker
+           sat ~7px taller than the buttons beside it. */
+        .toolbar .toolbar-btn,
+        .toolbar .custom-select-trigger {
+            height: 32px;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            line-height: 1;
+            font-size: 0.85rem;
+        }
+        .toolbar .custom-select-trigger {
+            padding-right: 30px;
+            justify-content: flex-start;
+        }
+        .toolbar .custom-select-container {
+            height: 32px;
+        }
 
         .toolbar-btn {
             background: white;
@@ -624,19 +645,29 @@
             max-width: 300px;
         }
 
+        /* Matches css/custom-select.css (.custom-options) so the two dropdowns
+           in the toolbar read as the same control. */
+        .accounts-anchor {
+            position: relative;
+            display: inline-flex;
+        }
+        .accounts-anchor.open #accounts-btn {
+            background: #eee;
+        }
         .accounts-menu {
             position: absolute;
             top: 100%;
-            left: 8px;
-            min-width: 220px;
-            max-width: 90%;
+            left: 0;
+            min-width: 240px;
+            max-width: 320px;
             max-height: 60vh;
             overflow-y: auto;
             background: #fff;
             border: 2px solid black;
+            border-top: none;
             box-shadow: 4px 4px 0 black;
-            z-index: 300;
-            padding: 4px;
+            z-index: 9999;
+            padding: 0;
             text-align: left;
         }
         .menu-item {
@@ -645,15 +676,20 @@
             text-align: left;
             background: #fff;
             border: none;
-            padding: 10px 8px;
+            border-bottom: 1px solid #eee;
+            padding: 8px 10px;
             font-family: inherit;
             font-size: 0.9rem;
+            font-weight: bold;
+            color: #000;
             cursor: pointer;
         }
+        .menu-item:last-child { border-bottom: none; }
+        .menu-item:hover { background: #f0f0f0; }
         .menu-item:active { background: #000; color: #fff; }
-        .menu-item.active { font-weight: bold; }
+        .menu-item.active { background: #eee; }
         .menu-item .menu-sub { display: block; font-weight: normal; font-size: 0.7rem; color: #555; }
-        .menu-sep { border-top: 1px solid #999; margin: 4px 0; }
+        .menu-sep { border-top: 1px solid #ccc; margin: 4px 0; }
         .account-tag {
             display: inline-block;
             border: 1px solid #666;
@@ -730,14 +766,15 @@
                 <option value="TRASH" data-i18n="mail.folder.trash">Trash</option>
                 <option value="IMPORTANT" data-i18n="mail.folder.important">Important</option>
             </select>
-            <button class="toolbar-btn" id="accounts-btn" onclick="toggleAccountsMenu(event)"
-                style="display:none;">Accounts</button>
-            <div id="accounts-menu" class="accounts-menu" style="display:none;"
-                onclick="event.stopPropagation()">
-                <div id="accounts-menu-list"></div>
-                <div class="menu-sep"></div>
-                <button class="menu-item" id="unified-menu-item" onclick="toggleUnified()">All inboxes</button>
-                <button class="menu-item" onclick="closeAccountsMenu(); openSettings();">Manage accounts...</button>
+            <div id="accounts-anchor" class="accounts-anchor" style="display:none;">
+                <button class="toolbar-btn" id="accounts-btn" onclick="toggleAccountsMenu(event)">Accounts</button>
+                <div id="accounts-menu" class="accounts-menu" style="display:none;"
+                    onclick="event.stopPropagation()">
+                    <div id="accounts-menu-list"></div>
+                    <div class="menu-sep"></div>
+                    <button class="menu-item" id="unified-menu-item" onclick="toggleUnified()">All inboxes</button>
+                    <button class="menu-item" onclick="closeAccountsMenu(); openSettings();">Manage accounts...</button>
+                </div>
             </div>
             <div class="toolbar-spacer"></div>
             <button class="toolbar-btn" onclick="loadEmails()" data-i18n="mail.btn.refresh">↻ Refresh</button>
@@ -1055,10 +1092,11 @@
 
         function updateAccountsButton() {
             const btn = document.getElementById('accounts-btn');
-            if (!btn) return;
+            const anchor = document.getElementById('accounts-anchor');
+            if (!btn || !anchor) return;
             // Only shown once there is something to switch between; the title-bar
             // Settings button opens the same sheet for single-account users.
-            btn.style.display = accounts.length > 1 ? 'block' : 'none';
+            anchor.style.display = accounts.length > 1 ? 'inline-flex' : 'none';
             btn.innerText = unifiedMode
                 ? 'All inboxes'
                 : (accounts.length > 1 ? 'Accounts (' + accounts.length + ')' : 'Account');
@@ -1100,19 +1138,23 @@
         function toggleAccountsMenu(ev) {
             if (ev) ev.stopPropagation();
             const menu = document.getElementById('accounts-menu');
+            const anchor = document.getElementById('accounts-anchor');
             if (!menu) return;
             const open = menu.style.display !== 'none';
             if (open) {
-                menu.style.display = 'none';
+                closeAccountsMenu();
                 return;
             }
             renderAccountsMenu();
             menu.style.display = 'block';
+            if (anchor) anchor.classList.add('open');
         }
 
         function closeAccountsMenu() {
             const menu = document.getElementById('accounts-menu');
+            const anchor = document.getElementById('accounts-anchor');
             if (menu) menu.style.display = 'none';
+            if (anchor) anchor.classList.remove('open');
         }
 
         function selectAccount(id) {
