@@ -295,14 +295,17 @@ async function msPostForm(url, params) {
     return { ok: res.ok, status: res.status, json };
 }
 
-async function getMicrosoftAccessToken(uid) {
-    const cached = msTokenCache.get(uid);
+async function getMicrosoftAccessToken(uid, accountId) {
+    // One ReKindle user can link several mailboxes, including several Microsoft
+    // ones, so the cache key is (user, account) rather than just the user.
+    const cacheKey = `${uid}:${accountId}`;
+    const cached = msTokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached;
 
     // Collapse concurrent refreshes inside one instance (mail.html fires folder
     // list + message list together). Rotation across instances still races, but
     // the access token cache makes a refresh a once-an-hour event.
-    if (msRefreshing.has(uid)) return msRefreshing.get(uid);
+    if (msRefreshing.has(cacheKey)) return msRefreshing.get(cacheKey);
 
     const pending = (async () => {
         const clientId = mailOAuth.microsoftClientId();
@@ -310,7 +313,7 @@ async function getMicrosoftAccessToken(uid) {
             throw new HttpsError('failed-precondition', 'Outlook sign-in is not configured yet.');
         }
 
-        const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`).get();
+        const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}/${accountId}`).get();
         const account = snap.exists() ? snap.val() : null;
         if (!account || !account.refreshToken) {
             throw new HttpsError('failed-precondition', 'No Outlook account is connected.');
@@ -329,7 +332,7 @@ async function getMicrosoftAccessToken(uid) {
             if (code === 'invalid_grant' || code === 'interaction_required' || code === 'consent_required') {
                 // Dead token: drop it so the UI can ask for a reconnect instead
                 // of retrying a credential Microsoft has already rejected.
-                await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`).remove().catch(() => { });
+                await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}/${accountId}`).remove().catch(() => { });
                 throw new HttpsError('permission-denied', 'Outlook connection expired. Reconnect it in Mail settings.');
             }
             throw new HttpsError('internal', 'Could not reach Outlook. Try again later.');
@@ -343,7 +346,7 @@ async function getMicrosoftAccessToken(uid) {
         };
 
         if (json.refresh_token && json.refresh_token !== account.refreshToken) {
-            await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}`)
+            await admin.database().ref(`${MS_ACCOUNT_PATH}/${uid}/${accountId}`)
                 .update({ refreshToken: json.refresh_token, updatedAt: Date.now() })
                 .catch(e => logger.warn('Could not persist rotated refresh token', e.message));
         }
@@ -351,14 +354,14 @@ async function getMicrosoftAccessToken(uid) {
         return entry;
     })();
 
-    msRefreshing.set(uid, pending);
+    msRefreshing.set(cacheKey, pending);
     try {
         const entry = await pending;
         if (msTokenCache.size > MS_TOKEN_CACHE_MAX) msTokenCache.clear();
-        msTokenCache.set(uid, entry);
+        msTokenCache.set(cacheKey, entry);
         return entry;
     } finally {
-        msRefreshing.delete(uid);
+        msRefreshing.delete(cacheKey);
     }
 }
 
@@ -375,7 +378,11 @@ async function resolveMailConnection(uid, config, kind) {
     }
 
     if (mailOAuth.isMicrosoftOAuth(config)) {
-        const tokens = await getMicrosoftAccessToken(uid);
+        const accountId = typeof config.accountId === 'string' ? config.accountId.trim() : '';
+        if (!accountId) {
+            throw new HttpsError('invalid-argument', 'Missing Outlook account id.');
+        }
+        const tokens = await getMicrosoftAccessToken(uid, accountId);
         const endpoint = mailOAuth.endpointFor(config, kind);
         return Object.assign({}, endpoint, { auth: mailOAuth.authFor(config, kind, tokens) });
     }
@@ -1200,69 +1207,71 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
         return { success: true, status: 'error' };
     }
 
-    await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).set({
+    // Re-running the flow for a mailbox that is already linked refreshes its
+    // token instead of adding a duplicate account entry.
+    const existingSnap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).get();
+    const existing = existingSnap.exists() ? (existingSnap.val() || {}) : {};
+    let accountId = null;
+    Object.keys(existing).forEach(id => {
+        const entry = existing[id];
+        if (!accountId && entry && String(entry.email || '').toLowerCase() === email.toLowerCase()) {
+            accountId = id;
+        }
+    });
+    if (!accountId) {
+        accountId = 'ms' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}/${accountId}`).set({
         provider: 'microsoft',
         email,
         refreshToken: json.refresh_token,
         updatedAt: Date.now()
     });
     await pendingRef.remove().catch(() => { });
-    msTokenCache.delete(auth.uid);
+    msTokenCache.delete(`${auth.uid}:${accountId}`);
 
-    const FieldValue = admin.firestore.FieldValue;
-    await admin.firestore().collection('users').doc(auth.uid).collection('pro_data').doc('mail').set({
-        imapUser: email,
-        oauth: 'microsoft',
-        imapHost: mailOAuth.MICROSOFT_IMAP.host,
-        imapPort: mailOAuth.MICROSOFT_IMAP.port,
-        smtpHost: mailOAuth.MICROSOFT_SMTP.host,
-        smtpPort: mailOAuth.MICROSOFT_SMTP.port,
-        imapPass: FieldValue.delete(),
-        encrypted: FieldValue.delete(),
-        updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true }).catch(e => logger.warn('Could not mirror Outlook account to settings', e.message));
-
-    return { success: true, status: 'ok', email };
+    // The account list itself lives in the client-readable settings doc, which
+    // mail.html owns; the server only ever stores the refresh token.
+    return { success: true, status: 'ok', email, accountId };
 });
 
 /**
- * Outlook / Hotmail: is an account linked? Never returns the refresh token.
+ * Outlook / Hotmail: which mailboxes are linked? Never returns refresh tokens.
  */
 exports.mailMicrosoftStatus = onCall(callOptions, async (request) => {
     const auth = await assertMailAccess(request, 'none');
 
     const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).get();
-    const account = snap.exists() ? snap.val() : null;
+    const all = snap.exists() ? (snap.val() || {}) : {};
+    const accounts = Object.keys(all)
+        .filter(id => all[id] && all[id].refreshToken)
+        .map(id => ({ id, email: all[id].email || null }));
 
-    return {
-        success: true,
-        linked: !!(account && account.refreshToken),
-        email: (account && account.email) || null
-    };
+    return { success: true, accounts, linked: accounts.length > 0 };
 });
 
 /**
- * Outlook / Hotmail: forget the linked account (refresh token + settings).
+ * Outlook / Hotmail: forget one linked mailbox, or every mailbox for this user.
+ *
+ * Removes the refresh token only; mail.html drops the account entry itself.
+ * Other devices keep a stale entry, which then reports "connection expired".
  */
 exports.mailMicrosoftDisconnect = onCall(callOptions, async (request) => {
     const auth = await assertMailAccess(request, 'none');
+    const rawId = request.data && request.data.accountId;
+    const accountId = typeof rawId === 'string' ? rawId.trim() : '';
 
-    await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).remove();
+    if (accountId) {
+        await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}/${accountId}`).remove();
+        msTokenCache.delete(`${auth.uid}:${accountId}`);
+    } else {
+        const snap = await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).get();
+        const all = snap.exists() ? (snap.val() || {}) : {};
+        Object.keys(all).forEach(id => msTokenCache.delete(`${auth.uid}:${id}`));
+        await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}`).remove();
+    }
     await admin.database().ref(`${MS_PENDING_PATH}/${auth.uid}`).remove().catch(() => { });
-    msTokenCache.delete(auth.uid);
-
-    const FieldValue = admin.firestore.FieldValue;
-    await admin.firestore().collection('users').doc(auth.uid).collection('pro_data').doc('mail').set({
-        oauth: FieldValue.delete(),
-        imapUser: FieldValue.delete(),
-        imapHost: FieldValue.delete(),
-        imapPort: FieldValue.delete(),
-        smtpHost: FieldValue.delete(),
-        smtpPort: FieldValue.delete(),
-        imapPass: FieldValue.delete(),
-        encrypted: FieldValue.delete(),
-        updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true }).catch(e => logger.warn('Could not clear mail settings', e.message));
 
     return { success: true };
 });

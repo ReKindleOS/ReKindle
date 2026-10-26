@@ -532,10 +532,11 @@ token is stored and the browser only ever holds the address.
   `{ type: 'OAuth2', user, accessToken }` → Nodemailer).
 * `firebase-functions/index.js`:
   * `resolveMailConnection(uid, config, kind)` — the single place that turns a
-    client payload into connection details. OAuth accounts → `mail_oauth/{uid}`
-    + refresh; password accounts → the old `assertMailAuthConfig` +
-    `assertMailEndpoint` SSRF guard. **All six mail callables use it** —
-    `scripts/test-mail-oauth.js` fails if a new callable forgets.
+    client payload into connection details. OAuth accounts → the refresh token
+    for the caller's `config.accountId`; password accounts → the old
+    `assertMailAuthConfig` + `assertMailEndpoint` SSRF guard. **All six mail
+    callables use it** — `scripts/test-mail-oauth.js` fails if a new callable
+    forgets.
   * `getMicrosoftAccessToken(uid)` — refreshes with `grant_type=refresh_token`,
     caches the access token in a module-level Map (55 min) and persists the
     rotated refresh token. `invalid_grant` / `interaction_required` deletes the
@@ -546,15 +547,20 @@ token is stored and the browser only ever holds the address.
     `interval` (5 s), `authorization_pending` → `pending`, `slow_down` → longer
     delay, `expired_token` → `expired`, `authorization_declined` → `denied`,
     `consent_required` → `consent` (work/school tenant needs admin approval).
-  * On success the account is mirrored into `users/{uid}/pro_data/mail` as
-    `{ oauth: 'microsoft', imapUser, imapHost… }` with `imapPass` and
-    `encrypted` deleted, so any signed-in device can restore it without secrets.
+  * **One ReKindle user can link several Microsoft mailboxes.** Tokens live at
+    `mail_oauth/{uid}/{accountId}`, the poll returns the `accountId` it used
+    (reusing the existing id when the same address is relinked), `Status`
+    returns `{ accounts: [{ id, email }] }`, and `Disconnect` takes an optional
+    `accountId` (no id = forget every mailbox). The account *list* is owned by
+    `mail.html` in `users/{uid}/pro_data/mail`; the server never writes it, so
+    there is one source of truth.
 
 ### Storage, scopes, cost
 
-* Refresh token: RTDB `mail_oauth/{uid}`. There is deliberately **no rule** for
-  it (and none for `mail_rate_limits`) — RTDB default-denies, the Admin SDK
-  bypasses rules, and no client can ever read it. Do not add a rules block.
+* Refresh tokens: RTDB `mail_oauth/{uid}/{accountId}` (one per linked mailbox).
+  There is deliberately **no rule** for it (and none for `mail_rate_limits`) —
+  RTDB default-denies, the Admin SDK bypasses rules, and no client can ever read
+  it. Do not add a rules block.
 * Scopes: `openid profile email offline_access` plus IMAP/SMTP on **one**
   audience, chosen by `MAIL_MS_SCOPE_AUDIENCE` (`graph` by default, `outlook`
   optional) — see `mail-oauth-config.js` `microsoftScopes()`.
@@ -613,6 +619,51 @@ curl -s -X POST https://login.microsoftonline.com/common/oauth2/v2.0/devicecode 
 A `user_code` means the registration is good; `invalid_client` means public
 client flows are off (or the ID is wrong). **Do not reuse another app's client
 ID** — Thunderbird's is fine for probing only.
+
+### Multiple accounts and conversation grouping (2026-10-26)
+
+`mail.html` keeps an **account list** rather than a single mailbox, so several
+accounts — including several of the same provider — can be signed in at once:
+
+* Stored in `localStorage` (`rekindle_mail_accounts` + `rekindle_mail_active`)
+  and mirrored to `users/{uid}/pro_data/mail` as `{ accounts, activeId,
+  threading }`. The old single-mailbox fields (`imapUser`, `imapPass`,
+  `encrypted`, hosts, `oauth`) are deleted on the first save with
+  `FieldValue.delete()`, and legacy local keys are migrated once by
+  `migrateLegacyLocalAccount()`.
+* Account shape: `{ id, provider, email, label, imap, smtp, passEnc }` for
+  password accounts and `{ id, provider:'microsoft', email, oauth:'microsoft',
+  accountId }` for Outlook. Passwords stay encrypted per account with the
+  ReKindle uid (same PBKDF2 scheme as before); the decrypted copy lives only in
+  memory (`account._pass`) and `serializeAccount()` drops it on every write.
+* `activateAccount(id)` rebuilds `imapConfig`/`smtpConfig` from the entry, so the
+  six callables and the rest of the page never needed to change. The toolbar
+  shows an `Accounts (N)` button only when more than one mailbox exists.
+* The Settings sheet (title-bar → Settings, `showAccountsStep()`) lists every
+  mailbox with **Use** / **Remove** (Outlook shows **Sign out**, which also
+  revokes the server token), plus the grouping toggle and **Add another
+  account**.
+
+**Conversation grouping is on by default** (`rekindle_mail_threading`, toggle in
+the same sheet). Threads are keyed on the normalised subject — `Re:/Fwd:/AW:/…`
+prefixes stripped repeatedly, whitespace collapsed — because the IMAP envelope
+does not carry `References`/`In-Reply-To`, so a subject is the only signal that
+works across providers; a message with no subject falls back to its own
+Message-ID. `buildThreads()` runs over the loaded page, the newest message is the
+row, and the badge shows the count; tapping expands the whole conversation
+(newest first) in place.
+
+Two behaviours to remember:
+
+* With grouping on, `appendEmailRows()` **rebuilds** the list instead of
+  appending, because a new page can merge into threads already on screen. With
+  it off the append fast path (scroll position preserved) is still used.
+* `filterEmails()` matches each row's `data-search` corpus, not `emails[index]` —
+  once grouped, DOM order no longer matches the `emails` array.
+* `[id$="-overlay"]` gets a forced 55% white wash in dark mode from `theme.js`
+  (scrim handling, and its `:not(#gallery-flipbook-overlay)` outranks a plain id
+  selector). `#auth-overlay` is a dialog, so `mail.html` re-declares it as
+  `#auth-overlay#auth-overlay` to win the tie and stay opaque.
 
 ### Failure modes to keep in mind
 

@@ -568,7 +568,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'essentials',
         title: 'Mail',
         summary: 'A ReKindle+ IMAP/SMTP email client with folders, reading, archiving and composing.',
-        tags: 'mail email imap smtp gmail outlook hotmail yahoo icloud inbox compose send archive spam trash app password oauth pro',
+        tags: 'mail email imap smtp gmail outlook hotmail yahoo icloud inbox compose send archive spam trash app password oauth accounts multiple threads conversations pro',
         badges: ['REKINDLE+'],
         appHref: 'mail',
         appName: 'Mail',
@@ -580,12 +580,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Open Mail and choose your provider: Gmail, Outlook / Hotmail, Yahoo, iCloud or Custom (IMAP).</li>
                 <li>For Gmail, Yahoo or iCloud, enter the email address and an <b>app password</b>, not your normal account password.</li>
                 <li>For Custom, also enter the IMAP and SMTP hosts and ports.</li>
-                <li>Tap Connect. If the connection works, credentials are encrypted and saved on this device.</li>
+                <li>Tap Connect. If the connection works, credentials are encrypted and saved to your account (cached on this device).</li>
             </ol>
             <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Yahoo and iCloud users with 2FA need an app password too.</div>
-            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP").</div>
+            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP"). Leave the Mail page open while it checks for approval.</div>
+            <div class="note"><b>Several mailboxes at once:</b> tap <b>Settings</b> to see every account signed in on this device, switch between them, or add another with <b>Add another account</b>. You can add more than one Gmail, Yahoo or Outlook account; each keeps its own folders and signing out of one leaves the others alone. Accounts are remembered per ReKindle user, so they follow you to another device.</div>
             <h2>Reading and organising</h2>
             <ul>
+                <li>Conversations are grouped by subject by default: replies to the same subject show as one row with a count, and tapping it expands the messages. Turn <b>Group conversations</b> off in Settings to list every message separately.</li>
                 <li>Folders include Inbox, Sent, Drafts, Starred, All Mail/Archive, Spam, Trash and Important, plus any custom folders your provider exposes.</li>
                 <li>Tap a message to read it. Links open in a new tab where possible; images and remote content may be limited for privacy.</li>
                 <li>Use the toolbar to reply, forward, flag, mark read/unread, archive or move to trash. <b>Refresh</b> re-fetches the current folder.</li>

@@ -125,6 +125,14 @@ const cfg = require('../firebase-functions/mail-oauth-config.js');
     }
     assert.ok(!/return\s*\{[^}]*\brefreshToken\s*:/.test(fn), 'a callable must never return the refresh token');
     assert.ok(!fn.includes('MICROSOFT_SCOPES'), 'callables must use microsoftScopes() (audience-aware)');
+
+    // Multiple Microsoft mailboxes per user: tokens are keyed by account id, the
+    // resolver refuses a config without one, and status lists them all.
+    assert.ok(/config\.accountId/.test(fn), 'resolveMailConnection must require an Outlook account id');
+    assert.ok(/status: 'ok', email, accountId/.test(fn), 'mailMicrosoftPoll must return the account id');
+    assert.ok(/accounts, linked:/.test(fn), 'mailMicrosoftStatus must list every linked mailbox');
+    assert.ok(/request\.data\.accountId/.test(fn), 'mailMicrosoftDisconnect must accept a single account id');
+    assert.ok(/MS_ACCOUNT_PATH}\/\$\{uid}\/\$\{accountId}/.test(fn), 'refresh tokens must be stored per account');
     assert.ok(fn.includes('mail_oauth/'), 'refresh tokens must live in the service-account-only mail_oauth node');
 
     // RTDB default-deny: mail_oauth must not be added as a public node.
