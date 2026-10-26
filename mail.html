@@ -1246,6 +1246,9 @@
                 return false;
             }
 
+            // Tentative: only becomes the saved choice if the mailbox opens, so a
+            // dead account cannot pin itself as "last used" and be retried forever.
+            const previousActive = activeAccountId;
             activeAccountId = account.id;
             userEmail = account.email;
 
@@ -1285,19 +1288,29 @@
                 account._smtp = smtpConfig;
             }
 
-            saveAccountsLocal();
             updateAccountsButton();
-            if (opts.skipLoad) return true;
+            if (opts.skipLoad) {
+                saveAccountsLocal();
+                return true;
+            }
 
             resetMailboxView();
             try {
                 await loadFolders();
                 await loadEmails();
+                saveAccountsLocal();
                 return true;
             } catch (e) {
                 console.error('Could not open mailbox', e);
+                if (previousActive && previousActive !== account.id
+                    && accounts.some(a => a.id === previousActive)) {
+                    activeAccountId = previousActive;
+                }
+                updateAccountsButton();
                 if (!opts.quiet) {
-                    showModal('Could not open ' + account.email + '. ' + ((e && e.message) || 'Check the account settings.'));
+                    showModal('Could not open ' + account.email + '. ' +
+                        ((e && e.message) || 'Check the account settings.') +
+                        ' Use Accounts to switch to another mailbox, or re-add this one.');
                     if (opts.silentFail) showAccountsStep();
                 }
                 return false;
