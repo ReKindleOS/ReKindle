@@ -1,4 +1,5 @@
 import { mergeClaims } from './claims.js';
+import { eventSeconds, subscriptionIdOf, uidFromSubscription, uidFromInvoice, staleRevocationReason, nextState } from './events.js';
 
 // Per-isolate caches. The OAuth token is valid for an hour; minting one per
 // call (a webhook could call it three times) is pure latency.
@@ -28,6 +29,22 @@ export default {
                     'Access-Control-Allow-Headers': 'Content-Type, Authorization, stripe-signature',
                     'Access-Control-Max-Age': '86400',
                 },
+            });
+        }
+
+        // --- HEALTH (no secrets) ---
+        // Lets an uptime monitor distinguish "worker is up" from the
+        // CORS-less `error code: 1027` page returned when the account is over
+        // its Workers Free daily request limit.
+        if (request.method === 'GET' && url.pathname.endsWith('/health')) {
+            return new Response(JSON.stringify({
+                ok: true,
+                service: 'rekindle-stripe',
+                stripeKey: !!env.STRIPE_KEY,
+                firebase: !!(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY)
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
             });
         }
 
@@ -168,6 +185,13 @@ export default {
                     'success_url': success_url || 'https://rekindle.ink/pay?success=true',
                     'cancel_url': cancel_url || 'https://rekindle.ink/pay',
                 });
+                // Carry the uid on the Customer/Subscription too. A renewal
+                // invoice only carries the customer, so if
+                // checkout.session.completed was ever lost, the uid in
+                // metadata is the fallback that lets us still grant Pro.
+                params.set('metadata[uid]', uid);
+                if (plan === 'lifetime') params.set('payment_intent_data[metadata][uid]', uid);
+                else params.set('subscription_data[metadata][uid]', uid);
 
                 const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
                     method: 'POST',
@@ -213,6 +237,7 @@ export default {
         const event = JSON.parse(bodyText);
 
         // 2. Handle Events
+        const eventCreated = eventSeconds(event);
         try {
             if (event.type === 'checkout.session.completed') {
                 // NEW SUBSCRIPTION or ONE-TIME PAYMENT
@@ -220,26 +245,49 @@ export default {
                 const uid = session.client_reference_id;
                 const stripeCustomerId = session.customer;
 
-                if (uid) {
-                    // Check Mode: 'payment' = Lifetime, 'subscription' = Recurring
-                    let days = 32; // Default subscription buffer
-                    let subscriptionType = 'recurring';
-
-                    if (session.mode === 'payment') {
-                        days = 36500; // Lifetime (100 years)
-                        subscriptionType = 'lifetime';
-                    }
-
-                    await updateFirestoreUser(env, uid, { days, stripeCustomerId, subscriptionType });
-                    return new Response(`Success: New ${session.mode} activated`, { status: 200 });
-                } else {
-                    console.warn("No client_reference_id found in session");
+                if (!uid) {
+                    // Never swallow this with a 200: a paid session with no uid
+                    // would otherwise be lost forever (Stripe stops retrying).
+                    console.error('checkout.session.completed without client_reference_id:', event.id);
+                    return new Response('Error: checkout session has no client_reference_id', { status: 500 });
                 }
+
+                // Check Mode: 'payment' = Lifetime, 'subscription' = Recurring
+                let days = 32; // Default subscription buffer
+                let subscriptionType = 'recurring';
+
+                if (session.mode === 'payment') {
+                    days = 36500; // Lifetime (100 years)
+                    subscriptionType = 'lifetime';
+                }
+
+                const written = await updateFirestoreUser(env, uid, {
+                    days,
+                    stripeCustomerId,
+                    subscriptionType,
+                    eventCreated,
+                    subscriptionId: subscriptionIdOf(session.subscription)
+                });
+                if (written && written.status === 'user_not_found') {
+                    return new Response('Retry: checkout uid has no user document', { status: 500 });
+                }
+                return new Response(`Success: New ${session.mode} activated`, { status: 200 });
             }
             else if (event.type === 'invoice.payment_succeeded') {
                 // RENEWAL - Extend subscription
                 const invoice = event.data.object;
                 const customerId = invoice.customer;
+                // Stripe's newer API moved the subscription off the top-level
+                // `invoice.subscription` field: it now lives under
+                // parent.subscription_details (or the line's parent). The old
+                // check silently ignored every annual `subscription_create`
+                // invoice, so yearly buyers got only the checkout's 32 days.
+                const subId = subscriptionIdOf(invoice.subscription)
+                    || (invoice.parent && invoice.parent.subscription_details && subscriptionIdOf(invoice.parent.subscription_details.subscription))
+                    || (invoice.lines && invoice.lines.data && invoice.lines.data[0] && invoice.lines.data[0].parent &&
+                        invoice.lines.data[0].parent.subscription_item_details &&
+                        subscriptionIdOf(invoice.lines.data[0].parent.subscription_item_details.subscription));
+                const metadataUid = uidFromInvoice(invoice);
 
                 // SKIP: subscription_update invoices (prorations) often have 'today' as period_end
                 if (invoice.billing_reason === 'subscription_update') {
@@ -247,52 +295,86 @@ export default {
                 }
 
                 // If the invoice is for a subscription (not one-time), extend their access
-                if (invoice.subscription && (invoice.billing_reason === 'subscription_cycle' || invoice.billing_reason === 'subscription_create')) {
-                    if (customerId) {
-                        // Note: invoice.period_end is for the current bill, but we want the subscription's next expiry.
-                        // However, for renewals, invoice.period_end is usually the new expiry.
-                        // We'll use 32 days as a safe fallback if we don't have a better source,
-                        // but customer.subscription.updated should provide the precise timestamp.
-                        const expiresAt = new Date(invoice.lines.data[0].period.end * 1000 + (86400 * 1000 * 2)); // +2 day buffer
-                        const result = await extendSubscriptionByCustomerId(env, customerId, { expiresAt });
-
-                        if (result.status === 'user_not_found') {
-                            // Retry later if user is not yet linked (race condition with checkout event)
-                            return new Response(`Retry: User not found yet for customer ${customerId}`, { status: 500 });
-                        }
-                        return new Response(`Success: Subscription renewed for UID ${result.uid} (Expires: ${expiresAt.toISOString()})`, { status: 200 });
-                    } else {
-                        console.warn("No customer ID in invoice for renewal");
+                if (subId && (invoice.billing_reason === 'subscription_cycle' || invoice.billing_reason === 'subscription_create')) {
+                    if (!customerId && !metadataUid) {
+                        console.error('invoice.payment_succeeded without customer or uid:', event.id);
+                        return new Response('Error: invoice has no customer or uid', { status: 500 });
                     }
+                    // Pick the line that belongs to this subscription (an
+                    // invoice can have proration/discount lines first), then
+                    // use its period end. invoice.period_end is not always the
+                    // subscription period for prorations.
+                    const lines = (invoice.lines && invoice.lines.data) || [];
+                    const subLine = lines.find(function (line) {
+                        const sid = line.parent && line.parent.subscription_item_details &&
+                            line.parent.subscription_item_details.subscription;
+                        return sid === subId;
+                    }) || lines[0];
+                    const periodEnd = subLine && subLine.period && subLine.period.end;
+                    if (!periodEnd) {
+                        console.error('invoice.payment_succeeded without a period end:', event.id);
+                        return new Response('Error: invoice has no line period end', { status: 500 });
+                    }
+                    const expiresAt = new Date(periodEnd * 1000 + (86400 * 1000 * 2)); // +2 day buffer
+                    const result = await extendSubscriptionByCustomerId(env, customerId, {
+                        expiresAt,
+                        eventCreated,
+                        subscriptionId: subId,
+                        uid: metadataUid
+                    });
+
+                    if (result.status === 'user_not_found') {
+                        // Retry later if user is not yet linked (race condition with checkout event)
+                        return new Response(`Retry: User not found yet for customer ${customerId || metadataUid}`, { status: 500 });
+                    }
+                    return new Response(`Success: Subscription renewed for UID ${result.uid} (Expires: ${expiresAt.toISOString()})`, { status: 200 });
                 }
+                return new Response('Ignored non-subscription invoice', { status: 200 });
             }
             else if (event.type === 'customer.subscription.updated') {
                 const subscription = event.data.object;
                 const customerId = subscription.customer;
                 const status = subscription.status;
+                const metadataUid = uidFromSubscription(subscription);
 
                 // Overdue or exhausted retries — revoke access
                 if (status === 'past_due' || status === 'unpaid') {
-                    if (customerId) {
-                        await revokeProByCustomerId(env, customerId);
-                        return new Response(`Success: Pro paused due to ${status} payment`, { status: 200 });
+                    if (!customerId && !metadataUid) {
+                        console.error('customer.subscription.updated without customer or uid:', event.id);
+                        return new Response('Error: subscription has no customer or uid', { status: 500 });
                     }
+                    const result = await revokeProByCustomerId(env, customerId, {
+                        eventCreated,
+                        subscriptionId: subscription.id,
+                        periodEnd: subscription.current_period_end,
+                        uid: metadataUid
+                    });
+                    return new Response(`Success: Pro paused due to ${status} payment (${result.status})`, { status: 200 });
                 }
 
                 // Payment recovered or plan changed — extend access
                 if (status === 'active' || status === 'trialing') {
                     let currentPeriodEnd = subscription.current_period_end;
-                    if (!currentPeriodEnd && subscription.items?.data?.length > 0) {
+                    if (!currentPeriodEnd && subscription.items && subscription.items.data && subscription.items.data.length > 0) {
                         currentPeriodEnd = subscription.items.data[0].current_period_end;
                     }
 
-                    if (customerId && currentPeriodEnd) {
+                    if (currentPeriodEnd) {
+                        if (!customerId && !metadataUid) {
+                            console.error('customer.subscription.updated without customer or uid:', event.id);
+                            return new Response('Error: subscription has no customer or uid', { status: 500 });
+                        }
                         const expiresAt = new Date((currentPeriodEnd * 1000) + (86400 * 1000 * 2));
-                        const result = await extendSubscriptionByCustomerId(env, customerId, { expiresAt });
+                        const result = await extendSubscriptionByCustomerId(env, customerId, {
+                            expiresAt,
+                            eventCreated,
+                            subscriptionId: subscription.id,
+                            uid: metadataUid
+                        });
                         if (result.status === 'user_not_found') {
                             return new Response('Retry: User not found yet', { status: 500 });
                         }
-                        return new Response(`Success: Subscription updated`, { status: 200 });
+                        return new Response(`Success: Subscription updated (${result.status})`, { status: 200 });
                     }
                 }
 
@@ -302,28 +384,45 @@ export default {
                 // CANCELLATION
                 const subscription = event.data.object;
                 const customerId = subscription.customer;
+                const metadataUid = uidFromSubscription(subscription);
 
-                if (customerId) {
-                    await revokeProByCustomerId(env, customerId);
-                    return new Response('Success: Subscription cancelled and revoked', { status: 200 });
-                } else {
-                    console.warn("No customer ID in subscription deletion event");
+                if (!customerId && !metadataUid) {
+                    console.error('customer.subscription.deleted without customer or uid:', event.id);
+                    return new Response('Error: subscription has no customer or uid', { status: 500 });
                 }
+
+                const result = await revokeProByCustomerId(env, customerId, {
+                    eventCreated,
+                    subscriptionId: subscription.id,
+                    periodEnd: subscription.current_period_end,
+                    uid: metadataUid
+                });
+                return new Response(`Success: Subscription cancelled and revoked (${result.status})`, { status: 200 });
             }
             else if (event.type === 'charge.refunded') {
-                // REFUND - Revoke access immediately
+                // REFUND - Revoke access immediately, unless it is older than a
+                // newer grant (see staleRevocationReason in events.js).
                 const charge = event.data.object;
                 const customerId = charge.customer;
+                const fullyRefunded = charge.refunded === true ||
+                    (typeof charge.amount_refunded === 'number' && typeof charge.amount === 'number' && charge.amount_refunded >= charge.amount);
+
+                // Stripe emits charge.refunded for partial refunds too. A
+                // goodwill refund of a few dollars must not cancel Pro.
+                if (!fullyRefunded) {
+                    console.log('Ignoring partial refund:', event.id);
+                    return new Response('Ignored partial refund', { status: 200 });
+                }
 
                 if (customerId) {
-                    await revokeProByCustomerId(env, customerId);
-                    return new Response('Success: Pro status revoked due to refund', { status: 200 });
-                } else {
-                    console.warn("No customer ID in refund event");
+                    const result = await revokeProByCustomerId(env, customerId, { eventCreated });
+                    return new Response(`Success: Pro status revoked due to refund (${result.status})`, { status: 200 });
                 }
+                console.warn('No customer ID in refund event', event.id);
+                return new Response('Ignored refund without customer', { status: 200 });
             }
         } catch (e) {
-            console.error('Firestore Error:', e);
+            console.error('Webhook processing error:', event.id, event.type, e);
             return new Response('Error: ' + e.message, { status: 500 });
         }
 
@@ -381,11 +480,80 @@ function hexToBytes(hex) {
     return bytes;
 }
 
+// --- STRIPE STATE (server-only, no client rule grants access) ---
+// Stores the newest grant event time and subscription id so a retried
+// cancellation/refund from before an outage cannot revoke a newer payment.
+async function getStripeState(env, token, uid) {
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+    const res = await fetch(`${baseUrl}/stripe_state/${uid}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.status === 404) return { lastEventAt: 0, lastGrantAt: 0, subscriptionId: '' };
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`stripe_state read failed ${res.status}: ${text}`);
+    }
+    const doc = await res.json();
+    const f = doc.fields || {};
+    return {
+        lastEventAt: Number((f.lastEventAt && f.lastEventAt.integerValue) || 0),
+        lastGrantAt: Number((f.lastGrantAt && f.lastGrantAt.integerValue) || 0),
+        subscriptionId: (f.subscriptionId && f.subscriptionId.stringValue) || ''
+    };
+}
+
+async function putStripeState(env, token, uid, state) {
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+    const body = {
+        fields: {
+            lastEventAt: { integerValue: String(state.lastEventAt || 0) },
+            lastGrantAt: { integerValue: String(state.lastGrantAt || 0) },
+            subscriptionId: { stringValue: state.subscriptionId || '' },
+            updatedAt: { timestampValue: new Date().toISOString() }
+        }
+    };
+    const res = await fetch(`${baseUrl}/stripe_state/${uid}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`stripe_state write failed ${res.status}: ${text}`);
+    }
+    return await res.json();
+}
+
+async function recordStripeState(env, token, uid, opts) {
+    const prev = await getStripeState(env, token, uid);
+    const next = nextState(prev, opts);
+    if (next.lastEventAt === prev.lastEventAt &&
+        next.lastGrantAt === prev.lastGrantAt &&
+        next.subscriptionId === prev.subscriptionId) {
+        return next;
+    }
+    await putStripeState(env, token, uid, next);
+    return next;
+}
+
 // --- FIRESTORE UPDATE ---
-async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, stripeCustomerId = null, subscriptionType = null } = {}) {
+async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, stripeCustomerId = null, subscriptionType = null, eventCreated = null, subscriptionId = null } = {}) {
     const token = await getGoogleAccessToken(env);
     const projectId = env.FIREBASE_PROJECT_ID;
     const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    // A retried grant created before the newest processed event must not
+    // resurrect Pro (for example a retried checkout.session.completed after
+    // the user cancelled). Compare with lastEventAt, not lastGrantAt: a
+    // yearly-plan renewal invoice and its checkout can share a second, and
+    // the invoice is what carries the real 365-day period.
+    const priorState = await getStripeState(env, token, uid);
+    if (eventCreated && priorState.lastEventAt && eventCreated < priorState.lastEventAt) {
+        console.warn(`Ignoring stale grant (${eventCreated} < ${priorState.lastEventAt}) for UID ${uid}`);
+        return { status: 'stale_grant', uid: uid };
+    }
 
     // 1. Calculate Proposed Expiry
     let newExpiryDate;
@@ -402,18 +570,25 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
     // 2. Fetch Existing User to Prevent Downgrades (Race Condition Protection)
     // If a later expiry already exists, keep it.
     let currentExpiry = 0;
-    try {
-        const getRes = await fetch(`${baseUrl}/users/${uid}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (getRes.ok) {
-            const userDoc = await getRes.json();
-            if (userDoc.fields && userDoc.fields.proExpiresAt && userDoc.fields.proExpiresAt.timestampValue) {
-                currentExpiry = new Date(userDoc.fields.proExpiresAt.timestampValue).getTime();
-            }
+    const getRes = await fetch(`${baseUrl}/users/${uid}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (getRes.status === 404) {
+        // PATCH would create a partial users/{uid} document for a bogus uid.
+        console.warn('Stripe event references unknown uid:', uid);
+        return { status: 'user_not_found', uid };
+    }
+    if (!getRes.ok) {
+        // Do not fall through to the write: a transient read error must make
+        // the webhook return 500 so Stripe retries, not overwrite blind.
+        const text = await getRes.text();
+        throw new Error(`Firestore user lookup failed ${getRes.status}: ${text}`);
+    }
+    {
+        const userDoc = await getRes.json();
+        if (userDoc.fields && userDoc.fields.proExpiresAt && userDoc.fields.proExpiresAt.timestampValue) {
+            currentExpiry = new Date(userDoc.fields.proExpiresAt.timestampValue).getTime();
         }
-    } catch (e) {
-        console.warn("Could not fetch user for race-condition check, proceeding with overwrite:", e);
     }
 
     // Only update expiry if new date is LATER than current (or if current doesn't exist)
@@ -465,6 +640,15 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
 
     const result = await res.json();
 
+    // Record the grant marker before the best-effort mirror writes below. If
+    // this fails the webhook returns 500 and Stripe retries; both writes are
+    // idempotent.
+    await recordStripeState(env, token, uid, {
+        eventCreated: eventCreated || Math.floor(Date.now() / 1000),
+        grant: true,
+        subscriptionId
+    });
+
     // --- SYNC TO config/supporters ---
     // Try to get the email for this user and add them to the supporters list
     try {
@@ -487,154 +671,204 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
         console.warn("Failed to set pro custom claim:", e.message);
     }
 
-    return result;
+    return { status: 'ok', uid: uid };
 }
 
 // --- EXTEND SUBSCRIPTION BY CUSTOMER ID ---
-async function extendSubscriptionByCustomerId(env, stripeCustomerId, { days = null, expiresAt = null } = {}) {
+async function extendSubscriptionByCustomerId(env, stripeCustomerId, { days = null, expiresAt = null, eventCreated = null, subscriptionId = null, uid = null } = {}) {
     const token = await getGoogleAccessToken(env);
     const projectId = env.FIREBASE_PROJECT_ID;
+    let resolvedUid = uid || null;
 
-    // Query Firestore for user with matching stripeCustomerId
-    const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+    if (!resolvedUid) {
+        if (!stripeCustomerId) return { status: 'user_not_found' };
+        // Query Firestore for user with matching stripeCustomerId
+        const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
 
-    const queryBody = {
-        structuredQuery: {
-            from: [{ collectionId: 'users' }],
-            where: {
-                fieldFilter: {
-                    field: { fieldPath: 'stripeCustomerId' },
-                    op: 'EQUAL',
-                    value: { stringValue: stripeCustomerId }
-                }
-            },
-            limit: 1
-        }
-    };
-
-    const queryRes = await fetch(queryUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(queryBody)
-    });
-
-    if (!queryRes.ok) {
-        const text = await queryRes.text();
-        throw new Error(`Firestore Query Error ${queryRes.status}: ${text}`);
-    }
-
-    const results = await queryRes.json();
-
-    // Check if we found a user
-    if (results && results.length > 0 && results[0].document) {
-        const docPath = results[0].document.name;
-        // Extract UID from path: .../users/UID
-        const uid = docPath.split('/').pop();
-
-        // Extend their subscription
-        await updateFirestoreUser(env, uid, { days, expiresAt });
-        console.log(`Renewed subscription for UID: ${uid}`);
-        return { status: 'renewed', uid };
-    } else {
-        console.warn(`No user found with stripeCustomerId: ${stripeCustomerId}`);
-        return { status: 'user_not_found' };
-    }
-}
-
-// --- REVOKE PRO BY CUSTOMER ID ---
-async function revokeProByCustomerId(env, stripeCustomerId) {
-    const token = await getGoogleAccessToken(env);
-    const projectId = env.FIREBASE_PROJECT_ID;
-
-    // Query Firestore for user with matching stripeCustomerId
-    const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
-
-    const queryBody = {
-        structuredQuery: {
-            from: [{ collectionId: 'users' }],
-            where: {
-                fieldFilter: {
-                    field: { fieldPath: 'stripeCustomerId' },
-                    op: 'EQUAL',
-                    value: { stringValue: stripeCustomerId }
-                }
-            },
-            limit: 1
-        }
-    };
-
-    const queryRes = await fetch(queryUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(queryBody)
-    });
-
-    if (!queryRes.ok) {
-        const text = await queryRes.text();
-        throw new Error(`Firestore Query Error ${queryRes.status}: ${text}`);
-    }
-
-    const results = await queryRes.json();
-
-    if (results && results.length > 0 && results[0].document) {
-        const docPath = results[0].document.name;
-        const uid = docPath.split('/').pop();
-
-        // Revoke Access: set isPro to false and expiry to now
-        const updateUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}?updateMask.fieldPaths=isPro&updateMask.fieldPaths=proExpiresAt`;
-
-        const body = {
-            fields: {
-                isPro: { booleanValue: false },
-                proExpiresAt: { timestampValue: new Date().toISOString() }
+        const queryBody = {
+            structuredQuery: {
+                from: [{ collectionId: 'users' }],
+                where: {
+                    fieldFilter: {
+                        field: { fieldPath: 'stripeCustomerId' },
+                        op: 'EQUAL',
+                        value: { stringValue: stripeCustomerId }
+                    }
+                },
+                limit: 1
             }
         };
 
-        const res = await fetch(updateUrl, {
-            method: 'PATCH',
+        const queryRes = await fetch(queryUrl, {
+            method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(body)
+            body: JSON.stringify(queryBody)
         });
 
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Firestore Revoke Error ${res.status}: ${text}`);
+        if (!queryRes.ok) {
+            const text = await queryRes.text();
+            throw new Error(`Firestore Query Error ${queryRes.status}: ${text}`);
         }
 
-        // --- REMOVE FROM config/supporters ---
-        try {
-            const email = await getEmailForUid(env, uid, token);
-            if (email) {
-                await removeFromSupportersConfig(env, token, email);
-                console.log(`Removed ${email} from config/supporters`);
-            }
-        } catch (e) {
-            console.warn("Failed to remove from config/supporters:", e.message);
+        const results = await queryRes.json();
+        if (results && results.length > 0 && results[0].document) {
+            resolvedUid = results[0].document.name.split('/').pop();
         }
+    }
 
-        // --- REVOKE PRO CUSTOM CLAIM ---
-        try {
-            await setFirebaseCustomClaims(env, uid, { pro: false });
-            console.log(`Removed pro custom claim for UID: ${uid}`);
-        } catch (e) {
-            console.warn("Failed to revoke pro custom claim:", e.message);
+    if (!resolvedUid) {
+        console.warn(`No user found with stripeCustomerId: ${stripeCustomerId}`);
+        return { status: 'user_not_found' };
+    }
+
+    const written = await updateFirestoreUser(env, resolvedUid, {
+        days,
+        expiresAt,
+        stripeCustomerId,
+        eventCreated,
+        subscriptionId
+    });
+    if (written && written.status === 'user_not_found') return written;
+    console.log(`Renewed subscription for UID: ${resolvedUid}`);
+    return { status: 'renewed', uid: resolvedUid };
+}
+
+// --- REVOKE PRO BY CUSTOMER ID ---
+async function revokeProByCustomerId(env, stripeCustomerId, { eventCreated = null, subscriptionId = null, periodEnd = null, uid = null } = {}) {
+    const token = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+    let resolvedUid = uid || null;
+    let userFields = null;
+
+    if (resolvedUid) {
+        const getRes = await fetch(`${baseUrl}/users/${resolvedUid}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (getRes.status === 404) return { status: 'user_not_found' };
+        if (!getRes.ok) {
+            const text = await getRes.text();
+            throw new Error(`Firestore User Error ${getRes.status}: ${text}`);
         }
-
-        console.log(`Revoked Pro status for UID: ${uid} due to refund.`);
-        return { status: 'revoked', uid };
+        const doc = await getRes.json();
+        userFields = doc.fields || {};
     } else {
+        if (!stripeCustomerId) return { status: 'user_not_found' };
+        // Query Firestore for user with matching stripeCustomerId
+        const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
+        const queryBody = {
+            structuredQuery: {
+                from: [{ collectionId: 'users' }],
+                where: {
+                    fieldFilter: {
+                        field: { fieldPath: 'stripeCustomerId' },
+                        op: 'EQUAL',
+                        value: { stringValue: stripeCustomerId }
+                    }
+                },
+                limit: 1
+            }
+        };
+
+        const queryRes = await fetch(queryUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(queryBody)
+        });
+
+        if (!queryRes.ok) {
+            const text = await queryRes.text();
+            throw new Error(`Firestore Query Error ${queryRes.status}: ${text}`);
+        }
+
+        const results = await queryRes.json();
+        if (results && results.length > 0 && results[0].document) {
+            resolvedUid = results[0].document.name.split('/').pop();
+            userFields = results[0].document.fields || {};
+        }
+    }
+
+    if (!resolvedUid) {
         console.warn(`No user found with stripeCustomerId: ${stripeCustomerId} to revoke.`);
         return { status: 'user_not_found' };
     }
+
+    const proExpiresAt = userFields && userFields.proExpiresAt && userFields.proExpiresAt.timestampValue
+        ? new Date(userFields.proExpiresAt.timestampValue).getTime()
+        : 0;
+
+    // A retried event from before an outage must not revoke a newer payment.
+    const state = await getStripeState(env, token, resolvedUid);
+    const staleReason = staleRevocationReason(state, { eventCreated, subscriptionId, periodEnd, proExpiresAt });
+    if (staleReason) {
+        console.warn(`Ignoring stale revoke (${staleReason}) for UID ${resolvedUid}`, {
+            eventCreated, subscriptionId, periodEnd
+        });
+        await recordStripeState(env, token, resolvedUid, { eventCreated, grant: false });
+        return { status: 'stale', reason: staleReason, uid: resolvedUid };
+    }
+
+    // Revoke Access: set isPro to false and expiry to now
+    const updateUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${resolvedUid}?updateMask.fieldPaths=isPro&updateMask.fieldPaths=proExpiresAt`;
+
+    const body = {
+        fields: {
+            isPro: { booleanValue: false },
+            proExpiresAt: { timestampValue: new Date().toISOString() }
+        }
+    };
+
+    const res = await fetch(updateUrl, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Firestore Revoke Error ${res.status}: ${text}`);
+    }
+
+    await recordStripeState(env, token, resolvedUid, { eventCreated, grant: false });
+
+    // --- REMOVE FROM config/supporters ---
+    try {
+        const email = await getEmailForUid(env, resolvedUid, token);
+        if (email) {
+            await removeFromSupportersConfig(env, token, email);
+            console.log(`Removed ${email} from config/supporters`);
+        }
+    } catch (e) {
+        // config/supporters is an authorization source in firestore.rules
+        // (isProUser checks it), so a silent failure would leave the user Pro
+        // after a cancellation. Fail the webhook and let Stripe retry.
+        console.warn("Failed to remove from config/supporters:", e.message);
+        throw e;
+    }
+
+    // --- REVOKE PRO CUSTOM CLAIM ---
+    try {
+        await setFirebaseCustomClaims(env, resolvedUid, { pro: false });
+        console.log(`Removed pro custom claim for UID: ${resolvedUid}`);
+    } catch (e) {
+        // A stale pro=true claim can keep social/RTDB paths Pro; retry.
+        console.warn("Failed to revoke pro custom claim:", e.message);
+        throw e;
+    }
+
+    console.log(`Revoked Pro status for UID: ${resolvedUid} due to cancellation/refund.`);
+    return { status: 'revoked', uid: resolvedUid };
 }
 
 // --- VERIFY FIREBASE ID TOKEN ---

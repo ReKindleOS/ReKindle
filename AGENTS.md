@@ -39,6 +39,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [social-cleanup.md](docs/agent/social-cleanup.md) | Daily `cleanupSocial` retention: KindleChat messages/translations/art, topics, neighbourhood posts, reports, automod & moderator logs |
 | [usage-limits.md](docs/agent/usage-limits.md) | Firebase/Cloudflare quota measurements, Spark limits, Pages Functions invocation traps |
 | [legacy-build.md](docs/agent/legacy-build.md) | Lite/Legacy pipeline: SRI on localized libs, extensionless links, Kobo/WebKit `/probe`, old-browser polyfills |
+| [payments.md](docs/agent/payments.md) | Stripe worker, Pro grants/revokes, reconciliation |
 | [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, cover, KPM |
 
 ## 🚫 Restrictions (Target: Chromium 75)
@@ -141,7 +142,7 @@ The main container for every app.
 
 **Content-area gotcha:** `theme.js` injects `.window { max-height: 95vh !important; }` (scaled down at higher zoom levels). Use `height: 90vh` when you want a fixed-height window with a viewport gap; if you use `min-height: 90vh` instead, the window can grow to the theme.js `max-height` and lose the gap. For content pages that should shrink to their content and only scroll when content is long, use `height: fit-content` and `flex: 0 1 auto; min-height: 0;` on the scrollable child instead of `flex-grow: 1`.
 
-**Page-overflow fallback (2026-10-24):** `theme.js` `applyOverflowFallback()` adds `rekindle-page-scroll` to `<html>` when `documentElement.scrollHeight > innerHeight + 2`, releasing the `body` height/overflow and the `.window` max-height so the page scrolls. Do not re-add `body { overflow: hidden }` to a page that can be taller than the viewport without giving its window a real scroller — that is what clipped Settings/Chess on Kobo. Auto-scaling stays at its 800×906 (Paperwhite) target: a 700×700 target was tried for Kobo 732×762 and reverted because 1.0 collapses the home screen's featured grid to one card per row. See [legacy-build.md](docs/agent/legacy-build.md#kobo-layout-at-732762-2026-10-24).
+**Page-overflow fallback (2026-10-24):** `theme.js` `applyOverflowFallback()` adds `rekindle-page-scroll` to `<html>` when `documentElement.scrollHeight > innerHeight + 2`, releasing the `body` height/overflow and the `.window` max-height so the page scrolls. Do not re-add `body { overflow: hidden }` to a page that can be taller than the viewport without giving its window a real scroller — that is what clipped Settings/Chess on Kobo. Auto-scaling stays at its 800×906 (Paperwhite) target: a 700×700 Kobo target was reverted because 1.0 collapses the featured grid to one card per row. See [legacy-build.md](docs/agent/legacy-build.md#kobo-layout-at-732762-2026-10-24).
 
 ### 3. The Title Bar (`.title-bar`)
 **Mandatory Structure:** The title bar uses a specific layered technique to achieve the "text on stripes" look.

@@ -141,7 +141,9 @@
                 body: JSON.stringify(reportData)
             });
         }).then(function (resp) {
-            return resp.json();
+            return window.rekindleWorkerClient
+                ? window.rekindleWorkerClient.readJson(resp)
+                : resp.json();
         }).then(function (result) {
             if (result.error) {
                 throw new Error(result.error);
@@ -149,7 +151,8 @@
             showReportSuccess();
         })['catch'](function (err) {
             console.error('Report submission error:', err);
-            if (errorEl) errorEl.textContent = err.message || 'Failed to submit report. Please try again.';
+            var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
+            if (errorEl) errorEl.textContent = outage || err.message || 'Failed to submit report. Please try again.';
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Submit Report';

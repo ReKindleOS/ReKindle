@@ -235,6 +235,29 @@ worker call must send those headers too, or it re-creates the double-invocation 
 Check the quota any morning with the GraphQL queries below; a 429 + `error code: 1027`
 from any worker means the account is out for the UTC day.
 
+### 2026-10-25 blackout actually hit payments too (recorded 2026-10-26)
+
+The incident notes above understate the window. Cloudflare GraphQL
+(`workersInvocationsAdaptive`) shows **every main-account Worker** with zero
+invocations from 16:00 to 22:00 UTC; `rekindle-stripe`'s last success was
+**15:15:20Z** and its first success after the blackout was **23:09:25Z**. That
+means `POST /create-checkout` was unavailable (nobody could start a purchase)
+and Stripe webhooks were failing at the edge for ~8 hours. The socials moved to
+the separate account at ~22:50Z, but Stripe/reader/KPM stayed blocked until
+23:09Z. The 100k counter resets at 00:00Z, so the early recovery at 23:09Z
+suggests a plan change or manual reset — confirm the current plan.
+
+Stripe retries failed deliveries for up to 3 days
+(https://docs.stripe.com/events/manage-webhook-endpoints.md#process-undelivered-events),
+and a post-recovery burst of webhook deliveries was observed at 23:12–23:20Z,
+so this outage should have self-healed. Do not rely on that: run
+`admin/reconcile_stripe.js` after the next one. Full timeline, permanent-effect
+map and runbook: [payments.md](payments.md).
+
+**Treat 1027 as "payments are down", not just "socials are broken".** The split
+protects the main account from social traffic, but any main-account 1027 still
+takes Stripe's webhook endpoint with it.
+
 ### 2026-10-25 split — socials moved to a separate Cloudflare account
 
 To stop free social usage from ever consuming the paying-customer account's quota, the

@@ -301,9 +301,16 @@
 
             <!-- VERIFICATION SECTION -->
             <div id="verifying-section" style="display:none; width:100%; text-align:center;">
-                <h2 style="margin-top:0;" data-i18n="pay.status.verifying">Verifying...</h2>
-                <p data-i18n="pay.status.syncing">Syncing your membership status...</p>
-                <div style="font-size:2rem;">...</div>
+                <h2 id="verifying-title" style="margin-top:0;" data-i18n="pay.status.verifying">Verifying...</h2>
+                <p id="verifying-body" data-i18n="pay.status.syncing">Syncing your membership status...</p>
+                <div id="verifying-dots" style="font-size:2rem;">...</div>
+                <p id="verifying-slow" style="display:none; font-size:0.85rem; color:#444; margin-top:12px;"
+                    data-i18n="pay.status.verifying_slow">
+                    Payment received. Activation can take a few minutes while our payment service catches up.
+                    Your membership will activate automatically.
+                </p>
+                <button id="verifying-refresh" class="secondary-btn" style="display:none; margin-top:12px;"
+                    onclick="window.location.reload()" data-i18n="pay.btn.refresh_status">Refresh status</button>
             </div>
 
             <!-- SUBSCRIBED SECTION (Shown if user has active subscription) -->
@@ -517,6 +524,7 @@
 
                     // Success achieved, stop verifying
                     isVerifying = false;
+                    clearVerifyingTimer();
                 } else {
                     // Not Pro
                     if (isVerifying) {
@@ -533,11 +541,33 @@
             });
         }
 
+        // A webhook can be delayed (Stripe retries, or the payment Worker was
+        // unreachable for a while). Do not leave the payer on an endless
+        // "Verifying..." screen: after 90 s explain that activation is still
+        // automatic and offer a refresh.
+        let verifyingTimer = null;
+
         function showVerifyingUI() {
             document.getElementById('payment-section').style.display = 'none';
             document.getElementById('subscribed-section').style.display = 'none';
             document.getElementById('verifying-section').style.display = 'block';
             document.getElementById('guest-hint').style.display = 'none';
+            if (verifyingTimer) return;
+            verifyingTimer = setTimeout(function () {
+                var slow = document.getElementById('verifying-slow');
+                var refresh = document.getElementById('verifying-refresh');
+                var title = document.getElementById('verifying-title');
+                if (slow) slow.style.display = 'block';
+                if (refresh) refresh.style.display = 'inline-block';
+                if (title) title.innerText = window.t ? window.t('pay.status.verifying_slow_title', 'Still activating...') : 'Still activating...';
+            }, 90000);
+        }
+
+        function clearVerifyingTimer() {
+            if (verifyingTimer) {
+                clearTimeout(verifyingTimer);
+                verifyingTimer = null;
+            }
         }
 
         async function createCheckoutSession(plan) {
