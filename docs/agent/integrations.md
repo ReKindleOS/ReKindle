@@ -562,8 +562,25 @@ token is stored and the browser only ever holds the address.
   RTDB default-denies, the Admin SDK bypasses rules, and no client can ever read
   it. Do not add a rules block.
 * Scopes: `openid profile email offline_access` plus IMAP/SMTP on **one**
-  audience, chosen by `MAIL_MS_SCOPE_AUDIENCE` (`graph` by default, `outlook`
-  optional) — see `mail-oauth-config.js` `microsoftScopes()`.
+  audience, chosen by `MAIL_MS_SCOPE_AUDIENCE` — see `mail-oauth-config.js`
+  `microsoftScopes()`.
+  **The working audience is `outlook`, and that was the whole battle
+  (2026-10-26).** A Graph-audience token is refused by
+  `outlook.office365.com` IMAP with `NO AUTHENTICATE failed.` no matter which
+  address is used, so the app must request
+  `https://outlook.office.com/IMAP.AccessAsUser.All`. A bare Entra tenant has
+  no Office 365 Exchange Online service principal, so the portal cannot add
+  that permission ("APIs my organization uses" stays empty) and the scopes are
+  rejected with `AADSTS70011`. The fix is to declare the resource by hand in the
+  app **manifest** — `resourceAppId 00000002-0000-0ff1-ce00-000000000000` with
+  `246dd0d5-5bd0-4def-940b-0421030a5b68` (IMAP.AccessAsUser.All) and
+  `258f6531-6087-4cc4-bb90-092c5fb3ed3f` (SMTP.Send), both `type: Scope` — then
+  `devicecode` returns a code instead of `AADSTS70011`.
+  **Admin consent is not needed for personal accounts** and the adminconsent URL
+  will simply redirect without a prompt; consent happens at sign-in, where the
+  user approves the two Exchange permissions. Don't send people down the
+  service-principal/Graph-Explorer path: it needs tenant-scoped directory write
+  access and is not required.
   `https://graph.microsoft.com/IMAP.AccessAsUser.All` and
   `https://graph.microsoft.com/SMTP.Send` are delegated Graph permissions
   (652390e4-393a-48de-9484-05f9b1212954 / 258f6531-6087-4cc4-bb90-092c5fb3ed3f)
