@@ -641,8 +641,22 @@ accounts — including several of the same provider — can be signed in at once
   ReKindle uid (same PBKDF2 scheme as before); the decrypted copy lives only in
   memory (`account._pass`) and `serializeAccount()` drops it on every write.
 * `activateAccount(id)` rebuilds `imapConfig`/`smtpConfig` from the entry, so the
-  six callables and the rest of the page never needed to change. The toolbar
-  shows an `Accounts (N)` button only when more than one mailbox exists.
+  six callables and the rest of the page never needed to change. When more than
+  one mailbox exists the toolbar shows an **Accounts (N) dropdown**
+  (`#accounts-menu`): every mailbox with its label/address, `All inboxes`,
+  and `Manage accounts…`. It closes on any outside tap; the title-bar Settings
+  button still opens the sheet.
+* **All inboxes** (`unifiedMode`, device-local in
+  `localStorage.rekindle_mail_unified`) merges one INBOX page from every account,
+  tagged with `_accountId`/`_folder` and shown with a small account chip.
+  Paging keeps a cursor per account (`unifiedCursors`) and skips accounts whose
+  inbox is exhausted. Everything downstream resolves the message's own mailbox:
+  `contextForMessage()` → `connectionForAccount()` (decrypts once, caches
+  `_imap`/`_smtp`, and `_folders` via `foldersFor()`), so opening, marking read,
+  archiving and deleting act on the right account. Threads are **scoped per
+  account** (`threadKey()` prefixes the account id), because the same subject in
+  two mailboxes is not one conversation. Folders are per account, so changing
+  the folder picker in unified mode explains that and resets to Inbox.
 * The Settings sheet (title-bar → Settings, `showAccountsStep()`) lists every
   mailbox with **Use** / **Remove** (Outlook shows **Sign out**, which also
   revokes the server token), plus the grouping toggle and **Add another

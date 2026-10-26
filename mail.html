@@ -176,6 +176,7 @@
 
         /* TOOLBAR */
         .toolbar {
+            position: relative;
             display: flex;
             align-items: center;
             padding: 8px;
@@ -623,6 +624,49 @@
             max-width: 300px;
         }
 
+        .accounts-menu {
+            position: absolute;
+            top: 100%;
+            left: 8px;
+            min-width: 220px;
+            max-width: 90%;
+            max-height: 60vh;
+            overflow-y: auto;
+            background: #fff;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 black;
+            z-index: 300;
+            padding: 4px;
+            text-align: left;
+        }
+        .menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: #fff;
+            border: none;
+            padding: 10px 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .menu-item:active { background: #000; color: #fff; }
+        .menu-item.active { font-weight: bold; }
+        .menu-item .menu-sub { display: block; font-weight: normal; font-size: 0.7rem; color: #555; }
+        .menu-sep { border-top: 1px solid #999; margin: 4px 0; }
+        .account-tag {
+            display: inline-block;
+            border: 1px solid #666;
+            font-size: 0.6rem;
+            padding: 0 3px;
+            margin-right: 5px;
+            vertical-align: middle;
+            max-width: 72px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
         .link-btn {
             background: none;
             border: none;
@@ -686,8 +730,15 @@
                 <option value="TRASH" data-i18n="mail.folder.trash">Trash</option>
                 <option value="IMPORTANT" data-i18n="mail.folder.important">Important</option>
             </select>
-            <button class="toolbar-btn" id="accounts-btn" onclick="openSettings()"
+            <button class="toolbar-btn" id="accounts-btn" onclick="toggleAccountsMenu(event)"
                 style="display:none;">Accounts</button>
+            <div id="accounts-menu" class="accounts-menu" style="display:none;"
+                onclick="event.stopPropagation()">
+                <div id="accounts-menu-list"></div>
+                <div class="menu-sep"></div>
+                <button class="menu-item" id="unified-menu-item" onclick="toggleUnified()">All inboxes</button>
+                <button class="menu-item" onclick="closeAccountsMenu(); openSettings();">Manage accounts...</button>
+            </div>
             <div class="toolbar-spacer"></div>
             <button class="toolbar-btn" onclick="loadEmails()" data-i18n="mail.btn.refresh">↻ Refresh</button>
         </div>
@@ -936,6 +987,12 @@
         let threadingEnabled = true;   // grouped conversations are the default
         let threads = [];
 
+        // "All inboxes": one merged list over every account's INBOX. Device-local
+        // preference, not synced, because it is about this screen.
+        const UNIFIED_KEY = 'rekindle_mail_unified';
+        let unifiedMode = false;
+        let unifiedCursors = {};
+
         function newAccountId(prefix) {
             return (prefix || 'acct') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
         }
@@ -990,6 +1047,7 @@
                 }
                 activeAccountId = localStorage.getItem(ACTIVE_ACCOUNT_KEY) || null;
                 threadingEnabled = localStorage.getItem(THREADING_KEY) !== 'off';
+                unifiedMode = localStorage.getItem(UNIFIED_KEY) === '1';
             } catch (e) {
                 console.warn('Could not read saved mail accounts', e);
             }
@@ -1001,9 +1059,95 @@
             // Only shown once there is something to switch between; the title-bar
             // Settings button opens the same sheet for single-account users.
             btn.style.display = accounts.length > 1 ? 'block' : 'none';
-            btn.innerText = 'Accounts (' + accounts.length + ')';
+            btn.innerText = unifiedMode
+                ? 'All inboxes'
+                : (accounts.length > 1 ? 'Accounts (' + accounts.length + ')' : 'Account');
             const active = getActiveAccount();
             btn.title = active ? active.email : '';
+            renderAccountsMenu();
+        }
+
+        function renderAccountsMenu() {
+            const host = document.getElementById('accounts-menu-list');
+            if (!host) return;
+            host.innerHTML = '';
+
+            accounts.forEach(account => {
+                const item = document.createElement('button');
+                item.className = 'menu-item' + (!unifiedMode && account.id === activeAccountId ? ' active' : '');
+                const name = document.createElement('span');
+                name.innerText = (account.label || account.email) +
+                    (!unifiedMode && account.id === activeAccountId ? '  (current)' : '');
+                item.appendChild(name);
+                if (account.label) {
+                    const sub = document.createElement('span');
+                    sub.className = 'menu-sub';
+                    sub.innerText = account.email;
+                    item.appendChild(sub);
+                }
+                item.onclick = () => selectAccount(account.id);
+                host.appendChild(item);
+            });
+
+            const unifiedItem = document.getElementById('unified-menu-item');
+            if (unifiedItem) {
+                unifiedItem.className = 'menu-item' + (unifiedMode ? ' active' : '');
+                unifiedItem.innerText = unifiedMode ? 'All inboxes  (current)' : 'All inboxes';
+                unifiedItem.disabled = accounts.length < 2;
+            }
+        }
+
+        function toggleAccountsMenu(ev) {
+            if (ev) ev.stopPropagation();
+            const menu = document.getElementById('accounts-menu');
+            if (!menu) return;
+            const open = menu.style.display !== 'none';
+            if (open) {
+                menu.style.display = 'none';
+                return;
+            }
+            renderAccountsMenu();
+            menu.style.display = 'block';
+        }
+
+        function closeAccountsMenu() {
+            const menu = document.getElementById('accounts-menu');
+            if (menu) menu.style.display = 'none';
+        }
+
+        function selectAccount(id) {
+            closeAccountsMenu();
+            if (!unifiedMode && id === activeAccountId) return;
+            unifiedMode = false;
+            try { localStorage.setItem(UNIFIED_KEY, '0'); } catch (e) { }
+            updateAccountsButton();
+            activateAccount(id, { silentFail: true });
+        }
+
+        function toggleUnified() {
+            closeAccountsMenu();
+            if (accounts.length < 2) return;
+            unifiedMode = !unifiedMode;
+            try { localStorage.setItem(UNIFIED_KEY, unifiedMode ? '1' : '0'); } catch (e) { }
+            updateAccountsButton();
+            if (unifiedMode) {
+                activateUnified();
+            } else {
+                activateAccount(activeAccountId, { silentFail: true });
+            }
+        }
+
+        async function activateUnified() {
+            unifiedMode = true;
+            unifiedCursors = {};
+            resetMailboxView();
+            currentFolder = 'INBOX';
+            document.getElementById('status-bar').innerText = 'Loading all inboxes...';
+            try {
+                await loadEmails(true);
+            } catch (e) {
+                console.error('Could not load the combined inbox', e);
+            }
         }
 
         function applyThreadingSetting() {
@@ -1047,6 +1191,8 @@
                 const cfg = { oauth: 'microsoft', accountId: account.accountId || account.id };
                 imapConfig = cfg;
                 smtpConfig = cfg;
+                account._imap = cfg;
+                account._smtp = cfg;
             } else {
                 let pass = account._pass || null;
                 if (!pass && account.passEnc) {
@@ -1073,6 +1219,8 @@
                     secure: Number(account.smtp.port) === 465,
                     auth: { user: account.email, pass: pass }
                 };
+                account._imap = imapConfig;
+                account._smtp = smtpConfig;
             }
 
             saveAccountsLocal();
@@ -1094,6 +1242,69 @@
             }
         }
 
+        // Connection details for any account, decrypted once and cached on the
+        // entry (`_pass` is memory-only and stripped by serializeAccount()).
+        async function connectionForAccount(account) {
+            if (!account) return null;
+            if (account._imap && account._smtp) return { imap: account._imap, smtp: account._smtp };
+
+            if (account.oauth === 'microsoft') {
+                const cfg = { oauth: 'microsoft', accountId: account.accountId || account.id };
+                account._imap = cfg;
+                account._smtp = cfg;
+                return { imap: cfg, smtp: cfg };
+            }
+
+            let pass = account._pass || null;
+            if (!pass && account.passEnc) {
+                const authUser = firebase.auth().currentUser;
+                if (authUser) pass = await decryptPassword(account.passEnc, authUser.uid);
+                if (pass) account._pass = pass;
+            }
+            if (!pass || !account.imap || !account.smtp) return null;
+
+            account._imap = {
+                host: account.imap.host,
+                port: account.imap.port,
+                secure: Number(account.imap.port) === 993,
+                auth: { user: account.email, pass: pass }
+            };
+            account._smtp = {
+                host: account.smtp.host,
+                port: account.smtp.port,
+                secure: Number(account.smtp.port) === 465,
+                auth: { user: account.email, pass: pass }
+            };
+            return { imap: account._imap, smtp: account._smtp };
+        }
+
+        // Folder list for an account that is not the active one.
+        async function foldersFor(account) {
+            if (!account) return [];
+            if (account._folders) return account._folders;
+            const conn = await connectionForAccount(account);
+            if (!conn) return [];
+            const res = await functions.httpsCallable('getFolders')({ imap: conn.imap });
+            account._folders = (res.data && res.data.folders) || [];
+            return account._folders;
+        }
+
+        // Which connection/folder a message belongs to. Messages carrying
+        // `_accountId` came from the merged inbox and are not the active account.
+        async function contextForMessage(email) {
+            const accountId = (email && email._accountId) || activeAccountId;
+            const account = accounts.find(a => a.id === accountId);
+            if (!account) return null;
+            const conn = await connectionForAccount(account);
+            if (!conn) return null;
+            return {
+                account: account,
+                imap: conn.imap,
+                folder: (email && email._folder) || currentFolder,
+                folders: email && email._accountId ? await foldersFor(account) : allFolders
+            };
+        }
+
         async function removeAccount(id) {
             const account = accounts.find(a => a.id === id);
             if (!account) return;
@@ -1110,6 +1321,10 @@
 
             accounts = accounts.filter(a => a.id !== id);
             if (activeAccountId === id) activeAccountId = accounts[0] ? accounts[0].id : null;
+            if (unifiedMode && accounts.length < 2) {
+                unifiedMode = false;
+                try { localStorage.setItem(UNIFIED_KEY, '0'); } catch (e) { }
+            }
             saveAccountsLocal();
             persistAccountsToFirebase();
             updateAccountsButton();
@@ -1161,6 +1376,10 @@
                 overlay.style.display = 'flex';
             }
         }
+
+        document.addEventListener('click', function () {
+            closeAccountsMenu();
+        });
 
         window.onload = function () {
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
@@ -1332,6 +1551,11 @@
                 activeAccountId = accounts[0].id;
             }
             updateAccountsButton();
+
+            if (unifiedMode && accounts.length > 1) {
+                await activateUnified();
+                return;
+            }
 
             const preferred = activeAccountId;
             const order = [preferred].concat(accounts.map(a => a.id).filter(id => id !== preferred));
@@ -1962,6 +2186,38 @@
         let currentCursor = null;
         let isLoadingMore = false;
 
+        // One INBOX page per account, tagged with the account it came from so
+        // opening/archiving acts on the right mailbox.
+        async function fetchUnifiedEmails(reset) {
+            const pages = await Promise.all(accounts.map(async account => {
+                try {
+                    // Paging: an account with no cursor left contributes nothing
+                    // (passing null would re-read its first page).
+                    if (!reset && !unifiedCursors[account.id]) return [];
+                    const conn = await connectionForAccount(account);
+                    if (!conn) return [];
+                    const res = await functions.httpsCallable('fetchEmails')({
+                        imap: conn.imap,
+                        path: 'INBOX',
+                        cursor: reset ? null : (unifiedCursors[account.id] || null),
+                        limit: 20
+                    });
+                    if (!res.data || !res.data.success) return [];
+                    unifiedCursors[account.id] = res.data.nextCursor || null;
+                    return (res.data.messages || []).map(message => {
+                        message._accountId = account.id;
+                        message._folder = 'INBOX';
+                        return message;
+                    });
+                } catch (e) {
+                    console.warn('Could not read the inbox for ' + account.email, e);
+                    unifiedCursors[account.id] = null;
+                    return [];
+                }
+            }));
+            return [].concat.apply([], pages);
+        }
+
         async function loadEmails(reset = true) {
             if (reset) {
                 currentCursor = null; // Reset cursor
@@ -1972,6 +2228,27 @@
                 isLoadingMore = true;
                 const btn = document.getElementById('btn-load-more');
                 if (btn) btn.innerText = "Loading...";
+            }
+
+            if (unifiedMode) {
+                try {
+                    const merged = await fetchUnifiedEmails(reset);
+                    emails = reset ? merged : emails.concat(merged);
+                    emails.sort((a, b) => emailDate(b) - emailDate(a));
+                    isLoadingMore = false;
+                    currentCursor = Object.keys(unifiedCursors).some(id => unifiedCursors[id]) ? 'unified' : null;
+                    renderEmailList();
+                    document.getElementById('status-bar').innerText =
+                        'All inboxes: ' + emails.length + ' emails from ' + accounts.length + ' accounts.';
+                } catch (e) {
+                    console.error('Unified load error', e);
+                    document.getElementById('status-bar').innerText = 'Error loading the combined inbox.';
+                    if (reset) {
+                        document.getElementById('list-container').innerHTML =
+                            '<div style="padding:20px; text-align:center; color:red;">Error: ' + escapeHtml(e.message) + '</div>';
+                    }
+                }
+                return;
             }
 
             const fetchEmailsFn = functions.httpsCallable('fetchEmails');
@@ -2051,10 +2328,13 @@
         }
 
         function threadKey(email) {
+            // The merged inbox carries messages from several mailboxes, and the
+            // same subject in two of them is not one conversation.
+            const scope = email._accountId ? email._accountId + '|' : '';
             const subject = normalizeSubject(email.envelope && email.envelope.subject);
-            if (subject) return 's:' + subject;
+            if (subject) return scope + 's:' + subject;
             const messageId = (email.envelope && email.envelope.messageId) || '';
-            return 'm:' + (messageId || email.uid);
+            return scope + 'm:' + (messageId || email.uid);
         }
 
         function buildThreads(list) {
@@ -2170,9 +2450,15 @@
                 // Snippet
                 const snippet = email.snippet ? `<div class="email-snippet">${escapeHtml(email.snippet)}</div>` : '';
 
+                let accountTag = '';
+                if (email._accountId) {
+                    const owner = accounts.find(a => a.id === email._accountId);
+                    if (owner) accountTag = `<span class="account-tag">${escapeHtml(owner.label || owner.email)}</span>`;
+                }
+
                 div.innerHTML = `
                     <div class="email-sender">
-                        <span class="email-sender-name">${escapeHtml(email.envelope.from[0].name || email.envelope.from[0].address)}</span>
+                        <span class="email-sender-name">${accountTag}${escapeHtml(email.envelope.from[0].name || email.envelope.from[0].address)}</span>
                         <span class="email-date">${dateStr}</span>
                     </div>
                     <div class="email-subject">${escapeHtml(email.envelope.subject || '(No Subject)')}</div>
@@ -2242,6 +2528,13 @@
         async function openEmail(email) {
             currentEmail = email;
 
+            const ctx = await contextForMessage(email);
+            if (!ctx) {
+                showModal((email._accountId ? 'That account is' : 'This account is') +
+                    ' not available right now. Open Accounts to reconnect it.');
+                return;
+            }
+
             // Highlight selected
             const items = document.getElementsByClassName('email-item');
             Array.from(items).forEach(i => i.classList.remove('selected'));
@@ -2256,8 +2549,8 @@
                 if (row) row.classList.remove('unread');
                 // Call modifyFlags backend
                 functions.httpsCallable('modifyFlags')({
-                    imap: imapConfig,
-                    path: currentFolder,
+                    imap: ctx.imap,
+                    path: ctx.folder,
                     uid: email.uid,
                     addFlags: ['\\Seen']
                 }).catch(console.error);
@@ -2270,8 +2563,8 @@
 
             try {
                 const result = await fetchBodyFn({
-                    imap: imapConfig,
-                    path: currentFolder,
+                    imap: ctx.imap,
+                    path: ctx.folder,
                     uid: email.uid
                 });
 
@@ -2417,14 +2710,19 @@
 
         async function toggleReadStatus() {
             if (!currentEmail) return;
+            const ctx = await contextForMessage(currentEmail);
+            if (!ctx) {
+                showModal('That account is not available right now.');
+                return;
+            }
             // Currently it is read (we mark it on open). Toggle to unread.
             currentEmail.flags = currentEmail.flags.filter(f => f !== '\\Seen');
             renderEmailList();
 
             try {
                 await functions.httpsCallable('modifyFlags')({
-                    imap: imapConfig,
-                    path: currentFolder,
+                    imap: ctx.imap,
+                    path: ctx.folder,
                     uid: currentEmail.uid,
                     removeFlags: ['\\Seen']
                 });
@@ -2437,8 +2735,14 @@
         async function archiveEmail() {
             if (!currentEmail) return;
 
+            const ctx = await contextForMessage(currentEmail);
+            if (!ctx) {
+                showModal('That account is not available right now.');
+                return;
+            }
+
             // Find Archive/All Mail folder
-            const archiveFolder = allFolders.find(f =>
+            const archiveFolder = ctx.folders.find(f =>
                 f.specialUse === '\\All' ||
                 f.specialUse === '\\Archive' ||
                 f.path.toLowerCase().includes('all mail') ||
@@ -2461,8 +2765,8 @@
 
             try {
                 await moveEmailFn({
-                    imap: imapConfig,
-                    path: currentFolder,
+                    imap: ctx.imap,
+                    path: ctx.folder,
                     uid: uid,
                     destination: archiveFolder.path
                 });
@@ -2477,8 +2781,14 @@
         async function deleteEmail() {
             if (!currentEmail) return;
 
+            const ctx = await contextForMessage(currentEmail);
+            if (!ctx) {
+                showModal('That account is not available right now.');
+                return;
+            }
+
             // Find Trash folder
-            const trashFolder = allFolders.find(f =>
+            const trashFolder = ctx.folders.find(f =>
                 f.specialUse === '\\Trash' ||
                 f.path.toLowerCase().includes('trash') ||
                 f.path.toLowerCase() === 'bin'
@@ -2500,8 +2810,8 @@
 
             try {
                 await moveEmailFn({
-                    imap: imapConfig,
-                    path: currentFolder,
+                    imap: ctx.imap,
+                    path: ctx.folder,
                     uid: uid,
                     destination: trashFolder.path
                 });
@@ -2514,6 +2824,13 @@
         }
 
         function changeFolder() {
+            if (unifiedMode) {
+                // Folders are per account; the merged view is Inbox-only.
+                const select = document.getElementById('folder-select');
+                if (select) select.value = 'INBOX';
+                showModal('All inboxes shows Inbox only. Pick an account from Accounts to browse its folders.');
+                return;
+            }
             currentFolder = document.getElementById('folder-select').value;
             console.log("Changed folder to:", currentFolder); // DEBUG
             loadEmails();
