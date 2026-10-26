@@ -64,8 +64,11 @@ assert.ok(/queueDmAutoTranslation/.test(chat), 'KindleChat DMs must auto-transla
 assert.ok(/dmMsgLang \|\| 'auto'/.test(chat), 'KindleChat DMs must auto-detect messages without a stored lang');
 assert.ok(/queuePostAutoTranslation/.test(neighbourhood), 'neighbourhood posts must auto-translate viewed foreign posts');
 assert.ok(/postLang \|\| 'auto'/.test(neighbourhood), 'neighbourhood posts must auto-detect posts without a stored lang');
+assert.ok(/id="post-trans-\$\{escapeHtml\(post.id\)\}"/.test(neighbourhood), 'neighbourhood posts must have a stable translation-control container');
+assert.ok(/getElementById\('post-trans-' \+ postId\)/.test(neighbourhood), 'post translation must render Show Original into that container');
 assert.ok(/queueCommentAutoTranslation/.test(neighbourhood), 'neighbourhood comments must auto-translate viewed foreign comments');
 assert.ok(/commentLang \|\| 'auto'/.test(neighbourhood), 'neighbourhood comments must auto-detect comments without a stored lang');
+assert.ok(/cmt-trans-/.test(neighbourhood), 'neighbourhood comments must have a stable translation-control container');
 assert.ok(/queueTopicAutoTranslation/.test(topics), 'topic comments must auto-translate viewed foreign comments');
 assert.ok(/msgLang \|\| 'auto'/.test(topics), 'topic comments must auto-detect comments without a stored lang');
 assert.ok(/autoTranslate: autoTranslate/.test(translateClient), 'translate-client must expose the auto queue');
