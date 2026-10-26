@@ -20,6 +20,7 @@ This is the companion to [the audit](rekindle-plus-2026-10-26.md). It records wh
 | Substack sanitisation | `substack.html` | Reader titles/body go through `safe-html`; remote images are blocked with an opt-in button. |
 | Mastodon sanitisation + warnings | `mastodon.html` | Status HTML, display names, handles and avatars are escaped/sanitised; `sensitive`/`spoiler_text` posts hide their body and media behind a "Show content" control; external links open in the Browser app. |
 | Bluesky sensitive media | `bluesky.html` | Posts labelled `porn`, `sexual`, `nudity`, `graphic-media` or `gore` hide their images; alt text is escaped; outbound links open in the Browser app. |
+| Bluesky full i18n | `bluesky.html`, `locales/*.json` | All shell, login, feed, profile, search, notifications, chat, compose and message-modal strings now use `data-i18n`/`bskyText()` with English fallbacks. 67 `bluesky.*` keys in all 10 locales; dynamic counts/interpolation via `tFormat`; non-English time uses 24-hour format. |
 | AirType session rules | `rtdb-rules.json` | `freewrite_sessions/{id}` is now readable/writable only by the `ownerId` account instead of every signed-in user. |
 | Pro gate is idempotent | `pro-gate.js` | One Firebase auth listener and one promise per page; callbacks run once, removing duplicate Firestore reads and the double-callback behaviour. |
 | New Mail attachment path | `firebase-functions/index.js`, `mail.html` | Body fetch returns attachment metadata; `fetchEmailAttachment` downloads one attachment on demand (6 MB cap) and the reader shows download buttons. |
@@ -55,7 +56,7 @@ This is the companion to [the audit](rekindle-plus-2026-10-26.md). It records wh
 - `npm test` → **PASS** (all suites, including i18n, compatibility, Mail OAuth, worker CORS/client, Pinterest, Kindle, Substack).
 - `npm run build` → **PASS** (`_deploy/main`, `_deploy/lite`, `_deploy/legacy`, sitemaps, Kindle fullscreen package).
 - Targeted Playwright checks: Docs lazy editor + focus, Docs cold/warm German translation, shared paywall copy, timezone "Later", Mail draft restore, Mindmap + Node, AI empty state, AI markdown sanitisation, Mail safe-html, AirType/Pinterest/Docs inline scripts.
-- Firebase admin path used by the workers was verified against production: `accounts:lookup` returned 200 and the Firestore owner read returned `proExpiresAt` for the test account.
+- Workers now verify Firebase ID tokens locally with Google's secure-token JWKS, because the Firebase API key is HTTP-referrer restricted and server-side `accounts:lookup` returns 403. Smoke-tested against production: anonymous 401, authenticated AI 200, OCR 200, Firestore Pro read 200.
 
 ### Cache/version housekeeping
 
@@ -111,7 +112,6 @@ These are the remaining audit items. They were not attempted or only partially a
 | **Mail IMAP Drafts** | Sent-folder append and outbound attachments are shipped; saving drafts into the server Drafts folder still needs IMAP APPEND on a draft timer. |
 | **Mastodon OAuth** | Needs dynamic app registration and a callback flow; manual token entry remains. |
 | **Google Tasks code + PKCE** | Still the implicit flow, so the access token still expires roughly hourly; fixing it needs a worker-side token exchange and refresh-token storage. |
-| **Bluesky full i18n** | The app has no locale keys; translating the whole client is a separate pass. Sensitive-media handling shipped. |
 | **Dropbox upload/search and Kindle handoff** | Only the label/typo fixes shipped. |
 | **Pinterest/Substack public discovery** | Both still require a connection before showing content. |
 | **App-wide 48px touch targets / two sanctioned window widths / `ui-kit` + `system-dialog` adoption** | The paywall and several new controls use 48px, but the suite still has 600/650/700/800/900px windows and small toolbars. This is a visual pass across 13 apps. |
@@ -119,13 +119,16 @@ These are the remaining audit items. They were not attempted or only partially a
 | **Server-side credential storage for Mail/Bluesky/Mastodon/Substack/Dropbox/Pinterest** | The AI key is now device-only, but the other integrations still use uid-derived obfuscation or plaintext tokens. Moving them to server-side refresh tokens is a project per provider. |
 | **CSP** | Sanitisation and sandboxing are in place; a strict CSP needs the inline-handler refactor first. |
 | **Per-user OCR quota** | OCR now requires auth + Pro; it has no daily counter. |
-| **Docs recent-documents home** | Draft restore and lazy loading shipped; a proper Recents library is still a design task. |
 | **Full Mastodon/Bluesky label preferences** | Sensitive media is hidden, but user-configurable label preferences are not exposed. |
+
+The design pass has its own detailed findings, window-width map, touch-target evidence and
+acceptance checklist in [`rekindle-plus-followups-2026-10-26.md`](rekindle-plus-followups-2026-10-26.md).
 
 ---
 
 ## 4. Notes for review
 
-- The working tree already contained **uncommitted Mail/Outlook changes** (`mail.html`, `firebase-functions/index.js`) before this work. They were preserved; the attachment callable and sanitisation were added around them.
-- The `_deploy/` directories were rebuilt locally; they are build output, not source.
-- No production deploy, no Firebase rules/functions deploy, and no Workers deploy were run.
+- The working tree already contained **uncommitted Mail/Outlook changes** (`mail.html`, `firebase-functions/index.js`) before this work. They were preserved and shipped in the release.
+- **Deployed 2026-10-26:** commit `a2a0146`; Cloudflare Pages run `40305562149`; Workers `rekindle-oracle` / `rekindle-ocr`; Cloud Functions `searchEmails`, `sendEmail`, `fetchEmailAttachment`, `fetchEmailBody`; RTDB rules. Production smoke tests passed (see the release notes in the session).
+- `_deploy/` is build output, not source.
+- Remaining work is product/design work, tracked in [`rekindle-plus-followups-2026-10-26.md`](rekindle-plus-followups-2026-10-26.md).

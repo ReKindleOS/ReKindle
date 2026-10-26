@@ -1,5 +1,10 @@
 # Deferred optimisation & QoL backlog — 2026-10-20
 
+> **ReKindle+ 2026-10-26 follow-ups:** the app-wide touch/design pass, window-width map,
+> 48 px evidence, per-app order and the remaining Mail/social/OAuth/CSP work now live in
+> [`docs/audits/rekindle-plus-followups-2026-10-26.md`](../audits/rekindle-plus-followups-2026-10-26.md).
+> Bluesky full i18n shipped in the same release; do not re-open it as a backlog item.
+
 Everything flagged by the [2026-10-20 audit](audit-2026-10-20.md) that was **not** attempted in
 the fix pass, plus the places where a fix was deliberately partial. Each entry has the evidence
 needed to start without re-doing the investigation.
