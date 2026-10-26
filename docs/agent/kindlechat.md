@@ -557,6 +557,10 @@ translates and shows **Show Original** like any tagged message.
 * **Do not show the link for same-language content.** This was the point of the change: the old
   on-demand link appeared on every foreign-looking bubble, including English messages read by
   English readers.
+* **Adding Show Original after a render:** `.msg-meta` is a **sibling of `.msg-row`**, not a
+  descendant of the bubble's immediate parent. Use `bubble.closest('.msg').querySelector('.msg-meta')`;
+  the old `bubble.parentNode.querySelector('.msg-meta')` silently returned null, so on-view
+  translations had no Show Original control (fixed 2026-10-26).
 * **Auto translation.** `js/translate-client.js` exposes `autoTranslate({id, text, source,
   target, apply})`. It runs one MyMemory request at a time, 350 ms apart, with a **24-request /
   20,000-character** ceiling per page view, stops after a `budget` error or three consecutive

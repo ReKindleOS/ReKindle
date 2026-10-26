@@ -60,6 +60,8 @@ assert.ok(/topicLangDiffers\(msgLang\)/.test(topics), 'topic comments must be ga
 // --- client: auto translation is queued, not a synchronous fan-out --------
 assert.ok(/queueMessageAutoTranslation/.test(chat), 'KindleChat must auto-translate viewed foreign messages');
 assert.ok(/autoTranslateSource = msgLang \|\| 'auto'/.test(chat), 'KindleChat must auto-detect messages without a stored lang');
+assert.ok(/bubble\.closest\('\.msg'\)/.test(chat), 'KindleChat must find .msg-meta above .msg-row when adding Show Original');
+assert.ok(!/bubble\.parentNode\.querySelector\('\.msg-meta'\)/.test(chat), 'the .msg-meta lookup must not search inside .msg-row');
 assert.ok(/queueDmAutoTranslation/.test(chat), 'KindleChat DMs must auto-translate viewed foreign messages');
 assert.ok(/dmMsgLang \|\| 'auto'/.test(chat), 'KindleChat DMs must auto-detect messages without a stored lang');
 assert.ok(/queuePostAutoTranslation/.test(neighbourhood), 'neighbourhood posts must auto-translate viewed foreign posts');
