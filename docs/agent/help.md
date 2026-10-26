@@ -8,9 +8,9 @@ browsing, deep links (`/help#tasks`) and an A-Z app index.
 | File | Purpose |
 | :--- | :--- |
 | `help.html` | System 7 shell, routing, search, A-Z index, article renderer, text-size control. |
-| `help-data.js` | `HELP_CATEGORIES` and `HELP_ARTICLES` (currently ~140 guides, English copy). No network requests. |
+| `help-data.js` | `HELP_CATEGORIES` and `HELP_ARTICLES` (142 guides, English copy). No network requests. |
 
-`help-data.js` is loaded with `?v=9` in `help.html`. **Bump that query when the
+`help-data.js` is loaded with `?v=12` in `help.html`. **Bump that query when the
 data changes** so edge/service-worker caches cannot serve an old guide set. The
 page itself is included in the generated sitemap automatically.
 
@@ -51,10 +51,13 @@ arcade).
   in Help.
 - Game variants (`2pchess`, `livechess`, etc.) do not need their own entries;
   their parent guide and the "Single, local and live modes" table cover them.
-- Unlisted/administrator pages (`jumpy`, `texasholdem`, `words`, `readwise`,
-  `manga`, `login`, `moderation`, `quicknotes`, `index_old`) are described in
-  "Unlisted & legacy pages". If one is promoted to the home screen, add a full
-  guide with `appHref`.
+- Unlisted/administrator pages (`jumpy`, `texasholdem`, `words`, `cookieclicker`,
+  `manga`, `login`, `moderation`, `quicknotes`, `index_old`, `changelog`, `probe`) are
+  described in "Unlisted & legacy pages". Unlisted games may keep a full guide
+  with `appHref` and an "Unlisted" note (cookieclicker) so they stay launchable
+  from the A-Z index; if one is promoted to the home screen, drop the note.
+- **Readwise is listed, not unlisted:** `icons-beta.js` pushes it into `APPS`
+  (with `beta: true`), so it keeps its `appHref` and BETA badge.
 - The Help app documents itself (`id: 'help'`, `appHref: 'help'`). It is not in the app drawer; the top menu and About panel link to it.
 
 ## UI / i18n notes
@@ -106,4 +109,31 @@ Manage Subscription first, and treat cancellation (stops renewal) separately
 from a refund (case by case). The Suggestions board's triage strip links to
 `help#faq` and `help#support`, and its Suggest an idea guide now explains the
 "Load older" window and the duplicate finder. Bump `help-data.js?v=` in
-`help.html` after any copy edit (currently `?v=9`).
+`help.html` after any copy edit (currently `?v=12`).
+
+## Content audit (2026-10-26)
+
+A full pass checked every article against the page source. Rules for future edits:
+
+- **Do not repeat a privacy or storage claim without reading the write path.**
+  Examples fixed: Life Calendar saves the birthday to the public social profile
+  (`users_public/{uid}`), Dropbox and Mail store tokens / encrypted passwords in
+  Firestore `pro_data`, and Mail's AES key is derived from the uid - convenient
+  sync, not a security boundary.
+- **Check whether a control exists before naming it.** Common drift: a "Sync"
+  button that is automatic, month arrows that are infinite scroll, a "Read"
+  button that is a tappable title, a "Contents" control only in the Gutenberg
+  viewer, and a "Sync Google Calendar" button that is a first-run Use Google /
+  Log In pair.
+- **Counts and units drift.** Keep ranges, quotas and units in the article
+  matching the code: 10 AI messages/day, 3 stock ranges, 4 timer tabs, 2 RSS
+  tabs, 100 MB shared Files quota, flashcards' 1d/6d/ease schedule, calculator
+  trig in degrees.
+- **Dates and statuses drift fastest.** Dark mode, Outlook/Hotmail Mail,
+  Delete Account, the password reset and the Changelog page all changed in the
+  last week of October 2026. When a feature ships, update the app article, the
+  FAQ, `whats-new` if it is user-visible, and `hidden-legacy` if a page became
+  reachable or retired.
+- **Search for stale absolutes** before shipping: `temporarily disabled`,
+  `not supported`, `coming soon`, `no self-service`, `not written to`,
+  `all times`, `four ranges`.

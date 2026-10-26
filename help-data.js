@@ -57,7 +57,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Your first five minutes</h2>
             <ol>
                 <li>Open <b>rekindle.ink</b> in the device browser and bookmark it. See <a href="#install">Installing and supported devices</a>.</li>
-                <li>Use the tabs across the top of the home screen to browse Essentials, Tools, Lifestyle, Games and Multiplayer. The house icon opens the dashboard widgets.</li>
+                <li>Use the tabs across the top of the home screen to browse Essentials, Tools, Lifestyle, Games and Multiplayer. The house tab shows every app; the grid tab opens the dashboard widgets.</li>
                 <li>Open <b>Settings</b> (top menu) and set your location, units and display scale. Location fixes the clock, weather and language detection.</li>
                 <li>If you want sync, tap <b>LOG IN / REGISTER</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
                 <li>Star the apps you use most: tap <b>Edit</b> on the home screen, then the star on an app. See <a href="#home">The home screen</a>.</li>
@@ -150,9 +150,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Open <b>Settings</b> and use <b>Change Password</b> under Account. Enter the current password, then the new one twice. Passwords must be at least 6 characters here.</p>
             <p><b>Forgot the current password?</b> If you are still signed in on this device, choose <b>Forgot your current password?</b> in the same box, type your username to confirm, and set a new password (at least 8 characters). This works from the live session - there is no "forgot password" email because accounts do not require an email address. Only do this on a device you control: anyone who can use a device you are signed in on could reset the password too.</p>
             <p>If you are signed out and locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
+            <h2>Deleting your account</h2>
+            <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your profile, files, posts, chat messages, direct messages, scores and suggestions from both Firebase projects. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
             <h2>Age verification for social apps</h2>
-            <p>KindleChat, Neighbourhood and Topics require a one-time age check before posting. You enter your date of birth and country; ReKindle checks the minimum social-media age for that country. The check is a self-declaration, not an ID upload. You can browse some social content without it, but posting and messaging are blocked until it is complete.</p>
-            <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used only for the age check. See the <a href="privacy.html">Privacy Policy</a>.</div>
+            <p>KindleChat, Neighbourhood and Topics require an age check before they load. You enter your date of birth and country; ReKindle checks the minimum social-media age for that country. The check is a self-declaration, not an ID upload, and the social apps stay locked until it is complete - browsing, posting and messaging all need it.</p>
+            <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used for the age check and kept in your account's age-verification record for audit and support. See the <a href="privacy.html">Privacy Policy</a>.</div>
         `
     },
     {
@@ -173,14 +175,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Reading positions and books saved into your ReKindle library.</li>
                 <li>Social identity (username, public profile, avatars) and social content.</li>
             </ul>
-            <p>Not everything syncs. Games mostly keep high scores locally and separately post verified scores to leaderboards. Mail credentials, Google OAuth tokens and some third-party service tokens stay on the device. Each app's guide says what it stores.</p>
+            <p>Not everything syncs. Games mostly keep high scores locally and separately post verified scores to leaderboards. Google OAuth tokens and Readwise tokens stay on the device. Mail saves an encrypted copy of app passwords to your account (and keeps its Outlook token on ReKindle's server), and several Pro integrations save their credentials to your private account records too: the AI Assistant's API key, Dropbox, Bluesky, Mastodon, Pinterest and Substack. Each app's guide says what it stores.</p>
             <h2>Guest mode</h2>
             <p>Guest mode never creates a server record. Data is in your browser's <code>localStorage</code> (and IndexedDB/localforage for larger files such as books). It is available only in that browser on that device. Clearing site data or the browser cache removes it permanently.</p>
             <h2>Offline and conflicts</h2>
             <p>Apps are expected to work from local state first and sync when a connection returns. The account settings listener usually treats the newest timestamp as authoritative. If two devices edit the same item offline, one version can overwrite the other - sync is a convenience, not a real-time collaborative editor.</p>
             <div class="note"><b>Moving devices:</b> sign in on the new device before creating lots of guest data. Guest data is not merged into an account automatically.</div>
             <h2>Google and third-party data</h2>
-            <p>Google Tasks, Calendar and Contacts are fetched directly from Google APIs using a token kept in local storage. ReKindle does not copy that data to its own servers. The same idea applies to Readwise tokens, Substack cookies and AI API keys: they are device-local credentials.</p>
+            <p>Google Tasks, Calendar and Contacts are fetched directly from Google APIs using a token kept in local storage. ReKindle does not copy that data to its own servers. Readwise tokens also stay on the device. AI API keys, Dropbox/Bluesky/Mastodon/Pinterest credentials and a Substack cookie are saved to your private account records (Pro data) so the connection follows you to another device.</p>
         `
     },
     {
@@ -213,9 +215,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Starting KindleChat direct messages; receiving them is free.</li>
             </ul>
             <h2>Managing and cancelling</h2>
-            <p>Open <a href="pay.html">ReKindle+</a> or <b>Settings</b> while signed in. An active membership shows its expiry date and a <b>Manage Subscription</b> button that opens the Stripe billing portal. Cancelling stops the renewal; access normally continues to the end of the paid period.</p>
+            <p>Open <a href="pay.html">ReKindle+</a> or <b>Settings</b> while signed in. An active membership shows its expiry date and a <b>Manage Subscription</b> button that opens the ReKindle+ page, where the Stripe billing portal link lives. Cancelling stops the renewal; access normally continues to the end of the paid period.</p>
             <div class="note"><b>If Pro does not unlock:</b> wait a minute and refresh, confirm you are signed in as the account that paid, then check the expiry date on the ReKindle+ page. Webhook delays and stale tokens are the usual causes. See <a href="#troubleshooting">Troubleshooting</a>.</div>
-            <p>Some Pro features still have their own limits or keys: AI has a monthly quota, Mail depends on your provider's app passwords, and Dropbox/Bluesky/etc. need your own account.</p>
+            <p>Some Pro features still have their own limits or keys: the hosted AI Assistant allows 10 messages a day (a custom API key removes that cap), Mail depends on your email provider's sign-in, and Dropbox/Bluesky/etc. need your own account.</p>
         `
     },
     {
@@ -226,13 +228,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         tags: 'home dashboard app grid tabs favourites favorite hide edit featured folder badges live games layout classic modern sidebar',
         related: ['badges', 'settings', 'sync'],
         body: `
-            <p>The home screen is the ReKindle launcher. It has two layouts, chosen in Settings: the modern sidebar layout and the classic layout. The modern one is the default and shows everything described here.</p>
+            <p>The home screen is the ReKindle launcher. It has two layouts, chosen in Settings: the modern tabbed layout and the classic sidebar layout. The modern one is the default and shows everything described here. Choosing Classic loads the older dashboard (<a href="#hidden-legacy">index_old</a>) on the next home load.</p>
             <h2>Tabs and views</h2>
             <ul>
                 <li><b>All</b> - everything, with a separate All Games section at the bottom.</li>
                 <li><b>Dashboard</b> (the grid icon) - clock, weather, calendar agenda and shortcuts.</li>
                 <li><b>Essentials / Tools / Lifestyle / Games / Multiplayer Games</b> - category views.</li>
-                <li><b>Favourites</b> - apps you star, shown above the grid.</li>
+                <li><b>Favourites</b> - apps you star, shown above the grid on the All tab.</li>
+                <li><b>Recent</b> - your last opened apps, shown above the grid. Toggle it with <b>Recent: ON/OFF</b> in Edit mode.</li>
+                <li><b>Search</b> - the magnifier in the toolbar searches app names and descriptions.</li>
                 <li><b>Live Games</b> - joinable online matches. It only appears when something is waiting.</li>
             </ul>
             <h2>Editing the grid</h2>
@@ -241,7 +245,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap the <b>star</b> on an app to add it to Favourites. Tap again to remove it.</li>
                 <li>Tap the <b>eye</b> to hide an app. Hidden apps stay hidden in normal views but remain visible while editing.</li>
                 <li>Use <b>Featured: ON/OFF</b> to show or hide the featured row.</li>
-                <li><b>Reset</b> clears favourites and hidden apps.</li>
+                <li><b>Reset</b> clears favourites, hidden apps and the Featured/Recent display toggles.</li>
                 <li>Tap <b>Done</b> when finished.</li>
             </ol>
             <p>Favourites and hidden apps sync to your account when signed in, and are cached locally for guest mode.</p>
@@ -250,7 +254,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Dashboard widgets</h2>
             <p>The dashboard uses the location saved in Settings. It shows local time, a weather summary with an hourly strip, and today's calendar agenda. If the clock is wrong, set your location in Settings; Kindle system timezones are unreliable and ReKindle applies its own offset.</p>
             <div class="note"><b>Games hidden?</b> If the Games and Multiplayer tabs are missing, open Settings and turn off <b>Disable Games</b>. Parents use this to keep the arcade out of reach.</div>
-            <p>Tap the ReKindle logo at the top left for the About panel, which includes Help, Settings, Support, Discord, Donate and the Privacy Policy.</p>
+            <p>Tap the ReKindle logo at the top left for the About panel, which includes Help, Support, Discord, Donate, the Privacy Policy and the Changelog. On a narrow screen it also carries Settings and Log In.</p>
         `
     },
     {
@@ -270,7 +274,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td><b>1P</b></td><td>Single-player version, shown inside a game folder.</td></tr>
                 <tr><td><b>2P</b></td><td>Local pass-and-play version for two people sharing one device.</td></tr>
                 <tr><td><b>+</b></td><td>Requires an active ReKindle+ membership. Tapping opens the subscribe prompt. See <a href="#pro">ReKindle+</a>.</td></tr>
-                <tr><td><b>CLOSED</b></td><td>The service behind the app is temporarily unavailable. The icon explains why when tapped.</td></tr>
+                <tr><td><b>CLOSED</b></td><td>Reserved for an app whose service is temporarily unavailable; tapping explains why. No app currently uses it.</td></tr>
             </table>
             <h2>Unsupported-app warning</h2>
             <p>Some apps require a modern browser. On older Kindles or the Legacy build they show an unsupported warning instead of launching. That is a device limitation, not a broken install. Apps affected include several canvas games and the handwriting tool. Newer firmware and the main build are the fix.</p>
@@ -303,7 +307,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <div class="note"><b>Before clearing:</b> sign in and open the app once so unsynced changes get a chance to write. There is no general "export everything" button yet; for a specific app, use its download/export option (Docs, Mindmap, Pixel, Flipbook, Sheet Music) or contact support.</div>
             <h2>Privacy</h2>
-            <p>Guest mode sends no personal data to ReKindle. Cloud mode sends only what the apps you use need. Google tokens and third-party API keys are stored on the device and are not copied to Firestore. Read the full <a href="privacy.html">Privacy Policy</a>.</p>
+            <p>Guest mode sends no personal data to ReKindle. Cloud mode sends only what the apps you use need. Google and Readwise tokens stay on the device. Mail app passwords, AI API keys and several Pro integration credentials (Dropbox, Bluesky, Mastodon, Pinterest, Substack) are stored in your private Firebase records, so clearing site data does not remove them. Read the full <a href="privacy.html">Privacy Policy</a>.</p>
         `
     },
     {
@@ -344,7 +348,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         tags: 'support contact email discord suggestions report bug feedback help community moderation',
         related: ['troubleshooting', 'safety', 'suggestions'],
         body: `
-            <p>There are three ways to get help, depending on what you need.</p>
+            <p>There are several ways to get help, depending on what you need.</p>
             <h2>Email support</h2>
             <p>Write to <a href="mailto:support@rekindle.ink">support@rekindle.ink</a>. Include:</p>
             <ul>
@@ -355,11 +359,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>A screenshot or photo of the screen if possible.</li>
             </ul>
             <h2>Discord</h2>
-            <p>The community Discord is linked from the About panel (tap the ReKindle logo on the home screen) and from the Discord app icon. It is the fastest place for "is this broken for everyone?" questions and feature chat. Do not post passwords, emails or other private information.</p>
+            <p>Join the community Discord from the About panel (tap the ReKindle logo on the home screen) or the Discord app icon. It is the fastest place for "is this broken for everyone?" questions. See <a href="#discord">Discord community</a> for the invite and etiquette.</p>
             <h2>Suggestions</h2>
             <p>The <a href="#suggestions">Suggestions</a> app is the official feature-request and bug tracker. You can post an idea, a problem or a translation issue, vote on others, and follow status changes. Search before posting - duplicates are merged or closed.</p>
             <h2>Reporting content or a person</h2>
-            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. Reports go to the moderation team with a snapshot of the content. In KindleChat you can also block a user from their profile or a direct message, and unblock them again from that conversation. For urgent safety issues, email support and say "safety" in the subject.</p>
+            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. A report adds a snapshot of the content and its author to ReKindle's report queue. Every report needs a reason and a short comment containing at least one real word. Chat messages, DMs and comments are removed on the first report; topics and posts need two independent reports. In KindleChat you can also block a user from inside a direct message thread, and unblock them again there. For urgent safety issues, email support and say "safety" in the subject.</p>
             <div class="note"><b>Help app feedback:</b> every guide has a "Report a problem" link at the bottom that opens an email with the guide title filled in. Typos, outdated steps and missing apps are all worth reporting.</div>
         `
     },
@@ -371,29 +375,30 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         tags: 'new updates changelog recent added latest release 2026',
         related: ['welcome', 'games-overview', 'reader'],
         body: `
-            <p>ReKindle is actively developed. This page lists the changes most likely to affect how you use it, current as of <b>October 2026</b>.</p>
-            <h2>New in this release</h2>
+            <p>ReKindle is actively developed. This page lists the changes most likely to affect how you use it, current as of <b>October 2026</b>. For the complete commit log, open the <a href="changelog.html">Changelog</a>.</p>
+            <h2>Recently added</h2>
             <ul>
-                <li><b>Help &amp; FAQ</b> - this app. It documents every app, game, setting and account feature, with search and an A-Z index.</li>
-                <li><b>Car Games</b> - ten pass-the-Kindle games for road trips, with a saved crew of up to eight players.</li>
-                <li><b>Cube Dash</b> - a 10-level one-button platformer with cube and ship modes.</li>
-                <li><b>Surfer</b> - a three-lane endless runner built for e-ink.</li>
-                <li><b>Jumpy</b> - a Doodle Jump-style vertical platformer.</li>
-                <li><b>Crossy</b> - cross roads and rivers without getting hit.</li>
-                <li><b>Oregon Trail</b> - rebuilt from scratch with a readable fixed layout, hunting, forts and a winter deadline.</li>
-                <li><b>Reader</b> - Gutenberg and Standard Ebooks now live as tabs inside Reader, with a shared library and reading positions.</li>
-                <li><b>KindleChat direct messages</b> - moderated one-to-one chats, opt-in requests and blocking.</li>
+                <li><b>Mail: Outlook and Hotmail</b> - Microsoft sign-in codes replace app passwords, so a Microsoft mailbox works without typing a password on the Kindle.</li>
+                <li><b>Delete Account</b> - permanent self-service deletion in Settings, including cloud files, posts, chat messages and scores.</li>
+                <li><b>Forgot current password</b> - reset the password from a signed-in device without an email address.</li>
+                <li><b>Dark mode</b> - Light, Dark and Auto (Night) themes are available again, marked BETA.</li>
+                <li><b>Changelog</b> - a searchable list of every commit, linked from the About panel.</li>
+                <li><b>Help &amp; FAQ</b> - this app: every app, game, setting and account feature, with search and an A-Z index.</li>
+                <li><b>Reader</b> - Gutenberg and Standard Ebooks live as tabs inside Reader, with a shared library and reading positions that sync.</li>
+                <li><b>KindleChat direct messages</b> - moderated one-to-one chats, opt-in requests, blocking and unblocking.</li>
+                <li><b>Car Games, Cube Dash, Surfer, Crossy</b> - new games tuned for e-ink, alongside the rebuilt <b>Oregon Trail</b>.</li>
                 <li><b>AI Assistant</b> - bring-your-own-key support for many providers, plus a hosted Gemini option.</li>
                 <li><b>AirType</b> - use your phone as a keyboard for the e-reader.</li>
                 <li><b>Pinterest</b> and <b>Dropbox</b> integrations for ReKindle+ members.</li>
             </ul>
             <h2>Recently improved</h2>
             <ul>
-                <li>Game leaderboards are now server-validated, so impossible scores are rejected.</li>
-                <li>KindleChat translations are more reliable across all supported languages.</li>
-                <li>Chat flood protection and link/promotion blocking are enforced on the server as well as in the browser.</li>
+                <li>Game leaderboards are server-validated, so impossible scores are rejected.</li>
+                <li>Social moderation is automatic: reported chat, DMs and comments are removed on the first report, and the moderation console is owner-only.</li>
+                <li>KindleChat translations are more reliable, and flood/link/promotion blocking is enforced on the server as well as in the browser.</li>
+                <li>The Suggestions board loads faster, finds duplicates as you type, and pages older ideas with <b>Load older</b>.</li>
+                <li>Pinterest authorises once and follows your account to other devices.</li>
                 <li>Reader pagination, font sizes and resume positions were smoothed out for e-ink.</li>
-                <li>Score boards, Reading Log, Habit Tracker and many apps now sync more cleanly between devices.</li>
             </ul>
             <div class="note"><b>Looking for an app?</b> If an icon moved, use the <a href="#all">A-Z index</a> or search this help app. New apps get a NEW badge on the home screen.</div>
         `
@@ -415,11 +420,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Can I use it on a phone or computer?</h2>
             <p>Yes. Open rekindle.ink in any modern browser. Everything works, and a physical keyboard is handy for the games and editors.</p>
             <h2>Is my data private?</h2>
-            <p>Guest mode keeps everything on the device. Cloud mode stores only what your apps need in your own Firebase records. Google and third-party credentials stay local. Details are in the <a href="privacy.html">Privacy Policy</a>.</p>
-            <h2>Why is dark mode missing?</h2>
-            <p>Dark mode is temporarily disabled. The Control Panel still shows the option, but it is greyed out and ReKindle forces light mode. This is deliberate while the e-ink contrast fixes are finished.</p>
+            <p>Guest mode keeps everything on the device. Cloud mode stores only what your apps need in your own Firebase records. Google and Readwise tokens stay on the device; Mail, AI and several Pro integrations keep credentials in your private Firebase records. Details are in the <a href="privacy.html">Privacy Policy</a>.</p>
+            <h2>How does dark mode work?</h2>
+            <p>Open <b>Settings</b> and set Theme to <b>Light</b>, <b>Dark</b> or <b>Auto (Night)</b>. Auto switches to dark after 6pm and back at 6am, using your saved timezone, or follows the system preference. Dark mode is marked BETA: it inverts the whole interface, so photos and some accent colours look different. Bright themes usually ghost less on e-ink panels.</p>
             <h2>Why do typed emojis show as boxes?</h2>
             <p>The Kindle browser has no colour emoji font. Use ASCII emoticons like <code>:)</code> or the KindleChat emoji picker, which inserts OpenMoji images instead of Unicode characters. See <a href="#kindlechat">KindleChat</a>.</p>
+            <h2>I forgot my password</h2>
+            <p>If you are still signed in on a device, open <b>Settings</b>, choose <b>Change Password</b> and use <b>Forgot your current password?</b> to set a new one without email. If you are signed out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#account">Account and sign-in</a>.</p>
             <h2>How do I cancel ReKindle+?</h2>
             <p>Open the ReKindle+ page while signed in and use <b>Manage Subscription</b>. It opens the Stripe billing portal. Access continues until the end of the paid period.</p>
             <h2>I paid but Pro is missing, or I need a refund</h2>
@@ -515,6 +522,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>If an article extracts badly, try the site's "print" or "AMP" URL, or open the original in the system browser.</li>
                 <li>Tabs share one history stack each, so you can keep a long read and a search open side by side.</li>
                 <li>Images are removed from the reading flow when they have no useful source, which keeps e-ink refreshes down.</li>
+                <li>The bookmark button saves the current page to <a href="#readlater">Read Later</a>.</li>
             </ul>
         `
     },
@@ -535,11 +543,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Enter a title, choose the date and time, and add an optional description.</li>
                 <li>Save. Local events are stored on the device and, when signed in, in your account.</li>
             </ol>
-            <p>Tap an event to view it; use the edit and delete actions in the event panel. The <b>Today</b> button returns to the current date, and the arrow controls move between months or days.</p>
+            <p>Tap an event to edit or delete it. The <b>Today</b> button returns to the current date, and the arrow controls move between months or days.</p>
             <h2>Google Calendar</h2>
-            <p>Tap <b>Sync Google Calendar</b> and sign in with Google. ReKindle requests calendar access so it can list your calendars and read/write events. You can choose which calendars are visible from the calendar picker. Google data is fetched directly from Google's API with a token stored on the device.</p>
-            <h2>CalDAV / iCalendar feeds</h2>
-            <p>Settings accepts a CalDAV or <code>.ics</code> URL. Calendar fetches that feed through ReKindle's proxy and displays the events in read-only form. This is a one-way import, not two-way sync, and it replaces the local add button while active. Remove the URL in Settings to go back to local events.</p>
+            <p>On first open, choose <b>Use Google</b> in the sync prompt, then tap <b>Log In</b> and sign in with Google. ReKindle requests calendar access so it can list your calendars and read/write events. You can choose which calendars are visible from the calendar picker. Google data is fetched directly from Google's API with a token stored on the device.</p>
+            <h2>iCalendar (.ics) feeds</h2>
+            <p>Settings accepts an iCalendar (<code>.ics</code>) subscription URL, for example a published Google Calendar or an ICS feed. Calendar fetches that feed through ReKindle's proxy and displays the events in read-only form. This is a one-way import, not two-way sync, and it is not a full CalDAV client. It replaces the local add button while active; remove the URL in Settings to go back to local events.</p>
             <div class="note"><b>Timezone:</b> events use the location and offset saved in Settings, because the Kindle system clock often ignores its own timezone setting. If an event appears an hour off, check Settings -> Location.</div>
         `
     },
@@ -583,8 +591,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap Connect. If the connection works, credentials are encrypted and saved to your account (cached on this device).</li>
             </ol>
             <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Yahoo and iCloud users with 2FA need an app password too.</div>
-            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP"). Leave the Mail page open while it checks for approval.</div>
-            <div class="note"><b>Several mailboxes at once:</b> tap <b>Settings</b> to see every account signed in on this device, switch between them, or add another with <b>Add another account</b>. You can add more than one Gmail, Yahoo or Outlook account; each keeps its own folders and signing out of one leaves the others alone. Accounts are remembered per ReKindle user, so they follow you to another device.</div>
+            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP"). Leave the Mail page open while it checks for approval. This works with personal Outlook.com and Hotmail accounts; work or school Microsoft 365 accounts are not supported yet.</div>
+            <div class="note"><b>Several mailboxes at once:</b> tap <b>Settings</b> to see every account signed in on this device, switch between them, add another with <b>Add another account</b>, or <b>Rename</b> one so the list reads "Work" instead of an address. You can add more than one Gmail, Yahoo or Outlook account; each keeps its own folders and signing out of one leaves the others alone. Accounts are remembered per ReKindle user, so they follow you to another device.</div>
             <h2>Reading and organising</h2>
             <ul>
                 <li>Conversations are grouped by subject by default: replies to the same subject show as one row with a count, and tapping it expands the messages. Turn <b>Group conversations</b> off in Settings to list every message separately.</li>
@@ -600,7 +608,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Very large mailboxes load one folder at a time, which keeps e-ink rendering manageable.</li>
             </ul>
             <h2>Security</h2>
-            <p>App passwords are stored encrypted in local storage and used through ReKindle's authenticated mail relay to reach your provider. They are not written to Firestore. Outlook accounts store no password at all: Microsoft issues a refresh token that stays on ReKindle's server, and <b>Disconnect current account</b> in Mail settings deletes it.</p>
+            <p>App passwords are encrypted on the device and an encrypted copy is saved to your ReKindle account (Pro-only <code>pro_data</code>) so each mailbox follows you to another device; ReKindle's authenticated mail relay uses it to reach your provider. Treat that as convenient sync, not a security boundary. Outlook accounts store no password at all: Microsoft issues a refresh token that stays on ReKindle's server and is never returned to the browser. Remove a mailbox with <b>Sign out</b> (Outlook) or <b>Remove</b> (password accounts) in Mail Settings.</p>
         `
     },
     {
@@ -621,12 +629,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap a headline.</li>
                 <li>The article opens in the built-in reader with A-/A+ text controls.</li>
                 <li>Use <b>Open Externally</b> if the page extracts badly or needs JavaScript.</li>
-                <li>Use the page arrows to move through the current section.</li>
+                <li>Use the page arrows to page through a long article. Switch sections with the category buttons.</li>
             </ol>
             <h2>Good to know</h2>
             <ul>
                 <li>Headlines come from public RSS feeds. If a publisher changes or blocks its feed, that section can appear empty until it is updated.</li>
-                <li>News needs a network connection. Cached headlines may remain visible briefly, but tapping through requires the article to load.</li>
+                <li>News needs a network connection and re-fetches a section when you open it. Tapping through requires the article to load.</li>
                 <li>This is a headline digest, not a full newspaper replica. Use <a href="#rssreader">RSS Reader</a> to follow your own sources.</li>
             </ul>
         `
@@ -641,7 +649,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Stocks',
         related: ['news', 'watchlist'],
         body: `
-            <p>Stocks tracks a personal watchlist of tickers and shows a price chart over four ranges: 1 Day, 1 Week, 1 Month and longer. It also recognises common cryptocurrency symbols.</p>
+            <p>Stocks tracks a personal watchlist of tickers and shows a price chart over three ranges: 1 Day, 1 Week and 1 Month. It also recognises common cryptocurrency symbols.</p>
             <h2>Adding and removing</h2>
             <ol>
                 <li>Tap <b>Add</b> and enter a ticker symbol (for example <code>AAPL</code>, <code>MSFT</code> or <code>BTC</code>).</li>
@@ -650,7 +658,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Refresh with the circular arrow. Data is not streamed - it updates when you refresh.</li>
             </ol>
             <h2>Accounts and storage</h2>
-            <p>Signed-in users get their watchlist synced. Guest mode keeps it in local storage and shows a "Guest Mode" note. Quotes and charts come from Yahoo Finance through a small server-side proxy, with a direct fallback. Crypto prices come from CoinCap.</p>
+            <p>Signed-in users get their watchlist synced. Guest mode keeps it in local storage and shows a "Guest Mode" note. Quotes and charts come from Yahoo Finance through ReKindle's server-side price proxy, with a second server-side proxy as the fallback. Crypto uses the same route, with CoinCap as a fallback when Yahoo fails.</p>
             <div class="note"><b>Not financial advice:</b> Quotes can be delayed or temporarily unavailable, especially outside market hours. Do not rely on this app for trading decisions.</div>
             <p>If the list stays empty, the upstream provider is probably rate-limiting or unreachable. Wait a minute and refresh; a single failed ticker does not break the rest of the list.</p>
         `
@@ -689,13 +697,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'scores',
         cat: 'essentials',
         title: 'Scores',
-        summary: 'Live and recent scores for major leagues, with favourite teams in one feed.',
-        tags: 'scores sports nfl nba mlb nhl nrl soccer epl mls ncaa espn favourites',
+        summary: 'Live and recent scores for major leagues, with Favourites for your teams in one feed.',
+        tags: 'scores sports nfl nba mlb nhl nrl soccer epl mls ncaa espn favourites favorites',
         appHref: 'scores',
         appName: 'Scores',
         related: ['news', 'watchlist'],
         body: `
-            <p>Scores shows scoreboards for major sports, with a favourites tab that combines your teams into one list.</p>
+            <p>Scores shows scoreboards for major sports, with a <b>Favourites</b> tab that combines your teams into one list.</p>
             <h2>Leagues</h2>
             <p>NFL, NBA, MLB, NHL, NRL, English Premier League, MLS, NCAA Football and NCAA Basketball. Data comes from ESPN's public scoreboard API; NRL is handled by a dedicated ReKindle endpoint because ESPN's API does not expose it directly.</p>
             <h2>Following teams</h2>
@@ -706,7 +714,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap the star again to remove it.</li>
             </ol>
             <h2>Game states</h2>
-            <p>Games show scheduled start times, live scores and progress, or final results. All times are converted to your saved timezone.</p>
+            <p>Games show scheduled start times, live scores and progress, or final results. Times are shown as ESPN supplies them (usually US Eastern); ReKindle does not convert them to your timezone.</p>
             <div class="note"><b>Empty board?</b> Out of season, a league may have no games. If every league is empty, the upstream API is probably rate-limiting; wait and refresh. NRL parsing depends on ESPN's page structure and can lag after a site change.</div>
         `
     },
@@ -734,20 +742,20 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Opening a book</h2>
             <ol>
                 <li>Tap <b>Library</b> and choose a tab.</li>
-                <li>For Gutenberg, search by title/author or tap a subject chip, then <b>Read</b> for the plain-text view or <b>Get</b> to download an EPUB into My Books.</li>
+                <li>For Gutenberg, search by title/author or tap a subject chip, then tap a result to read the plain text, or <b>Get</b> to download an EPUB into My Books.</li>
                 <li>For Standard Ebooks, browse new releases and download one. It is cleaned and saved to your library.</li>
                 <li>Tap a cover in My Books to open it in the EPUB reader.</li>
             </ol>
+            <p>The Gutenberg tab also shows a <b>Continue reading</b> shelf for books you started and a <b>Popular Now</b> row of popular titles.</p>
             <h2>Reading controls</h2>
             <ul>
-                <li><b>A- / A+</b> change the text size.</li>
+                <li>In the Gutenberg text view, <b>A- / A+</b> change the text size and <b>Contents</b> opens the chapter list. The EPUB reader itself has no font or contents control.</li>
                 <li>The progress bar and percentage show how far you are. Position is saved automatically and restored next time.</li>
                 <li>Gutenberg text is paginated by the visible screen: Prev/Next move exactly one page, never a smooth scroll.</li>
-                <li><b>Contents</b> opens the chapter list for EPUBs.</li>
                 <li><b>Delete</b> removes a book from your library (the catalogue copy is never affected).</li>
             </ul>
             <h2>Library and sync</h2>
-            <p>My Books is stored in the browser's local database and synced to your account's Firestore library. Gutenberg reading positions and recent books use local keys described in <a href="#epub">ePub</a>. Downloads need a network connection; once saved, a book can be opened offline.</p>
+            <p>My Books is stored in the browser's local database and synced to your account's Firestore library, including the reading position, so another device can continue where you stopped. Downloads and catalogue browsing need a network connection; once saved, a book can be opened offline.</p>
             <div class="note"><b>Standard Ebooks slow to load?</b> The feed is fetched through a dedicated relay because standardebooks.org blocks Cloudflare's network. The first load is slower; later loads use a cache.</div>
         `
     },
@@ -765,15 +773,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Reading log</h2>
             <ol>
                 <li>Open the <b>Reading Log</b> tab.</li>
-                <li>Tap a day and enter the number of minutes you read.</li>
-                <li>The bar chart shows your recent history. Change the period with the arrows.</li>
+                <li>Tap a duration slot on a day, from 15 minutes to 2 hours. Tap the filled slot again to clear it.</li>
+                <li>Each day shows its total, and the arrows move a week at a time.</li>
             </ol>
             <p>Signed-in users save minutes to Firestore; guest mode keeps them locally. Setting a day to zero removes that entry.</p>
             <h2>Want to read</h2>
             <ol>
                 <li>Open <b>My Books</b> and search by title, author or subject.</li>
                 <li>Results come from Open Library, including covers and publication details.</li>
-                <li>Tap <b>Want to Read</b> to save a book, or <b>Read</b>/<b>Details</b> to see more.</li>
+                <li>Open a result to see its details, then tap <b>+ Want</b> to save it or <b>+ Log Read</b> to record that you read it. Saved books use a Want to Read / Read status control.</li>
                 <li>Saved books have links to find them on Amazon or Goodreads.</li>
             </ol>
             <div class="note"><b>Login required for saved books:</b> the want-to-read list is account-based. Guest users can search, but the saved list prompts them to log in. The reading log still works locally in guest mode.</div>
@@ -795,7 +803,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Find a DRM-free EPUB on your computer or a public-domain site such as Project Gutenberg.</li>
                 <li>Right-click the EPUB download link and copy the full URL. It should usually end in <code>.epub</code>.</li>
-                <li>Open ePub, paste the URL, and tap <b>Add to Library</b>.</li>
+                <li>Open ePub, paste the URL, enter a title (author is optional), and tap <b>Add to Library</b>.</li>
                 <li>When processing finishes, the book appears in <a href="#reader">Reader</a> -> My Books.</li>
             </ol>
             <h2>Why a direct URL?</h2>
@@ -842,13 +850,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Open <b>Store</b> (the catalogue).</li>
                 <li>Search, or browse Most Downloaded, Recently Added or Alphabetical.</li>
-                <li>Tap a cover to add it to <b>Library</b>, then open it.</li>
+                <li>Tap <b>+ Add</b> on a card, then open it from the <b>Library</b> tab.</li>
             </ol>
             <h2>Reading</h2>
             <ul>
                 <li>Use the page controls to move forward and back. Pages are loaded as images from the Archive.</li>
                 <li>The reader shows the page count from the Archive's scan data.</li>
-                <li>Some items are CBZ-only uploads with no scan data. Those cannot be paged in ReKindle; use the "Open on archive.org" fallback.</li>
+                <li>Some items are CBZ-only uploads with no scan data. Those cannot be paged in ReKindle; use the "Read on archive.org" fallback.</li>
             </ul>
             <div class="note"><b>Licensing:</b> the catalogue filters on a licence field on purpose. General comic collections contain unauthorised scans and are deliberately excluded. If a title is missing, it may simply not have an open licence.</div>
             <p>The library is stored locally with each item tagged as an Internet Archive source. Old entries from the retired MangaDex integration are dropped automatically.</p>
@@ -865,6 +873,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         related: ['reader', 'books'],
         body: `
             <p>Interactive Reader plays classic text adventures and interactive fiction from the Interactive Fiction Database (IFDB). You type commands such as <code>look</code>, <code>take lamp</code> or <code>north</code>, and the story responds.</p>
+            <h2>Library and store</h2>
+            <p>The Library has two tabs: <b>My Library</b> for stories you saved or uploaded, and <b>Online Store</b> for browsing and searching IFDB. <b>Upload Story</b> accepts a Z-machine story file (<code>.z1</code>-<code>.z3</code>) and shares it with the community.</p>
             <h2>Starting a story</h2>
             <ol>
                 <li>Search IFDB by title or author, or browse the recent and popular lists.</li>
@@ -901,11 +911,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <div class="note"><b>Free limit:</b> free accounts can keep two feeds. Adding a third asks you to choose which two to keep. ReKindle+ removes the limit.</div>
             <h2>Reading</h2>
             <ul>
-                <li>Switch between <b>Headlines</b>, <b>Sources</b> and <b>All Unread</b>.</li>
+                <li>Two tabs: <b>Headlines</b> and <b>Sources</b>. On Headlines, the <b>All</b> and <b>Unread</b> filters narrow the list.</li>
                 <li>Tap an article to open the built-in reader. Use A-/A+ to change text size.</li>
                 <li><b>Mark Unread</b> puts an article back; <b>Mark All Read</b> clears the visible list.</li>
                 <li><b>Open Ext</b> opens the original page in the system browser.</li>
-                <li>Page arrows fetch older items where the feed supports paging.</li>
+                <li>The page arrows page through a long article; <b>Load More</b> fetches older items.</li>
             </ul>
             <p>Feeds are fetched through a conversion service and cached. A source that has not updated recently shows nothing new; that is normal. Broken feeds can be removed with <b>Unsubscribe</b>.</p>
         `
@@ -914,7 +924,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'readlater',
         cat: 'reading',
         title: 'Read Later',
-        summary: 'Save links for later and open them in the reader when you have time.',
+        summary: 'Save links for later and open them in Browser\'s reader view when you have time.',
         tags: 'read later bookmarks links save queue pocket url',
         appHref: 'readlater',
         appName: 'Read Later',
@@ -925,7 +935,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Paste the full address into the box at the bottom.</li>
                 <li>Tap <b>Add</b>. ReKindle fetches the page title and stores the item.</li>
-                <li>Tap an item to open it in the reader, or use its controls to remove it.</li>
+                <li>Tap an item to open it in Browser's reader view, or use its controls to remove it.</li>
             </ol>
             <p><b>Refresh</b> re-syncs the list from your account. Signed-in users get the queue on every device; guest mode keeps it locally.</p>
             <h2>Good to know</h2>
@@ -956,13 +966,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ol>
             <h2>Views</h2>
             <ul>
-                <li><b>Reader</b> - your Reader inbox: New, Later and Archive.</li>
+                <li><b>Reader</b> - your Reader inbox, with filters for New, Later, Archive and Feed.</li>
                 <li><b>Highlights</b> - highlights grouped by book or article.</li>
                 <li><b>Daily Review</b> - the spaced-repetition review of saved highlights.</li>
-                <li><b>Feed</b> - saved articles from your Readwise feed.</li>
             </ul>
-            <p>Tap an article to open it in the built-in reader. Highlight text in Readwise itself; ReKindle is primarily a reading view. Disconnect removes the token from the device.</p>
-            <div class="note"><b>Beta:</b> Readwise is labelled BETA on the home screen. The integration uses Readwise's API, so features and response formats may change without notice. Disconnect removes the token from this device.</div>
+            <p>Tap an article to open it in the built-in reader. Highlight text in Readwise itself; ReKindle is primarily a reading view. To replace the token, open Connect Account and save a new one.</p>
+            <div class="note"><b>Beta:</b> Readwise is labelled BETA on the home screen. The integration uses Readwise's API, so features and response formats may change without notice.</div>
         `
     },
     {
@@ -978,13 +987,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Scriptures is a reading app for four texts: the Bible, the Quran, the Dhammapada and the Tao Te Ching. Each has its own structure and navigation.</p>
             <h2>Reading</h2>
             <ol>
-                <li>Choose a text from the top tabs.</li>
+                <li>Choose a text from the first dropdown in the toolbar.</li>
                 <li>Use the chapter or section controls to navigate.</li>
                 <li>Use Prev/Next for sequential reading.</li>
                 <li>Open the settings gear to change translation (where available) and font size (Small, Medium, Large, X-Large).</li>
             </ol>
             <p>The reader loads one chapter at a time so e-ink refreshes stay manageable. Text size and the selected translation are remembered.</p>
-            <div class="note"><b>Translations:</b> the Bible offers multiple translations; the other texts have their own available editions. If a translation fails to load, switch to another and back - the source is a remote text service.</div>
+            <div class="note"><b>Translations:</b> the Bible offers multiple translations; the other texts have their own available editions. If a translation fails to load, switch to another and back. The Bible and Quran are fetched from a remote text service and need a connection; the Dhammapada and Tao Te Ching are bundled and work offline.</div>
             <p>For long reading sessions, increase the text size and use the anti-ghosting display mode in Settings.</p>
         `
     }
@@ -1014,9 +1023,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use <b>Refresh</b> to pull the latest list from Google or your account.</li>
             </ol>
             <h2>Google Tasks sync</h2>
-            <p>Choosing Google opens an OAuth consent screen. ReKindle requests access to your Google Tasks, then reads and writes the list directly. The token is kept on the device. If the connection expires, tap <b>Log In</b> again from the sync prompt.</p>
+            <p>Choosing Google opens an OAuth consent screen. ReKindle requests access to your Google Tasks, then reads and writes the list directly. Each Google list appears as a column and shows up to 100 open tasks. The token is kept on the device. If the connection expires, tap <b>Log In</b> again.</p>
             <h2>Local mode</h2>
-            <p>Local tasks are stored on the device and, when signed in, in your ReKindle account. They do not appear in Google Tasks. You can switch modes later from the sync prompt; ReKindle does not automatically merge the two lists, so copy anything important before switching.</p>
+            <p>Local tasks are stored on the device and, when signed in, in your ReKindle account. They do not appear in Google Tasks. Switch modes under Settings -> Integrations -> Google Tasks; ReKindle does not automatically merge the two lists, so copy anything important before switching.</p>
             <div class="note"><b>Completed tasks:</b> ticking a task removes it from the active list. In Google mode, Google's own task history keeps the record. In local mode, completion is the deletion.</div>
         `
     },
@@ -1036,11 +1045,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li><b>Write a new task</b> on any empty line.</li>
                 <li><b>Complete a task</b> by drawing a horizontal strike-through across the text.</li>
-                <li>Tap <b>Sync</b> (or wait for the automatic save) to send changes to your chosen account.</li>
-                <li>Use the speed selector - Fast, Normal, Slow - if recognition feels rushed or too slow on your device.</li>
+                <li>Changes save and sync automatically; there is no Sync button. Google Tasks is polled about once a minute.</li>
+                <li>Use the speed selector - Fast, Normal, Slow - to set how long the app waits after you stop writing before it converts. Turn on <b>Manual</b> to convert only when you tap the tick button.</li>
             </ol>
             <h2>Account choice</h2>
-            <p>Quick ToDo can sync with Google Tasks or with a local list. The chooser appears on first run. Google Tasks requires signing in with Google; local mode keeps everything on the device/account.</p>
+            <p>Quick ToDo writes to the same task list as <a href="#tasks">Tasks</a>: Google Tasks, or the local list stored on the device and in your ReKindle account. The chooser appears on first run; change it later under Settings -> Integrations -> Google Tasks. Switching does not merge the two lists.</p>
             <div class="note"><b>ReKindle+ required:</b> handwriting recognition runs on ReKindle's OCR service, so Quick ToDo is a Pro app. The recognition is best with clear, separated letters; cursive works but is less reliable.</div>
             <p><b>Tips:</b> write one task per line, keep the page reasonably still, and strike through firmly from left to right. If a line is misread, erase it and write again rather than editing letter by letter.</p>
         `
@@ -1063,7 +1072,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Notes save automatically. The back arrow returns to the list.</li>
             </ol>
             <h2>Finding and organising</h2>
-            <p>Sort by Newest, Oldest, Title A-Z or Title Z-A. Notes sync to your account when signed in; guest notes stay in local storage. Delete uses a confirmation dialog.</p>
+            <p>Sort by Newest, Oldest, Title A-Z or Title Z-A. Notes sync to your account when signed in; guest notes stay in local storage. Delete uses a confirmation dialog. <b>Export All</b> downloads every note as a text file, and each note has its own download control.</p>
             <div class="note"><b>Notes feed the Teleprompter:</b> any note can be shown line by line in the <a href="#teleprompter">Teleprompter</a> app. Keep one note per speech or script for the cleanest result.</div>
             <p>For long documents with headings, tables, DOCX import/export and print-style formatting, use <a href="#docs">Docs</a> instead.</p>
         `
@@ -1083,7 +1092,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Creating and editing</h2>
             <ol>
                 <li>Tap <b>Create New Document</b>, or <b>Open from Files</b> to pick an uploaded Word file.</li>
-                <li>Use the toolbar for headings, bold/italic, lists, links, tables and alignment.</li>
+                <li>The toolbar covers headings, bold, italic, underline, strikethrough, bulleted and numbered lists, indent/outdent, block quotes, tables, undo and redo.</li>
                 <li>Tap <b>Save</b>. Choose a filename; the document is written to your Files storage as a DOCX.</li>
                 <li>If you are not signed in, Save downloads a DOCX copy instead of storing it.</li>
             </ol>
@@ -1109,13 +1118,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Tap <b>Upload</b> and choose a <code>.doc</code> or <code>.docx</code> file.</li>
                 <li>Wait for the upload to finish. The file appears in the grid or list.</li>
-                <li>Tap a document to open it in <a href="#docs">Docs</a>.</li>
+                <li>Tap a document to open it in <a href="#docs">Docs</a>. When Docs asks you to open a file, its picker uses this same list.</li>
             </ol>
             <p>The page also suggests uploading from a PC. That is often easier because e-reader file pickers can be awkward; sign in to the same account on the computer and upload there.</p>
             <h2>Limits</h2>
             <ul>
                 <li>Only Word documents are accepted (<code>.doc</code> and <code>.docx</code>).</li>
-                <li>The shared quota is <b>100 MB per account</b>. The upload screen shows your remaining space.</li>
+                <li>The shared quota is <b>100 MB per account</b>, and Docs saves and Mindmap exports count against it. The page shows how much is used; a save fails when the quota is full.</li>
                 <li>Deleting a file is permanent. Download anything you want to keep first.</li>
             </ul>
             <h2>Viewing and deleting</h2>
@@ -1139,13 +1148,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Pick a date from the calendar or use today.</li>
                 <li>Choose a mood from Awful, Bad, Neutral, Good or Great.</li>
                 <li>Select any feelings and causes that apply (for example stressed, tired, work, family).</li>
-                <li>Write the entry and save.</li>
+                <li>Write the entry; it saves automatically as you type.</li>
             </ol>
             <h2>Calendar and stats</h2>
             <ul>
                 <li><b>Calendar</b> shows a marker on days with entries. Tap a day to read or edit it.</li>
                 <li><b>Stats</b> shows a recent trend, mood distribution, top feelings and top causes.</li>
-                <li>Use the arrows to move between months.</li>
+                <li>The calendar scrolls back through earlier months automatically; there are no month arrows. Future dates cannot be opened.</li>
             </ul>
             <p>Entries sync to your account when signed in; guest entries stay local. Delete removes the entry for that date after a confirmation.</p>
             <div class="note"><b>Private by default:</b> Journal is personal data, not social content. It is stored under your user ID and is not posted anywhere. See <a href="privacy.html">Privacy</a>.</div>
@@ -1174,10 +1183,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>When you reveal a card, rate how well you knew it:</p>
             <table>
                 <tr><th>Rating</th><th>Effect</th></tr>
-                <tr><td>Again</td><td>Resets the card and shows it again soon.</td></tr>
-                <tr><td>Hard</td><td>Short interval (about 2 days).</td></tr>
-                <tr><td>Good</td><td>Medium interval (about 4 days).</td></tr>
-                <tr><td>Easy</td><td>Long interval (about 7 days), growing with each success.</td></tr>
+                <tr><td>Again</td><td>Repeats the card in about a minute and resets its interval.</td></tr>
+                <tr><td>Hard</td><td>Pass. First repeat after 1 day, then 6 days, with slower growth afterwards.</td></tr>
+                <tr><td>Good</td><td>Pass. Same first intervals, with steadier growth afterwards.</td></tr>
+                <tr><td>Easy</td><td>Pass. Same first intervals, with the fastest growth afterwards.</td></tr>
             </table>
             <p>Decks and review state sync to your account when signed in, so a review session can continue on another device.</p>
             <div class="note"><b>Study tip:</b> keep cards small - one fact per card. If a card keeps getting "Again", split it into two simpler cards.</div>
@@ -1193,14 +1202,16 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Timers',
         related: ['countdown', 'breathing'],
         body: `
-            <p>Timers combines three tools in one window: a simple focus timer, a Pomodoro cycle and a stopwatch.</p>
+            <p>Timers combines four tools in one window: a focus timer, a Pomodoro cycle, multiple independent timers and a stopwatch.</p>
             <h2>Focus</h2>
             <p>Type what you are focusing on, choose a duration (25, 15 or 5 minutes, or a custom value), and tap Start. The ring empties as time passes. Reset clears the session.</p>
             <h2>Pomodoro</h2>
             <p>The Pomodoro tab runs a work/short-break/long-break cycle. The default is 25 minutes of work, 5-minute short breaks, a longer break after four sessions. Open the settings to change the work, short-break and long-break lengths and the number of sessions. <b>Skip</b> moves to the next phase.</p>
+            <h2>Timers</h2>
+            <p>The Timers tab runs several independent countdowns at once. Tap <b>+</b> in the title bar to add one, give it a name and duration, and start it. The set-ups are saved on the device and come back after a reload.</p>
             <h2>Stopwatch</h2>
             <p>Start, stop and reset, with a lap button to record split times. The display shows hundredths of a second; on e-ink the refresh rate limits how useful the smallest digits are.</p>
-            <div class="note"><b>Screen behaviour:</b> timers keep running while the page is open. If the device sleeps or you navigate away, the browser may pause JavaScript; use the countdown app for date-based events that must survive a reload.</div>
+            <div class="note"><b>Screen behaviour:</b> timers keep running while the page is open. If the device sleeps or you navigate away, the browser may pause JavaScript and a running timer is not restored; the saved Timers set-up is. Use the countdown app for date-based events that must survive a reload.</div>
         `
     },
     {
@@ -1219,7 +1230,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap <b>+ Add</b>.</li>
                 <li>Give it a name and pick the start date and time.</li>
                 <li>Optionally turn on <b>Recurring</b> and choose Every Year, Every Month, Every Week or Every Day.</li>
-                <li>Save. The list shows days, hours and minutes remaining.</li>
+                <li>Save. The list shows the largest remaining unit plus the next one, for example "3 Days 4h" or "2 Hours 15m".</li>
             </ol>
             <h2>Recurring events</h2>
             <p>A recurring countdown rolls forward automatically after it passes, so a birthday or weekly reset stays useful. Deleting it removes the schedule; the confirmation cannot be undone.</p>
@@ -1271,7 +1282,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ul>
                 <li><b>A- / A+</b> change the display size on the e-reader.</li>
                 <li><b>+ New Note</b> starts a fresh note; existing notes are listed in the sidebar.</li>
-                <li><b>Reset</b> clears the session and disconnects.</li>
+                <li><b>Reset</b> forgets whether this device is the display or the keyboard and reopens Device Setup.</li>
                 <li>Notes are saved with your account, like the Notes app.</li>
             </ul>
             <div class="note"><b>ReKindle+ required:</b> the pairing relay and session handling are part of the Pro service. Both devices need internet access; they do not need to be on the same Wi-Fi.</div>
@@ -1291,13 +1302,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Building a map</h2>
             <ol>
                 <li>Tap <b>Library</b> to see saved maps, or create a new one.</li>
-                <li>Double-tap empty space to add a node, or use the <b>+</b> button.</li>
+                <li>Double-tap empty space to add a node; the <b>+</b> and <b>-</b> controls are zoom.</li>
                 <li>Type the node text and confirm. Drag nodes to arrange them.</li>
                 <li>Use the zoom controls to fit more of the map on screen.</li>
-                <li><b>Center</b> re-centres the view; <b>Edit</b> renames or changes a node.</li>
+                <li><b>Center</b> re-centres the view. <b>Edit</b> shows the delete and connect controls; double-tap a node to rename it.</li>
             </ol>
             <h2>Saving and exporting</h2>
-            <p>Maps save automatically to your account. <b>Export</b> offers PNG (image) and SVG (vector). Export is a ReKindle+ feature. Choose a filename, pick a format, then save the file to <a href="#files">Files</a> or download it.</p>
+            <p>Maps save automatically to your account. <b>Export</b> offers PNG (image) and SVG (vector). Export is a ReKindle+ feature. Choose a filename and format; the export is saved into <a href="#files">Files</a>, where it counts against the shared 100 MB quota.</p>
             <div class="note"><b>Performance:</b> very large maps get slow on e-ink. Break a huge brainstorm into several smaller maps rather than one enormous canvas.</div>
         `
     },
@@ -1343,7 +1354,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>The header shows weeks lived and an estimate of weeks remaining, based on 90 years.</li>
             </ol>
             <p>The estimate is a statistical baseline, not a prediction. Use it as perspective, not a countdown.</p>
-            <div class="note"><b>Privacy:</b> your birthday is personal. It is stored locally and, when signed in, in your account; it is not shown on your public Neighbourhood profile unless you choose to share a birthday there separately.</div>
+            <div class="note"><b>Privacy:</b> your birthday is saved to your ReKindle social profile and shown publicly as your age, because Life Calendar and Neighbourhood share the same birthday field. Enter only what you are comfortable sharing; you can change or clear it from your Neighbourhood profile.</div>
         `
     },
     {
@@ -1404,16 +1415,17 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Connecting</h2>
             <ol>
                 <li>Open Dropbox and tap <b>Connect to Dropbox</b>.</li>
-                <li>Sign in and authorise ReKindle. The token is kept on the device.</li>
+                <li>Sign in and authorise ReKindle. The connection is saved to your ReKindle account (in the Pro-only <code>pro_data</code> record), so it follows you to another device.</li>
                 <li>Browse folders, open <b>Favorites</b>, or use the breadcrumb to go back.</li>
             </ol>
             <h2>Working with files</h2>
             <ul>
                 <li>Tap a file to preview it where the format is supported.</li>
                 <li>Use <b>Download</b> to save a copy to the device.</li>
+                <li>Tap the star on a folder to add or remove it from <b>Favorites</b>; favorites sync with your account.</li>
                 <li><b>Logout</b> removes the connection.</li>
             </ul>
-            <div class="note"><b>Limits:</b> Dropbox needs ReKindle+ and a network connection. Very large files and unsupported preview formats should be opened in the Dropbox app or on a computer. Tokens are stored locally, not in ReKindle's database.</div>
+            <div class="note"><b>Limits:</b> Dropbox needs ReKindle+ and a network connection. Very large files and unsupported preview formats should be opened in the Dropbox app or on a computer. Tokens are stored in your ReKindle account, not on the device; <b>Logout</b> deletes them.</div>
         `
     },
 
@@ -1433,7 +1445,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>Calculator starts in basic mode: digits, arithmetic, percent, sign and backspace. Tap <b>SCI</b> to reveal the scientific functions.</p>
             <h2>Scientific functions</h2>
-            <p>sin, cos, tan and their inverses; ln and log; powers of ten and e; square, cube, square root, reciprocal and factorial; pi and e constants; and a power key. Trigonometry uses radians unless the display indicates otherwise, so check before relying on a result.</p>
+            <p>sin, cos, tan and their inverses; ln and log; powers of ten and e; square, cube, square root, reciprocal and factorial; pi and e constants; and a power key. Trigonometry works in <b>degrees</b>; there is no radian mode.</p>
             <h2>Using it</h2>
             <ul>
                 <li><b>C</b> clears the current calculation.</li>
@@ -1526,7 +1538,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap <b>Edit</b> to manage the list.</li>
                 <li>Add a city by searching for it.</li>
                 <li>Remove cities with the delete control.</li>
-                <li>Toggle <b>Secs</b> to show or hide seconds.</li>
+                <li>While Edit mode is on, the <b>Secs</b> button toggles seconds.</li>
             </ol>
             <p>Times are calculated from the location and timezone saved in Settings, with daylight-saving rules applied per city. The local clock row shows your own saved time.</p>
             <div class="note"><b>Why not use the device clock?</b> Kindle browsers often ignore the system timezone and report UTC. ReKindle uses its own stored offset so world clocks stay consistent. See <a href="#troubleshooting">Troubleshooting</a> if a city is off by an hour.</div>
@@ -1585,7 +1597,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Maps',
         related: ['weather', 'clocks'],
         body: `
-            <p>Maps uses OpenStreetMap data. Search for a place, pan and zoom the map, or ask for a route between two points.</p>
+            <p>Maps uses OpenStreetMap data and services: Nominatim for search and OSRM for routing. Search for a place, pan and zoom the map, or ask for a route between two points.</p>
             <h2>Finding a place</h2>
             <ol>
                 <li>Type a place in the search box and tap <b>Find</b>.</li>
@@ -1596,7 +1608,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Routes</h2>
             <ol>
                 <li>Switch to <b>Route</b>.</li>
-                <li>Enter a start (or leave it empty to use your location) and a destination.</li>
+                <li>Enter a start and a destination. Leaving the start empty uses the current map centre, so pan to your position first.</li>
                 <li>Tap <b>Get Route</b>. The route and distance/time estimate are drawn on the map.</li>
             </ol>
             <div class="note"><b>Not a navigation app:</b> there is no turn-by-turn guidance, live traffic or voice. Use it for orientation and planning, not for driving directions. Map tiles need a network connection.</div>
@@ -1639,7 +1651,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Open the app; today's date is selected.</li>
                 <li>Switch between Events, Births and Deaths.</li>
-                <li>Tap an entry to read more where a link is available.</li>
+                <li>Entries are plain summaries; there are no further links in the app.</li>
             </ol>
             <p>The date follows the location saved in Settings, so a device set to UTC does not show yesterday's entries.</p>
             <div class="note"><b>Historical framing:</b> entries are summaries from a public wiki and may reflect gaps or bias in the source. Treat them as a starting point, not a definitive record.</div>
@@ -1656,16 +1668,17 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'AI Assistant',
         related: ['pro', 'wikipedia', 'notes'],
         body: `
-            <p>AI Assistant is a chat window optimised for text. It can answer questions, rewrite text, explain ideas and help with code. Responses are plain text, which keeps e-ink rendering fast.</p>
+            <p>AI Assistant is a chat window optimised for text. It can answer questions, rewrite text, explain ideas and help with code. Replies are rendered as Markdown, so ask for short, plain answers when you want the least screen refreshing.</p>
             <h2>Using the hosted model</h2>
             <ol>
                 <li>Open AI Assistant and type a message.</li>
                 <li>Tap <b>Send</b>. The default hosted model is Google Gemini.</li>
-                <li>The header shows your remaining quota where applicable.</li>
+                <li>The strip under the message box shows the remaining daily messages (10 for the hosted model). A custom API key removes the cap.</li>
                 <li><b>Clear</b> starts a new conversation.</li>
+                <li><b>Copy to Note</b> on a reply saves it into <a href="#notes">Notes</a>.</li>
             </ol>
             <h2>Bring your own key</h2>
-            <p>Open <b>Settings</b> in the app and enable a custom provider. Supported presets include OpenAI, Google Gemini, Groq, xAI (Grok), Mistral, Perplexity, Together AI, Fireworks AI, Ollama (local) and custom OpenAI- or Gemini-compatible endpoints. Pick a model, paste the API key and save. The key is stored on the device, not in ReKindle's database. Saving a custom key requires ReKindle+.</p>
+            <p>Open <b>Settings</b> in the app and enable a custom provider. Supported presets include OpenAI, Google Gemini, Groq, xAI (Grok), Mistral, Perplexity, Together AI, Fireworks AI, Ollama (local) and custom OpenAI- or Gemini-compatible endpoints. Pick a model, paste the API key and save. The key is stored in your private account settings (Firebase), so it follows you to another device; clearing site data does not remove it. Saving a custom key requires ReKindle+.</p>
             <div class="note"><b>Privacy:</b> messages sent to a hosted provider are subject to that provider's terms. Do not paste passwords, private keys or sensitive personal data into any AI chat. Local Ollama keeps prompts on your own network.</div>
             <p><b>Tip:</b> ask for short answers and plain formatting. Long markdown tables and code blocks are harder to read on a small e-ink screen.</p>
         `
@@ -1694,19 +1707,19 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Tap <b>Bluesky Login</b>.</li>
                 <li>Enter your handle and an <b>app password</b> from Bluesky's settings, not your main password.</li>
-                <li>Tap Log In. The session is kept on the device.</li>
+                <li>Tap Log In. The session is kept on the device, and the app password is encrypted and saved to your account so you can reconnect on another device.</li>
             </ol>
             <div class="note"><b>Use an app password:</b> it can be revoked separately and limits the damage if the device is lost. Never enter your main Bluesky password into a shared e-reader.</div>
             <h2>Using it</h2>
             <ul>
-                <li><b>Feed</b> - your following timeline. Pull to refresh or reopen the tab.</li>
+                <li><b>Feed</b> - your following timeline. It reloads when reopened and refreshes at most every few minutes.</li>
                 <li><b>Notifications</b> - likes, reposts, follows and replies.</li>
                 <li><b>Discover</b> - suggested and trending posts.</li>
                 <li><b>Search</b> - find posts and people.</li>
                 <li><b>New Post</b> - compose up to 300 characters and publish.</li>
             </ul>
-            <p>Direct messages are not available in ReKindle; the app shows "Messages coming soon". Use the official Bluesky app for chat.</p>
-            <p><b>Logout</b> clears the stored session. ReKindle+ is required.</p>
+            <p>The <b>Messages</b> tab lists your recent conversations read-only. Opening a thread and replying still happens in the official Bluesky app.</p>
+            <p><b>Logout</b> clears the session on this device; the saved app password stays in your account until you replace it or delete the account. ReKindle+ is required.</p>
         `
     },
     {
@@ -1729,12 +1742,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ol>
             <h2>Tabs</h2>
             <ul>
-                <li><b>Posts</b> - your home timeline.</li>
-                <li><b>Following</b> - accounts you follow.</li>
-                <li><b>Favorites</b> - posts you starred.</li>
+                <li><b>Home</b> - your home timeline.</li>
+                <li><b>Trending</b> - popular posts on the instance.</li>
+                <li><b>Messages</b> - your conversations.</li>
+                <li><b>Notifications</b> - mentions, favourites and follows.</li>
+                <li><b>Profile</b> - your account, with Posts, Following and Favorites sub-tabs.</li>
                 <li><b>New Post</b> - compose up to 500 characters and publish.</li>
             </ul>
-            <p>The token is stored locally and sent directly to your instance. Logout removes it. ReKindle+ is required.</p>
+            <p>The token is encrypted and saved to your ReKindle account (Pro data), so another device can pick it up, and sent directly to your instance. Logout deletes it everywhere. ReKindle+ is required.</p>
             <div class="note"><b>Instance differences:</b> some instances limit API access, media or character counts. If a tab is empty, check that your token has the right scopes and that the instance URL is correct (https:// is added automatically).</div>
         `
     },
@@ -1778,7 +1793,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Substack',
         related: ['rssreader', 'readwise', 'news'],
         body: `
-            <p>Substack shows your personal Substack feed: the inbox, publications you follow, and paid posts you have access to.</p>
+            <p>Substack shows your personal Substack feed: publications you follow and paid posts you have access to.</p>
             <h2>Connecting</h2>
             <p>Substack does not offer a public login API, so ReKindle asks for your Substack session cookie:</p>
             <ol>
@@ -1786,12 +1801,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Open the developer tools, find the site cookies, and copy the session cookie value.</li>
                 <li>Paste it into ReKindle and tap <b>Save &amp; Connect</b>.</li>
             </ol>
-            <div class="note"><b>Treat the cookie like a password.</b> It grants access to your Substack account. ReKindle can sync it to your other devices through your ReKindle account if you tick the sync option; only do that on accounts you trust. Disconnect to remove it.</div>
+            <div class="note"><b>Treat the cookie like a password.</b> It grants access to your Substack account. While ReKindle+ is active and you are signed in, the cookie syncs to your other devices through your ReKindle account automatically; only do that on accounts you trust. There is no disconnect control yet; deleting your ReKindle account removes the saved cookie.</div>
             <h2>Reading</h2>
             <ul>
-                <li><b>Inbox</b> - new posts from publications you subscribe to.</li>
-                <li><b>Following</b> - publications you follow.</li>
-                <li><b>Subscriptions</b> - manage the list.</li>
+                <li><b>Following</b> - recent posts from the publications you follow.</li>
+                <li><b>Subscriptions</b> - your library of paid/free subscriptions; tapping a publication filters the posts to it.</li>
                 <li>Tap a post to read it in the built-in reader, or open it externally.</li>
             </ul>
             <p>ReKindle+ is required. Paid posts work only if your cookie belongs to an account with access.</p>
@@ -1810,14 +1824,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Reddit reads public subreddits in a text-first layout. It is for browsing and reading, not for posting or voting.</p>
             <h2>Using it</h2>
             <ol>
-                <li>Add a subreddit with the <b>+</b> control (for example <code>books</code> or <code>eink</code>).</li>
+                <li>Type a subreddit name (for example <code>books</code> or <code>eink</code>) and tap <b>Go</b>, then tap the star to save it.</li>
                 <li>Choose it from the sidebar to load its posts.</li>
                 <li>Tap a post to read the text and comments.</li>
                 <li><b>Remove Subreddit</b> deletes it from your list.</li>
             </ol>
             <h2>Rate limiting</h2>
             <p>Reddit aggressively limits requests from shared cloud addresses. When that happens, ReKindle says it is retrying and keeps the window open. It backs off and tries again rather than failing immediately. If it cannot recover, wait several minutes; this is Reddit's limit, not a ReKindle setting.</p>
-            <div class="note"><b>Saved subreddits</b> are stored on the device. Posts and comments need a connection; there is no offline cache of old threads. NSFW and quarantined communities may not load.</div>
+            <div class="note"><b>Saved subreddits</b> are stored on the device and sync to your account when signed in. Posts and comments need a connection; there is no offline archive of old threads. NSFW and quarantined communities may not load.</div>
         `
     },
     {
@@ -1834,11 +1848,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Building a list</h2>
             <ol>
                 <li>Search for a movie or show.</li>
-                <li>Tap a result to open its details: overview, cast, rating and release date.</li>
+                <li>Tap a result to open its details: title, release date, type and overview.</li>
                 <li>Add it to <b>My List</b>. Use the calendar tab to see dates for saved titles.</li>
-                <li>Remove an item from the details view or the list.</li>
+                <li>Open a saved title and use <b>Remove</b> in the detail view.</li>
             </ol>
-            <p>Signed-in users sync their list; guest mode uses local storage. The app does not stream anything - it is a tracker with links to find a title elsewhere.</p>
+            <p>A free account is required to search, save titles and see the calendar; the page shows a login prompt otherwise. The list syncs through your account. The app does not stream anything - it is a tracker with links to find a title elsewhere.</p>
             <div class="note"><b>Metadata:</b> posters and details come from TMDB and may change. If posters are slow, the list still works; on e-ink, black-and-white posters are expected.</div>
         `
     },
@@ -1853,10 +1867,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Photo Frame',
         related: ['pixel', 'flipbook'],
         body: `
-            <p>Photo Frame displays a slideshow of your JPEG photos, which is a good use for an e-reader that is otherwise idle.</p>
+            <p>Photo Frame displays a slideshow of your photos, which is a good use for an e-reader that is otherwise idle. JPEG, PNG and WebP are accepted.</p>
             <h2>Loading photos</h2>
             <ol>
-                <li>Tap <b>Upload JPEGs</b> and choose photos from the device.</li>
+                <li>Tap <b>Upload JPEGs</b> (the picker also accepts PNG and WebP) and choose photos from the device.</li>
                 <li>Wait for them to load; the counter shows how many are ready.</li>
                 <li>Choose <b>Sequential</b> or <b>Shuffle</b>.</li>
                 <li>Choose <b>Fit to Screen</b> or <b>Crop to Fill</b>.</li>
@@ -1870,22 +1884,22 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'sheetmusic',
         cat: 'lifestyle',
         title: 'Sheet Music',
-        summary: 'Browse, render and upload MusicXML or MIDI scores, and build a personal library.',
+        summary: 'Browse and render MusicXML or MIDI scores, and build a personal library.',
         tags: 'sheet music scores musicxml mxl midi piano instruments upload library store osmd',
         appHref: 'sheetmusic',
         appName: 'Sheet Music',
         related: ['chords', 'language'],
         body: `
-            <p>Sheet Music renders notation in the browser. It includes a public-domain library, an online store list and an upload option for your own scores.</p>
+            <p>Sheet Music renders notation in the browser. It includes a public-domain library, an online store list and an upload option that is currently limited to administrators.</p>
             <h2>Viewing a score</h2>
             <ol>
                 <li>Choose <b>All Instruments</b> or a specific instrument.</li>
                 <li>Pick a score from the library or the online store.</li>
-                <li>The score renders as SVG page notation. Use the zoom controls if your device supports them.</li>
-                <li>Tap <b>Save</b> to add it to <b>My Library</b>.</li>
+                <li>The score renders as SVG page notation.</li>
+                <li>Tap <b>Add</b> to add it to <b>My Library</b>.</li>
             </ol>
             <h2>Uploading</h2>
-            <p>Tap <b>Upload Sheet Music</b> and provide a title, composer, instrument and a <code>.mxl</code>, <code>.musicxml</code> or <code>.mid</code> file. MIDI is converted to notation in the browser, so complex MIDI can take a moment. Uploads are public: only upload files you have the right to share.</p>
+            <p>The <b>Upload Sheet Music</b> button is visible but disabled for normal accounts: uploads are limited to administrators for now. When it opens up, it will take a title, composer, instrument and a <code>.mxl</code>, <code>.musicxml</code> or <code>.mid</code> file, converted to notation in the browser.</p>
             <div class="note"><b>No playback:</b> this app displays notation; it does not play audio. For guitar chords and tabs, use <a href="#chords">Chords</a>.</div>
         `
     },
@@ -1948,7 +1962,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Quiz mode</h2>
             <ol>
                 <li>Choose a language.</li>
-                <li>Pick a unit: Basics, Animals, Food, Places, Family and more.</li>
+                <li>Pick a unit: Basics, Animals, Food, Places or Family.</li>
                 <li>Answer the multiple-choice question and tap <b>Check</b>.</li>
                 <li>Tap <b>Continue</b> to advance. Completed units are remembered.</li>
             </ol>
@@ -1971,7 +1985,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Flipbook is a frame-by-frame animation editor. Each frame is a 256x256 pixel canvas; play them in sequence to make a short animation.</p>
             <h2>Creating an animation</h2>
             <ol>
-                <li>Tap <b>+ New</b> and give the animation a name.</li>
+                <li>Tap <b>+ New</b> to start an animation; it begins as "Untitled" and can be renamed from the library.</li>
                 <li>Draw on the canvas with Pen, Eraser or Fill. <b>Clear</b> empties the current frame.</li>
                 <li>Add frames with the frame controls. Duplicate a frame to continue a drawing smoothly.</li>
                 <li>Use undo/redo while drawing. Onion skin shows the previous frame faintly.</li>
@@ -2002,15 +2016,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Tap <b>+ New Drawing</b> and choose 16x16, 32x32 or 64x64.</li>
                 <li>Use <b>Pen</b> to draw, <b>Eraser</b> to remove, and <b>Fill</b> to flood-fill a region.</li>
-                <li>Use undo/redo and <b>Clear</b> as needed. Zoom in for fine detail.</li>
-                <li>Tap <b>Save</b>. Drawings appear in <b>My Drawings</b>.</li>
+                <li>Use undo/redo and <b>Clear</b> as needed.</li>
+                <li>Changes save automatically. Drawings appear in <b>My Drawings</b>.</li>
             </ol>
             <h2>What you can do with a drawing</h2>
             <ul>
                 <li><b>Download</b> - save a PNG to the device.</li>
                 <li><b>Set Background</b> - use it as the ReKindle desktop wallpaper.</li>
-                <li><b>Post to KindleChat</b> - share it in General chat and the art gallery. Blank art and an unchanged repost are blocked.</li>
-                <li><b>Change Grid Size</b> - resize a drawing (content is remapped).</li>
+                <li><b>Post to KindleChat</b> - share it in General chat and the art gallery. Blank art and an unchanged repost are blocked. 64x64 drawings can be downloaded or set as wallpaper but cannot be posted.</li>
             </ul>
             <div class="note"><b>Community art:</b> posted pixel art must be friendly for all ages. Duplicate posts of the same drawing are rejected; edit the drawing first if you want to repost.</div>
         `
@@ -2030,15 +2043,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Sign in, then tap <b>+ New Idea</b>.</li>
                 <li>Choose a type: Suggestion, Problem or Translation.</li>
-                <li>Start typing a title. If a similar idea is already loaded, ReKindle shows it under the title - tap it to upvote instead of posting a duplicate.</li>
+                <li>Start typing a title. If a similar idea is already loaded, ReKindle shows it under the title - open it and upvote there instead of posting a duplicate.</li>
                 <li>Write a title and details. For a bug, include the app, device and steps.</li>
-                <li>Submit. You can edit your own posts later.</li>
+                <li>Submit. Only the owner can edit, recategorise or delete a post after it is submitted; add a comment to clarify.</li>
             </ol>
             <h2>Voting and status</h2>
             <ul>
                 <li>Upvote ideas you want to see. The list can be sorted by Popular or Newest.</li>
                 <li><b>My Suggestions</b> filters to your own posts.</li>
-                <li>Status labels show where an item stands: New, Deferred, Done or Closed.</li>
+                <li>Status labels show where an item stands: Open, In Progress, Deferred, Done or Closed.</li>
                 <li>Switch type to see Suggestions, Problems or Translation issues separately.</li>
                 <li>The board loads recent ideas first. Tap <b>Load older</b> at the bottom to search further back; the search box covers the ideas currently loaded.</li>
             </ul>
@@ -2067,10 +2080,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Sign in and complete the age check.</li>
                 <li>Type in the composer. Messages can be up to 1,000 characters.</li>
                 <li>Tap <b>Send</b>. By default Enter sends and Shift+Enter adds a new line; this can be changed in Settings.</li>
-                <li>Use <b>Load Older Messages</b> to read history.</li>
+                <li>Scroll to the top of the chat to load older messages.</li>
             </ol>
             <h2>Translations</h2>
-            <p>Messages are translated into every supported language by ReKindle's translation worker. Open <b>Settings</b> and choose <b>Translation Language</b>, or leave it on Auto to follow your system language. <b>Show Translations</b> controls whether translated text appears under messages. If a translation is missing, it may still arrive - retries continue for a few minutes after sending.</p>
+            <p>Messages are translated into every supported language by ReKindle's translation worker. Open <b>Settings</b> and choose <b>Translation Language</b>, or leave it on Auto to follow your system language. When <b>Show Translations</b> is on, each message is replaced by its translation and a <b>Show Original</b> control switches back. If a translation is missing, it may still arrive - retries continue for a few minutes after sending.</p>
             <h2>Emoji and ASCII art</h2>
             <p>The smiley button opens a picker with Unicode emoji (shown as OpenMoji images, so they display correctly on Kindle) and a tab of ASCII art emoticons. The composer inserts the right form; type plain text normally.</p>
             <h2>Art gallery</h2>
@@ -2080,9 +2093,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Be kind. No harassment, hate, spam, flooding or self-promotion.</li>
                 <li>Links and URLs are blocked. Promotion of competing services is blocked and masked.</li>
                 <li>Art must be safe for all ages.</li>
-                <li>Messages are moderated. Use the <b>!</b> report control and block anyone who makes you uncomfortable.</li>
+                <li>Messages are moderated. Use the <b>!</b> report control; if a direct-message thread makes you uncomfortable, block the person there.</li>
                 <li>Flood protection rejects the third near-identical message within 10 minutes and exact repeats within 5 minutes.</li>
             </ul>
+            <p>General chat keeps the last 30 days of messages (and always at least the latest 50), so old conversations age out. Replies and reactions are available on each message.</p>
             <div class="note"><b>Direct messages</b> are opt-in and separate from the public room. See <a href="#kindlechat-dm">KindleChat DMs</a>.</div>
         `
     },
@@ -2092,8 +2106,6 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         title: 'KindleChat direct messages',
         summary: 'Opt-in one-to-one chats: requests, acceptance, blocking and what is moderated.',
         tags: 'kindlechat dm direct message private request accept decline block pro safety',
-        appHref: 'kindlechat',
-        appName: 'KindleChat',
         related: ['kindlechat', 'safety'],
         body: `
             <p>Direct messages let two people talk privately. They are deliberately opt-in: a first contact is a request that the recipient must accept.</p>
@@ -2107,13 +2119,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <h2>Using DMs</h2>
             <ol>
-                <li>Open a user's profile or the DM panel in KindleChat and choose <b>Message</b>.</li>
+                <li>Open the <b>Messages</b> tab in KindleChat and tap <b>New Message</b>, then enter the username.</li>
                 <li>Write a short introduction and send the request.</li>
                 <li>The recipient accepts or declines. Once accepted, the thread opens for both.</li>
                 <li>Use the <b>Block</b> button to stop all further contact. You can lift a block later with <b>Unblock</b> in that conversation (an accepted chat reopens; a blocked request returns to your inbox).</li>
             </ol>
             <h2>Request settings</h2>
-            <p>In KindleChat Settings you can turn <b>Allow message requests</b> on or off. Turning it off does not delete existing accepted conversations; it stops new requests. Messages are moderated and stored on ReKindle's social service, not on your device.</p>
+            <p>In KindleChat Settings you can turn <b>Allow message requests</b> on or off. Turning it off does not delete existing accepted conversations; it stops new requests. You can have at most three outgoing requests waiting at once. Messages are moderated and stored on ReKindle's social service, not on your device.</p>
             <div class="note"><b>Safety:</b> never share passwords, addresses, payment details or other private information. If a request feels wrong, decline it; you do not owe anyone a reply.</div>
         `
     },
@@ -2121,7 +2133,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'neighbourhood',
         cat: 'social',
         title: 'Neighbourhood',
-        summary: 'A profile-based community for posts, comments, finding readers like you and messaging.',
+        summary: 'A profile-based community for posts, comments, profiles and messaging.',
         tags: 'neighbourhood profile posts comments neighbours find people message avatar interests social',
         appHref: 'neighbourhood',
         appName: 'Neighbourhood',
@@ -2129,16 +2141,16 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>Neighbourhood is the profile side of ReKindle's community. You create a public profile, post updates, comment, and find other readers with shared interests.</p>
             <h2>Your profile</h2>
-            <p>Tap <b>Edit Profile</b> to set a display name, bio/status, location, occupation, hometown, languages, social links, interests, favourites (music, TV, movies, games, sports) and travel history. You can also draw a 16x16 pixel avatar with <b>Draw Icon</b>. Birthday is private and is not shown publicly.</p>
+            <p>Tap <b>Edit Profile</b> to set a display name, bio/status, location, occupation, hometown, languages, social links, interests, favourites (music, TV, movies, games, sports) and travel history. You can also draw a 16x16 pixel avatar with <b>Draw Icon</b>. Birthday is optional and is shown on your profile as your age, so leave it blank if you do not want that.</p>
             <h2>Posts and comments</h2>
             <ol>
                 <li>Write a post at the top of the Posts tab and tap <b>Post</b>.</li>
                 <li>Tap the comment control under a post to read and add comments.</li>
-                <li>Edit or delete your own posts. Moderators can remove content that breaks the rules.</li>
+                <li>Edit or delete your own posts. A reported post is removed after two independent reports; a comment goes on the first. The owner can also remove anything that breaks the rules.</li>
             </ol>
             <h2>Finding people</h2>
-            <p><b>Find Neighbours</b> lists other members; <b>Neighbours Like You</b> highlights shared interests. Tap a profile to view it, then <b>Message</b> to start a direct conversation.</p>
-            <div class="note"><b>Requirements:</b> you must be signed in, age-verified and have a public profile to post. Links and promotional content are blocked. Reports go to moderators with a snapshot of the content. Be careful about how much personal information you share.</div>
+            <p>Profiles are reached from their posts and comments. Tap a profile to view it, then <b>Message</b> to start a KindleChat direct conversation.</p>
+            <div class="note"><b>Requirements:</b> you must be signed in and age-verified to post. Posts are limited to 280 characters, one after another is blocked until someone else posts, and the server also limits bursts (about 5 posts per 5 minutes and 10 comments per 30 seconds). Links and promotional content are blocked. A report adds a snapshot of the post and its author to ReKindle's report queue. Be careful about how much personal information you share.</div>
         `
     },
     {
@@ -2159,13 +2171,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Choose an icon and, optionally, add a poll question (up to 100 characters) with 2-4 options (up to 50 characters each).</li>
                 <li>Create the topic. You can add comments immediately.</li>
             </ol>
-            <div class="note"><b>One topic per day:</b> each account can create one topic per day. Search first - duplicate topics are removed by moderators.</div>
+            <div class="note"><b>Topic limits:</b> the board asks for one topic per day, and the server rate-limits new topics - you can post a few at first, then roughly one every eight hours. Search first; duplicate topics are removed.</div>
             <h2>Reading and replying</h2>
             <ul>
-                <li>The sidebar lists topics; use search to filter and <b>Mark Read</b> to clear unread markers.</li>
+                <li>The sidebar loads the 60 most recent topics; <b>Show all topics</b> loads the rest. Use search to filter and <b>Mark Read</b> to clear unread markers.</li>
                 <li>Tap a topic to open it, then add a comment (up to 1,000 characters).</li>
-                <li>Vote in a poll by tapping an option. You can change your vote where the poll allows it.</li>
-                <li>Edit or delete your own topic and comments; moderators can remove anything that breaks the rules.</li>
+                <li>Vote in a poll by tapping an option; a submitted vote cannot be changed.</li>
+                <li>Edit or delete your own topic and comments. A reported topic is removed after two independent reports (comments go on the first), and the owner can remove anything that breaks the rules.</li>
             </ul>
             <h2>Rules</h2>
             <p>Search before posting, keep topics conversational, no spam or self-promotion, and be respectful. Links and competitor promotions are blocked. Use the <b>!</b> report control for problems.</p>
@@ -2181,11 +2193,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>ReKindle's social apps are for readers of all ages, and they are moderated. These are the tools and rules that keep them usable.</p>
             <h2>Age verification</h2>
-            <p>Before posting in KindleChat, Neighbourhood or Topics you confirm your date of birth and country. ReKindle checks the minimum social-media age for that country. This is a self-declaration, not an identity document upload. Some social features can be browsed before verification, but writing requires it.</p>
+            <p>Opening KindleChat, Neighbourhood or Topics asks you to confirm your date of birth and country before anything else loads. ReKindle checks the minimum social-media age for that country. This is a self-declaration, not an identity document upload, and the prompt cannot be dismissed - the social app stays locked until it is completed.</p>
             <h2>Reporting</h2>
-            <p>Every message, post and comment has a <b>!</b> report control. A report sends the moderator team a snapshot of the content and who posted it. You can report content you see in chat, art, profiles, posts, comments and direct messages. False reports are themselves a rule violation.</p>
+            <p>Messages, posts, topic comments and direct messages have a <b>!</b> report control; profiles and the art gallery viewer do not. A report adds a snapshot of the content and its author to ReKindle's report queue, which only the owner can read. Every report needs a reason and a short comment containing at least one real word. Repeated false reports are themselves a rule violation.</p>
             <h2>Blocking</h2>
-            <p>In KindleChat you can block a user from their profile or a DM thread. Blocking ends the conversation and prevents new requests until you unblock them: open the conversation and tap <b>Unblock</b>, and it returns to how it was before (an accepted chat reopens; a message request goes back to your inbox). Only the person who set the block can lift it. In Neighbourhood, stop interacting and report the account; moderators can remove or restrict it.</p>
+            <p>Blocking is available inside a KindleChat direct-message thread (there is no block in the public chat room or in Neighbourhood). Open the thread and tap <b>Block</b>: it ends the conversation and prevents new requests until you unblock them. Tap <b>Unblock</b> in the same place, and it returns to how it was before (an accepted chat reopens; a message request goes back to your inbox). Only the person who set the block can lift it. Elsewhere, stop interacting and report the account; the owner can remove or restrict it.</p>
             <h2>What is not allowed</h2>
             <ul>
                 <li>Harassment, hate speech, threats, sexual content involving minors, or anything illegal.</li>
@@ -2194,7 +2206,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Sharing someone else's private information without consent.</li>
                 <li>Art that is not safe for all ages.</li>
             </ul>
-            <p>Enforcement ranges from automatic rate limits and content blocking to warnings, timeouts, bans and IP bans. Reports are reviewed by moderators.</p>
+            <p>Enforcement is mostly automatic: rate limits, blocked links and promoted terms, and content removal when a report threshold is reached. The owner can also ban accounts and IP addresses.</p>
             <h2>Protect yourself</h2>
             <ul>
                 <li>Never share passwords, addresses, phone numbers, payment details or identity documents.</li>
@@ -2252,11 +2264,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use the <a href="#all">A-Z index</a> or this help app's search if you know the name.</li>
             </ul>
             <h2>Controls</h2>
-            <p>Most games accept both taps on large on-screen buttons and the arrow keys/Space on a keyboard. Action games usually have left/right, up/jump and down/roll controls. Each game's guide lists its own controls.</p>
+            <p>Most games are tap-only, with large on-screen buttons. Action and arcade games also accept the arrow keys and Space on a keyboard, and usually have left/right, up/jump and down/roll controls. Each game's guide lists its own controls.</p>
             <h2>The ? rules button</h2>
             <p>Many games add a small <b>?</b> button to the title bar. It opens a "How to Play" panel with the rules and controls. Games with universally understood rules (Tic-Tac-Toe, Snake, Tetris, Dino, Memory and a few others) do not show it.</p>
             <h2>Saving</h2>
-            <p>Games save progress and high scores locally, and some sync state or post to a leaderboard. Leaderboards need an account; the game itself does not. Clearing site data can remove local high scores and saved games even if the leaderboard entry remains.</p>
+            <p>Many games save progress and high scores locally, and some sync state or post to a leaderboard. A few puzzles (Jigsaw, Hangman, Memory, Word Search, Anagrams, Connections) keep no saved state at all. Leaderboards need an account; the game itself does not. Clearing site data can remove local high scores and saved games even if the leaderboard entry remains.</p>
             <h2>Playing on e-ink</h2>
             <ul>
                 <li>Wait for a refresh between fast actions; double taps can register twice.</li>
@@ -2278,15 +2290,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>Many games exist in up to three versions. They share rules but differ in who you play and how the game is stored.</p>
             <h2>1P - single-player</h2>
-            <p>You against the computer, or a solo puzzle. Progress and high scores are local. These are the games listed under the Games tab and the single-player entry in a folder.</p>
+            <p>You against the computer, or a solo puzzle. Most progress and high scores are local; board and cloud games (Wordle, Spelling Bee, Crossword, Mini Crossword, Sudoku, Minesweeper, Nonograms) also save to your account. These are the games listed under the Games tab and the single-player entry in a folder.</p>
             <h2>2P - local pass-and-play</h2>
             <p>Two people share one device and take turns. There is no account or network requirement. The screen usually tells you whose turn it is. These live under Multiplayer Games.</p>
             <h2>LIVE - online multiplayer</h2>
             <p>Real-time games against other ReKindle users. You need an account and a connection. Typical flow:</p>
             <ol>
-                <li>Open the live game and choose Create or Join.</li>
-                <li>Wait in the lobby for opponents. The host starts the match when enough players have joined.</li>
-                <li>Play in real time. Turn timers and AFK auto-actions keep a match moving if someone stops responding.</li>
+                <li>Host a game from the live app, or open the home screen's <b>Live Games</b> list to join one. A shared link also works.</li>
+                <li>Wait for an opponent. Most two-player games start automatically on the second join; Uno and Pictionary lobbies wait for the host to press Start.</li>
+                <li>Play in real time. Uno has a 30-second AFK auto-skip and Pictionary has round timers; the other live games have no turn timer.</li>
                 <li>If the host leaves, another player is promoted so the match can continue.</li>
             </ol>
             <h2>Games with multiple modes</h2>
@@ -2302,8 +2314,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td>Yahtzee</td><td>yahtzee</td><td>-</td><td>liveyahtzee</td></tr>
                 <tr><td>Uno</td><td>uno (vs bots)</td><td>-</td><td>liveuno</td></tr>
                 <tr><td>Pictionary</td><td>-</td><td>-</td><td>livepictionary</td></tr>
-                <tr><td>Scrabble (Words Online)</td><td>-</td><td>-</td><td>words (asynchronous)</td></tr>
             </table>
+            <p><b>Words Online</b> is asynchronous rather than live: it has no lobby or turn timer, and a match resumes later, so it is not listed in the LIVE column.</p>
             <div class="note"><b>Live games need patience:</b> lobbies may be empty at quiet times. Create a match and leave the tab open; the home screen shows joinable live games when someone is waiting.</div>
         `
     },
@@ -2321,14 +2333,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>You open a game, which starts a server-timed run.</li>
                 <li>When the game ends, the score is sent to ReKindle's server.</li>
-                <li>The server checks it against the game's limits and the elapsed time, then writes it if it is believable.</li>
+                <li>The server checks it against the game's limits and, for higher-is-better boards, the elapsed time, then writes it if it is believable.</li>
             </ol>
             <p>Scores are written only by the server. The browser cannot create or edit a leaderboard entry directly. That is why a fabricated value from the console does not appear on the board.</p>
             <h2>Games with boards</h2>
             <p>Tetris, Snake, Pac-Man, Wordle, Spelling Bee, Dino, Maze, Tower of Hanoi, Lights Out, Trivia, Solitaire, Block Blast, Pet, Mario, Yahtzee, Perfect Circle, Crossy, Surfer, Jumpy and Oregon Trail. Some boards rank by points (higher is better); others rank by moves or time (lower is better) - for example Solitaire, Hanoi and Lights Out.</p>
             <h2>Local and cloud records</h2>
             <ul>
-                <li>Your personal best is also stored on the device.</li>
+                <li>Some games also keep a personal best on the device; others only store it on the shared board.</li>
                 <li>You must be signed in for a score to reach the shared board.</li>
                 <li>The game itself is playable in guest mode; only the shared submission needs an account.</li>
             </ul>
@@ -2342,7 +2354,6 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         summary: 'Guess the five-letter word in six tries, with daily and unlimited modes.',
         tags: 'wordle word guessing daily unlimited six tries stats streaks green yellow grey',
         sub: 'Word games',
-        badges: ['NEW'],
         appHref: 'wordle',
         appName: 'Wordle',
         related: ['spellbound', 'nerdle', 'crossword'],
@@ -2363,7 +2374,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>Stats</b> - games played, win percentage, current streak, max streak and guess distribution.</li>
             </ul>
             <p>Guesses must be real words from the game's dictionary. The on-screen keyboard shows which letters you have used and their best-known state.</p>
-            <div class="note"><b>Leaderboard:</b> the shared Wordle board tracks cumulative performance. Daily and unlimited progress is stored with your account and can sync between devices.</div>
+            <div class="note"><b>Leaderboard:</b> the shared Wordle board ranks cumulative daily wins. Stats sync to your account, but an in-progress Daily or Unlimited board stays on the device.</div>
         `
     },
     {
@@ -2387,12 +2398,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <h2>Playing</h2>
             <ol>
-                <li>Tap letters or type on the keyboard.</li>
+                <li>Tap letters on the on-screen keyboard.</li>
                 <li>Press Enter to submit. Valid words are added to your list and score.</li>
                 <li>Use Shuffle to rearrange the outer letters if you are stuck.</li>
                 <li>Delete removes the current input.</li>
             </ol>
-            <p><b>Daily</b> gives one shared puzzle; <b>Unlimited</b> generates new puzzles. Stats track games played, words found, "Genius" rank and "Queen Bee" (all words found). Progress syncs for signed-in players.</p>
+            <p><b>Daily</b> gives one shared puzzle; <b>Unlimited</b> generates new puzzles. Stats track games played, words found, "Genius" rank and "Queen Bee" (all words found). Progress syncs for signed-in players, and the leaderboard ranks lifetime words found.</p>
             <div class="note"><b>Tip:</b> look for common prefixes and suffixes, then check whether each can be built. Pangrams often use every letter exactly once - hunting for one early can unlock the board.</div>
         `
     },
@@ -2407,7 +2418,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Connections',
         related: ['strands', 'wordle', 'crossword'],
         body: `
-            <p>Connections (listed in the app as <b>Bindings</b>) shows sixteen words. Your job is to find four groups of four that share something in common.</p>
+            <p>Connections (the page file is still <code>bindings.html</code>) shows sixteen words. Your job is to find four groups of four that share something in common.</p>
             <h2>How to play</h2>
             <ol>
                 <li>Tap four words you think belong together.</li>
@@ -2434,12 +2445,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Strands is a themed word search. Every word relates to a daily theme, and one special word - the <b>spangram</b> - describes the theme and stretches from one side of the grid to the other.</p>
             <h2>How to play</h2>
             <ol>
-                <li>Press on a letter and drag across adjacent letters, including diagonals, to spell a word.</li>
-                <li>Release to submit. Correct theme words stay highlighted.</li>
-                <li>Find the spangram to reveal the theme. It must touch opposite edges of the grid.</li>
+                <li>Tap letters one at a time to build a word; each letter must touch the previous one, including diagonals.</li>
+                <li>Tap the last letter again or press <b>Submit</b>. Correct theme words stay highlighted.</li>
+                <li>The theme clue is shown from the start. The <b>spangram</b> is the theme's answer and must touch opposite edges of the grid.</li>
                 <li>Fill every letter on the board by finding all words.</li>
             </ol>
-            <p><b>Daily</b> is one shared puzzle; <b>Unlimited</b> generates new ones. <b>Hint</b> reveals a word if you are stuck (with a limited number of hints per puzzle). <b>Clear</b> resets the current selection.</p>
+            <p><b>Daily</b> is one shared puzzle; <b>Unlimited</b> generates new ones. <b>Hint</b> reveals one letter of an unfound theme word: find three non-theme words to earn one. <b>Clear</b> resets the current selection.</p>
             <div class="note"><b>Strategy:</b> hunt for the spangram first. Once the theme clicks, the remaining words are much easier to spot. Every letter is used exactly once when the puzzle is solved, so process of elimination helps.</div>
         `
     },
@@ -2461,9 +2472,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap a square or a clue to select a word.</li>
                 <li>Type letters; the cursor advances across or down depending on the selected clue.</li>
                 <li>Use the across/down clue lists to jump between words.</li>
-                <li><b>Check</b> marks wrong letters; <b>Solve</b> reveals the answer.</li>
+                <li><b>Check</b> reports errors in the clue bar; <b>Solve</b> fills the selected word.</li>
             </ol>
-            <p>Progress is saved locally for the current puzzle. Starting a new puzzle discards the old one after a confirmation.</p>
+            <p>Progress autosaves on the device and, when signed in, to your account. Starting a new puzzle discards the old one after a confirmation.</p>
             <div class="note"><b>Archive note:</b> puzzles are fetched from an online archive through a proxy. If loading fails, the archive or proxy is temporarily unavailable; try again later. Answers can contain dated references and older spellings.</div>
         `
     },
@@ -2483,10 +2494,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Open the app to get a random mini puzzle.</li>
                 <li>Tap a square or clue, then type. The grid moves automatically.</li>
-                <li>Use <b>Check</b> to mark mistakes and <b>Solve</b> to reveal the grid.</li>
+                <li><b>Check</b> tells you whether the grid is correct; <b>Solve</b> fills the selected word.</li>
                 <li>Tap <b>New</b> for another puzzle; your current progress is discarded after confirmation.</li>
             </ol>
-            <p>Across and Down clues are listed side by side. The selected clue is highlighted as you move through the grid.</p>
+            <p>Across and Down clues are listed side by side. The selected clue is highlighted as you move through the grid. Progress saves on the device and, when signed in, to your account.</p>
             <div class="note"><b>Good for e-ink:</b> a small grid means fewer refreshes than a full crossword. It is one of the quickest games to play on a slow screen.</div>
         `
     },
@@ -2494,7 +2505,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'anagrams',
         cat: 'games',
         title: 'Anagrams',
-        summary: 'Unscramble a word using the on-screen keyboard; longer words are worth more.',
+        summary: 'Unscramble a word using the on-screen keyboard; every solved word is worth 10 points.',
         tags: 'anagrams unscramble letters word puzzle keyboard score give up',
         sub: 'Word games',
         appHref: 'anagrams',
@@ -2505,7 +2516,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>How to play</h2>
             <ol>
                 <li>Read the scrambled letters at the top.</li>
-                <li>Tap letters on the on-screen keyboard, or type on a physical keyboard.</li>
+                <li>Tap letters on the on-screen keyboard.</li>
                 <li>Press Enter to check. A correct answer scores 10 points and loads the next word.</li>
                 <li>Backspace removes a letter. <b>Give Up</b> reveals the answer.</li>
             </ol>
@@ -2529,8 +2540,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Tap a letter on the keyboard.</li>
                 <li>Correct letters appear in their positions in the word.</li>
-                <li>Wrong letters are listed and bring the drawing closer to completion.</li>
-                <li>Guess the word before you run out of wrong attempts.</li>
+                <li>Wrong letters dim on the keyboard and add a stroke to the drawing.</li>
+                <li>Guess the word before six wrong letters are used.</li>
                 <li>Tap <b>New Game</b> for another word.</li>
             </ol>
             <p>Start with common letters (E, T, A, O, I, N, S, R) and use the word length and revealed pattern to narrow things down.</p>
@@ -2600,9 +2611,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap an empty square, then tap a number from 1-9.</li>
                 <li>Given numbers are fixed and cannot be changed.</li>
                 <li>A duplicate in the same row, column or box is invalid.</li>
-                <li><b>Check</b> highlights mistakes; <b>Solve</b> fills the grid.</li>
+                <li><b>Check</b> highlights mistakes; <b>Solve</b> fills the selected square.</li>
             </ol>
-            <p>The game remembers your current puzzle, so you can leave and come back. A completed grid shows a congratulations dialog.</p>
+            <p>The game remembers your current puzzle, so you can leave and come back; signed-in progress syncs to your account. A completed grid shows a congratulations dialog.</p>
             <div class="note"><b>Solving tip:</b> start with the digit that appears most often. For each box, ask where that digit can legally go. Then repeat for rows and columns. On e-ink, use a finger and take your time - the grid is small but the targets are full squares.</div>
         `
     },
@@ -2626,7 +2637,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use <b>Check</b> to see mistakes and <b>Clear</b> to restart the puzzle.</li>
                 <li>Complete the grid to reveal the picture.</li>
             </ol>
-            <p>There is no guessing required at the easier sizes, though the largest grids can be demanding. <b>Fill</b> and <b>X</b> are separate modes; switch between them as you work.</p>
+            <p>There is no guessing required at the easier sizes, though the largest grids can be demanding. <b>Fill</b> and <b>X</b> are separate modes; switch between them as you work. Progress saves on the device and, when signed in, to your account.</p>
             <div class="note"><b>Starting move:</b> find a row whose clues fill the entire width, or a clue larger than half the line - its position is forced. Mark those cells, then work outward.</div>
         `
     },
@@ -2649,7 +2660,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Switch to flag mode and tap a square you believe is a mine.</li>
                 <li>Clear every safe square to win. Tapping a mine ends the game.</li>
             </ol>
-            <p>The header shows remaining mines and elapsed time. <b>New</b> starts a fresh board after a confirmation.</p>
+            <p>The header shows remaining mines and elapsed time. <b>New</b> starts a fresh board after a confirmation. Progress saves on the device and, when signed in, to your account.</p>
             <div class="note"><b>Logic, not luck:</b> most positions can be deduced. If two squares are ambiguous, look at the numbers on both sides of them. Guessing should be a last resort on the first click, which is always safe.</div>
         `
     },
@@ -2692,9 +2703,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Choose a 3x3 or 4x4 grid.</li>
                 <li>Tap one tile, then another, to swap them.</li>
                 <li>Use <b>Peek</b> to see the target image.</li>
-                <li><b>New</b> loads a different picture; <b>New Art</b> changes the image set.</li>
+                <li><b>New Art</b> generates a fresh picture.</li>
             </ol>
-            <p>The 3x3 grid is a quick warm-up; 4x4 takes noticeably longer. There is no timer, so you can leave and return.</p>
+            <p>The 3x3 grid is a quick warm-up; 4x4 takes noticeably longer. There is no timer, but progress is not saved if you leave the page.</p>
             <div class="note"><b>Strategy:</b> solve the top row and left column first, then work inward. On a scrambled image, look for distinctive edges and colours rather than trying to place every tile at once.</div>
         `
     },
@@ -2721,7 +2732,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Choose 3, 4, 5, 6 or 7 discs.</li>
                 <li>Tap a peg to pick up its top disc, then tap another peg to place it.</li>
                 <li>Complete the stack to win. The move counter compares you to the minimum.</li>
-                <li><b>New Game</b> resets the puzzle; <b>Scores</b> shows the top results per disc count.</li>
+                <li><b>Reset</b> restarts the puzzle; <b>Scores</b> shows the top results per disc count.</li>
             </ol>
             <p>The minimum number of moves is 2<sup>n</sup> - 1, so 3 discs need 7 moves and 7 discs need 127. The leaderboard ranks by fewest moves for each difficulty.</p>
         `
@@ -2767,9 +2778,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Pick a number for each position, then tap <b>Submit</b>.</li>
                 <li>A <b>black</b> peg means a correct number in the correct position.</li>
                 <li>A <b>white</b> peg means a correct number in the wrong position.</li>
-                <li>Crack the code before your guesses run out (10).</li>
+                <li>Crack the code before your guesses run out: 10 on Easy, 12 on Medium and Hard.</li>
             </ol>
-            <p>The code does not contain duplicate numbers, which makes deduction cleaner. <b>DEL</b> removes the last entry; the <b>?</b> button explains the pegs.</p>
+            <p>The code does not contain duplicate numbers, which makes deduction cleaner. <b>DEL</b> removes the last entry; the <b>?</b> button opens the rules panel.</p>
             <div class="note"><b>First guess:</b> use a spread of numbers to gather information. Then use the black/white counts to test one position at a time rather than guessing whole codes randomly.</div>
         `
     },
@@ -2790,7 +2801,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use the on-screen arrows or the keyboard arrow keys to slide every tile in one direction.</li>
                 <li>When two equal tiles touch, they merge into one tile worth double.</li>
                 <li>A new 2 or 4 appears after every move.</li>
-                <li>Reach 2048 to win; the game ends when the board is full and no merges are possible.</li>
+                <li>Build a 2048 tile for the goal; the game does not stop there. It ends only when the board is full and no merges are possible.</li>
             </ol>
             <p>The score is the sum of all merges. <b>Best</b> is your local high score. <b>Reset</b> starts a new game.</p>
             <div class="note"><b>Strategy:</b> pick one corner and keep your largest tile there. Avoid moving in the opposite direction unless you must, and keep a clear lane for merges.</div>
@@ -2861,7 +2872,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ul>
                 <li>Build tableau columns downward in alternating colours (red on black, black on red).</li>
                 <li>Only a King can be placed in an empty column.</li>
-                <li>Tap the stock to draw a new card; keep drawing until the deck is exhausted.</li>
+                <li>Tap the stock to draw a new card; when it runs out, the waste is recycled back into the stock.</li>
                 <li>Move Aces to the foundations first, then build each suit upward.</li>
                 <li>Reveal every face-down card and complete all four foundations to win.</li>
             </ul>
@@ -2896,7 +2907,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Hit, stand or double as the hand develops.</li>
                 <li>When the round ends, tap <b>New Round</b>.</li>
             </ol>
-            <p>Your bank starts at $1,000 and persists between sessions. There is no split or insurance in this version. If the bank reaches zero, refresh the app or start a new game; the game does not lend money.</p>
+            <p>Your bank starts at $1,000 and persists between sessions. There is no split or insurance in this version. If the bank reaches zero, reload the app: the next load tops it back up to $100 so you can keep playing. A new round alone does not.</p>
             <div class="note"><b>Basic strategy:</b> stand on 17+, hit on 11 or less, and double on 10 or 11 when the dealer shows a weak card. It is a game of odds, not guaranteed wins.</div>
         `
     },
@@ -2904,7 +2915,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'texasholdem',
         cat: 'games',
         title: "Texas Hold'em",
-        summary: 'A no-limit poker table against three bots, with a $1,000 bank.',
+        summary: 'A fixed-limit poker table against three bots, with a $1,000 bank.',
         tags: 'texas holdem poker cards bots fold check call raise pot bank',
         badges: ['BETA'],
         sub: 'Cards & board',
@@ -2917,7 +2928,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>You and three bots receive two private cards.</li>
                 <li>Five community cards are dealt in stages: the flop (3), the turn (1) and the river (1).</li>
-                <li>Each betting round you can <b>Fold</b>, <b>Check</b>, <b>Call</b> or <b>Raise</b>.</li>
+                <li>Each betting round you can <b>Fold</b>, <b>Check</b>, <b>Call</b> or <b>Raise</b>. Raises are a fixed size (the current bet plus the big blind); there is no bet slider.</li>
                 <li>Win by having the best five-card hand at showdown, or by making everyone else fold.</li>
             </ol>
             <h2>Hand rankings (best first)</h2>
@@ -2933,6 +2944,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         summary: 'Roll five dice over thirteen rounds and fill every scoring category.',
         tags: 'yahtzee dice categories full house straight bonus cpu leaderboard live',
         sub: 'Cards & board',
+        badges: ['1P', 'LIVE'],
         appHref: 'yahtzee',
         appName: 'Yahtzee',
         related: ['blackjack', 'uno', 'solitaire'],
@@ -2960,24 +2972,25 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'uno',
         cat: 'games',
         title: 'Uno',
-        summary: 'Play Uno against three bots solo, or join an online four-player match.',
-        tags: 'uno cards color number skip reverse draw wild solo bots online live',
+        summary: 'Play Uno against three bots solo, or join an online match for two to ten players.',
+        tags: 'uno cards pattern color number skip reverse draw wild solo bots online live stacking',
         sub: 'Cards & board',
+        badges: ['1P', 'LIVE'],
         appHref: 'uno',
         appName: 'Uno',
         related: ['yahtzee', 'pool', 'game-modes'],
         body: `
-            <p>Uno is the colour-and-number card game. The app has a solo mode against three bots and a live online mode for four players.</p>
+            <p>Uno is the card game of numbers and four stripe-pattern suits (Vertical, Horizontal, Diag Up and Diag Down). The app has a solo match against three bots and a live online mode for two to ten players.</p>
             <h2>Rules</h2>
             <ul>
-                <li>Play a card matching the top discard by colour, number or symbol.</li>
+                <li>Play a card matching the top discard by pattern, number or symbol.</li>
                 <li>If you cannot play, draw a card.</li>
                 <li><b>Skip</b> skips the next player; <b>Reverse</b> changes direction; <b>Draw Two</b> makes the next player draw two.</li>
-                <li><b>Wild</b> changes the colour; <b>Wild Draw Four</b> changes the colour and makes the next player draw four.</li>
+                <li><b>Wild</b> lets you choose the next pattern; <b>Wild Draw Four</b> does the same and makes the next player draw four.</li>
                 <li>First player to empty their hand wins the round.</li>
             </ul>
             <h2>Modes</h2>
-            <p><b>Play Solo vs Bots</b> starts a four-player match immediately. <b>Play Online</b> opens the live lobby, where you can create or join a match. The live game has turn timers and an AFK auto-skip so one idle player cannot stall the table.</p>
+            <p><b>Play Solo vs Bots</b> starts a fixed four-player match immediately. <b>Play Online</b> opens the live lobby: the host sets the player count (2-10, four by default), bots and whether <b>Stacking</b> is on (with stacking, a +2 or +4 can be answered with another). The live game has turn timers and an AFK auto-skip so one idle player cannot stall the table.</p>
             <div class="note"><b>Tip:</b> save wild cards for moments when you cannot match, and watch the next player's card count - a Draw Two is most valuable when they are close to winning.</div>
         `
     },
@@ -3101,10 +3114,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Battleship is a hidden-information game. Each side places a fleet on a grid, then takes turns firing at squares.</p>
             <h2>Placing your fleet</h2>
             <ol>
-                <li>Select a ship and tap a grid square to place it.</li>
+                <li>Ships are placed in a fixed order (Carrier first); tap a grid square to place the current ship.</li>
                 <li>Use <b>Rotate</b> to switch between horizontal and vertical.</li>
-                <li>Use <b>Clear</b> to reset placement, or <b>Auto</b> to place the whole fleet randomly.</li>
-                <li>Confirm when every ship is placed.</li>
+                <li>Use <b>Clear</b> to reset placement, or <b>Auto</b> to place the whole fleet randomly and start at once.</li>
+                <li>The game starts automatically when the last ship is placed.</li>
             </ol>
             <h2>Firing</h2>
             <ul>
@@ -3163,9 +3176,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ol>
             <h2>Fouls</h2>
             <ul>
-                <li>Pocketing the cue ball (a scratch) gives the opponent ball-in-hand.</li>
+                <li>Pocketing the cue ball (a scratch) re-spots it and ends your turn.</li>
                 <li>Pocketing the 8-ball before clearing your group loses the game.</li>
-                <li>Hitting the wrong ball first is a foul.</li>
             </ul>
             <div class="note"><b>Controls:</b> page zoom is disabled for pool so touch coordinates stay accurate. Use slow, deliberate drags; e-ink cannot show a smooth aiming preview in real time.</div>
         `
@@ -3190,11 +3202,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ul>
                 <li>Use the arrow buttons or the keyboard arrows to change direction.</li>
                 <li>Eat the food to grow and score points.</li>
-                <li>The snake speeds up as it grows.</li>
+                <li>The pace is fixed; the run ends when you hit a wall or your own tail.</li>
                 <li>Hitting a wall or yourself ends the run.</li>
             </ul>
             <p>Your high score is shown in the header. <b>Leaderboard</b> opens the shared top scores; <b>Retry</b> starts again after a game over.</p>
-            <div class="note"><b>Tip:</b> keep the snake moving in a loose pattern and use the edges as walls. Do not turn back into your own body when the tail is close.</div>
+            <div class="note"><b>Tip:</b> stay away from the edges - touching a wall ends the run - and avoid doubling back into your body when the tail is close.</div>
         `
     },
     {
@@ -3227,6 +3239,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         summary: 'Eat every dot, dodge four ghosts and use power pellets to turn the tables.',
         tags: 'pacman arcade ghosts dots power pellet lives score leaderboard',
         sub: 'Action & arcade',
+        badges: ['NEW'],
         appHref: 'pacman',
         appName: 'Pac-Man',
         related: ['snake', 'maze', 'tetris'],
@@ -3258,11 +3271,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>How to play</h2>
             <ul>
                 <li>Tap the screen or press Space/Up to jump.</li>
-                <li>Avoid the cacti and any flying obstacles.</li>
+                <li>Avoid the cacti.</li>
                 <li>The longer you survive, the faster it gets.</li>
                 <li>One collision ends the run.</li>
             </ul>
-            <p>The header shows your score and high score. <b>Leaderboard</b> shows the shared board; <b>Retry</b> starts again.</p>
+            <p>Score and HI (high score) are drawn in the game canvas. <b>Leaderboard</b> shows the shared board; tap the screen or press Space to start again after a collision.</p>
             <div class="note"><b>Timing:</b> on e-ink the frame rate is low, so jump a little earlier than feels natural. Keep taps short - holding does not give a higher jump.</div>
         `
     },
@@ -3334,7 +3347,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>Pause</b> - the II button; resume, restart or quit to the menu.</li>
             </ul>
             <h2>Progress</h2>
-            <p>The level menu shows your best percentage per level and your gear count. Portals switch between cube and ship modes. Spikes, blocks and pillars kill on contact; pads and rings launch or protect you. Reach the end gate to complete a level.</p>
+            <p>The level menu shows your best percentage per level and your gear count. Portals switch between cube and ship modes. Spikes, blocks and pillars kill on contact; pads bounce you upward and rings launch you. Reach the end gate to complete a level.</p>
             <div class="note"><b>No settings:</b> rendering is forced to a strict one-bit mode because grey anti-aliased pixels cause constant e-ink full refreshes. The tight jump windows are intentional. If a level feels impossible, watch the pattern and jump earlier than you think.</div>
         `
     },
@@ -3345,7 +3358,6 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         summary: 'Tap the big cookie, buy buildings and upgrades, and let the cookies pile up.',
         tags: 'cookie clicker idle incremental tycoon clicker buildings upgrades golden cookie save offline unlisted',
         sub: 'Action & arcade',
-        badges: ['NEW'],
         appHref: 'cookieclicker',
         appName: 'Cookie Clicker',
         related: ['surfer', 'jumpy', 'cubedash'],
@@ -3403,12 +3415,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Mario is an auto-running platformer. The character moves forward on his own; you control the jumps and timing.</p>
             <h2>Controls</h2>
             <ul>
-                <li><b>A</b> - jump. Tap again in the air for a higher or secondary action where available.</li>
-                <li><b>B</b> - run/action (hold for extra speed where supported).</li>
-                <li><b>Left / Right</b> - adjust movement; <b>Down</b> - duck or slow down.</li>
+                <li><b>A</b> - jump; hold it for a higher jump. There is no double jump.</li>
+                <li><b>B</b> - run, and fire a fireball when powered up.</li>
+                <li><b>Left / Right</b> - adjust movement; <b>Down</b> - duck while standing.</li>
                 <li><b>Auto Run</b> toggles automatic forward movement.</li>
             </ul>
-            <p>The HUD shows distance, coins and time. Reach the flag to complete the level; death restarts at the beginning of the level. The leaderboard ranks distance, coins and completion time.</p>
+            <p>The HUD shows distance, coins and time. Reach the flag to complete the level; death restarts at the beginning of the level. The leaderboard has tabs for score, distance, coins and completion time.</p>
             <div class="note"><b>Tip:</b> coins are optional but count toward your score. Time is also ranked, so replay a level you know to improve your result rather than collecting every coin slowly.</div>
         `
     },
@@ -3440,19 +3452,19 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'pet',
         cat: 'games',
         title: 'Pet',
-        summary: 'Raise a virtual pet through egg, baby, child, teen and adult stages.',
+        summary: 'Raise a virtual pet through egg, child, teen and adult stages.',
         tags: 'pet virtual tamagotchi feed play clean evolve age leaderboard',
         sub: 'Action & arcade',
         appHref: 'pet',
         appName: 'Pet',
         related: ['oregontrail', 'trivia'],
         body: `
-            <p>Pet is a pocket virtual pet. It hatches from an egg, grows through stages, and eventually grows old. How you care for it affects its mood and progress.</p>
+            <p>Pet is a pocket virtual pet. It hatches from an egg, grows through child and teen stages, and settles into one of five adult forms. How you care for it affects its mood and health.</p>
             <h2>Controls</h2>
             <p>Three buttons sit under the screen: <b>Select</b>, <b>Confirm</b> and <b>Cancel</b>. Use Select to move through the menu, Confirm to choose, and Cancel to go back. The canvas shows the pet and its needs.</p>
             <h2>Growing up</h2>
-            <p>Feed, play with and clean up after your pet. Neglect makes it unhappy; consistent care moves it through the stages faster. Age is measured in pet years and grows with real time, so the leaderboard is an age board rather than a skill board.</p>
-            <div class="note"><b>Long-term:</b> the pet keeps ageing while you are away. Check in regularly. A hidden reset exists on the title text, but it erases the current pet - use it deliberately, not as an undo.</div>
+            <p>Feed, play with and clean up after your pet: neglect makes it unhappy and can make it ill. Age is measured in pet years and increases by one for every minute the page is open, so the leaderboard is an age board rather than a skill board. Stage changes run on fixed timers (egg to child after a minute, then teen and adult), and they catch up when you return; care does not make evolution faster.</p>
+            <div class="note"><b>Long-term:</b> a hidden reset exists on the title text, but it erases the current pet - use it deliberately, not as an undo.</div>
         `
     },
     {
@@ -3472,11 +3484,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Choose a category, difficulty and type (multiple choice or true/false).</li>
                 <li>Tap <b>Start Game</b>.</li>
                 <li>Answer each question; the score updates as you go.</li>
-                <li>At the end, review your score and tap Play Again or open Stats.</li>
+                <li>At the end, review your score and tap Play Again. Stats stays available in the title bar.</li>
             </ol>
             <h2>Stats and leaderboard</h2>
-            <p>Statistics cover all time, last year, last month and last week, with a performance history. The leaderboard ranks cumulative performance; it is a long-term score, not a single-game high score.</p>
-            <div class="note"><b>Tip:</b> start with the categories you know and a difficulty you can finish. A high accuracy over many games moves the cumulative board more than one lucky round.</div>
+            <p>Statistics cover all time, last year, last month and last week, with a performance history. The leaderboard ranks <b>average accuracy</b> over the selected period (All, Year, Month or Week), not a single-game high score - so one perfect game can top a quiet period.</p>
+            <div class="note"><b>Tip:</b> start with the categories you know and a difficulty you can finish. The board rewards consistent accuracy, so a few strong games can lift your average quickly.</div>
         `
     },
     {
@@ -3494,8 +3506,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Akinator is the guessing genie. Think of a character (real or fictional), an object or an animal, and answer its questions. It tries to identify what you are thinking of.</p>
             <h2>How to play</h2>
             <ol>
-                <li>Choose a theme: Characters, Objects or Animals.</li>
-                <li>Choose a region/language and, if appropriate, Child Mode.</li>
+                <li>Choose a region/language. The English list includes Characters, Objects and Animals, so pick the one that matches what you are thinking of.</li>
+                <li>Turn on Child Mode if appropriate.</li>
                 <li>Tap <b>Start Game</b>.</li>
                 <li>Answer each question: Yes, No, Don't Know, Probably or Probably Not.</li>
                 <li>After about twenty questions the genie makes a guess. Confirm it, or say no and keep going.</li>
@@ -3533,7 +3545,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Repair the wagon with spare parts when it breaks.</li>
             </ul>
             <h2>Rivers, forts and winter</h2>
-            <p>At rivers you can ford, caulk, ferry or wait; deeper water is more dangerous. Forts sell supplies at rising prices, with Fort Laramie usually the last reliable stop. Buy two sets of warm clothing per person and reach the mountains before the passes close around Christmas. A late start can still win, but the winter deadline ends the run on 31 December if you are not through.</p>
+            <p>At rivers you can ford, caulk, ferry or wait; deeper water is more dangerous. Forts sell supplies at rising prices - the game calls Fort Laramie the last real fort before the mountains, but Fort Bridger, Fort Hall and Fort Boise still trade. Buy two sets of warm clothing per person and reach the mountains before the passes close around Christmas. A late start can still win, but the run ends on 26 December (day 360) if you are not through; the first warning comes on 1 November.</p>
             <h2>Scoring</h2>
             <p>Score combines survivors, party health, remaining supplies, cash and an early-arrival bonus, multiplied by your profession. Win by reaching Oregon. The leaderboard records completed journeys only.</p>
             <div class="note"><b>Save and resume:</b> progress is saved automatically. If you reload, use <b>New</b> only if you want to abandon the current run.</div>
@@ -3591,8 +3603,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Enter - confirm menu; Esc - menu/back.</li>
             </ul>
             <h2>Display options</h2>
-            <p>A mode selector switches between colour and a higher-contrast look, and + / - adjust contrast. Settings persist on the device.</p>
-            <div class="note"><b>Device warning:</b> some Kindle firmware versions have WebAssembly disabled. If the game cannot start, ReKindle shows a system alert explaining that the device cannot run it. There is no workaround in the browser. DOOM is also heavy on battery and refresh; it is best on a tablet or desktop.</div>
+            <p>The mode selector cycles four looks: <b>Color</b>, <b>Bayer 4x4</b>, <b>Bayer 8x8</b> and <b>Blue Noise</b> (the three monochrome modes suit e-ink). The + / - controls adjust contrast. The choice is per session, not saved.</p>
+            <div class="note"><b>Device warning:</b> some Kindle firmware versions have WebAssembly disabled. If the game cannot start, ReKindle shows a message explaining that the device cannot run it. There is no workaround in the browser. DOOM is also heavy on battery and refresh; it is best on a tablet or desktop.</div>
         `
     },
     {
@@ -3616,7 +3628,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap <b>PLAY</b> to submit the word.</li>
                 <li>Wait for your opponent's move; the board updates when they play.</li>
             </ol>
-            <p>Scores, tile values and bonus squares follow Scrabble conventions. Starting a new game forfeits the current one after a confirmation.</p>
+            <p>Scores, tile values and bonus squares follow Scrabble conventions, with +50 for playing all seven tiles. The board checks the line shape only: words are not dictionary-checked, and a word does not have to connect to existing tiles. Starting a new game forfeits the current one after a confirmation.</p>
             <div class="note"><b>Unlisted and beta:</b> this app is not shown on the home screen. Open it directly at <code>/words</code>. You must be logged in, and finding an opponent depends on someone else queueing at the same time.</div>
         `
     },
@@ -3632,12 +3644,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Pictionary',
         related: ['game-modes', 'pixel', 'napkin'],
         body: `
-            <p>Pictionary is a live online drawing game. One player gets a secret word and draws it; everyone else types guesses.</p>
+            <p>Pictionary is a live online drawing game. One player chooses from three secret words and draws one; everyone else types guesses.</p>
             <h2>How a round works</h2>
             <ol>
                 <li>Join or create a live match and wait in the lobby.</li>
-                <li>When it is your turn to draw, you see the secret word. Draw it without writing letters or numbers.</li>
-                <li>Guessers type into the guess box. A correct guess scores points.</li>
+                <li>When it is your turn to draw, choose one of three words, then draw it without writing letters or numbers.</li>
+                <li>Guessers type into the guess box. A correct guess scores points - faster and earlier guesses score more - and the drawer also earns 50 points per correct guess.</li>
                 <li>Rounds rotate so everyone gets a turn to draw.</li>
             </ol>
             <p>The drawing canvas is deliberately simple and works with a finger or stylus. The game needs an account and a connection; there is no single-player version.</p>
@@ -3664,16 +3676,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Choose the wallpaper behind the app grid: presets, a custom pixel pattern, clear, invert or random. The pixel editor lets you draw a pattern and sets it as the background.</p>
             <h2>Appearance</h2>
             <ul>
-                <li><b>Home Layout</b> - Modern (sidebar) or Classic. The classic layout has fewer features; modern is recommended.</li>
-                <li><b>Theme</b> - light only. Dark mode is temporarily disabled while contrast fixes are finished.</li>
+                <li><b>Home Layout</b> - Modern (tabs) or Classic (sidebar). The classic layout loads the older dashboard and has fewer features; modern is recommended.</li>
+                <li><b>Theme</b> - Light, Dark or Auto (Night). Auto switches to dark between 6pm and 6am using your saved timezone. Dark mode is marked BETA; bright themes usually show less ghosting on e-ink.</li>
             </ul>
             <h2>Scaling and display</h2>
-            <ul>
-                <li><b>Auto Scaling</b> - fits content to small screens automatically.</li>
-                <li><b>Fixed Scale</b> - 50%, 75%, 100%, 125%, 150% or 200%.</li>
-                <li><b>Display Mode</b> - LED (no flashes) or eInk (anti-ghosting).</li>
-                <li><b>Screen Rotation</b> - portrait or landscape, including 180 degrees. Rotation is a last resort if the device cannot rotate natively; some apps break in landscape.</li>
-            </ul>
+            <p>Auto Scaling, Fixed Scale (50-200%), Display Mode and Screen Rotation each have their own trade-offs; see <a href="#display">Display, scaling and rotation</a> for when to use which.</p>
             <h2>Accessibility</h2>
             <p><b>OpenDyslexic Font</b> switches the interface to a dyslexia-friendly typeface. Text size in this Help app is adjusted with the A-/A+ buttons in the title bar.</p>
             <h2>Location, language and units</h2>
@@ -3686,10 +3693,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ul>
                 <li><b>Disable Games</b> hides the Games and Multiplayer tabs.</li>
                 <li><b>Default Fullscreen</b> opens supported apps in fullscreen mode.</li>
-                <li><b>Google Tasks / Calendar / Contacts</b> connect via Google OAuth. <b>CalDAV / iCalendar</b> and <b>CardDAV / vCard</b> accept read-only feed URLs.</li>
+                <li><b>Google Tasks / Calendar / Contacts</b> connect via Google OAuth. <b>iCalendar (.ics)</b> and <b>CardDAV / vCard</b> accept read-only feed URLs.</li>
             </ul>
             <h2>Account</h2>
-            <p>Change your password here. ReKindle+ status and subscription management are also accessible from this area and the ReKindle+ page.</p>
+            <p>Change your password here, including the <b>Forgot your current password?</b> reset while you are signed in. <b>Delete Account</b> permanently removes the account and its data after you re-enter your password and type your username. ReKindle+ status and subscription management are also available from this area and the ReKindle+ page.</p>
         `
     },
     {
@@ -3713,7 +3720,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Portrait is the default. Landscape can help with crosswords, sheet music and wide tables. The 180-degree option is for devices whose native orientation is inverted. Rotation is marked beta because a few apps assume portrait dimensions.</p>
             <h2>Fullscreen</h2>
             <p>Many apps have a fullscreen control in the title bar. <b>Default Fullscreen</b> in Settings makes supported apps open that way, removing the desktop border for a little more reading area.</p>
-            <div class="note"><b>Dark mode is off:</b> the option remains visible but is disabled. ReKindle forces light mode while the e-ink contrast changes are tested.</div>
+            <div class="note"><b>Dark mode:</b> choose Dark or Auto (Night) under Settings - Theme. It is marked BETA and inverts the whole interface; on an e-ink panel, Light still refreshes less and ghosts less. Auto switches at 6pm and 6am using your saved timezone.</div>
         `
     },
     {
@@ -3756,19 +3763,19 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Guest mode</h2>
             <p>No account, no server record. Notes, tasks, games and settings live in browser storage on that device. Nothing is uploaded to ReKindle.</p>
             <h2>Cloud mode</h2>
-            <p>When you sign in, supported app data is stored in Google Firebase (Firestore, Storage and Realtime Database) under your user ID. Security rules restrict each user to their own records. Social content is in ReKindle's social project with moderator access for reports and safety.</p>
+            <p>When you sign in, supported app data is stored in Google Firebase (Firestore, Storage and Realtime Database) under your user ID. Security rules restrict each user to their own records. Social content is in ReKindle's social project; the owner-only moderation console can read reports and automod entries, with no blanket access to private direct messages.</p>
             <h2>Google data</h2>
             <p>Google Tasks, Calendar and Contacts are accessed with OAuth tokens stored on the device. ReKindle's use of information received from Google APIs follows the Google API Services User Data Policy, including the Limited Use requirements: the data is used only to provide the feature you connected, not sold, and not used for advertising. It is fetched directly from Google's APIs, not copied into ReKindle's database.</p>
             <h2>Third-party services</h2>
             <ul>
-                <li>Mail connects to your email provider via IMAP/SMTP; credentials are encrypted on the device.</li>
+                <li>Mail connects to your email provider via IMAP/SMTP; app passwords are encrypted before an encrypted copy is saved to your private account record. Outlook/Hotmail uses a Microsoft refresh token kept on ReKindle's server and never returned to the browser, so the device stores no password.</li>
                 <li>AI chat sends your prompts to the selected provider (or locally to Ollama).</li>
-                <li>Dropbox, Bluesky, Mastodon, Pinterest and Substack use tokens/cookies you provide.</li>
+                <li>Dropbox, Bluesky, Mastodon, Pinterest and Substack use tokens/cookies you provide, stored on the device or in your private account records.</li>
                 <li>News, RSS, weather, stocks, Wikipedia and similar apps fetch public data from their providers.</li>
             </ul>
             <p>Each service has its own privacy policy. Do not paste secrets or sensitive personal data into third-party apps.</p>
             <h2>Deleting data</h2>
-            <p>Clear browser site data to remove guest data and local caches. To delete a cloud account and its records, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
+            <p>Clear browser site data to remove guest data and local caches. To delete your account and cloud records, sign in and use <b>Settings -> Delete Account</b>; it removes your profile, files, posts, chat messages and scores from both Firebase projects. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
         `
     },
     {
@@ -3784,18 +3791,20 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <table>
                 <tr><th>Page</th><th>What it is</th></tr>
                 <tr><td><code>/jumpy</code></td><td>A vertical platformer with a leaderboard. Fully playable; see <a href="#jumpy">Jumpy</a>.</td></tr>
+                <tr><td><code>/cookieclicker</code></td><td>An idle cookie game with an optional text-mode challenge. Fully playable; the home-screen icon is hidden for now. See <a href="#cookieclicker">Cookie Clicker</a>.</td></tr>
                 <tr><td><code>/texasholdem</code></td><td>Poker against three bots. Beta; see <a href="#texasholdem">Texas Hold'em</a>.</td></tr>
                 <tr><td><code>/words</code></td><td>Asynchronous Scrabble-style matches. Beta and needs an opponent; see <a href="#words">Words Online</a>.</td></tr>
-                <tr><td><code>/readwise</code></td><td>Readwise Reader and highlights with an API token. Beta; see <a href="#readwise">Readwise</a>.</td></tr>
                 <tr><td><code>/quicknotes</code></td><td>An older handwritten-notes page superseded by Quick ToDo and Notes. Pro-gated; kept for compatibility.</td></tr>
             </table>
             <h2>Retired or redirect pages</h2>
             <table>
                 <tr><th>Page</th><th>Status</th></tr>
                 <tr><td><code>/manga</code></td><td>The old MangaDex reader. It redirects to the dashboard; unlicensed content was removed. Use <a href="#comics">Comics</a> for public-domain comics.</td></tr>
-                <tr><td><code>/index_old</code></td><td>A previous dashboard copy. Do not use it for daily work; it may point at outdated services.</td></tr>
+                <tr><td><code>/index_old</code></td><td>The classic dashboard, used as the home page by the Lite build and whenever Home Layout is set to Classic. It has fewer features than the modern home screen.</td></tr>
                 <tr><td><code>/login</code></td><td>A diagnostics page for authentication, network, diagnostics and logout. It is not the normal sign-in flow - use the home screen's LOG IN / REGISTER modal. See <a href="#account">Account and sign-in</a>.</td></tr>
-                <tr><td><code>/moderation</code></td><td>Moderator and administrator tools: account lookup, bans, Pro grants, reports and message cleanup. Requires a moderator account; not for general use.</td></tr>
+                <tr><td><code>/moderation</code></td><td>Owner-only moderation console: Automod Log, Reports, Banned IPs, Users and Content Review. Social moderation is otherwise automatic, so this is not a general support page.</td></tr>
+                <tr><td><code>/changelog</code></td><td>A searchable list of every GitHub commit, newest first. Also linked from the About panel.</td></tr>
+                <tr><td><code>/probe</code></td><td>A browser capability report for support and the Lite/Legacy builds. Open it on the device when asked; it is a raw diagnostic page.</td></tr>
             </table>
             <div class="note"><b>Stability:</b> unlisted pages can change or disappear without the usual deprecation notice. If you rely on one, mention it in <a href="#suggestions">Suggestions</a> so it can be promoted or documented properly.</div>
         `
@@ -3835,8 +3844,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
     {
         id: 'google-integrations',
         cat: 'start',
-        title: 'Google, CalDAV and CardDAV',
-        summary: 'Connect Google Tasks, Calendar and Contacts, or import read-only CalDAV and CardDAV feeds.',
+        title: 'Google, iCalendar and CardDAV',
+        summary: 'Connect Google Tasks, Calendar and Contacts, or import read-only iCalendar and CardDAV/vCard feeds.',
         tags: 'google tasks calendar contacts oauth caldav carddav ics vcf sync permissions token revoke',
         related: ['tasks', 'calendar', 'contacts', 'privacy'],
         body: `
@@ -3847,18 +3856,18 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Calendar requests full calendar access so it can list your calendars and create, edit or delete events. Choose which calendars are visible in the calendar picker. The dashboard agenda reads the same connection.</p>
             <h2>Google Contacts</h2>
             <p>Contacts requests <b>read-only</b> access to Google Contacts. It is an import view: you can read and search the address book, but ReKindle cannot modify or delete Google contacts. Local contacts remain editable.</p>
-            <h2>CalDAV / iCalendar</h2>
-            <p>Save a CalDAV or <code>.ics</code> URL in Settings. Calendar fetches it through ReKindle's proxy and shows the events in read-only form. This is a one-way import, not two-way sync. The feed must be reachable without an interactive login; private feeds that require OAuth or a session cookie usually fail.</p>
+            <h2>iCalendar (.ics)</h2>
+            <p>Save an iCalendar (<code>.ics</code>) subscription URL in Settings, for example a published Google Calendar or an ICS feed. Calendar fetches it through ReKindle's proxy and shows the events read-only. This is a one-way import, not two-way sync, and it is not a full CalDAV client: feeds that require OAuth or a session cookie usually fail. The CalDAV/CardDAV URL fields only appear after you turn the matching Google Calendar/Contacts toggle off.</p>
             <h2>CardDAV / vCard</h2>
             <p>Save a CardDAV or <code>.vcf</code> URL in Settings. Contacts parses the file and shows the entries read-only. Large address books can take a moment to parse on an e-reader.</p>
             <h2>Tokens and revoking access</h2>
             <p>OAuth tokens are stored on the device, not in ReKindle's database. When a token expires, the app asks you to sign in again. To revoke access completely, visit <b>myaccount.google.com/permissions</b> and remove ReKindle, then clear the app's site data on the device. Clearing site data alone signs you out but does not revoke the grant at Google.</p>
             <h2>Common problems</h2>
             <ul>
-                <li><b>Sign-in window does not open</b> - the device browser may block popups. Try again from the app, or sign in to Google in the system browser first.</li>
+                <li><b>Nothing happens when you connect</b> - Google sign-in replaces the page with its consent screen rather than opening a popup. Check the connection and try again from the app.</li>
                 <li><b>Empty list after connecting</b> - check that the Google account actually has tasks/events/contacts, and that the right calendar is visible.</li>
                 <li><b>"Token expired" or repeated prompts</b> - clear site data and reconnect; long dormant sessions expire.</li>
-                <li><b>CalDAV error</b> - the URL may require authentication, be malformed, or be temporarily unreachable. Test it in a browser.</li>
+                <li><b>iCalendar error</b> - the URL may require authentication, be malformed, or be temporarily unreachable. Test it in a browser.</li>
             </ul>
             <div class="note"><b>Privacy:</b> Google data is fetched directly with your token and is not copied into ReKindle's Firebase records. ReKindle's use follows the Google API Services User Data Policy, including Limited Use. See <a href="#privacy">Privacy and your data</a>.</div>
         `

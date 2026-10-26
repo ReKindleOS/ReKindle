@@ -17,8 +17,11 @@ Several games already have right-side title-bar controls (e.g. `yahtzee.html` Ne
 
 ### Adding a new game
 1. Add an entry to `RULES` (key) and `ALIASES` (filename → key) in `js/gamerules.js`.
-2. Include the script tag in the page's `<head>`.
+2. Include the script tag in the page's `<head>` **with the shared `?v=` cache-buster** (currently `js/gamerules.js?v=3`). Bump that number in every page that includes the script whenever the rules text changes: Pages serves non-HTML assets from the edge for up to 7 days, so an unbumped script keeps showing the old rules.
 3. Optionally add `gamerules.<key>` translations to the locale files.
+
+### Keeping the rules text accurate
+The `?` modal is user-facing help, so it must match the code, not the other way round. The **2026-10-26 audit** corrected stale entries for Anagrams (flat +10, no timer), Codebreaker (numbers, 10/12 guesses), Strands (tap + Submit, theme shown from the start), Sudoku (no notes feature; Solve fills one cell), Word Search (tap start/end), Uno (pattern suits, not colours), Pool (scratch re-spots; no wrong-ball foul), 2048 (no win state) and Oregon Trail (26 December deadline; Fort Laramie is not the last fort). When a game's rules change, update `RULES`, the matching `help-data.js` guide, and bump `?v=` in both. `scripts/test-compat.js` checks the script tag shape but not the rules prose.
 
 Games deliberately **excluded** (rules universally known / self-evident): tictactoe (+2p/live), snake, tetris, crossy, dino, hangman, memory, maze, jigsaw, circle, doom, mario, trivia, airtype, uno.html (menu wrapper — rules live on `liveuno.html`), life.html (life calendar, not a game).
 
