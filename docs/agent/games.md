@@ -449,3 +449,20 @@ Rule of thumb: copy the *interaction idea*, never the assets, audio, exact copy 
 branding. Credit Neal Agarwal in Help. e-ink pages should translate motion into
 text/state changes (as Stimulation mode does) rather than hiding animations
 behind `animation: none`.
+
+## Maze difficulty levels (2026-10-26)
+
+Board request ("make the mazes harder … Easy, medium and hard"). `maze.html` no longer hard-codes
+`GRID_SIZE`/`COLS`/`ROWS`: `MAZE_LEVELS = { easy: 50, normal: 25, hard: 20 }` are cell sizes on the
+fixed 500×500 canvas, so the grids are 10×10 / 20×20 / 25×25 and every wall lands on a whole pixel
+(crisp on e-ink; no `aspect-ratio`, no `min()`).
+
+* `applyMazeLevel(id)` sets the three `let` globals, remembers `rekindle_maze_level` in
+  `localStorage`, and repaints the three plain `.level-btn` buttons (active = inverted). It runs before
+  the first `initGame()`.
+* `setMazeLevel(id)` = `applyMazeLevel` + `initGame()`; the buttons live in the score row so they do not
+  consume title-bar space.
+* The finish cell stays bottom-right (`COLS - 1`, `ROWS - 1`) and the perfect-maze generator is
+  untouched, so a bigger grid just means a longer single solution.
+* The leaderboard contract is unchanged (`js/score-submit.js data-game="maze"`, `leaderboard_maze`);
+  the level is not part of the score payload.

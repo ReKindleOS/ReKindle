@@ -540,7 +540,7 @@
             }
         }
     </style>
-    <script src="theme.js?v=33"></script>
+    <script src="theme.js?v=34"></script>
     <script src="time.js?v=5"></script>
     <script src="pro-gate.js?v=7"></script>
     <script src="js/i18n.js?v=4"></script>
@@ -1541,28 +1541,35 @@
             if (!u || !p) { showAlertModal("Enter credentials"); return; }
             const email = u.includes('@') ? u : u + "@rekindle.ink";
 
-            if (isLogin) {
-                try {
-                    await auth.signInWithEmailAndPassword(email, p);
-                    const ipResult = await RekindleIpBan.checkOnLogin();
-                    if (ipResult.banned) {
-                        await auth.signOut();
-                        showAlertModal("Your IP address has been banned from this network.");
-                        return;
+            // Hold off the service-worker controllerchange reload while the
+            // auth request is in flight (theme.js checks this flag).
+            window.__rkAuthBusy = true;
+            try {
+                if (isLogin) {
+                    try {
+                        await auth.signInWithEmailAndPassword(email, p);
+                        const ipResult = await RekindleIpBan.checkOnLogin();
+                        if (ipResult.banned) {
+                            await auth.signOut();
+                            showAlertModal("Your IP address has been banned from this network.");
+                            return;
+                        }
+                        closeModal('login-modal');
+                    } catch (e) {
+                        showAlertModal(e.message);
                     }
-                    closeModal('login-modal');
-                } catch (e) {
-                    showAlertModal(e.message);
+                } else {
+                    try {
+                        const registerUser = firebase.functions().httpsCallable('registerUser');
+                        const result = await registerUser({ username: u, password: p });
+                        await auth.signInWithCustomToken(result.data.customToken);
+                        closeModal('login-modal');
+                    } catch (e) {
+                        showAlertModal(e.message || "Registration failed.");
+                    }
                 }
-            } else {
-                try {
-                    const registerUser = firebase.functions().httpsCallable('registerUser');
-                    const result = await registerUser({ username: u, password: p });
-                    await auth.signInWithCustomToken(result.data.customToken);
-                    closeModal('login-modal');
-                } catch (e) {
-                    showAlertModal(e.message || "Registration failed.");
-                }
+            } finally {
+                window.__rkAuthBusy = false;
             }
         }
 

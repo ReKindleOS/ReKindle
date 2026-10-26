@@ -215,9 +215,10 @@
         }
     </style>
     <link rel="stylesheet" href="css/custom-select.css">
-    <script src="theme.js?v=33"></script>
+    <script src="theme.js?v=34"></script>
     <script src="js/i18n.js?v=4"></script>
     <script src="js/custom-select.js?v=2"></script>
+    <script src="js/translate-client.js?v=1"></script>
 </head>
 
 <body>
@@ -231,7 +232,7 @@
             <span class="title-text" data-i18n="translate.title">Translator</span>
 
             <div class="controls">
-                <button class="sys-btn" onclick="translateText()" data-i18n="translate.btn.translate">Translate</button>
+                <button class="sys-btn" id="translate-btn" onclick="translateText()" data-i18n="translate.btn.translate">Translate</button>
             </div>
         </div>
 
@@ -279,8 +280,13 @@
     </div>
 
     <script>
-        // Use Lingva Translate (Free, Open Source Wrapper for Google Translate)
-        const API_BASE = "https://lingva.ml/api/v1";
+        // Translation runs in the browser via js/translate-client.js: MyMemory
+        // (per-user IP quota, 10x with the contact address) with LibreTranslate
+        // as fallback and for "Detect". The old lingva.ml backend died on
+        // 2026-10-19 — Google's unofficial gtx endpoint now answers every
+        // non-Google client with a bot-block page. No Worker or Pages Function
+        // is used. Read the header of js/translate-client.js before changing
+        // providers.
 
         // --- INIT ---
         window.onload = () => {
@@ -311,33 +317,47 @@
         }
 
 
+        let translateBusy = false;
+
         async function translateText() {
             const text = document.getElementById('source-text').value.trim();
             const source = document.getElementById('source-lang').value;
             const target = document.getElementById('target-lang').value;
             const output = document.getElementById('target-text');
+            const btn = document.getElementById('translate-btn');
 
-            if (!text) return;
+            if (!text || translateBusy) return;
 
+            if (!window.rekindleTranslateClient) {
+                const offline = "Translation is unavailable right now. Try again later.";
+                output.value = window.t ? window.t('translate.msg.unavailable', offline) : offline;
+                return;
+            }
+
+            translateBusy = true;
+            if (btn) btn.disabled = true;
             output.value = window.t ? window.t('translate.msg.translating', "Translating...") : "Translating...";
 
             try {
-                // Encode URI components to handle special characters
-                const url = `${API_BASE}/${source}/${target}/${encodeURIComponent(text)}`;
-
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (data.translation) {
-                    output.value = data.translation;
-                } else if (data.error) {
-                    output.value = (window.t ? window.t('translate.msg.error', "Error: ") : "Error: ") + data.error;
-                } else {
-                    output.value = window.t ? window.t('translate.msg.failed', "Translation failed.") : "Translation failed.";
-                }
-
+                output.value = await window.rekindleTranslateClient.translate(text, source, target);
             } catch (e) {
-                output.value = window.t ? window.t('translate.msg.network_error', "Network Error. Check connection.") : "Network Error. Check connection.";
+                const code = e && e.code;
+                let key = 'translate.msg.network_error';
+                let fallback = "Network Error. Check connection.";
+                if (code === 'detect') {
+                    key = 'translate.msg.detect_failed';
+                    fallback = "Could not detect the language. Choose one.";
+                } else if (code === 'budget') {
+                    key = 'translate.msg.budget';
+                    fallback = "Translation limit for this session reached. Try again later.";
+                } else if (code === 'unavailable') {
+                    key = 'translate.msg.unavailable';
+                    fallback = "Translation is unavailable right now. Try again later.";
+                }
+                output.value = window.t ? window.t(key, fallback) : fallback;
+            } finally {
+                translateBusy = false;
+                if (btn) btn.disabled = false;
             }
         }
 

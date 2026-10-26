@@ -2595,11 +2595,17 @@ export default {
                     return new Response(JSON.stringify({ error: "Invalid content type." }), { status: 400, headers });
                 }
                 
-                // Content removed on the first report
+                // Content that one report used to remove outright. Since
+                // 2026-10-26 a single report only removes it when moderation
+                // confirms the content, or when a second person reports it:
+                // the board had repeat reports of one user deleting other
+                // people's messages, and every message already passed
+                // moderation on the way in, so a re-check usually finds
+                // nothing. See docs/agent/moderation-reports.md.
                 const IMMEDIATE_DELETE_TYPES = ["kindlechat", "topic_comment", "neighbourhood_comment", "suggestion_comment", "dm_message"];
                 // Content that requires two reports from different users
                 const TWO_REPORT_DELETE_TYPES = ["topic", "neighbourhood_post", "suggestion"];
-                const shouldDeleteImmediately = IMMEDIATE_DELETE_TYPES.includes(contentType);
+                const isImmediateType = IMMEDIATE_DELETE_TYPES.includes(contentType);
                 
                 // Validate lengths
                 // A report without a real explanation is not actionable, so it
@@ -2671,19 +2677,67 @@ export default {
                 const reportId = await rtdbPushWithAccessToken(REPORTS_PATH, reportData, accessToken);
                 reportData.reportId = reportId;
                 
-                // Decide whether to auto-delete now
+                // Decide whether to auto-delete now.
+                //
+                // Two-report types still need a second, different reporter.
+                // Chat/comment/DM types need either a second reporter or a
+                // moderation hit on the snapshot: a single report from someone
+                // who simply wants the message gone no longer deletes it. A
+                // failed moderation call keeps the OLD behaviour (delete), so
+                // an OpenAI/network outage cannot leave harassment up.
                 let shouldAutoDelete = false;
                 let deleteNote = "";
-                if (shouldDeleteImmediately) {
-                    shouldAutoDelete = true;
-                    deleteNote = "Auto-deleted after 1 report";
-                } else if (TWO_REPORT_DELETE_TYPES.includes(contentType) && isSecondReport) {
-                    shouldAutoDelete = true;
-                    deleteNote = "Auto-deleted after 2 reports";
+                let heldForReview = false;
+
+                if (TWO_REPORT_DELETE_TYPES.includes(contentType)) {
+                    if (isSecondReport) {
+                        shouldAutoDelete = true;
+                        deleteNote = "Auto-deleted after 2 reports";
+                    }
+                } else if (isImmediateType) {
+                    if (isSecondReport) {
+                        shouldAutoDelete = true;
+                        deleteNote = "Auto-deleted after 2 reports";
+                    } else if (reportContentSnapshot && env.OPENAI_API_KEY) {
+                        let moderationChecked = false;
+                        let flagged = false;
+                        try {
+                            const mod = await moderateContent(reportContentSnapshot, env.OPENAI_API_KEY);
+                            moderationChecked = !!(mod && typeof mod.flagged === "boolean");
+                            flagged = !!(mod && mod.flagged);
+                        } catch (modErr) {
+                            console.error("[REPORT] Moderation re-check failed:", modErr.message);
+                        }
+                        if (!moderationChecked || flagged) {
+                            // Fail safe: no verdict, or a real violation.
+                            shouldAutoDelete = true;
+                            deleteNote = flagged
+                                ? "Auto-deleted after 1 report (moderation confirmed)"
+                                : "Auto-deleted after 1 report (moderation unavailable)";
+                        } else {
+                            heldForReview = true;
+                        }
+                    } else {
+                        shouldAutoDelete = true;
+                        deleteNote = "Auto-deleted after 1 report (moderation unavailable)";
+                    }
                 }
-                
+
+                if (heldForReview) {
+                    // Keep the report pending so the owner can still see it (and
+                    // act), but do not remove the content.
+                    console.log(`[REPORT] Moderation cleared ${contentType}/${contentId}; holding report ${reportId} for review.`);
+                    try {
+                        await rtdbUpdateReport(reportId, {
+                            resolutionNote: "Held for review (moderation found nothing)"
+                        }, accessToken);
+                    } catch (e) {
+                        console.error("[REPORT] Failed to annotate held report:", e.message);
+                    }
+                }
+
                 if (shouldAutoDelete) {
-                    console.log(`[REPORT] ${shouldDeleteImmediately ? 'Immediate' : 'Second'} report on ${contentType}/${contentId}. Auto-deleting...`);
+                    console.log(`[REPORT] ${isSecondReport ? 'Second' : 'First'} report on ${contentType}/${contentId}. Auto-deleting...`);
                     const deleted = await autoDeleteContent(contentType, contentId, reportContentPath, accessToken);
                     
                     if (deleted) {

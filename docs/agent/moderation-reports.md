@@ -101,6 +101,34 @@ Reports live under `/reports` in the social RTDB. The dashboard reads from RTDB 
 ### Auto-Delete Behaviour
 When 2 different users report the same content (same `contentType` + `contentId`), the worker attempts to automatically delete the content. If deletion succeeds, both reports are marked as `resolved`. If deletion fails (e.g. RTDB permission issue), both reports remain `pending` so moderators can review them manually. (The Discord notification, when it existed, showed whether the auto-delete succeeded.)
 
+**Single-report types are moderation-confirmed since 2026-10-26.** Chat messages, DM messages,
+topic/neighbourhood/suggestion comments used to be deleted on the *first* report from anyone. Two
+open board reports about repeat reporting and the 21-vote report rework showed that one person
+could delete anyone's message. The rule now is:
+
+| Content | Removed when |
+| :--- | :--- |
+| `kindlechat`, `dm_message`, `topic_comment`, `neighbourhood_comment`, `suggestion_comment` | a second independent reporter reports it, **or** `moderateContent(contentSnapshot)` returns `flagged: true` |
+| `topic`, `neighbourhood_post`, `suggestion` | a second independent reporter reports it (unchanged) |
+| any of the above, moderation call fails / no API key / no snapshot | deleted as before — an OpenAI outage must not leave harassment standing |
+
+A report that moderation clears is **not** deleted and stays `pending` with
+`resolutionNote: "Held for review (moderation found nothing)"`, so the owner still sees the report
+(and can spot a serial reporter). Every message already passed moderation on the way in, so most
+legitimate reports now land in that state.
+
+Notes for maintainers:
+* The re-check is one `moderateContent()` call per first report, inside the existing `report`
+  token bucket (5 tokens / 12 min). `moderateContent()` caches by text, so the send-time verdict is
+  usually reused.
+* `scripts/test-reports.js` asserts the whole rule: the old unconditional path must stay gone, the
+  moderation gate must exist, the fail-safe branch must exist, and the client warning copy must say
+  "removed immediately when reported and moderation agrees".
+* **Deploy the worker before the Pages build** (`cd workers/rekindle-moderate && npx wrangler deploy`);
+  the client side only carries the warning copy.
+* There is no new field, collection or rule — `resolutionNote` already existed on reports.
+
+
 ### Security: Escaping for JS String Literals
 When passing user-generated text into `onclick` HTML attributes, **never rely solely on `escapeHtml()`**. HTML entity decoding happens before JS execution, so `&#039;` becomes `'` and breaks out of the string literal.
 

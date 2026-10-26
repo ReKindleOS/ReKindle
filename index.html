@@ -71,7 +71,7 @@
     <script src="time.js?v=5" defer></script>
     <script src="icons.js?v=8" defer></script>
     <script src="icons-beta.js?v=1" defer></script>
-    <script src="theme.js?v=33" defer></script>
+    <script src="theme.js?v=34" defer></script>
     <script src="bad_words.js?v=4" defer></script>
     <script src="js/i18n.js?v=4" defer></script>
     <script src="js/ui-kit.js?v=2" defer></script>
@@ -1754,10 +1754,16 @@
             if (isFirebaseAvailable && auth) {
                 auth.onAuthStateChanged(user => {
                     const currentUid = user ? user.uid : null;
-                    if (currentUid !== lastUid) {
+                    // Only wipe the asset cache when the browser switches between
+                    // two signed-in accounts. The old rule fired on every
+                    // null->uid transition too, which threw away every cached
+                    // asset at the exact moment the user signed in (a full
+                    // re-download on e-ink) and gave the sign-in flow one more
+                    // chance to be interrupted.
+                    if (lastUid && currentUid && currentUid !== lastUid) {
                         clearServiceWorkerCache();
-                        lastUid = currentUid;
                     }
+                    lastUid = currentUid;
 
                     if (user) {
                         currentUser = user;
@@ -1768,6 +1774,9 @@
                         if (user.email.endsWith("@rekindle.ink")) {
                             displayUser = user.email.replace("@rekindle.ink", "");
                         }
+                        // Remember the name so the "session ended unexpectedly"
+                        // prompt can pre-fill the login form (see handleGuestMode).
+                        try { localStorage.setItem('rekindle_last_username', displayUser); } catch (e) { /* storage disabled */ }
 
                         document.getElementById('user-badge').onclick = function () {
                             location.href = 'neighbourhood?uid=' + user.uid;
@@ -1837,7 +1846,34 @@
             const wasPro = isPro;
             isPro = false;
             localStorage.setItem('rekindle_is_pro', isPro.toString());
-            localStorage.removeItem('rekindle_uid');
+
+            // If this browser knew a uid, we were signed in and something ended
+            // the session (a reload that beat the auth write, a revoked token,
+            // an IP ban). Say so once and offer the pre-filled login instead of
+            // silently resetting to Guest Mode — that silent reset is what the
+            // "sign in glitch" reports described.
+            let previousUid = null;
+            try {
+                previousUid = localStorage.getItem('rekindle_uid');
+                localStorage.removeItem('rekindle_uid');
+            } catch (e) { /* storage disabled */ }
+
+            const noticeKey = 'rekindle_signout_notice';
+            if (previousUid) {
+                console.warn('[auth] signed-out state after a stored session (uid ' + previousUid + ')');
+                let alreadyShown = null;
+                try { alreadyShown = sessionStorage.getItem(noticeKey); } catch (e) { /* ignore */ }
+                if (!alreadyShown) {
+                    try { sessionStorage.setItem(noticeKey, '1'); } catch (e) { /* ignore */ }
+                    setTimeout(function () {
+                        let lastUser = '';
+                        try { lastUser = localStorage.getItem('rekindle_last_username') || ''; } catch (e) { /* ignore */ }
+                        const field = document.getElementById('username');
+                        if (field && lastUser) field.value = lastUser;
+                        showGenericModal('Signed out', 'Your session ended unexpectedly. Sign in again to keep your account loaded on this device.');
+                    }, 600);
+                }
+            }
 
             document.getElementById('user-display').innerText = window.t ? window.t('home.guest_mode', 'Guest Mode') : "Guest Mode";
             document.getElementById('auth-btn').innerText = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : "LOG IN / REGISTER";
@@ -2906,7 +2942,14 @@
             if (credentialsMissing(u, p)) { document.getElementById('login-msg').innerText = "Error: Please enter a valid username and password."; return; }
 
             document.getElementById('login-msg').innerText = "Connecting...";
+            // A service-worker controllerchange reload fires a fresh page load.
+            // If that lands inside signInWithEmailAndPassword it aborts the
+            // request — the reported "it reloads right after I tap Log In and
+            // then I am back in Guest Mode". theme.js checks this flag before
+            // reloading; keep it set for the whole flow.
+            window.__rkAuthBusy = true;
             try {
+                await ensureAuthPersistence();
                 const email = u.includes('@') ? u : u + "@rekindle.ink";
                 await auth.signInWithEmailAndPassword(email, p);
                 // After sign-in, call the server to verify the IP. The function uses
@@ -2926,6 +2969,22 @@
                     ? "Invalid username or password."
                     : (e.message || "Login failed.");
                 document.getElementById('login-msg').innerText = "Error: " + msg;
+            } finally {
+                window.__rkAuthBusy = false;
+            }
+        }
+
+        // Persist the session in localStorage before the first sign-in so a page
+        // load that lands mid-flow can restore it. Best effort: a browser that
+        // refuses setPersistence still signs in with the SDK default.
+        let authPersistenceReady = false;
+        async function ensureAuthPersistence() {
+            if (authPersistenceReady || !auth || !firebase.auth.Auth || !firebase.auth.Auth.Persistence) return;
+            try {
+                await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+                authPersistenceReady = true;
+            } catch (e) {
+                console.warn('[auth] setPersistence(LOCAL) unavailable:', e && e.message ? e.message : e);
             }
         }
         const isForbiddenUsername = (u) => { const forbidden = ["root", "system", "admin", "administrator", "mod", "moderator", "support", "ukiyo", "rekindle", "wantban", "kindlehub", "khub", "unreader", "inkchat"]; const lowerU = u.toLowerCase(); return forbidden.some(word => lowerU.includes(word)); };
@@ -2945,7 +3004,9 @@
             if (isBadWord(u)) { document.getElementById('login-msg').innerText = "Error: Username contains inappropriate language."; return; }
 
             document.getElementById('login-msg').innerText = "Registering...";
+            window.__rkAuthBusy = true;
             try {
+                await ensureAuthPersistence();
                 // Registration goes through a Cloud Function so the IP ban check
                 // runs server-side — it cannot be bypassed via browser dev tools.
                 const registerUser = firebase.functions().httpsCallable('registerUser');
@@ -2966,6 +3027,8 @@
                     }
                 }
                 document.getElementById('login-msg').innerText = "Error: " + msg;
+            } finally {
+                window.__rkAuthBusy = false;
             }
         }
         function confirmLogout() {

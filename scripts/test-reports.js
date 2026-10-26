@@ -124,6 +124,26 @@ const root = path.join(__dirname, '..');
     assert.ok(/commentLabel\.textContent = 'Comment \*'/.test(clientSource),
         'the modal must mark the comment as required');
 
+    /* ------------------------------------------------------------------ */
+    /* 6. One report cannot delete content on its own (2026-10-26)         */
+    /* ------------------------------------------------------------------ */
+    // Repeat reports of a single user deleting other people's messages ended
+    // the "1 report = instant removal" rule. Chat/comment/DM content now needs a
+    // moderation hit or a second independent reporter, and the old
+    // unconditional path must not come back.
+    assert.ok(!/shouldDeleteImmediately/.test(workerSource),
+        'the unconditional immediate-delete path must be gone from the Worker');
+    assert.ok(/await moderateContent\(reportContentSnapshot, env\.OPENAI_API_KEY\)/.test(workerSource),
+        'a single report must be confirmed by moderateContent() before deleting');
+    assert.ok(/if \(!moderationChecked \|\| flagged\)/.test(workerSource),
+        'a failed moderation call must fall back to the old delete behaviour');
+    assert.ok(/Auto-deleted after 2 reports/.test(workerSource),
+        'two independent reporters must still remove the content');
+    assert.ok(/Held for review \(moderation found nothing\)/.test(workerSource),
+        'a cleared report must be kept pending with a note, not deleted');
+    assert.ok(/removed immediately when reported and moderation agrees/.test(clientSource),
+        'the client warning must describe the moderation-confirmed rule');
+
     console.log('PASS - report comments');
     console.log('  rejected samples: ' + rejected.length);
     console.log('  accepted samples: ' + accepted.length);

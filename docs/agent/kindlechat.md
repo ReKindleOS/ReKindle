@@ -492,3 +492,30 @@ options fit a 600 px window. Reaction keys are not whitelisted by the RTDB
 rules (only `reaction` + `username` are validated), so no rules change was
 needed. Bump `emojis.js?v=` in `kindlechat.html` whenever this list or the SVGs
 change.
+
+## On-demand translation (2026-10-26)
+
+The stored-translation pipeline is dead (see [integrations.md](integrations.md#translation-providers-googles-gtx-endpoint-is-dead-2026-10-26)):
+`workers/rekindle-translate` scraped Google's gtx endpoint, which now blocks every client, so
+`kindlechat/translations_by_lang/*` stopped on 2026-10-19.
+
+What ships instead:
+
+* **`requestTranslation(msgId)`** — an untranslated text bubble now renders
+  `id="bubble-<msgId>" data-state="original" data-original="<text>"` and a small `Translate` link in
+  `.msg-meta` (only when `settings.showTranslations` is on, the message is not your own, and there is
+  body text). One tap = one `js/translate-client.js` request for the reader's language; the result
+  goes into `langTranslations[msgId]` and is patched in with the existing
+  `applyTranslationToRenderedMessage()`, so no `renderMessage()` rebuild, no emoji re-walk, no avatar
+  redraw. The link is removed once translated and `Show Original` / `Show Translated`
+  (`toggleTranslation`) keeps working because the bubble now carries its original text.
+* **`fireTranslationRequest()` is RETIRED.** It is never called; the send path has a comment where the
+  call used to be. Do not re-enable it without a keyed provider: it fired up to 4 Worker requests and 4
+  forced `getIdToken(true)` refreshes per message.
+* `langTranslations` and the scoped `translations_by_lang/<lang>` listener are unchanged, so any
+  future server-side translation still appears without a client change.
+* Same treatment for Neighbourhood posts: `requestPostTranslation(postId)` in `neighbourhood.html`
+  patches `#post-text-<id>` (via `textContent`, no innerHTML sink) and inserts the toggle itself.
+* Failure states are explicit instead of silent: `translate.msg.unavailable`,
+  `translate.msg.budget`, `translate.msg.detect_failed`, `translate.msg.same_language` (all ten
+  locales).

@@ -403,3 +403,78 @@ is now complete.
   162 scripts across 138 pages).
 - After touching a shared script, bump `?v=` in **every** including page (and `sw.js`
   `ASSETS_TO_CACHE` if listed), then `npm run build` — the deploy ships `_deploy/main`.
+
+---
+
+## 2026-10-26 pass — what shipped, what was deliberately left out
+
+Shipped in this pass (details in the matching topic docs):
+
+| Item | Where it is documented |
+| :--- | :--- |
+| Browser-side translation (MyMemory + LibreTranslate fallback), Translate app repaired | [integrations.md](integrations.md#translation-providers-googles-gtx-endpoint-is-dead-2026-10-26) |
+| KindleChat / Neighbourhood on-demand translation, server fan-out retired | [kindlechat.md](kindlechat.md#on-demand-translation-2026-10-26) |
+| Report deletion requires a moderation hit or a second reporter | [moderation-reports.md](moderation-reports.md#auto-delete-behaviour) |
+| Sign-in hardening (no SW reload mid-auth, persistence, "session ended" prompt) | this file, below |
+| Maze difficulty levels | [games.md](games.md#maze-difficulty-levels-2026-10-26) |
+| Pixel-art gallery manifest can no longer be clobbered by a cache wipe | this file, below |
+| Bluesky shell translated in all 10 locales | [i18n.md](i18n.md#bluesky-dynamic-ui-needs-a-js-translation-helper-2026-10-26) |
+
+### Deferred by request — the open Suggestions board (2026-10-26)
+
+The board held **197 open rows** (269 done, 52 deferred, 189 closed). Everything below was
+considered for this pass and deliberately left out; vote counts are from that read.
+
+**Games / big features (multi-day, not "small + safe"):** Fencing or multiplayer sports (76),
+Murder Mystery (74), Pokémon/Sonic ports (42), Doodle Jump (37), Infinite Craft (34 + 7 + 0),
+colour-by-number (26), tower defence (20 + 19 + 0), werewolf (8 + 8), merge games (8), "who beats
+who" (10), Zelda-style games (25), "8 ball pool / bomberman / pacman" (22), Escorial (1), Murderdoku
+(0), Paper Minecraft (3), Gartic-style live drawing game (1), "legends city" (0), build-a-city (0),
+iPhone-builder (1).
+
+**Apps / integrations:** Fandom reader (42), lyrics + transcript search (25), F1 race results (7),
+world-map facts app (0), KindleTube (1), neal.fun games (3), memes feed (3), an SDK / community app
+uploads (2), "app store" with install/delete (0), hyperlinked planner (0), sheet music beyond
+classical (1), "publish your own books/comics" (2).
+
+**Feature requests that need a design decision:** save a ReKindle user to a favourites/contacts list
+(33) plus the friends cluster (4 + 3 + 4), group chats (9 + 8), pixel-art trace **templates** (41),
+pixel-art layers (22), save pixel art from chat (done), image import from PC for avatars (1),
+notes alignment (7), notes export to azw3/kepub/epub (7), "report user, not only message" (1),
+shipping/edating policy (2), chat slash commands (1), Japanese romaji in Languages (1),
+editable featured apps (0), topics posting restriction for new accounts (9), account-age rules (9),
+live streaming of high scores (8).
+
+**Follow-ups this pass created (do these before the deferrals above):**
+1. **Keyed translation provider.** MyMemory is 5,000 chars/day per IP (50,000 with the contact
+   address) and per-IP budgets are shared inside a household/school. If auto-translation comes back
+   (or chat volume outgrows on-demand), add DeepL Free (500k chars/month) or Azure Translator
+   (2M/month) behind a Pages Function on the **social** account, and feed it from the same
+   `js/translate-client.js` call sites. Do not restore `fireTranslationRequest` as-is.
+2. **Sign-in verification on a device.** The 2026-10-26 fixes (skip the SW reload while
+   `window.__rkAuthBusy`, `setPersistence(LOCAL)` before sign-in, keep the session's uid for a
+   "session ended unexpectedly" prompt) were reasoned from code: no Kindle was available. If the
+   report recurs, capture the console line `[auth] signed-out state after a stored session (uid …)`
+   and whether `controllerchange` logged the skip.
+3. **Pixel canvas drafts.** `saveManifest()` now unions with the cloud copy and refuses to write an
+   empty list over a non-empty one, so gallery entries survive a Kindle cache wipe. The *drawing*
+   data was already synced (`users/{uid}/pixel_drawings`). Worth re-checking the report
+   "my pixel art disappears" after this ships before adding anything bigger.
+4. **Neighbourhood comments** still have no translate affordance (posts do). Low volume, but it is
+   the obvious next tap-target if the feature is popular.
+
+### Board rows ready to close after this pass deploys (do **not** mark early)
+
+`admin/mark_shipped_suggestions.js` is title-checked — add these ids to its `SHIPPED` list **after**
+the Pages deploy + the moderation Worker deploy, then dry-run and `--apply`:
+
+| id | title | why it is fixed |
+| :--- | :--- | :--- |
+| `-P1xxX2H-mw7CdAYDxzA` | Translate broken | Translator app moved to MyMemory/LibreTranslate in the browser |
+| `-P2U4lIHw8RpXTXIQbLZ` | please i cant even sign in | auth-busy guard + explicit persistence + session-ended prompt |
+| `-P4dTra4d9ZuCcP0Ixv7` | sign in glitch | same fix set as above |
+| `-P2aNV3zhT7mk3KCEaPi` | PEOPLE KEEP SPAM REPORTING | a single report only deletes when moderation confirms it |
+| `-Oy5K55IArk3Qy-aJbyZ` | Report Function (21 votes) | same: reported content is re-checked instead of removed instantly |
+| `-P4qSoQgU0ysrQuJRqZO` | make the mazes harder | Easy / Normal / Hard in `maze.html` |
+
+Anything else that is *partly* addressed (e.g. the friends/saved-users cluster) stays open.

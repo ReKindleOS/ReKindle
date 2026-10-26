@@ -845,10 +845,18 @@
                     });
             });
 
-            // Forced Update Logic: Reload when a new service worker takes control
+            // Forced Update Logic: Reload when a new service worker takes control.
+            // Never reload while a sign-in/registration is in flight: the reload
+            // aborts the auth request and the user comes back in Guest Mode
+            // (the "it reloads right after I tap Log In" reports, 2026-09/10).
+            // Skipping costs nothing — the new worker controls the next navigation.
             var refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', function () {
                 if (refreshing) return;
+                if (window.__rkAuthBusy) {
+                    console.log('Service Worker: controller changed during sign-in; not reloading.');
+                    return;
+                }
                 refreshing = true;
                 console.log('Service Worker: Controller changed. Reloading page...');
                 window.location.reload();

@@ -14,7 +14,7 @@
     <script src="js/score-submit.js?v=1" data-game="maze"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="js/i18n.js?v=4"></script>
-    <script src="theme.js?v=33"></script>
+    <script src="theme.js?v=34"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -297,12 +297,39 @@
         .score-board {
             display: flex;
             justify-content: center;
+            align-items: center;
             width: 100%;
             margin-bottom: 15px;
             font-family: monospace;
             font-weight: bold;
             font-size: 1rem;
             flex-shrink: 0;
+        }
+
+        /* Difficulty picker: plain buttons (no select, no new dependency) so the
+           row still works on a Kindle without custom-select.js. Margins, not
+           flex `gap` — Chromium 75 has no flex gap. */
+        .level-picker {
+            margin-left: 12px;
+            white-space: nowrap;
+        }
+
+        .level-btn {
+            background: white;
+            color: black;
+            border: 2px solid black;
+            padding: 3px 8px;
+            margin-left: 4px;
+            font-family: inherit;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: none;
+        }
+
+        .level-btn:active {
+            background: black;
+            color: white;
         }
 
         @media (max-height: 700px), (max-width: 400px) {
@@ -341,6 +368,11 @@
         <div class="window-content">
             <div class="score-board">
                 <span><span data-i18n="maze.label.completed">Completed</span>: <span id="score">0</span></span>
+                <span class="level-picker">
+                    <button id="maze-level-easy" class="level-btn" onclick="setMazeLevel('easy')" data-i18n="maze.level.easy">Easy</button>
+                    <button id="maze-level-normal" class="level-btn" onclick="setMazeLevel('normal')" data-i18n="maze.level.normal">Normal</button>
+                    <button id="maze-level-hard" class="level-btn" onclick="setMazeLevel('hard')" data-i18n="maze.level.hard">Hard</button>
+                </span>
             </div>
 
             <div class="canvas-container">
@@ -400,9 +432,49 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const CANVAS_SIZE = 500;
-        const GRID_SIZE = 25;
-        const COLS = CANVAS_SIZE / GRID_SIZE;
-        const ROWS = CANVAS_SIZE / GRID_SIZE;
+
+        // Difficulty presets (suggestion: "make the mazes harder", 2026-10-26).
+        // The canvas stays 500x500 and every preset divides it evenly, so wall
+        // lines land on whole pixels and stay crisp on e-ink. A perfect maze has
+        // exactly one solution, so more cells = longer, harder maze.
+        const MAZE_LEVELS = {
+            easy: { grid: 50 },
+            normal: { grid: 25 },
+            hard: { grid: 20 }
+        };
+        let currentMazeLevel = 'normal';
+        let GRID_SIZE = MAZE_LEVELS.normal.grid;
+        let COLS = CANVAS_SIZE / GRID_SIZE;
+        let ROWS = CANVAS_SIZE / GRID_SIZE;
+
+        function syncMazeLevelButtons() {
+            Object.keys(MAZE_LEVELS).forEach(function (id) {
+                var btn = document.getElementById('maze-level-' + id);
+                if (!btn) return;
+                if (id === currentMazeLevel) {
+                    btn.style.background = 'black';
+                    btn.style.color = 'white';
+                } else {
+                    btn.style.background = 'white';
+                    btn.style.color = 'black';
+                }
+            });
+        }
+
+        function applyMazeLevel(level) {
+            if (!MAZE_LEVELS[level]) level = 'normal';
+            currentMazeLevel = level;
+            GRID_SIZE = MAZE_LEVELS[level].grid;
+            COLS = CANVAS_SIZE / GRID_SIZE;
+            ROWS = COLS;
+            try { localStorage.setItem('rekindle_maze_level', level); } catch (e) { /* storage disabled */ }
+            syncMazeLevelButtons();
+        }
+
+        function setMazeLevel(level) {
+            applyMazeLevel(level);
+            initGame();
+        }
 
         let grid = [];
         let path = [];
@@ -444,6 +516,10 @@
             });
 
             onAuthReady.then(() => {
+                // Restore the saved difficulty before the first maze is built.
+                var savedLevel = null;
+                try { savedLevel = localStorage.getItem('rekindle_maze_level'); } catch (e) { /* storage disabled */ }
+                applyMazeLevel(savedLevel || 'normal');
                 loadPersonalHighScore().then(() => {
                     initGame();
                 });

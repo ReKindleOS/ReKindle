@@ -780,11 +780,12 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
     <script src="js/social-token-cache.js?v=1"></script>
     <script src="time.js?v=5"></script>
-    <script src="theme.js?v=33"></script>
+    <script src="theme.js?v=34"></script>
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
     <script src="js/social-endpoints.js?v=1"></script>
     <script src="js/worker-client.js?v=1"></script>
+    <script src="js/translate-client.js?v=1"></script>
     <link rel="stylesheet" href="css/custom-select.css">
     <script src="js/i18n.js?v=4"></script>
     <script src="js/ui-kit.js?v=2"></script>
@@ -3201,6 +3202,16 @@
                 toggleBtnHtml = `<div style="margin-top: 5px;"><span id="toggle-${escapeHtml(post.id)}" onclick="toggleTranslation('${escapeHtml(post.id)}')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${trLabel}</span></div>`;
             }
 
+            // On-demand translation (2026-10-26). The server fan-out that wrote
+            // post.translation is dead — Google's gtx endpoint blocks every
+            // client — so the reader translates in their own browser, one
+            // request per tap. See js/translate-client.js.
+            let translateBtnHtml = '';
+            if (!isTranslatedDisplay && currentUser && post.uid && post.uid !== currentUser.uid && post.text) {
+                const tlLabel = window.t ? window.t('translate.btn.translate', 'Translate') : 'Translate';
+                translateBtnHtml = `<div style="margin-top: 5px;"><span id="translate-${escapeHtml(post.id)}" onclick="requestPostTranslation('${escapeHtml(post.id)}')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${tlLabel}</span></div>`;
+            }
+
             if (window.filterBadWords) {
                 displayText = window.filterBadWords(displayText);
             }
@@ -3266,6 +3277,7 @@
                              </div>
                              <div id="post-text-${post.id}" data-state="${isTranslatedDisplay ? 'translated' : 'original'}" data-original="${escapeHtml(censorProfileText(post.text))}" data-translated="${escapeHtml(censorProfileText(translationText || ''))}" style="white-space:pre-wrap; font-size:0.9rem; line-height:1.4; margin-top:5px; ${isTranslatedDisplay ? 'font-style:italic;' : ''}">${escapeHtml(censorProfileText(displayText))}</div>
                              ${toggleBtnHtml}
+                             ${translateBtnHtml}
                         </div>
                     </div>
                     <!-- COMMENTS SECTION -->
@@ -3894,6 +3906,64 @@
         }
 
         // --- ADMIN ACTIONS & TRANSLATION ---
+
+        // On-demand post translation (2026-10-26). Replaces the dead server
+        // fan-out: the reader translates in their own browser, one request per
+        // tap, using their own per-IP budget. See js/translate-client.js.
+        var pendingPostTranslations = {};
+
+        function requestPostTranslation(postId) {
+            var link = document.getElementById('translate-' + postId);
+            var textDiv = document.getElementById('post-text-' + postId);
+            if (!link || !textDiv || pendingPostTranslations[postId]) return;
+
+            var text = textDiv.getAttribute('data-original') || textDiv.textContent || '';
+            if (!text) return;
+
+            if (!window.rekindleTranslateClient) {
+                link.textContent = window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+                return;
+            }
+
+            var target = (typeof userLang !== 'undefined' && userLang) ? userLang : 'en';
+            pendingPostTranslations[postId] = true;
+            link.textContent = window.t('translate.msg.translating', 'Translating...');
+
+            window.rekindleTranslateClient.translate(text, 'auto', target).then(function (translated) {
+                delete pendingPostTranslations[postId];
+                if (!translated || String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
+                    link.textContent = window.t('translate.msg.same_language', 'Already in this language');
+                    return;
+                }
+                var safe = translated;
+                if (window.censorProfileText) safe = window.censorProfileText(safe);
+                if (window.filterBadWords) safe = window.filterBadWords(safe);
+
+                textDiv.setAttribute('data-translated', safe);
+                textDiv.setAttribute('data-state', 'translated');
+                textDiv.style.fontStyle = 'italic';
+                textDiv.textContent = safe; // textContent: no innerHTML sink
+
+                if (!document.getElementById('toggle-' + postId)) {
+                    var wrap = document.createElement('div');
+                    wrap.style.marginTop = '5px';
+                    var span = document.createElement('span');
+                    span.id = 'toggle-' + postId;
+                    span.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;';
+                    span.textContent = window.t ? window.t('kindlechat.msg.show_original', 'Show Original') : 'Show Original';
+                    span.onclick = function () { toggleTranslation(postId); };
+                    wrap.appendChild(span);
+                    textDiv.parentNode.insertBefore(wrap, textDiv.nextSibling);
+                }
+                if (link.parentNode) link.parentNode.removeChild(link);
+            })['catch'](function (e) {
+                delete pendingPostTranslations[postId];
+                link.textContent = (e && e.code === 'budget')
+                    ? window.t('translate.msg.budget', 'Translation limit for this session reached. Try again later.')
+                    : window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+            });
+        }
+
         function toggleTranslation(postId) {
             const textDiv = document.getElementById('post-text-' + postId);
             const toggleBtn = document.getElementById('toggle-' + postId);

@@ -652,7 +652,7 @@ Every social report must carry a comment containing at least one real word (2+ l
 
 ### 7. The Moderation Console Is Owner-Only and Automod-First
 
-Social moderation is automated end to end: the Worker moderates every write and `/reports` auto-deletes on 1 report (chat, DMs, comments) or 2 independent reports (topics, posts, suggestions). `moderation.html` is therefore an **owner-only** console — no moderator grants, mod-mode, timeouts or manual action log. Its tabs are Automod Log, Reports, Banned IPs, Users and Content Review. Automod rejections live in the **social** RTDB (`/automod_log`, written by `logAutomodRejection()`, pruned after 30 days); the `automod_log`/`automod_strikes`/`automod_last_action` rules in `rtdb-rules.json` were dead and have been removed. See [moderation-reports.md](docs/agent/moderation-reports.md).
+Social moderation is automated end to end: the Worker moderates every write and `/reports` auto-deletes when moderation confirms the report (chat, DMs, comments — since 2026-10-26 one reporter cannot delete alone) or on 2 independent reports (everything else). `moderation.html` is therefore an **owner-only** console — no moderator grants, mod-mode, timeouts or manual action log. Its tabs are Automod Log, Reports, Banned IPs, Users and Content Review. Automod rejections live in the **social** RTDB (`/automod_log`, written by `logAutomodRejection()`, pruned after 30 days); the `automod_log`/`automod_strikes`/`automod_last_action` rules in `rtdb-rules.json` were dead and have been removed. See [moderation-reports.md](docs/agent/moderation-reports.md).
 
 ## 🔐 Server Boundary Rules (2026-10-20 audit)
 

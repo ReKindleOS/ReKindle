@@ -779,3 +779,54 @@ Two behaviours to remember:
 Outlook.com → Settings → Mail → Forwarding to a Gmail address, then Gmail →
 "Send mail as" the Hotmail alias. Receive and send both work as
 `you@hotmail.com`; old mail and folders stay invisible in Mail.
+
+## Translation providers: Google's gtx endpoint is dead (2026-10-26)
+
+**Read this before touching anything that translates.** As of **2026-10-19** Google's unofficial
+`translate.googleapis.com/translate_a/single?client=gtx` endpoint answers every non-Google client
+with its bot-block page ("Our systems have detected unusual traffic…", a reCAPTCHA form). Verified
+2026-10-26 from a residential IP, from Cloudflare Pages egress (`/api/proxy`), with and without a
+browser User-Agent, with `dj=1`, and against `clients5.google.com` and `translate.google.com/m`. It
+is not an IP-reputation problem you can retry around: **every** public lingva mirror (which is just
+a gtx proxy) failed the same way — three served a Cloudflare challenge, two returned `500`, one was
+a paused deployment.
+
+Consequences observed in production: `kindlechat/translations_by_lang/*` stops at messages from
+2026-10-19, and the 40 newest chat messages had no translation in any language bucket.
+
+### What replaced it: `js/translate-client.js` (browser-side)
+
+| Step | Provider | Limit |
+| :--- | :--- | :--- |
+| translate (primary) | `GET https://api.mymemory.translated.net/get?q=…&langpair=en\|es&de=hello@rekindle.ink` | **5,000 chars/day per IP anonymous, 50,000/day with a reachable contact address** — billed in characters, not requests ([usage limits](https://mymemory.translated.net/doc/usagelimits.php)) |
+| language detection ("Detect") | `POST https://translate.disroot.org/detect` | 3 requests/minute per IP |
+| translate (fallback) | `POST https://translate.disroot.org/translate` (LibreTranslate) | 3 requests/minute per IP, lower quality — fallback only |
+
+Consumers: `translate.html` (the whole app), `kindlechat.html` `requestTranslation()`, and
+`neighbourhood.html` `requestPostTranslation()`. The helper caches in memory + `sessionStorage`
+(`rk-tr:` keys), chunks at 450 characters (MyMemory rejects `q` > 500), budgets 200 network calls
+per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` / `empty`).
+
+### Rules for this area
+
+1. **Zero Cloudflare cost, by design.** Translation happens in the reader's browser: no Worker
+   invocation, no Pages Function, no Firebase read/write, no OpenAI call. If a server-side provider
+   is ever needed it must go on the **ReKindle Social** account (`js/social-endpoints.js`), never the
+   main account's 100k/day Free quota. See [usage-limits.md](usage-limits.md).
+2. **On demand only.** One request per explicit tap. Do not translate a rendered feed: the budget is
+   characters/day per IP, and a household/school/share-house network shares one budget. Chat is
+   repetitive and the cache keys on the text, so repeats are free.
+3. **Do not restore the server fan-out** (`fireTranslationRequest` in `kindlechat.html`) without a
+   keyed provider. It cost up to 4 Worker invocations plus 4 forced `getIdToken(true)` calls per
+   sent message and produced nothing for a week. It is kept, marked RETIRED, as the reference
+   implementation.
+4. **Never mask @mentions with `__MENTION_n__`.** The old Google path did, and the provider
+   translated the token: stored rows contain `__MENCION_0__` / `__提及_0__` and the mention was lost.
+   The client translates the raw text; `tagify()` restores links afterwards.
+5. MyMemory errors arrive as **HTTP 200 with a sentence** in `translatedText` ("MYMEMORY WARNING:
+   YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY"). `translate-client.js` rejects those with
+   `BAD_RESULT` so a quota notice is never shown as a translation — keep that guard if you add a
+   provider.
+6. The client path needs no deploy beyond the Pages build. `workers/rekindle-translate` still exists on
+   the social account and still serves `reprocess`/`translateOnly` requests from the admin "Rp" buttons,
+   but no user-facing page calls it now.

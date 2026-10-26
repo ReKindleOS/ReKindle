@@ -543,7 +543,7 @@
             box-shadow: none;
         }
     </style>
-    <script src="theme.js?v=33"></script>
+    <script src="theme.js?v=34"></script>
 </head>
 
 <body>
@@ -1132,23 +1132,73 @@
             isManifestLoaded = true;
         }
 
+        // Union two gallery manifests by id, keeping the copy with the newer
+        // `modified` stamp. Used on save so a wipe of this device's localStorage
+        // cannot erase cloud entries (the "my pixel art disappears" report).
+        function mergeManifests(localItems, cloudItems) {
+            const out = [];
+            const indexById = {};
+            const push = function (item) {
+                if (!item || !item.id || indexById[item.id] !== undefined) return;
+                indexById[item.id] = out.length;
+                out.push(item);
+            };
+            (cloudItems || []).forEach(push);
+            (localItems || []).forEach(function (item) {
+                if (!item || !item.id) return;
+                const existing = indexById[item.id];
+                if (existing === undefined) {
+                    push(item);
+                    return;
+                }
+                if ((item.modified || 0) > (out[existing].modified || 0)) out[existing] = item;
+            });
+            return out;
+        }
+
         async function saveManifest() {
             const key = 'pixel_manifest';
             localStorage.setItem(key, JSON.stringify(manifest)); // Always save local
 
-            if (currentUser) {
-                try {
-                    await db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest').set({ items: manifest });
-                } catch (e) { console.error("Cloud manifest save failed", e); }
-            }
+            if (!currentUser) return;
+            const docRef = db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest');
+            try {
+                const doc = await docRef.get();
+                const cloudItems = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+                if (manifest.length === 0 && cloudItems.length > 0) {
+                    // Nothing local to contribute: adopt the cloud list rather
+                    // than overwriting it with an empty one.
+                    manifest = cloudItems.slice();
+                    localStorage.setItem(key, JSON.stringify(manifest));
+                    return;
+                }
+                const merged = mergeManifests(manifest, cloudItems);
+                if (merged.length !== manifest.length) {
+                    manifest = merged;
+                    localStorage.setItem(key, JSON.stringify(manifest));
+                }
+                await docRef.set({ items: manifest });
+            } catch (e) { console.error("Cloud manifest save failed", e); }
         }
 
         function saveManifestOthers() {
             localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers));
-            if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest_others').set({ items: manifestOthers })
-                    .catch(e => console.error("Cloud save others failed", e));
-            }
+            if (!currentUser) return;
+            const docRef = db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest_others');
+            docRef.get().then(function (doc) {
+                const cloudItems = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+                if (manifestOthers.length === 0 && cloudItems.length > 0) {
+                    manifestOthers = cloudItems.slice();
+                    try { localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers)); } catch (e) { }
+                    return null;
+                }
+                const merged = mergeManifests(manifestOthers, cloudItems);
+                if (merged.length !== manifestOthers.length) {
+                    manifestOthers = merged;
+                    try { localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers)); } catch (e) { }
+                }
+                return docRef.set({ items: manifestOthers });
+            }).catch(function (e) { console.error("Cloud save others failed", e); });
         }
 
         // Migrate old singular keys (pixel_art_16, pixel_art_32, etc) to new system
