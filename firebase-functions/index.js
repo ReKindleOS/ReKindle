@@ -1257,20 +1257,34 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
         }
     });
 
+    // The probe is advisory. Blocking on it bricked a flow that had been working,
+    // and its failure was invisible to the user - so save the address the user
+    // typed (else the sign-in identity) and let the first real call decide. The
+    // probe result still goes to the log, which is where the reason belongs.
     let email = null;
+    let verified = false;
     for (const candidate of candidates) {
         if (await canOpenOutlookMailbox(candidate, json.access_token)) {
             email = candidate;
+            verified = true;
             break;
         }
     }
 
     if (!email) {
+        email = candidates[0] || signInEmail || '';
+    }
+
+    if (!email) {
         await pendingRef.remove().catch(() => { });
-        logger.warn('Outlook sign-in succeeded but no candidate mailbox address opened', {
-            uid: auth.uid, candidates, hint: 'check IMAP is enabled in Outlook.com'
+        logger.warn('Outlook sign-in succeeded without any usable address', { uid: auth.uid, candidates });
+        return { success: true, status: 'error' };
+    }
+
+    if (!verified) {
+        logger.warn('Outlook mailbox probe did not authenticate; saving the typed address anyway', {
+            uid: auth.uid, candidates, saved: email
         });
-        return { success: true, status: 'imap', email: candidates[candidates.length - 1] || null };
     }
 
     // Re-running the flow for a mailbox that is already linked refreshes its
@@ -1299,7 +1313,7 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
 
     // The account list itself lives in the client-readable settings doc, which
     // mail.html owns; the server only ever stores the refresh token.
-    return { success: true, status: 'ok', email, accountId };
+    return { success: true, status: 'ok', email, accountId, verified };
 });
 
 /**
