@@ -890,6 +890,22 @@
         </div>
     </div>
 
+    <!-- RENAME ACCOUNT MODAL -->
+    <div class="modal-overlay" id="rename-modal">
+        <div class="modal-box">
+            <h3 style="margin-top:0;">Rename account</h3>
+            <p id="rename-hint" style="font-size:0.8rem; margin:0 0 12px 0; color:#444;">
+                Shown in the account list.
+            </p>
+            <input type="text" id="rename-input" class="login-input" maxlength="40"
+                placeholder="e.g. Work, Personal, Studio" onkeydown="if (event.key === 'Enter') saveRename()">
+            <div class="modal-btns" style="justify-content:center;">
+                <button class="toolbar-btn" onclick="closeRenameModal()">Cancel</button>
+                <button class="toolbar-btn primary" onclick="saveRename()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- PRO REQUIRED MODAL -->
     <div id="pro-required-modal" class="modal-overlay" style="display:none;">
         <div class="modal-box" style="text-align:center;">
@@ -1008,16 +1024,20 @@
             const stored = idx >= 0 ? accounts[idx] : account;
             saveAccountsLocal();
             updateAccountsButton();
-            persistAccountsToFirebase();
+            // Callers persist once the active account is settled; persisting here
+            // raced with that write and could restore the previous activeId.
             return stored;
         }
 
+        // Returns true when the mailbox actually opened. Email accounts go stale
+        // (revoked app passwords, expired links), and one bad entry must not make
+        // the whole app look broken.
         async function activateAccount(id, options) {
             const opts = options || {};
             const account = accounts.find(a => a.id === id) || null;
             if (!account || !functions) {
                 showAccountsStep();
-                return;
+                return false;
             }
 
             activeAccountId = account.id;
@@ -1035,9 +1055,11 @@
                     if (pass) account._pass = pass;   // memory only
                 }
                 if (!pass) {
-                    showModal('Could not unlock the saved password for ' + account.email + '. Re-add the account.');
-                    showAccountsStep();
-                    return;
+                    if (!opts.quiet) {
+                        showModal('Could not unlock the saved password for ' + account.email + '. Re-add the account.');
+                        showAccountsStep();
+                    }
+                    return false;
                 }
                 imapConfig = {
                     host: account.imap.host,
@@ -1055,16 +1077,20 @@
 
             saveAccountsLocal();
             updateAccountsButton();
-            if (opts.skipLoad) return;
+            if (opts.skipLoad) return true;
 
             resetMailboxView();
             try {
                 await loadFolders();
                 await loadEmails();
+                return true;
             } catch (e) {
                 console.error('Could not open mailbox', e);
-                showModal('Could not open ' + account.email + '. ' + ((e && e.message) || 'Check the account settings.'));
-                if (opts.silentFail) showAccountsStep();
+                if (!opts.quiet) {
+                    showModal('Could not open ' + account.email + '. ' + ((e && e.message) || 'Check the account settings.'));
+                    if (opts.silentFail) showAccountsStep();
+                }
+                return false;
             }
         }
 
@@ -1306,7 +1332,31 @@
                 activeAccountId = accounts[0].id;
             }
             updateAccountsButton();
-            await activateAccount(activeAccountId, { silentFail: true });
+
+            const preferred = activeAccountId;
+            const order = [preferred].concat(accounts.map(a => a.id).filter(id => id !== preferred));
+            let opened = null;
+            for (let i = 0; i < order.length; i++) {
+                const ok = await activateAccount(order[i], {
+                    silentFail: true,
+                    quiet: i < order.length - 1   // only the last failure explains itself
+                });
+                if (ok) {
+                    opened = order[i];
+                    break;
+                }
+            }
+
+            if (!opened) {
+                showAccountsStep();
+                return;
+            }
+            if (opened !== preferred) {
+                const failed = accounts.find(a => a.id === preferred);
+                const now = accounts.find(a => a.id === opened);
+                showModal('Could not open ' + (failed ? failed.email : 'the last account') +
+                    '. Switched to ' + (now ? now.email : 'another account') + '.');
+            }
         }
 
         // Pre-account-list installs stored one mailbox under rekindle_imap_*.
@@ -1362,6 +1412,42 @@
             document.getElementById('outlook-step').style.display = 'none';
         }
 
+        let renamingAccountId = null;
+
+        function openRenameModal(id) {
+            const account = accounts.find(a => a.id === id);
+            if (!account) return;
+            renamingAccountId = id;
+            document.getElementById('rename-input').value = account.label || '';
+            document.getElementById('rename-hint').innerText =
+                'A name for ' + account.email + '. Leave it empty to show the address.';
+            document.getElementById('rename-modal').style.display = 'flex';
+            const input = document.getElementById('rename-input');
+            if (input.focus) input.focus();
+        }
+
+        function closeRenameModal() {
+            renamingAccountId = null;
+            document.getElementById('rename-modal').style.display = 'none';
+        }
+
+        function saveRename() {
+            const account = accounts.find(a => a.id === renamingAccountId);
+            if (!account) {
+                closeRenameModal();
+                return;
+            }
+            // Names are display-only: collapse whitespace, cap the length, and an
+            // empty value falls back to the address.
+            account.label = String(document.getElementById('rename-input').value || '')
+                .replace(/\s+/g, ' ').trim().slice(0, 40);
+            saveAccountsLocal();
+            persistAccountsToFirebase();
+            updateAccountsButton();
+            renderAccountList();
+            closeRenameModal();
+        }
+
         function renderAccountList() {
             const host = document.getElementById('account-list');
             if (!host) return;
@@ -1399,6 +1485,12 @@
 
                 const actions = document.createElement('div');
                 actions.className = 'account-actions';
+
+                const rename = document.createElement('button');
+                rename.className = 'sys-btn';
+                rename.innerText = 'Rename';
+                rename.onclick = () => openRenameModal(account.id);
+                actions.appendChild(rename);
 
                 if (account.id !== activeAccountId) {
                     const use = document.createElement('button');
@@ -2568,6 +2660,7 @@
 
                 const data = doc.data() || {};
                 if (Array.isArray(data.accounts)) {
+                    const localActive = activeAccountId;   // set by loadAccountsLocal()
                     accounts = data.accounts.filter(a => a && a.id && a.email).map(a => ({
                         id: a.id,
                         provider: a.provider || 'custom',
@@ -2579,9 +2672,11 @@
                         smtp: a.smtp || null,
                         passEnc: a.passEnc || null
                     }));
-                    activeAccountId = (data.activeId && accounts.some(a => a.id === data.activeId))
-                        ? data.activeId
-                        : (accounts[0] && accounts[0].id) || null;
+                    // This device's last choice wins as long as it still exists; a
+                    // sync from another device only fills the gap.
+                    const preferred = [localActive, data.activeId]
+                        .find(id => id && accounts.some(a => a.id === id));
+                    activeAccountId = preferred || (accounts[0] && accounts[0].id) || null;
                     if (typeof data.threading === 'boolean') threadingEnabled = data.threading;
                     saveAccountsLocal();
                     return;

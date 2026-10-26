@@ -1083,7 +1083,15 @@ exports.getFolders = onCall(callOptions, async (request) => {
         };
     } catch (err) {
         logger.error("IMAP Folder Error", err);
-        throw new HttpsError('internal', "Could not list mail folders.");
+        // A rejected login (revoked app password, dead Outlook token) is something
+        // the user can fix; a transport failure is not. Both used to surface as the
+        // same opaque message, which read like a ReKindle bug.
+        const message = String((err && err.message) || '');
+        const authFailed = !!err && (err.authenticationFailed === true
+            || /authenticate|authentication|login failed|invalid credentials|not authenticated/i.test(message));
+        throw new HttpsError('internal', authFailed
+            ? "The mail server rejected this account's login. Re-add it, or check its app password."
+            : "Could not list mail folders.");
     } finally {
         if (client) await client.logout().catch(() => { });
     }

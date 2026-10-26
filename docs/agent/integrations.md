@@ -631,6 +631,10 @@ accounts — including several of the same provider — can be signed in at once
   `encrypted`, hosts, `oauth`) are deleted on the first save with
   `FieldValue.delete()`, and legacy local keys are migrated once by
   `migrateLegacyLocalAccount()`.
+* `label` is display-only (max 40 chars, whitespace collapsed, empty falls back
+  to the address) and set through **Rename** in the account sheet
+  (`openRenameModal()` / `saveRename()`). Renaming never touches credentials or
+  the token, and it syncs with the rest of the account list.
 * Account shape: `{ id, provider, email, label, imap, smtp, passEnc }` for
   password accounts and `{ id, provider:'microsoft', email, oauth:'microsoft',
   accountId }` for Outlook. Passwords stay encrypted per account with the
@@ -655,6 +659,18 @@ row, and the badge shows the count; tapping expands the whole conversation
 
 Two behaviours to remember:
 
+* **Startup opens the last-used mailbox, but never strands you on it**
+  (2026-10-26). `addOrUpdateAccount()` used to fire its own
+  `persistAccountsToFirebase()` *before* the caller set `activeAccountId`, so two
+  unawaited writes raced and a stale `activeId` could win — relaunching then
+  opened the previous account (reported as "Could not open timjarnott@gmail.com"
+  after a working Hotmail session). Persistence now happens once, after the
+  active account is settled, and `loadSettingsFromFirebase()` prefers this
+  device's last choice over a Firestore value synced from elsewhere.
+  `activateAccount()` returns a boolean, and startup walks the account list,
+  stopping at the first mailbox that opens and reporting the switch. A rejected
+  login is now distinguishable from a transport failure because `getFolders`
+  classifies imapflow's auth errors.
 * With grouping on, `appendEmailRows()` **rebuilds** the list instead of
   appending, because a new page can merge into threads already on screen. With
   it off the append fast path (scroll position preserved) is still used.
