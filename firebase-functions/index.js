@@ -1082,13 +1082,21 @@ exports.getFolders = onCall(callOptions, async (request) => {
             }))
         };
     } catch (err) {
-        logger.error("IMAP Folder Error", err);
         // A rejected login (revoked app password, dead Outlook token) is something
         // the user can fix; a transport failure is not. Both used to surface as the
         // same opaque message, which read like a ReKindle bug.
         const message = String((err && err.message) || '');
         const authFailed = !!err && (err.authenticationFailed === true
             || /authenticate|authentication|login failed|invalid credentials|not authenticated/i.test(message));
+        // `error`, not `message`: the structured logger treats `message` as the
+        // log line itself and would replace this line's text with it.
+        logger.error('IMAP folder open failed', {
+            error: message,
+            authFailed: authFailed,
+            host: conn.host,
+            user: conn.auth && conn.auth.user ? String(conn.auth.user).replace(/(^.)(.*)(@.*)$/, '$1***$3') : null,
+            oauth: !!(conn.auth && conn.auth.accessToken)
+        });
         throw new HttpsError('internal', authFailed
             ? "The mail server rejected this account's login. Re-add it, or check its app password."
             : "Could not list mail folders.");
