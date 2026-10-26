@@ -1076,13 +1076,10 @@ exports.getUserAuthStatus = onCall(callOptions, async (request) => {
     const callerUid = request.auth.uid;
     const callerRecord = await admin.auth().getUser(callerUid);
     const isAdmin = callerRecord.email === 'ukiyo@rekindle.ink';
-    let isMod = false;
+    // Owner-only: the moderation console is the only caller, and account
+    // status is not something a volunteer moderator needs to probe.
     if (!isAdmin) {
-        const modSnap = await admin.database().ref('moderators/' + callerUid).once('value');
-        isMod = modSnap.exists();
-    }
-    if (!isAdmin && !isMod) {
-        throw new HttpsError('permission-denied', 'Admin or moderator access required.');
+        throw new HttpsError('permission-denied', 'Admin access required.');
     }
 
     try {
@@ -1137,13 +1134,9 @@ exports.getSocialUserAuthStatus = onCall(callOptions, async (request) => {
     const callerUid = request.auth.uid;
     const callerRecord = await admin.auth().getUser(callerUid);
     const isAdmin = callerRecord.email === 'ukiyo@rekindle.ink';
-    let isMod = false;
+    // Owner-only, matching getUserAuthStatus.
     if (!isAdmin) {
-        const modSnap = await admin.database().ref('moderators/' + callerUid).once('value');
-        isMod = modSnap.exists();
-    }
-    if (!isAdmin && !isMod) {
-        throw new HttpsError('permission-denied', 'Admin or moderator access required.');
+        throw new HttpsError('permission-denied', 'Admin access required.');
     }
 
     if (!socialAdminApp) {

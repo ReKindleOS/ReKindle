@@ -1018,6 +1018,39 @@ function moderationErrorMessage(mod) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  REPORT COMMENTS                                                    */
+/* ------------------------------------------------------------------ */
+// Every report must explain itself. The client modal checks the same rule
+// before sending (js/reports.js), but the client is bypassable, so this is
+// the authoritative gate for all report types.
+//
+// KEEP IN SYNC with hasProperWord()/reportCommentError() in js/reports.js.
+const REPORT_COMMENT_MAX = 500;
+
+function hasProperWord(text) {
+    if (!text) return false;
+    try {
+        return new RegExp("\\p{L}{2,}", "u").test(text);
+    } catch (e) {
+        return /[A-Za-z]{2,}/.test(text);
+    }
+}
+
+function reportCommentError(comment) {
+    const text = String(comment || "").trim();
+    if (!text) {
+        return "Please add a comment explaining what is wrong with this content.";
+    }
+    if (!hasProperWord(text)) {
+        return "Please write at least one word — symbols, numbers or emoji alone are not enough.";
+    }
+    if (text.length > REPORT_COMMENT_MAX) {
+        return `Please keep the comment under ${REPORT_COMMENT_MAX} characters.`;
+    }
+    return "";
+}
+
+/* ------------------------------------------------------------------ */
 /*  LOGGING                                                            */
 /* ------------------------------------------------------------------ */
 async function logAutomodRejection(uid, contentType, text, categories, accessToken, options) {
@@ -2569,8 +2602,12 @@ export default {
                 const shouldDeleteImmediately = IMMEDIATE_DELETE_TYPES.includes(contentType);
                 
                 // Validate lengths
-                if (comment && comment.length > 500) {
-                    return new Response(JSON.stringify({ error: "Comment is too long (max 500 characters)." }), { status: 400, headers });
+                // A report without a real explanation is not actionable, so it
+                // never reaches /reports. Applies to every contentType, and is
+                // checked before the rate limiter so bad requests are free.
+                const reportCommentProblem = reportCommentError(comment);
+                if (reportCommentProblem) {
+                    return new Response(JSON.stringify({ error: reportCommentProblem }), { status: 400, headers });
                 }
                 if (contentSnapshot && contentSnapshot.length > 2000) {
                     return new Response(JSON.stringify({ error: "Content snapshot is too long (max 2000 characters)." }), { status: 400, headers });
@@ -2624,7 +2661,7 @@ export default {
                     contentId,
                     contentPath: reportContentPath,
                     reason,
-                    comment: (comment || "").substring(0, 500),
+                    comment: String(comment || "").trim().substring(0, REPORT_COMMENT_MAX),
                     contentSnapshot: reportContentSnapshot,
                     status: "pending",
                     createdAt: Date.now()
@@ -2691,9 +2728,9 @@ export default {
     }
 };
 
-// Exported for scripts/test-chat-spam.js, scripts/test-dm.js and
-// scripts/test-worker-cors.js (unit tests). Wrangler only uses the default
-// export, so these are inert in production.
+// Exported for scripts/test-chat-spam.js, scripts/test-dm.js,
+// scripts/test-reports.js and scripts/test-worker-cors.js (unit tests).
+// Wrangler only uses the default export, so these are inert in production.
 export {
     corsHeaders,
     chatTextShapes,
@@ -2703,5 +2740,7 @@ export {
     parseDmMessagePath,
     dmFlagKeyForOrigin,
     isValidDmText,
-    dmStatusAfterUnblock
+    dmStatusAfterUnblock,
+    reportCommentError,
+    hasProperWord
 };

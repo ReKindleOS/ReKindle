@@ -642,16 +642,15 @@ Any page that reads/writes data owned by the **social** project (e.g. `users_pub
 
 ### 5. Repeated-Message Flood Guard (KindleChat, 2026-10-20)
 
-On 2026-10-19 a user flooded a dead chat for ~30 minutes with `hello hello hello`, `hi hi hi hi bhi hi`, `hhhh…eeee…llll…oooo` and `aaaa` messages. The exact-duplicate check should have stopped the repeat `hello` lines but never did: the newest `kindlechat/user_recent` entry is from **2026-09-21**, so duplicate blocking had silently been dead for a month (the record calls were fire-and-forget after the response, with no `ctx.waitUntil`).
+`evaluateChatRepetition()` in `workers/rekindle-moderate/worker.js` plus the client mirror `js/spam-guard.js` reject a user's 3rd near-identical message inside 10 minutes (and an exact duplicate inside 5) **without adding any Firebase operations**: the state rides in the existing `kindlechat/server_rate_limits/{uid}/kindlechat` bucket as a `rep` string. Never add a separate read/write for spam state, and keep the client mirror in sync with the worker. `node scripts/test-chat-spam.js` replays the real 2026-10-19 flood. Full design: [kindlechat.md](docs/agent/kindlechat.md).
 
-Fix: `evaluateChatRepetition()` in `workers/rekindle-moderate/worker.js` + the client mirror `js/spam-guard.js`.
+### 6. Reporting Requires a Comment
 
-*   **Rule:** a user's 3rd near-identical message within 10 minutes is rejected (`429` with `retryAfter` and a reason string); the exact same message twice within 5 minutes is rejected. Pixel art compares the `grid_data` hash instead.
-*   **Near-identical** = same *dominant* word/letter after collapsing character runs and dropping `@mentions` — `hello` ≡ `hello hello hello` ≡ `hellllooooo` ≡ `hhhh…llll…oooo` — or token-set Jaccard ≥ 0.5 (`hi hi hi` ≡ `hi hi hi bhi hi`).
-*   🔴 **Zero extra Firebase cost (hard requirement — do not break this):** the state is stored in the **existing** `kindlechat/server_rate_limits/{uid}/kindlechat` bucket as a `rep` string (≤ ~350 bytes, hashes only, last 4 message shapes), which the worker already `GET`s and `PUT`s once per message. Never add a separate read/write for spam state. The change removes the 3 per-message `user_recent` ops (check GET + record PUT + cleanup GET), so chat posting is **net −3 RTDB operations**.
-*   Rejected attempts are still recorded, so a spammer cannot outlast the 10-minute window by hammering send.
-*   `kindlechat.html` checks `window.rekindleChatSpamCheck()` in `sendMessage()` (before `checkRules()`) and calls `window.rekindleRecordChatMessage()` after a successful post. The client copy is localStorage-only and must stay in sync with the worker (same KEEP IN SYNC convention as `js/promo-ban.js`). `doSendMessage()` shows the worker's `result.error` for `allowed: false` so the specific reason reaches the user.
-*   Tests: `node scripts/test-chat-spam.js` replays the real flood transcript through the worker logic and the client mirror, and asserts normal conversation is untouched.
+Every social report must carry a comment containing at least one real word (2+ letters, any script). Enforced server-side in the `report` handler (`reportCommentError()` in `workers/rekindle-moderate/worker.js`, checked before the rate limiter) and mirrored in `js/reports.js` so the modal shows the message inline. `scripts/test-reports.js` asserts both gates agree, so change them together.
+
+### 7. The Moderation Console Is Owner-Only and Automod-First
+
+Social moderation is automated end to end: the Worker moderates every write and `/reports` auto-deletes on 1 report (chat, DMs, comments) or 2 independent reports (topics, posts, suggestions). `moderation.html` is therefore an **owner-only** console — no moderator grants, mod-mode, timeouts or manual action log. Its tabs are Automod Log, Reports, Banned IPs, Users and Content Review. Automod rejections live in the **social** RTDB (`/automod_log`, written by `logAutomodRejection()`, pruned after 30 days); the `automod_log`/`automod_strikes`/`automod_last_action` rules in `rtdb-rules.json` were dead and have been removed. See [moderation-reports.md](docs/agent/moderation-reports.md).
 
 ## 🔐 Server Boundary Rules (2026-10-20 audit)
 

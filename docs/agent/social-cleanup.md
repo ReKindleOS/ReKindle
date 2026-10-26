@@ -243,6 +243,25 @@ Watch the first runs in Cloud Logging: `"task":"chat"` should show `deleted` nea
 and `truncated:true` when the cap (not the cutoff) stopped it. If `deleted` is far below
 25,000 because the time budget expired, lower the cap rather than the budget.
 
+## 2026-10-26: the pending-report backlog blocks report retention
+
+Measured on the social RTDB: `/reports` held **17,406 entries, 16,150 of them pending**,
+spanning 2026-06-12 → 2026-10-26. Two consequences:
+
+* Most pending entries are chat/DM reports whose content the chat retention (or the
+  reporter's own later deletion) already removed, so `autoDeleteContent()` fails and the
+  report can never auto-resolve. They are effectively tombstones.
+* `cleanupReports()` pages keys oldest-first and stops as soon as the oldest 500-key page
+  is entirely pending (the documented 2026-10-21 behaviour). With a backlog this large the
+  first page is all pending, so **resolved reports older than 90 days are never pruned** —
+  the task exits on its first page every day.
+
+The moderation console no longer depends on the backlog: it queries
+`orderByChild('status').equalTo(...)` + `limitToLast(N)` instead of downloading `/reports`
+(see moderation-reports.md). If the stale pending entries should be cleared, the durable
+fix is a cleanup pass that resolves pending reports whose `contentType` is a
+single-report type and whose `contentPath` no longer exists — not a console change.
+
 ## Tests
 
 `node scripts/test-cleanup.js` (also part of `npm test`) covers cutoff arithmetic,

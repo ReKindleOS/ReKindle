@@ -36,16 +36,16 @@ DM reports are special because message IDs are only unique inside a thread:
 
 ### RTDB Rules
 Reports live under `/reports` in `rtdb-social-rules.json`:
-- `.read`: `ukiyo@rekindle.ink` or moderators
+- `.read`: `ukiyo@rekindle.ink` **only since 2026-10-26** (was also `auth.token.moderator === true`). Reports carry private DM excerpts, and the console is owner-only, so no volunteer claim should be able to list them.
 - `.write`: `ukiyo@rekindle.ink` or the social service account
-- `.indexOn`: `["contentId", "contentType", "status", "createdAt"]`
+- `.indexOn`: `["contentId", "contentType", "status", "createdAt", "reporterId", "reportedUserId"]`
 
-### RTDB Indexes Required
-Add this index in the Firebase Console under the social RTDB for the `/reports` node:
-- `contentId`
-- `contentType`
-- `status`
-- `createdAt`
+### Report comments are required (2026-10-26)
+Every report must include a comment with **at least one real word** — 2+ letters in any script. `""`, `"!!!"`, `"12345"`, `":)"` and emoji-only comments are rejected.
+- Server gate: `reportCommentError()` in `workers/rekindle-moderate/worker.js`, called in the `report` handler **before** the rate limiter, so a bad request costs no token.
+- Client mirror: `js/reports.js` (`reportCommentError()` / `hasProperWord()`, exported as `window.rekindleReportCommentError` / `window.rekindleReportCommentIsValid`); the modal marks the field `Comment *`.
+- Keep the two in sync — `scripts/test-reports.js` (in `npm test`) loads both and asserts they agree on a sample table plus the 500-char ceiling.
+- Budget: the modal caps input at 200 chars (`maxLength`), the worker accepts up to 500.
 
 ### Rate Limits
 - 60 reports per hour per user (enforced in moderation worker)
@@ -150,4 +150,63 @@ entries can no longer be undone from `moderation.html`. Full design:
   `contentPath` stored on the pending report. `autoDeleteContent()` also validates the path shape
   (`parseCommentPath()`) and that the trailing id matches `contentId` before deleting, and adjusts
   the parent's `commentCount` afterwards (see `performance.md`).
+
+## Moderation console rebuild (2026-10-26)
+
+Social moderation is automated end to end, so `moderation.html` was rebuilt as **one owner-only
+System 7 window with tabs** instead of five stacked panels.
+
+| Tab | Reads/writes |
+| :--- | :--- |
+| Automod Log | `automod_log` (social RTDB), `orderByKey().limitToLast(N)` |
+| Reports | `reports` (social), bounded queries; resolve/dismiss writes |
+| Banned IPs | `banned_ips` (primary), remove |
+| Users | `users_public` / `user_cards` / `users_private` / `users` doc; auth-status callables; Pro + IP + cleanup writes |
+| Content Review | `kindlechat/messages`, social Firestore `topics` / `neighbourhood_posts` |
+
+Removed in the rebuild: Grant/Revoke Moderator, the "Moderator Actions" log with undo/restore
+(it wrote to Firestore collections whose rules are `allow create: if false`, so a restore could
+never succeed), the timeout section (`timeouts` writes), owner-vs-moderator IP redaction, and the
+legacy Firestore `rooms` DM scan (no rules for `rooms` exist any more, so it could only fail).
+
+`?tab=automod|reports|ips|users|content` deep-links a tab. Each tab loads lazily on first visit and
+has its own Refresh, so opening the console no longer fires five reads at once.
+
+### The automod log lives in the SOCIAL RTDB
+
+`logAutomodRejection()` pushes to `automod_log` on **rekindle-socials**, and `cleanupSocial` prunes
+it after 30 days. Two permission problems were fixed in the same pass:
+
+* `rtdb-social-rules.json` had **no `automod_log` node at all** — default-deny meant no client
+  could ever read the log. Added `.read` for the owner, service-account `.write` (the Worker uses
+  its access token), and `.indexOn: ["timestamp", "uid", "contentType"]`.
+* `rtdb-rules.json` carried `automod_log`, `automod_strikes` and `automod_last_action` blocks for
+  the **primary** database that nothing has written (verified: the node is `null` in both
+  projects). Removed so nobody wires a console to the wrong project again.
+
+At audit time `/automod_log` was **empty**, even though the write path works (a create/read/delete
+probe with the social service account succeeded, and `kindlechat/server_rate_limits` — same
+database, same token — is full of live writes). That points at a stale `rekindle-moderate`
+deployment rather than a permissions bug: redeploy the Worker and confirm a rejected message shows
+up before assuming the panel is broken.
+
+### Reports are queried in bounded slices
+
+`/reports` held **17,406 entries (16,150 pending)** on 2026-10-26. The old `fetchReports()` read the
+whole node on every open — several megabytes per page load. It now asks for
+`orderByChild('status').equalTo(<filter>)` + `limitToLast(N)` (or `orderByChild('createdAt')` for
+"All"), with N from the "Show newest" select. Both fields are in `.indexOn`. The table shows
+"Showing newest N", never a fake total.
+
+### Other permissions fixes from the same audit
+
+* `moderation.html` gates on `user.email === 'ukiyo@rekindle.ink'` only. The moderator branch is
+  gone, and a non-owner who opens the page is signed out of the social project.
+* `getUserAuthStatus` / `getSocialUserAuthStatus` were callable by any moderator (they reveal
+  whether a targeted account is disabled). Now owner-only, matching their only caller.
+* `banned_ips` was `.read: true` at the node root, so anyone could dump every banned IP with its
+  usernames and reasons. The root is owner-only now; `$ip` stays publicly readable because
+  `js/ip-ban.js` reads exactly `banned_ips/{formattedIp}`.
+* `reports` `.read` no longer accepts `auth.token.moderator === true` (reports include private DM
+  excerpts and the console is owner-only).
 
