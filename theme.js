@@ -17,15 +17,27 @@
     var ROTATION_KEY = 'rekindle_rotation'; // '0', '90', '180', '270'
     var FONT_KEY = 'rekindle_font_opendyslexic'; // 'true', 'false'
 
-    // Temporarily force light mode while dark mode is disabled.
-    var storedMode = localStorage.getItem(THEME_KEY);
-    if (storedMode === 'dark' || storedMode === 'auto') {
-        localStorage.setItem(THEME_KEY, 'light');
+    // Read the saved mode. `?theme=dark|light|auto` is a preview override for
+    // the screenshot audit and support links. It is kept in sessionStorage (not
+    // localStorage) so it survives the auth redirect to index/login and the
+    // extensionless-URL reload, without changing the saved preference.
+    var PREVIEW_KEY = 'rekindle_theme_preview';
+    function getThemeMode() {
+        var preview = '';
+        try {
+            var match = /[?&]theme=(light|dark|auto)(?:&|$)/.exec(window.location.search);
+            if (match) {
+                preview = match[1];
+                sessionStorage.setItem(PREVIEW_KEY, preview);
+            } else {
+                preview = sessionStorage.getItem(PREVIEW_KEY) || '';
+            }
+        } catch (e) {}
+        return preview || localStorage.getItem(THEME_KEY) || 'light';
     }
 
     function applyTheme() {
-        // Temporarily force light mode regardless of saved preference.
-        var mode = 'light';
+        var mode = getThemeMode();
         var isDark = false;
 
         if (mode === 'dark') {
@@ -33,6 +45,16 @@
         } else if (mode === 'auto') {
             var now = new Date();
             var hour = now.getHours();
+            // Kindle's browser often reports UTC from getHours(). Shift with the
+            // saved manual offset (hours) so Auto switches at the user's local
+            // night, not at UTC night. No timezone helper here: those can open
+            // the setup prompt before the app has even rendered.
+            var storedOffset = parseFloat(localStorage.getItem('rekindle_timezone_offset'));
+            if (!isNaN(storedOffset)) {
+                var utcHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+                var localHour = ((utcHour + storedOffset) % 24 + 24) % 24;
+                hour = Math.floor(localHour);
+            }
             // Check if it's night time (after start hour OR before end hour)
             if (hour >= AUTO_START_HOUR || hour < AUTO_END_HOUR) {
                 isDark = true;
@@ -43,14 +65,82 @@
 
         var doc = document.documentElement;
         if (isDark) {
-            doc.style.colorScheme = 'dark';
+            doc.style.colorScheme = 'light';
             doc.setAttribute('data-theme', 'dark');
             injectDarkStyles();
+            markDarkScrims(document);
+            startScrimObserver();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function () { markDarkScrims(document); });
+            }
         } else {
             doc.style.colorScheme = 'light';
             doc.removeAttribute('data-theme');
             removeDarkStyles();
+            stopScrimObserver();
         }
+    }
+
+    // --- DARK SCRIMS ---
+    // Scrims are usually rgba(0,0,0,.4-.6). The global invert() turns those
+    // into a bright white wash, so mark every full-screen fixed scrim and give
+    // it the inverted source colour. A class is used (rather than a long list
+    // of page selectors) because many pages create their overlay dynamically.
+    var SCRIM_SELECTOR = '.modal-overlay, .overlay, [id$="-overlay"], [id$="-modal"], [class*="overlay"], [style*="position:fixed"], [style*="position: fixed"]';
+    var scrimObserver = null;
+
+    function isDarkScrim(el) {
+        if (!el || el.nodeType !== 1 || !window.getComputedStyle) return false;
+        var cs = window.getComputedStyle(el);
+        if (!cs || cs.position !== 'fixed') return false;
+        var bg = cs.backgroundColor || '';
+        var m = /rgba?\(([0-9]+),\s*([0-9]+),\s*([0-9]+)(?:,\s*([0-9.]+))?\)/.exec(bg);
+        if (!m) return false;
+        var r = +m[1], g = +m[2], b = +m[3];
+        var alpha = (m[4] === undefined) ? 1 : +m[4];
+        if (r > 70 || g > 70 || b > 70 || alpha <= 0) return false;
+        // Hidden overlays have no box yet; mark them anyway so they are right
+        // the first time they open. Visible ones must cover the viewport.
+        var rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && window.innerWidth && window.innerHeight) {
+            if (rect.width < window.innerWidth * 0.8 || rect.height < window.innerHeight * 0.8) return false;
+        }
+        return true;
+    }
+
+    function markDarkScrims(root) {
+        var scope = root || document;
+        var nodes = [];
+        if (scope.nodeType === 1 && scope.matches && scope.matches(SCRIM_SELECTOR)) nodes.push(scope);
+        if (scope.querySelectorAll) {
+            var found = scope.querySelectorAll(SCRIM_SELECTOR);
+            for (var i = 0; i < found.length; i++) nodes.push(found[i]);
+        }
+        for (var j = 0; j < nodes.length; j++) {
+            if (isDarkScrim(nodes[j])) nodes[j].classList.add('rk-dark-scrim');
+        }
+    }
+
+    function startScrimObserver() {
+        if (scrimObserver || !window.MutationObserver) return;
+        scrimObserver = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                var added = mutations[i].addedNodes;
+                for (var j = 0; j < added.length; j++) {
+                    if (added[j].nodeType === 1) markDarkScrims(added[j]);
+                }
+            }
+        });
+        scrimObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    function stopScrimObserver() {
+        if (scrimObserver) {
+            scrimObserver.disconnect();
+            scrimObserver = null;
+        }
+        var marked = document.querySelectorAll('.rk-dark-scrim');
+        for (var i = 0; i < marked.length; i++) marked[i].classList.remove('rk-dark-scrim');
     }
 
     function injectDarkStyles() {
@@ -83,6 +173,18 @@
                 '}\n' +
                 ':root[data-theme="dark"] img.keep-white {\n' +
                 '    filter: none;\n' +
+                '}\n' +
+                '/* Scrims are black translucent in light mode; invert() would turn\n' +
+                '   them into a bright white wash over the whole app. Feed them the\n' +
+                '   inverted source colour so they still dim (and never brighten)\n' +
+                '   the page in dark mode. */\n' +
+                ':root[data-theme="dark"] .modal-overlay,\n' +
+                ':root[data-theme="dark"] [id$="-overlay"]:not(#gallery-flipbook-overlay),\n' +
+                ':root[data-theme="dark"] #ip-ban-fallback-modal,\n' +
+                ':root[data-theme="dark"] #rekindle-ageverif-modal,\n' +
+                ':root[data-theme="dark"] .overlay,\n' +
+                ':root[data-theme="dark"] .rk-dark-scrim {\n' +
+                '    background-color: rgba(255, 255, 255, 0.55) !important;\n' +
                 '}\n';
             document.head.appendChild(style);
         }
@@ -718,25 +820,40 @@
     window.clearServiceWorkerCache = clearServiceWorkerCache;
 
     // --- SERVICE WORKER REGISTRATION & AUTO-RELOAD ---
+    // `?theme=` is the screenshot/support preview. Skip the SW there: a fresh
+    // registration calls clients.claim() -> controllerchange -> reload, which
+    // can interrupt a capture and leave filtered canvas/grid layers unpainted.
+    var previewMode = false;
+    try {
+        previewMode = /[?&]theme=/.test(window.location.search) || !!sessionStorage.getItem(PREVIEW_KEY);
+    } catch (e) {}
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js')
-                .then(function (registration) {
-                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                })
-                .catch(function (err) {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-        });
+        if (previewMode) {
+            if (navigator.serviceWorker.getRegistrations) {
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                    for (var i = 0; i < regs.length; i++) regs[i].unregister();
+                }).catch(function () {});
+            }
+        } else {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(function (registration) {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(function (err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
 
-        // Forced Update Logic: Reload when a new service worker takes control
-        var refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-            if (refreshing) return;
-            refreshing = true;
-            console.log('Service Worker: Controller changed. Reloading page...');
-            window.location.reload();
-        });
+            // Forced Update Logic: Reload when a new service worker takes control
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+                if (refreshing) return;
+                refreshing = true;
+                console.log('Service Worker: Controller changed. Reloading page...');
+                window.location.reload();
+            });
+        }
     }
 
     // --- VIEWPORT LOCKDOWN (Kindle/E-ink) ---

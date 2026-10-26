@@ -4,7 +4,7 @@ import ApplicationServices
 
 // Offscreen WebKit screenshot helper for ReKindle visual audits.
 //
-// usage: shot-webkit <url> <width> <height> <out.png> [js]
+// usage: shot-webkit <url> <width> <height> <out.png> [js] [js-wait-seconds]
 //
 // Kindle Paperwhite-class CSS viewport is ~800x1000 (the 1232x1544 marketing
 // screenshots are ~1.54x of that), and theme.js auto-scale targets 800x906.
@@ -26,7 +26,7 @@ import ApplicationServices
 
 let args = CommandLine.arguments
 guard args.count >= 5 else {
-    print("usage: shot-webkit <url> <w> <h> <out.png> [js]")
+    print("usage: shot-webkit <url> <w> <h> <out.png> [js] [js-wait-seconds]")
     exit(1)
 }
 let urlString = args[1]
@@ -34,6 +34,7 @@ let width = Double(args[2]) ?? 800
 let height = Double(args[3]) ?? 1000
 let outPath = args[4]
 let userJS = args.count > 5 ? args[5] : ""
+let userWait = args.count > 6 ? (Double(args[6]) ?? 0.8) : 0.8
 
 var psn = ProcessSerialNumber(highLongOfPSN: 0, lowLongOfPSN: UInt32(kCurrentProcess))
 TransformProcessType(&psn, ProcessApplicationTransformState(kProcessTransformToBackgroundApplication))
@@ -100,7 +101,7 @@ if userJS.isEmpty {
 } else {
     webView.evaluateJavaScript(userJS + ";0") { _, error in
         if let error = error { print("js error: \(error)") }
-        pump(0.8)
+        pump(userWait)
         snapshot()
     }
 }

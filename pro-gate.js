@@ -42,6 +42,15 @@
         return fallback;
     }
 
+    // The global dark-mode filter inverts a black scrim into a bright white
+    // wash. Feed it white instead under dark mode so it still dims the page.
+    function paywallScrim() {
+        if (document.documentElement.getAttribute('data-theme') !== 'dark') {
+            return 'rgba(0,0,0,0.45)';
+        }
+        return 'rgba(255,255,255,0.55)';
+    }
+
     function ensurePaywallStyles() {
         if (document.getElementById('rk-paywall-styles')) return;
         const style = document.createElement('style');
@@ -69,7 +78,9 @@
             '#paywall-overlay .rk-paywall-primary:active{background:#fff;color:#000;box-shadow:none;transform:translate(2px,2px);}',
             '#paywall-overlay .rk-paywall-secondary{margin-top:8px;background:#fff;color:#000;}',
             '#paywall-overlay .rk-paywall-secondary:active{background:#000;color:#fff;box-shadow:none;transform:translate(2px,2px);}',
-            '#paywall-overlay .rk-paywall-status{font-size:0.72rem;line-height:1.3;color:#555;margin:12px 0 0;min-height:1em;}'
+            '#paywall-overlay .rk-paywall-status{font-size:0.72rem;line-height:1.3;color:#555;margin:12px 0 0;min-height:1em;}',
+            ':root[data-theme="dark"] #paywall-overlay{background:' + paywallScrim() + '!important;}',
+            ':root[data-theme="dark"] .rk-paywall-desc,:root[data-theme="dark"] .rk-paywall-status{color:#333;}'
         ].join('');
         (document.head || document.documentElement).appendChild(style);
     }
@@ -88,7 +99,7 @@
         // Keep display:flex and the exact inline z-index: the anti-tamper
         // interval below checks both values.
         overlay.style.cssText = 'display:flex!important;position:fixed!important;top:0!important;left:0!important;' +
-            'width:100%!important;height:100%!important;background:rgba(0,0,0,0.45)!important;' +
+            'width:100%!important;height:100%!important;background:' + paywallScrim() + '!important;' +
             'z-index:2147483647!important;flex-direction:column!important;align-items:center!important;' +
             'justify-content:center!important;padding:20px!important;box-sizing:border-box!important;' +
             'visibility:visible!important;opacity:1!important;transform:none!important;clip-path:none!important;clip:auto!important;';

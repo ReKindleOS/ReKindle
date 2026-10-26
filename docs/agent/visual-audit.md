@@ -42,6 +42,16 @@ still steal focus on their own — an idle `sleep` control behaved the same way 
 the harness never asks to become frontmost. If you use `NSApp.run()`, order a
 window front, or call `activate(ignoringOtherApps:)`, that guarantee is lost.
 
+## Dark-mode captures (2026-10-26)
+
+Dark mode needs a different capture path. WebKit's `takeSnapshot` does not
+reliably composite root-filter layers for full-screen overlays or canvases that
+draw after load. Use `?theme=dark` (the preview skips the service worker so a
+`controllerchange` reload cannot interrupt the snapshot), and use headless
+Chromium against the mapped `rekindle.ink` origin when checking dark colours on
+modals, Pro gates, or canvas games. WebKit remains the layout/focus gate.
+See [dark-mode.md](dark-mode.md) for the full audit and known page fixes.
+
 ## Audit workflow
 
 1. Start `scripts/serve-local.py`.

@@ -98,6 +98,12 @@ for (const file of files) {
         }
     }
 
+    // Every app page carries theme.js (dark mode + scale + wallpaper). The
+    // browser probe is a raw diagnostic and deliberately stays unthemed.
+    if (file !== 'probe.html' && !/theme\.js\?v=\d+/.test(html)) {
+        problems.push(`${file}: missing versioned theme.js (dark mode)`);
+    }
+
     // Local script files must exist, be unique, and shared ones must be
     // versioned so edge/SW caches cannot serve last week's copy.
     const srcs = [];

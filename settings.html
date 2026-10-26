@@ -776,12 +776,12 @@
             <div class="setting-row">
                 <div class="setting-text">
                     <strong><span data-i18n="settings.theme">Theme</span> <span class="beta-badge">BETA</span></strong>
-                    <div class="setting-desc" data-i18n="settings.desc.theme">Light mode only. Dark mode is temporarily disabled.</div>
+                    <div class="setting-desc" data-i18n="settings.desc.theme">Light, Dark, or Auto (Night Time).</div>
                 </div>
-                <select id="theme-select" onchange="saveTheme()" disabled>
-                    <option value="light">Light</option>
-                    <option value="dark" disabled>Dark</option>
-                    <option value="auto" disabled>Auto (Night)</option>
+                <select id="theme-select" onchange="saveTheme()">
+                    <option value="light" data-i18n="settings.theme.light">Light</option>
+                    <option value="dark" data-i18n="settings.theme.dark">Dark</option>
+                    <option value="auto" data-i18n="settings.theme.auto">Auto (Night)</option>
                 </select>
             </div>
 
@@ -1021,7 +1021,7 @@
     </div>
 
     <script src="time.js?v=4"></script>
-    <script src="theme.js?v=24"></script> <!-- Inject Theme Script -->
+    <script src="theme.js?v=33"></script> <!-- Inject Theme Script -->
     <script src="js/i18n.js?v=3"></script>
     <script src="js/custom-select.js?v=2"></script>
 
@@ -2176,8 +2176,17 @@
 
         function saveTheme() {
             var val = document.getElementById('theme-select').value;
-            // Dark mode is temporarily disabled.
-            if (val !== 'light') val = 'light';
+            // An explicit choice wins over a `?theme=` preview in this tab.
+            try { sessionStorage.removeItem('rekindle_theme_preview'); } catch (e) {}
+            // Drop the preview param too, otherwise getThemeMode() re-reads it.
+            try {
+                if (/[?&]theme=(light|dark|auto)(&|$)/.test(location.search)) {
+                    var kept = location.search.replace(/^\?/, '').split('&').filter(function (part) {
+                        return part && !/^theme=/.test(part);
+                    });
+                    history.replaceState(null, '', location.pathname + (kept.length ? '?' + kept.join('&') : '') + location.hash);
+                }
+            } catch (e) {}
             localStorage.setItem('rekindle_theme_mode', val);
             if (window.rekindleApplyTheme) window.rekindleApplyTheme();
 
@@ -2389,8 +2398,10 @@
                 layoutSelect.onchange = oc;
             }
 
-            // Load Theme
-            const theme = 'light'; // Dark mode temporarily disabled
+            // Load Theme (a `?theme=` preview in this tab is the effective mode)
+            var previewTheme = null;
+            try { previewTheme = sessionStorage.getItem('rekindle_theme_preview'); } catch (e) {}
+            const theme = previewTheme || localStorage.getItem('rekindle_theme_mode') || 'light';
             document.getElementById('theme-select').value = theme;
 
             // Load Display Mode
@@ -2560,10 +2571,8 @@
                     }
 
                     if (data.themeMode) {
-                        // Dark mode is temporarily disabled.
-                        var syncedTheme = data.themeMode === 'light' ? 'light' : 'light';
-                        localStorage.setItem('rekindle_theme_mode', syncedTheme);
-                        document.getElementById('theme-select').value = syncedTheme;
+                        localStorage.setItem('rekindle_theme_mode', data.themeMode);
+                        document.getElementById('theme-select').value = data.themeMode;
                         if (window.rekindleApplyTheme) window.rekindleApplyTheme();
                     }
 
