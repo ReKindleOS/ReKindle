@@ -1573,7 +1573,7 @@
                 document.getElementById('outlook-verify-uri').innerText =
                     verifyUri.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-                document.getElementById('outlook-status').innerText = 'Waiting for sign-in...';
+                document.getElementById('outlook-status').innerText = 'Waiting for sign-in... 0:00';
                 document.getElementById('outlook-intro').innerText =
                     'Keep this window open and finish the sign-in on your phone or computer.';
 
@@ -1588,8 +1588,21 @@
 
         function beginOutlookPolling(delayMs) {
             stopOutlookPolling();
-            outlookFlow = { cancelled: false, timer: null };
+            outlookFlow = { cancelled: false, timer: null, started: Date.now(), failures: 0 };
             let delay = delayMs;
+
+            // A silent wait looks frozen on e-ink, so count the seconds up.
+            const statusTick = () => {
+                if (!outlookFlow || outlookFlow.cancelled) return;
+                const elapsed = Math.floor((Date.now() - outlookFlow.started) / 1000);
+                const mins = Math.floor(elapsed / 60);
+                const secs = elapsed % 60;
+                const shown = mins + ':' + (secs < 10 ? '0' + secs : secs);
+                const el = document.getElementById('outlook-status');
+                if (el) el.innerText = 'Waiting for sign-in... ' + shown;
+                outlookFlow.statusTimer = setTimeout(statusTick, 5000);
+            };
+            outlookFlow.statusTimer = setTimeout(statusTick, 1000);
 
             const tick = async () => {
                 if (!outlookFlow || outlookFlow.cancelled) return;
@@ -1622,12 +1635,19 @@
                     if (data.status === 'slow_down') {
                         delay = Math.min(delay + 5000, 30000);
                     }
+                    outlookFlow.failures = 0;
                 } catch (e) {
                     // Transient callable/network failure: keep the flow alive and
-                    // retry next tick. Only a revoked/expired link is fatal.
+                    // retry next tick. Give up after ten in a row rather than
+                    // spinning forever, and stop at once on a revoked link.
                     console.warn('Outlook poll failed, retrying', e);
                     if (String((e && e.code) || '').indexOf('permission-denied') > -1) {
                         outlookConnectFailed(outlookErrorText(e));
+                        return;
+                    }
+                    if (outlookFlow) outlookFlow.failures = (outlookFlow.failures || 0) + 1;
+                    if (outlookFlow && outlookFlow.failures >= 10) {
+                        outlookConnectFailed('Lost contact with ReKindle. Check the connection and press Connect again.');
                         return;
                     }
                 }
@@ -1641,13 +1661,15 @@
 
         function stopOutlookPolling() {
             if (outlookFlow && outlookFlow.timer) clearTimeout(outlookFlow.timer);
+            if (outlookFlow && outlookFlow.statusTimer) clearTimeout(outlookFlow.statusTimer);
             if (outlookFlow) outlookFlow.cancelled = true;
             outlookFlow = null;
         }
 
         function outlookConnectFailed(message) {
             stopOutlookPolling();
-            document.getElementById('outlook-status').innerText = message;
+            const status = document.getElementById('outlook-status');
+            if (status) status.innerText = message;
             document.getElementById('outlook-code-panel').style.display = 'none';
             document.getElementById('outlook-form').style.display = 'block';
             const btn = document.getElementById('btn-outlook-connect');

@@ -670,6 +670,18 @@ Two behaviours to remember:
 * **IMAP off in Outlook.com.** A valid token still fails to select INBOX. The
   client's `onOutlookConnected()` says so explicitly: Settings → Mail →
   Forwarding and IMAP → "Let devices and apps use IMAP".
+* **`This is not the right page` / `common/wrongplace`, and the "URL contains
+  your password" warning (2026-10-26).** Both are Microsoft-side symptoms of the
+  `nativeclient` redirect being mishandled on the `common` (AAD) path — the same
+  failure OneDrive documents in
+  <https://github.com/abraunegg/onedrive/discussions/3558>, where the fix was to
+  stop relying on the nativeclient redirect. ReKindle therefore runs the device
+  flow against the **`consumers`** tenant (`MAIL_MS_TENANT=consumers`), whose
+  verification page is the MSA-native `microsoft.com/link` and never enters the
+  AAD redirect path. Trade-off: work/school mailboxes cannot use this build.
+  If a personal account still lands on `wrongplace`, the remaining option is to
+  replace the nativeclient redirect with a real HTTPS redirect URI on the app
+  registration (the browser then lands on a page that exists).
 * **`invalid_request: The provided request must include a 'redirect_uri' input
   parameter` on Microsoft's page (2026-10-26).** The app registration has no
   redirect URI, and Microsoft's device sign-in wants one even though the device
