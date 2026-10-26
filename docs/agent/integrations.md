@@ -670,6 +670,15 @@ Two behaviours to remember:
 * **IMAP off in Outlook.com.** A valid token still fails to select INBOX. The
   client's `onOutlookConnected()` says so explicitly: Settings → Mail →
   Forwarding and IMAP → "Let devices and apps use IMAP".
+* **`invalid_request: The provided request must include a 'redirect_uri' input
+  parameter` on Microsoft's page (2026-10-26).** The app registration has no
+  redirect URI, and Microsoft's device sign-in wants one even though the device
+  flow never uses it — `allowPublicClient` alone is not enough. Fix:
+  Authentication → **Add a platform** → **Mobile and desktop applications** →
+  tick `https://login.microsoftonline.com/common/oauth2/nativeclient` →
+  Configure. The device code from the failed attempt stays dead, so press
+  Connect again. `mail.html`'s "Problems signing in?" link in the code panel
+  spells this out, because the Kindle cannot show Microsoft's error page.
 * **`invalid_grant` on refresh** (user revoked access, password change, 90 days
   unused) → token deleted, UI asks to reconnect. `isUserProCached` is unaffected.
 * **Work/school mailbox** → `consent_required` until the tenant admin approves
