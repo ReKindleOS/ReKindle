@@ -1079,6 +1079,8 @@
     <script src="js/custom-select.js?v=2"></script>
     <script src="js/age-verification.js?v=2"></script>
     <script src="js/emoji-render.js?v=1"></script>
+    <script src="js/translate-client.js?v=3"></script>
+    <script src="js/post-language.js?v=1"></script>
 
     <script>
         // CONFIG
@@ -1230,6 +1232,38 @@
 
         var currentUser = null;
         var currentUserName = "Anonymous";
+
+        // The resolved UI language (i18n.js writes documentElement.lang). Base
+        // code only, so pt-BR / zh-Hans compare equal to the stored `lang`.
+        function topicUserLang() {
+            var lang = document.documentElement.lang || (navigator.language || 'en');
+            var base = String(lang).toLowerCase().replace(/_/g, '-').split('-')[0];
+            var client = window.rekindleTranslateClient;
+            return client && client.normalizeLang ? client.normalizeLang(base) : base;
+        }
+
+        function topicLangDiffers(detected) {
+            var left = detected ? String(detected).toLowerCase().replace(/_/g, '-').split('-')[0] : '';
+            if (!left) return true; // unknown -> keep the Translate link
+            return left !== topicUserLang();
+        }
+
+        // Language detection is a lazy bundle (js/post-language.js); start it
+        // when a composer is focused and once after the page settles.
+        (function initPostLanguage() {
+            if (!window.rekindlePostLanguage) return;
+            window.rekindlePostLanguage.loadSoon(4000);
+            document.addEventListener('focusin', function (e) {
+                var target = e.target;
+                if (!target || !target.id) return;
+                if (target.id === 'msg-input' || target.id === 'new-title' || target.id === 'new-subheading') {
+                    window.rekindlePostLanguage.load();
+                }
+            });
+        })();
+
+        var topicTranslations = {};
+        var pendingTopicTranslations = {};
         var currentTopicId = null;
         var userTopicStates = {}; // { topicId: { lastReadCount: N, lastReadTime: T } }
         var topicStatesLoaded = false;
@@ -2368,6 +2402,22 @@
                 displayBody = window.filterBadWords(displayBody);
             }
 
+            var topicOriginalBody = displayBody;
+            var msgLang = msg.lang ? String(msg.lang).toLowerCase().replace(/_/g, '-').split('-')[0] : '';
+            var myLang = topicUserLang();
+            var langDiffers = topicLangDiffers(msgLang);
+            var topicTranslated = msg.id ? topicTranslations[msg.id] : '';
+            var topicToggleHtml = '';
+            var topicTranslateHtml = '';
+            if (topicTranslated) {
+                displayBody = topicTranslated;
+                if (window.rekindleCensorPromotedTerms) displayBody = window.rekindleCensorPromotedTerms(displayBody);
+                if (window.filterBadWords) displayBody = window.filterBadWords(displayBody);
+                topicToggleHtml = '<span id="topic-toggle-' + escapeHtml(msg.id) + '" onclick="toggleTopicTranslation(\'' + escapeJsString(msg.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + window.t('kindlechat.msg.show_original', 'Show Original') + '</span>';
+            } else if (msg.id && langDiffers && currentUser && msg.authorId && msg.authorId !== currentUser.uid) {
+                topicTranslateHtml = '<span id="topic-translate-' + escapeHtml(msg.id) + '" onclick="requestTopicTranslation(\'' + escapeJsString(msg.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
+            }
+
             var nameBadge = '';
             var bubbleClass = '';
 
@@ -2394,12 +2444,12 @@
 
             msgEl.innerHTML =
                 '<div class="msg-meta">' +
-                '<b class="author-name-field" onclick="openUserProfile(\'' + escapeHtml(msg.authorId) + '\')">' + nameBadge + safeName + '</b> • <span title="' + dateHeader + '">' + timeStr + '</span> ' + delBtn +
+                '<b class="author-name-field" onclick="openUserProfile(\'' + escapeHtml(msg.authorId) + '\')">' + nameBadge + safeName + '</b> • <span title="' + dateHeader + '">' + timeStr + '</span> ' + delBtn + topicToggleHtml + topicTranslateHtml +
                 '</div>' +
                 '<div class="msg-row">' +
                 '<canvas id="' + avatarId + '" class="msg-avatar" width="32" height="32" onclick="openUserProfile(\'' + escapeHtml(msg.authorId) + '\')"></canvas>' +
                 '<div style="display:flex; align-items:center; min-width: 0;">' +
-                '<div class="msg-bubble ' + bubbleClass + '">' + escapeHtml(displayBody) + '</div>' +
+                '<div id="topic-bubble-' + escapeHtml(msg.id || '') + '" class="msg-bubble ' + bubbleClass + '" data-state="' + (topicTranslated ? 'translated' : 'original') + '" data-lang="' + escapeHtml(msgLang) + '" data-original="' + escapeHtml(topicOriginalBody) + '" data-translated="' + escapeHtml(topicTranslated || '') + '" style="' + (topicTranslated ? 'font-style:italic;' : '') + '">' + escapeHtml(displayBody) + '</div>' +
                 reportCommentBtn +
                 '</div>' +
                 '</div>';
@@ -2411,11 +2461,112 @@
 
             renderEmojis(msgEl);
 
+            if (msg.id && currentUser && msg.authorId && msg.authorId !== currentUser.uid && msgLang && msgLang !== myLang && !topicTranslated) {
+                queueTopicAutoTranslation(msg, msgLang, myLang);
+            }
+
             // Resolve real name and avatar (the underlying DB call is already async)
             if (msg.authorId) {
                 var nameEl = msgEl.querySelector('.author-name-field');
                 resolveAuthorName(msg.authorId, nameEl, avatarId);
             }
+        }
+
+        function applyTopicTranslation(msgId, translated) {
+            var bubble = document.getElementById('topic-bubble-' + msgId);
+            if (!bubble) return;
+            var original = bubble.getAttribute('data-original') || '';
+            if (!translated || String(translated).toLowerCase().trim() === String(original).toLowerCase().trim()) return;
+            var safe = translated;
+            if (window.rekindleCensorPromotedTerms) safe = window.rekindleCensorPromotedTerms(safe);
+            if (window.filterBadWords) safe = window.filterBadWords(safe);
+            bubble.setAttribute('data-state', 'translated');
+            bubble.setAttribute('data-translated', safe);
+            bubble.style.fontStyle = 'italic';
+            bubble.textContent = safe;
+            if (typeof window.renderEmojis === 'function') {
+                try { window.renderEmojis(bubble); } catch (e) { }
+            }
+            var link = document.getElementById('topic-translate-' + msgId);
+            if (link && link.parentNode) link.parentNode.removeChild(link);
+            var meta = bubble.closest ? bubble.closest('.msg') : null;
+            meta = meta ? meta.querySelector('.msg-meta') : null;
+            if (meta && !document.getElementById('topic-toggle-' + msgId)) {
+                var span = document.createElement('span');
+                span.id = 'topic-toggle-' + msgId;
+                span.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
+                span.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
+                span.onclick = function () { toggleTopicTranslation(msgId); };
+                meta.appendChild(span);
+            }
+        }
+
+        function toggleTopicTranslation(msgId) {
+            var bubble = document.getElementById('topic-bubble-' + msgId);
+            var toggle = document.getElementById('topic-toggle-' + msgId);
+            if (!bubble || !toggle) return;
+            var original = bubble.getAttribute('data-original') || '';
+            var translated = bubble.getAttribute('data-translated') || '';
+            if (bubble.getAttribute('data-state') === 'translated') {
+                bubble.setAttribute('data-state', 'original');
+                bubble.style.fontStyle = 'normal';
+                bubble.textContent = original;
+                toggle.textContent = window.t('kindlechat.msg.show_translated', 'Show Translated');
+            } else {
+                bubble.setAttribute('data-state', 'translated');
+                bubble.style.fontStyle = 'italic';
+                bubble.textContent = translated;
+                toggle.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
+            }
+            if (typeof window.renderEmojis === 'function') {
+                try { window.renderEmojis(bubble); } catch (e) { }
+            }
+        }
+
+        function requestTopicTranslation(msgId) {
+            var bubble = document.getElementById('topic-bubble-' + msgId);
+            var link = document.getElementById('topic-translate-' + msgId);
+            if (!bubble || !link || pendingTopicTranslations[msgId]) return;
+            var text = bubble.getAttribute('data-original') || '';
+            if (!text) return;
+            if (!window.rekindleTranslateClient) {
+                link.textContent = window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+                return;
+            }
+            var target = topicUserLang();
+            var source = bubble.getAttribute('data-lang') || 'auto';
+            pendingTopicTranslations[msgId] = true;
+            link.textContent = window.t('translate.msg.translating', 'Translating...');
+            window.rekindleTranslateClient.translate(text, source, target).then(function (translated) {
+                delete pendingTopicTranslations[msgId];
+                if (!translated || String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
+                    link.textContent = window.t('translate.msg.same_language', 'Already in this language');
+                    return;
+                }
+                topicTranslations[msgId] = translated;
+                applyTopicTranslation(msgId, translated);
+            })['catch'](function (e) {
+                delete pendingTopicTranslations[msgId];
+                link.textContent = (e && e.code === 'budget')
+                    ? window.t('translate.msg.budget', 'Translation limit for this session reached. Try again later.')
+                    : window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+            });
+        }
+
+        function queueTopicAutoTranslation(msg, source, target) {
+            var client = window.rekindleTranslateClient;
+            if (!client || typeof client.autoTranslate !== 'function') return;
+            client.autoTranslate({
+                id: 'topic-comment:' + msg.id,
+                text: msg.body || '',
+                source: source,
+                target: target,
+                apply: function (translated) {
+                    if (!translated) return;
+                    topicTranslations[msg.id] = translated;
+                    applyTopicTranslation(msg.id, translated);
+                }
+            });
         }
 
         function openUserProfile(uid) {
@@ -2739,7 +2890,7 @@
                                 'Content-Type': 'application/json',
                                 'Authorization': 'Bearer ' + t
                             },
-                            body: JSON.stringify({ type: 'topic_comment', topicId: postingTopicId, body: text })
+                            body: JSON.stringify({ type: 'topic_comment', topicId: postingTopicId, body: text, lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '') })
                         });
                     }
                     return postWith(token).then(function (resp) {
@@ -3128,7 +3279,8 @@
                             socialDb.collection('topics').doc(editingTopicId).update({
                                 title: title,
                                 subheading: subheading,
-                                icon: selectedIconSvg
+                                icon: selectedIconSvg,
+                                lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(title + ' ' + subheading) : '')
                             }).then(function () {
                                 closeCreateModal();
                             }).catch(function(err) {
@@ -3149,7 +3301,8 @@
                             socialDb.collection('topics').doc(editingTopicId).update({
                                 title: title,
                                 subheading: subheading,
-                                icon: selectedIconSvg
+                                icon: selectedIconSvg,
+                                lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(title + ' ' + subheading) : '')
                             }).then(function () {
                                 closeCreateModal();
                             }).catch(function(err) {
@@ -3208,7 +3361,10 @@
                             title: title,
                             subheading: subheading,
                             icon: selectedIconSvg,
-                            poll: pollData
+                            poll: pollData,
+                            lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(
+                                [title, subheading, pollData && pollData.question, pollData && pollData.options ? pollData.options.join(' ') : ''].join(' ')
+                            ) : '')
                         })
                     }).then(function (resp) {
                         return window.rekindleWorkerClient

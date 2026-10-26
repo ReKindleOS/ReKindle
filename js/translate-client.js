@@ -32,18 +32,24 @@
  * Access-Control-Allow-Origin. Status code: 200" while curl and desktop Chrome
  * accept it. Confirmed in WKWebView: disroot POST throws "A network error
  * occurred", MyMemory GET returns 200. So the LibreTranslate fallback and its
- * /detect call are gone; `detect()` is a local heuristic over script ranges and
- * Latin stopwords. Do not add another cross-origin POST provider without testing
- * it inside WebKit first.
+ * /detect call are gone. `detect()` delegates to js/lang-detect.js when that
+ * lazy-loaded bundle is present (ELD + a chat lexicon, see
+ * scripts/build-lang-detect.js), and otherwise uses the old script/stopword
+ * heuristic as a fallback. Do not add another cross-origin POST provider
+ * without testing it inside WebKit first.
  *
  * This costs zero Cloudflare Worker/Pages invocations, zero Firebase
  * operations and zero OpenAI calls. Keep it that way: do not move this behind a
  * Worker on the main account (100k/day Free cap), and if a Worker is ever
- * needed use the ReKindle Social account (js/social-endpoints.js). Two
- * consequences to preserve:
- *   - On-demand only. Never translate a rendered feed (one request per message
- *     per reader would blow the daily character budget and stall e-ink).
- *   - Cache aggressively. Chat is repetitive, so identical strings are free.
+ * needed use the ReKindle Social account (js/social-endpoints.js).
+ *
+ * AUTO-TRANSLATION (2026-10-26): social pages translate a post/message on view
+ * when its stored `lang` differs from the reader's language. That is opt-out
+ * via KindleChat's showTranslations setting, queued one request at a time with
+ * its own 24-job ceiling (`autoTranslate()`), and cached in sessionStorage by
+ * exact text, so a re-render or a second reader on the same device is free.
+ * Do not turn this into a feed-wide fan-out: the MyMemory budget is per IP and
+ * billed in characters.
  *
  * KINDLE: ES2019 only (no `?.`, no `??`), system fonts, no animation changes.
  */
@@ -180,17 +186,36 @@
         }
     }
 
-    // --- LOCAL LANGUAGE DETECTION -------------------------------------------------
-    // No network: instant, works offline, no quota, and immune to the CORS bug
-    // above. It only has to be good enough to choose the SOURCE language of a
-    // short chat message or a pasted paragraph for one of the languages the app
-    // offers. Script ranges settle CJK/Cyrillic; Latin languages are scored on
-    // high-frequency stopwords, with a few unambiguous character hints.
+    // --- LANGUAGE DETECTION -------------------------------------------------------
+    // js/lang-detect.js (ELD + a chat lexicon) is the accurate path. It is loaded
+    // lazily by js/post-language.js because the n-gram database is ~365 KB. When
+    // it is absent, the script/stopword heuristic below keeps manual translation
+    // and the Translator app working; it is deliberately labelled unreliable.
+    function normalizeLang(code) {
+        if (!code || typeof code !== 'string') return '';
+        var base = code.toLowerCase().replace(/_/g, '-').split('-')[0];
+        if (base === 'iw') return 'he';
+        if (base === 'in') return 'id';
+        if (base === 'nb' || base === 'nn') return 'no';
+        return base;
+    }
+
+    function sameLanguage(a, b) {
+        var left = normalizeLang(a);
+        var right = normalizeLang(b);
+        return !!left && left === right;
+    }
+
     var SCRIPT_HINTS = [
         { lang: 'ja', re: /[\u3040-\u30FF]/ },   // Hiragana/Katakana (before Han)
         { lang: 'ko', re: /[\uAC00-\uD7AF\u1100-\u11FF]/ }, // Hangul
         { lang: 'zh', re: /[\u4E00-\u9FFF]/ },   // Han
-        { lang: 'ru', re: /[\u0400-\u04FF]/ }    // Cyrillic
+        { lang: 'ru', re: /[\u0400-\u04FF]/ },   // Cyrillic
+        { lang: 'ar', re: /[\u0600-\u06FF]/ },
+        { lang: 'he', re: /[\u0590-\u05FF]/ },
+        { lang: 'el', re: /[\u0370-\u03FF]/ },
+        { lang: 'th', re: /[\u0E00-\u0E7F]/ },
+        { lang: 'hi', re: /[\u0900-\u097F]/ }
     ];
 
     // Word sets (already lowercased). Deliberately overlapping common words
@@ -203,21 +228,19 @@
         fr: ['le', 'les', 'des', 'du', 'et', 'est', 'une', 'pour', 'avec', 'pas', 'que', 'je', 'tu', 'il', 'nous', 'vous', 'bonjour', 'merci', 'très', 'mais', 'dans', 'oui', 'bien', 'tout', 'plus', 'ça', 'alors', 'ici', 'quoi'],
         de: ['der', 'die', 'das', 'und', 'ist', 'nicht', 'eine', 'mit', 'für', 'ich', 'du', 'wir', 'sie', 'auf', 'den', 'dem', 'zu', 'auch', 'aber', 'wie', 'was', 'sehr', 'danke', 'hallo', 'oder', 'noch', 'mir', 'dir', 'doch', 'nein', 'gut'],
         it: ['il', 'lo', 'gli', 'le', 'di', 'che', 'è', 'un', 'una', 'per', 'con', 'non', 'sono', 'come', 'questo', 'molto', 'ciao', 'grazie', 'ma', 'anche', 'della', 'più', 'stai', 'mille', 'perché', 'bene'],
-        pt: ['os', 'as', 'do', 'da', 'em', 'um', 'uma', 'para', 'com', 'não', 'muito', 'como', 'está', 'olá', 'obrigado', 'mas', 'também', 'você', 'ele', 'ela', 'isso', 'aqui', 'sei', 'estou', 'sim', 'nada']
+        pt: ['os', 'as', 'do', 'da', 'em', 'um', 'uma', 'para', 'com', 'não', 'muito', 'como', 'está', 'olá', 'obrigado', 'mas', 'também', 'você', 'ele', 'ela', 'isso', 'aqui', 'sei', 'estou', 'sim', 'nada'],
+        pl: ['i', 'a', 'ale', 'czy', 'że', 'bo', 'więc', 'tak', 'nie', 'jest', 'są', 'był', 'była', 'było', 'być', 'jestem', 'jesteś', 'mam', 'masz', 'ma', 'mamy', 'chcę', 'chcesz', 'chce', 'mogę', 'możesz', 'może', 'muszę', 'musisz', 'musi', 'wiem', 'wiesz', 'wie', 'się', 'jak', 'gdzie', 'kiedy', 'dlaczego', 'kto', 'co', 'który', 'która', 'które', 'ja', 'ty', 'on', 'ona', 'my', 'wy', 'oni', 'mnie', 'ciebie', 'jego', 'jej', 'nas', 'was', 'ich', 'mój', 'moja', 'moje', 'twój', 'twoja', 'twoje', 'nasz', 'nasza', 'wasz', 'wasza', 'dziękuję', 'dzięki', 'proszę', 'przepraszam', 'cześć', 'hej', 'dzień', 'dobry', 'dobra', 'dobre', 'tak', 'już', 'jeszcze', 'bardzo', 'tylko', 'tutaj', 'tam'],
+        vi: ['và', 'là', 'của', 'có', 'không', 'được', 'trong', 'một', 'những', 'các', 'cho', 'với', 'để', 'này', 'đó', 'nào', 'gì', 'ai', 'sao', 'vì', 'nếu', 'thì', 'mà', 'nhưng', 'hoặc', 'cũng', 'rất', 'quá', 'lắm', 'hơn', 'nhất', 'chỉ', 'đã', 'đang', 'sẽ', 'tôi', 'mình', 'bạn', 'anh', 'chị', 'em', 'chúng', 'họ', 'nó', 'người', 'cái', 'con', 'việc', 'điều', 'khi', 'giờ', 'hôm', 'nay', 'mai', 'ngày', 'tuần', 'nhà', 'học', 'ăn', 'uống', 'ngủ', 'đi', 'đến', 'về', 'nói', 'biết', 'hiểu', 'thích', 'yêu', 'muốn', 'cần', 'phải', 'làm', 'cảm', 'ơn', 'xin', 'chào', 'tạm', 'biệt', 'hẹn', 'gặp', 'lại', 'khỏe', 'vui', 'buồn', 'tốt', 'xấu', 'đẹp', 'hay', 'ngon']
     };
 
     var WORD_SPLIT = /[^0-9a-z\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]+/;
 
-    function detectSync(text, fallback) {
-        var body = String(text === null || text === undefined ? '' : text);
-        if (!body.trim()) return fallback || 'en';
-
+    function heuristicDetect(body, fallback) {
         for (var i = 0; i < SCRIPT_HINTS.length; i++) {
             if (SCRIPT_HINTS[i].re.test(body)) return SCRIPT_HINTS[i].lang;
         }
 
         var tokens = body.toLowerCase().split(WORD_SPLIT);
-        var scores = {};
         var bestLang = null;
         var bestScore = 0;
         for (var lang in STOPWORDS) {
@@ -227,7 +250,6 @@
             for (var t = 0; t < tokens.length; t++) {
                 if (tokens[t] && words.indexOf(tokens[t]) !== -1) score++;
             }
-            scores[lang] = score;
             if (score > bestScore) { bestScore = score; bestLang = lang; }
         }
 
@@ -238,12 +260,38 @@
             if (/[ãõ]/.test(body)) return 'pt';
             if (/ção|ções/.test(body)) return 'pt';
             if (/zione|zioni/.test(body)) return 'it';
+            if (/[ąćęłńóśźż]/.test(body)) return 'pl';
+            if (/[ơưạảấầẩẫậđẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/.test(body)) return 'vi';
         }
         if (bestLang) return bestLang;
 
         // Nothing matched: ASCII-only text is far more likely to be English than
         // anything else here, and the caller treats source === target as a no-op.
         return fallback || 'en';
+    }
+
+    function detectInfo(text, fallback) {
+        var body = String(text === null || text === undefined ? '' : text);
+        if (!body.trim()) return { lang: fallback || 'en', reliable: false, source: 'none' };
+        if (window.rekindleLangDetect && typeof window.rekindleLangDetect.detect === 'function') {
+            try {
+                var info = window.rekindleLangDetect.detect(body);
+                return {
+                    lang: (info && info.lang) || fallback || 'en',
+                    reliable: !!(info && info.reliable),
+                    source: (info && info.source) || 'lang-detect'
+                };
+            } catch (e) {
+                // Fall through to the stopword heuristic; a detector bug must
+                // not make the Translate button do nothing.
+                if (typeof console !== 'undefined' && console.warn) console.warn('lang-detect failed:', e);
+            }
+        }
+        return { lang: heuristicDetect(body, fallback), reliable: false, source: 'heuristic' };
+    }
+
+    function detectSync(text, fallback) {
+        return detectInfo(text, fallback).lang;
     }
 
     function detect(text, fallback) {
@@ -299,12 +347,106 @@
         return { text: translated, source: source };
     }
 
+    // --- AUTO-TRANSLATION QUEUE ------------------------------------------------
+    // One request at a time, 350 ms apart, 24 jobs per page view. The explicit
+    // Translate link stays visible as the fallback if the queue stops (budget,
+    // offline, provider error).
+    var AUTO_MAX_JOBS = 24;
+    var AUTO_MAX_CHARS = 20000;
+    var AUTO_GAP_MS = 350;
+    var autoQueue = [];
+    var autoAttempted = {};
+    var autoActive = false;
+    var autoStopped = false;
+    var autoTimer = null;
+    var autoJobsStarted = 0;
+    var autoChars = 0;
+    var autoFailures = 0;
+
+    function autoKey(opts) {
+        if (opts.id) return 'id:' + opts.id + ':' + normalizeLang(opts.target);
+        return 'txt:' + hashText(String(opts.text || '')) + ':' + normalizeLang(opts.target);
+    }
+
+    function drainAutoQueue() {
+        autoTimer = null;
+        if (autoActive || autoStopped) return;
+        var job = autoQueue.shift();
+        if (!job) return;
+        if (autoJobsStarted >= AUTO_MAX_JOBS) {
+            autoStopped = true;
+            autoQueue.length = 0;
+            return;
+        }
+        autoActive = true;
+        autoJobsStarted++;
+        autoChars += String(job.text).length;
+        translate(job.text, job.source || 'auto', job.target).then(function (translated) {
+            autoActive = false;
+            autoFailures = 0;
+            try {
+                if (typeof job.apply === 'function' && translated) job.apply(translated);
+            } catch (e) {
+                // A page render bug must not wedge the queue.
+                if (typeof console !== 'undefined' && console.warn) console.warn('auto-translate apply failed:', e);
+            }
+            autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
+        }, function (err) {
+            autoActive = false;
+            if (err && err.code === 'budget') {
+                autoStopped = true;
+            } else {
+                autoFailures++;
+                // Three consecutive provider/network failures: stop rather than
+                // hammer MyMemory (or a dead network) for the rest of the feed.
+                if (autoFailures >= 3) autoStopped = true;
+            }
+            try {
+                if (typeof job.onFail === 'function') job.onFail(err);
+            } catch (e) { /* best effort */ }
+            autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
+        });
+    }
+
+    function autoTranslate(opts) {
+        if (!opts || !opts.text || !opts.target) return false;
+        if (autoStopped) return false;
+        if (opts.source && sameLanguage(opts.source, opts.target)) return false;
+        var key = autoKey(opts);
+        if (autoAttempted[key]) return false;
+        if (autoQueue.length >= AUTO_MAX_JOBS) return false;
+        var estimated = autoChars;
+        for (var q = 0; q < autoQueue.length; q++) estimated += String(autoQueue[q].text || '').length;
+        if (estimated + String(opts.text).length > AUTO_MAX_CHARS) return false;
+        autoAttempted[key] = true;
+        autoQueue.push(opts);
+        if (!autoActive && !autoTimer) autoTimer = setTimeout(drainAutoQueue, 120);
+        return true;
+    }
+
+    function resetAutoTranslate() {
+        autoQueue.length = 0;
+        autoAttempted = {};
+        autoActive = false;
+        autoStopped = false;
+        autoJobsStarted = 0;
+        autoChars = 0;
+        autoFailures = 0;
+        if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    }
+
     window.rekindleTranslateClient = {
         translate: translate,
         translateAuto: translateAuto,
         detect: detect,
+        detectInfo: detectInfo,
+        normalizeLang: normalizeLang,
+        sameLanguage: sameLanguage,
+        autoTranslate: autoTranslate,
         // Exposed for tests/diagnostics only.
         _detectSync: detectSync,
+        _resetAutoTranslate: resetAutoTranslate,
+        _autoMaxJobs: AUTO_MAX_JOBS,
         _sessionBudget: SESSION_BUDGET,
         _contact: MYMEMORY_CONTACT
     };

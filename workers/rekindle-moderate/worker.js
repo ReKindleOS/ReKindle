@@ -26,6 +26,37 @@ let cachedAccessToken = null;
 let cachedTokenExpiry = 0;
 
 /* ------------------------------------------------------------------ */
+/*  DETECTED LANGUAGE (client-side, 2026-10-26)                        */
+/* ------------------------------------------------------------------ */
+// The posting client detects the language before sending (js/lang-detect.js,
+// lazily loaded by js/post-language.js). It is advisory, not security: it only
+// decides whether the reader sees a Translate link / auto-translation. Reject
+// anything that is not a known ISO 639-1 code so a malformed value cannot end
+// up in a public post document.
+const DETECTED_LANGUAGE_CODES = new Set([
+    "am", "ar", "az", "be", "bg", "bn", "ca", "cs", "da", "de", "el", "en",
+    "es", "et", "eu", "fa", "fi", "fr", "gu", "he", "hi", "hr", "hu", "hy",
+    "is", "it", "ja", "ka", "kn", "ko", "ku", "lo", "lt", "lv", "ml", "mr",
+    "ms", "nl", "no", "or", "pa", "pl", "pt", "ro", "ru", "sk", "sl", "sq",
+    "sr", "sv", "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "yo", "zh"
+]);
+
+function clientDetectedLang(value) {
+    if (typeof value !== "string") return null;
+    const base = value.toLowerCase().replace(/_/g, "-").split("-")[0];
+    return DETECTED_LANGUAGE_CODES.has(base) ? base : null;
+}
+
+// Adds `lang` only when the client supplied a valid code. Kept as a helper so
+// every content type applies the same validation; omitting the field is the
+// "unknown" state the clients render as a Translate link without auto-translate.
+function addDetectedLang(target, body) {
+    const lang = clientDetectedLang(body && body.lang);
+    if (lang) target.lang = lang;
+    return target;
+}
+
+/* ------------------------------------------------------------------ */
 /*  CORS                                                               */
 /* ------------------------------------------------------------------ */
 function corsHeaders(origin) {
@@ -2139,6 +2170,7 @@ export default {
                 for (const key of allowedExtras) {
                     if (key in body) msgData[key] = body[key];
                 }
+                addDetectedLang(msgData, body);
 
                 const pixelArt = body.pixel_art || null;
                 const gridSize = getGridSize(body.grid_data);
@@ -2294,11 +2326,11 @@ export default {
 
                 try {
                     await rtdbSetWithAccessToken(`${DM_THREADS_PATH}/${threadId}`, thread, accessToken);
-                    const messageResult = await rtdbPushWithAccessToken(`${DM_MESSAGES_PATH}/${threadId}`, {
+                    const messageResult = await rtdbPushWithAccessToken(`${DM_MESSAGES_PATH}/${threadId}`, addDetectedLang({
                         uid,
                         text,
                         timestamp: { ".sv": "timestamp" }
-                    }, accessToken);
+                    }, body), accessToken);
                     await Promise.all([
                         writeDmIndexRow(uid, threadId, dmIndexRow(toUid, thread, null, uid), accessToken),
                         writeDmIndexRow(toUid, threadId, dmIndexRow(uid, thread, null, uid), accessToken)
@@ -2375,11 +2407,11 @@ export default {
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
-                const result = await rtdbPushWithAccessToken(`${DM_MESSAGES_PATH}/${threadId}`, {
+                const result = await rtdbPushWithAccessToken(`${DM_MESSAGES_PATH}/${threadId}`, addDetectedLang({
                     uid,
                     text,
                     timestamp: { ".sv": "timestamp" }
-                }, accessToken);
+                }, body), accessToken);
 
                 const other = otherDmParticipant(thread, uid);
                 if (other) {
@@ -2619,6 +2651,7 @@ export default {
                 if (validatedPoll) {
                     topicData.poll = validatedPoll;
                 }
+                addDetectedLang(topicData, body);
                 const id = await firestoreCreate("topics", topicData, accessToken);
 
                 return new Response(JSON.stringify({ success: true, id }), { status: 200, headers });
@@ -2658,11 +2691,11 @@ export default {
                 }
 
                 // Create comment
-                const commentId = await firestoreCreate(`topics/${topicId}/comments`, {
+                const commentId = await firestoreCreate(`topics/${topicId}/comments`, addDetectedLang({
                     body: commentText,
                     authorId: uid,
                     timestamp: new Date()
-                }, accessToken);
+                }, body), accessToken);
 
                 // Atomically increment commentCount and update lastActive
                 try {
@@ -2723,11 +2756,11 @@ export default {
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
-                const id = await firestoreCreate("neighbourhood_posts", {
+                const id = await firestoreCreate("neighbourhood_posts", addDetectedLang({
                     uid,
                     text: trimmed,
                     timestamp: new Date()
-                }, accessToken);
+                }, body), accessToken);
 
                 return new Response(JSON.stringify({ success: true, id }), { status: 200, headers });
             }
@@ -2763,11 +2796,11 @@ export default {
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
-                const id = await firestoreCreate(`neighbourhood_posts/${postId}/comments`, {
+                const id = await firestoreCreate(`neighbourhood_posts/${postId}/comments`, addDetectedLang({
                     uid,
                     text: trimmed,
                     timestamp: new Date()
-                }, accessToken);
+                }, body), accessToken);
 
                 // Keep the denormalised counter on the post in step. The feed
                 // renders it straight from the post document, so showing a

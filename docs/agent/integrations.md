@@ -799,11 +799,11 @@ Consequences observed in production: `kindlechat/translations_by_lang/*` stops a
 | Step | Provider | Limit |
 | :--- | :--- | :--- |
 | translate (primary) | `GET https://api.mymemory.translated.net/get?q=…&langpair=en\|es&de=hello@rekindle.ink` | **5,000 chars/day per IP anonymous, 50,000/day with a reachable contact address** — billed in characters, not requests ([usage limits](https://mymemory.translated.net/doc/usagelimits.php)) |
-| language detection | **local heuristic** in `js/translate-client.js` (`detectSync`) | no network, no quota, works offline |
+| language detection | **`js/lang-detect.js`** — a lazy-loaded ELD n-gram bundle + chat lexicon, chosen by `js/post-language.js`; `detectSync` keeps a stopword fallback | no network, no quota, works offline |
 | translate (retry) | one retry of the same MyMemory GET after 250 ms | a second provider is deliberately not used — see the WebKit CORS note below |
 
-Consumers: `translate.html` (the whole app), `kindlechat.html` `requestTranslation()`, and
-`neighbourhood.html` `requestPostTranslation()`. The helper caches in memory + `sessionStorage`
+Consumers: `translate.html` (the whole app), KindleChat general chat and DMs,
+Neighbourhood posts/comments, and Topics comments. The helper caches in memory + `sessionStorage`
 (`rk-tr:` keys), chunks at 450 characters (MyMemory rejects `q` > 500), budgets 200 network calls
 per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` / `empty`).
 
@@ -813,9 +813,13 @@ per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` 
    invocation, no Pages Function, no Firebase read/write, no OpenAI call. If a server-side provider
    is ever needed it must go on the **ReKindle Social** account (`js/social-endpoints.js`), never the
    main account's 100k/day Free quota. See [usage-limits.md](usage-limits.md).
-2. **On demand only.** One request per explicit tap. Do not translate a rendered feed: the budget is
-   characters/day per IP, and a household/school/share-house network shares one budget. Chat is
-   repetitive and the cache keys on the text, so repeats are free.
+2. **Auto-translate on view, but never a synchronous fan-out.** Social pages call
+   `autoTranslate()`, which runs one request at a time, 350 ms apart, capped at 24 jobs / 20,000
+   characters per page view and stopped by a budget error or three consecutive failures. The
+   explicit Translate link remains as the fallback. Never loop the feed and fire a request per
+   item: the budget is characters/day per IP, and a household/school/share-house network shares
+   one budget. Chat is repetitive and the cache keys on the text, so repeats are free. See
+   [kindlechat.md](kindlechat.md#language-detection-gating-and-auto-translation-2026-10-26).
 3. **Do not restore the server fan-out** (`fireTranslationRequest` in `kindlechat.html`) without a
    keyed provider. It cost up to 4 Worker invocations plus 4 forced `getIdToken(true)` calls per
    sent message and produced nothing for a week. It is kept, marked RETIRED, as the reference

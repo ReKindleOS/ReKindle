@@ -493,29 +493,102 @@ rules (only `reaction` + `username` are validated), so no rules change was
 needed. Bump `emojis.js?v=` in `kindlechat.html` whenever this list or the SVGs
 change.
 
-## On-demand translation (2026-10-26)
+## Language detection, gating and auto-translation (2026-10-26)
 
 The stored-translation pipeline is dead (see [integrations.md](integrations.md#translation-providers-googles-gtx-endpoint-is-dead-2026-10-26)):
 `workers/rekindle-translate` scraped Google's gtx endpoint, which now blocks every client, so
 `kindlechat/translations_by_lang/*` stopped on 2026-10-19.
 
-What ships instead:
+Every social write now carries a **client-detected `lang`**, and readers only see a Translate
+link when that language differs from their own. The same language tag drives automatic
+on-view translation.
 
-* **`requestTranslation(msgId)`** — an untranslated text bubble now renders
-  `id="bubble-<msgId>" data-state="original" data-original="<text>"` and a small `Translate` link in
-  `.msg-meta` (only when `settings.showTranslations` is on, the message is not your own, and there is
-  body text). One tap = one `js/translate-client.js` request for the reader's language; the result
-  goes into `langTranslations[msgId]` and is patched in with the existing
-  `applyTranslationToRenderedMessage()`, so no `renderMessage()` rebuild, no emoji re-walk, no avatar
-  redraw. The link is removed once translated and `Show Original` / `Show Translated`
-  (`toggleTranslation`) keeps working because the bubble now carries its original text.
-* **`fireTranslationRequest()` is RETIRED.** It is never called; the send path has a comment where the
-  call used to be. Do not re-enable it without a keyed provider: it fired up to 4 Worker requests and 4
-  forced `getIdToken(true)` refreshes per message.
+### Detection bundle
+
+* **`js/lang-detect.js`** is a generated bundle of the [Efficient Language Detector](https://github.com/nitotm/efficient-language-detector-js)
+  (ELD 2.1.0, Apache-2.0, see `licenses/efficient-language-detector-*`) plus a small chat
+  lexicon. It bundles ELD's **Medium** n-gram database for the eight Latin-script UI languages
+  (`en, de, es, fr, it, pl, pt, vi`); `ru`, `zh`, `ja`, `ko`, `ar`, `he`, `el`, `th` and `hi` are
+  settled by Unicode script before ELD runs. Size: **~366 KB raw / ~119 KB gzip**. The XML/HTML
+  header in the file carries the attribution; do not delete it.
+* **Regenerate with `npm run build:lang`** (`scripts/build-lang-detect.js`, entry
+  `scripts/lang-detect-entry.js`). `eld` is a devDependency only; the generated file is committed
+  so production deploys do not need the 9 MB package. Bump `DETECT_URL` in `js/post-language.js`
+  (and `js/post-language.js?v=` in the pages) after regenerating, otherwise the immutable edge/SW
+  cache keeps the old bundle.
+* **Lazy loading.** `js/post-language.js` injects the bundle when a composer is focused and again
+  4 s after page load. Do not add it as a parser-blocking `<script>`: that is 119 KB on every
+  social page for readers who never post. If the bundle is not ready, the send path falls back to
+  the old stopword heuristic and still sends a `lang`; the message is then less accurately tagged.
+* **Accuracy.** ELD Medium was 100% on the accented 8-language sentence corpus and the chat
+  lexicon pins short greetings where ELD alone is weak (`merci` → it, `hello` → it). The lexicon
+  also handles unaccented typing (vi/pl). `scripts/test-lang-detect.js` is the regression guard.
+* **Lingua is not used.** Its browser story is a WASM build whose models are far larger than a
+  Kindle page budget; ELD is pure JavaScript, ES2015, and no network call.
+
+### Stored schema
+
+The moderation worker is still the only writer for this content. It validates the client code
+against `DETECTED_LANGUAGE_CODES` (`addDetectedLang()`), normalises `pt-BR`/`pt_BR` to `pt`, and
+omits the field when the code is missing or unknown:
+
+| Path | Field |
+| :--- | :--- |
+| `kindlechat/messages/{id}` | `lang` |
+| `kindlechat/dm_messages/{threadId}/{id}` | `lang` |
+| `topics/{id}` | `lang` (title + subheading + poll) |
+| `topics/{id}/comments/{id}` | `lang` |
+| `neighbourhood_posts/{id}` | `lang` |
+| `neighbourhood_posts/{id}/comments/{id}` | `lang` |
+
+`editPost()` and the topic edit path write directly to Firestore, so they recompute `lang`.
+Messages that predate this change have no `lang`; they deliberately keep the Translate link and
+are not auto-translated.
+
+### Gating and automatic translation
+
+* **Button gating.** Each render compares the stored `lang` with the reader's language
+  (`getEffectiveTranslationLang()` in chat, `userLang` in Neighbourhood, `documentElement.lang`
+  in Topics). The Translate link is rendered only when the codes differ **and** the message is not
+  the reader's own and `showTranslations` is on. Unknown `lang` keeps the link visible so legacy
+  content stays translatable.
+* **Do not show the link for same-language content.** This was the point of the change: the old
+  on-demand link appeared on every foreign-looking bubble, including English messages read by
+  English readers.
+* **Auto translation.** `js/translate-client.js` exposes `autoTranslate({id, text, source,
+  target, apply})`. It runs one MyMemory request at a time, 350 ms apart, with a **24-job / 20,000
+  character** ceiling per page view, stops after a `budget` error or three consecutive provider
+  failures, and caches by exact text in `sessionStorage`. Pages keep their own translation map
+  (`langTranslations`, `dmTranslations`, `postTranslations`, `commentTranslations`,
+  `topicTranslations`) so a re-render is free and the `Show Original` toggle works.
+* **Why the queue matters.** A feed render with 30 foreign posts must not fire 30 API calls in
+  one paint on a Kindle. The queue also leaves the explicit link in place as the fallback.
+* **KindleChat's `showTranslations` setting is the opt-out** for both the link and auto
+  translation. Neighbourhood/Topics have no setting and always auto-translate foreign content.
+* **Manual translation uses the stored source**: `requestTranslation`/`requestPostTranslation`
+  pass `data-lang` instead of `'auto'`, so MyMemory gets an explicit pair rather than re-guessing
+  a short message.
+* `fireTranslationRequest()` stays retired. Do not re-enable the server fan-out without a keyed
+  provider: it fired up to 4 Worker requests and 4 forced `getIdToken(true)` refreshes per message.
 * `langTranslations` and the scoped `translations_by_lang/<lang>` listener are unchanged, so any
   future server-side translation still appears without a client change.
-* Same treatment for Neighbourhood posts: `requestPostTranslation(postId)` in `neighbourhood.html`
-  patches `#post-text-<id>` (via `textContent`, no innerHTML sink) and inserts the toggle itself.
-* Failure states are explicit instead of silent: `translate.msg.unavailable`,
-  `translate.msg.budget`, `translate.msg.detect_failed`, `translate.msg.same_language` (all ten
-  locales).
+
+### UI surfaces covered
+
+* KindleChat general chat: link + auto.
+* KindleChat DMs (messages and the first DM request): link + auto, with `dmTranslations` so a
+  thread re-render keeps the translation.
+* Neighbourhood posts: link + auto (`postTranslations`).
+* Neighbourhood comments: link + auto (`commentTranslations`).
+* Topics comments: link + auto (`topicTranslations`). Topic titles/subheadings are detected and
+  stored, but their translation UI is not wired yet; comments are the message surface.
+
+### Tests
+
+* `scripts/test-lang-detect.js` — 49 sentences, 17 greetings, 9 script languages, normalisation,
+  and a no-network assertion on the bundle.
+* `scripts/test-social-language.js` — every worker write persists `lang`, every client send path
+  sends it, every render gates on it, every page loads the lazy detector.
+* `scripts/test-translate-auto.js` — serial queue, same-language skip, cache reuse, budget stop.
+* `scripts/test-translate-detect.js` — the old heuristic still works when the bundle is absent
+  (Translator app, legacy on-demand link).

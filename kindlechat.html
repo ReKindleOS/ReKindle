@@ -2046,7 +2046,8 @@
     <script src="js/link-guard.js?v=1"></script>
     <script src="js/social-endpoints.js?v=1"></script>
     <script src="js/spam-guard.js?v=1"></script>
-    <script src="js/translate-client.js?v=2"></script>
+    <script src="js/translate-client.js?v=3"></script>
+    <script src="js/post-language.js?v=1"></script>
     <script src="time.js?v=5"></script>
     <script src="js/ui-kit.js?v=2"></script>
     <script src="js/custom-select.js?v=2"></script>
@@ -2277,6 +2278,21 @@
                 return settings.translationLang;
             }
             return userLang;
+        }
+
+        // Base ISO 639-1 code: pt-BR -> pt, zh-Hans -> zh, en_US -> en.
+        function normalizeChatLang(code) {
+            if (!code) return '';
+            var client = window.rekindleTranslateClient;
+            if (client && typeof client.normalizeLang === 'function') return client.normalizeLang(code);
+            return String(code).toLowerCase().replace(/_/g, '-').split('-')[0];
+        }
+
+        function chatLangDiffers(a, b) {
+            var left = normalizeChatLang(a);
+            var right = normalizeChatLang(b);
+            if (!left) return true; // unknown -> keep the Translate link visible
+            return left !== right;
         }
 
         var settings = {
@@ -2531,6 +2547,21 @@
                     }
                 }
             });
+
+            // Language detection is a 365 KB lazy bundle. Start downloading when a
+            // composer is focused, and again after the page has settled, so a
+            // message sent later that session still gets a `lang` tag.
+            (function initPostLanguage() {
+                if (!window.rekindlePostLanguage) return;
+                window.rekindlePostLanguage.loadSoon(4000);
+                document.addEventListener('focusin', function (e) {
+                    var target = e.target;
+                    if (!target || !target.id) return;
+                    if (target.id === 'msg-input' || target.id === 'dm-message') {
+                        window.rekindlePostLanguage.load();
+                    }
+                });
+            })();
 
             // Enter key
             document.getElementById('msg-input').addEventListener("keydown", function (e) {
@@ -3195,6 +3226,7 @@
                 renderedKindlechatIds = {};
                 generalMsgData = {};
                 langTranslations = {};
+                dmTranslations = {};
                 generalDomMsgCount = 0;
                 replyTarget = null;
                 loadDmThread(currentRoomId);
@@ -3226,6 +3258,7 @@
             renderedKindlechatIds = {};
             generalMsgData = {};
             langTranslations = {};
+            dmTranslations = {};
             generalDomMsgCount = 0;
             // Reset Pixel Cache on reload
             window.pixelGridCache = {};
@@ -4133,7 +4166,10 @@
                 markSendBusy();
                 setTimeout(function () { isSendingMessage = false; }, 4000);
                 var threadId = currentRoomId;
-                callDmWorker({ type: 'dm_message', threadId: threadId, text: text }).then(function (result) {
+                var dmLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
+                var dmPayload = { type: 'dm_message', threadId: threadId, text: text };
+                if (dmLang) dmPayload.lang = dmLang;
+                callDmWorker(dmPayload).then(function (result) {
                     resetSendState();
                     if (result.__outage) {
                         showServiceOutage();
@@ -4436,10 +4472,17 @@
             return canvas;
         }
 
+        var pendingDmTranslations = {};
+        var dmTranslations = {};
+
         function renderDmMessage(msg, msgId, returnOnly) {
             var historyEl = document.getElementById('chat-history');
             if (!historyEl || !msg) return null;
             var isSelf = !!(currentUser && msg.uid === currentUser.uid);
+            var dmMsgLang = normalizeChatLang(msg.lang || '');
+            var dmMyLang = normalizeChatLang(getEffectiveTranslationLang());
+            var dmLangDiffers = chatLangDiffers(dmMsgLang, dmMyLang);
+            var dmTranslated = settings.showTranslations ? (dmTranslations[msgId] || '') : '';
 
             var el = document.createElement('div');
             el.className = 'msg ' + (isSelf ? 'self' : 'other');
@@ -4461,6 +4504,22 @@
             timeEl.textContent = msg.timestamp ? formatChatTime(msg.timestamp) : '';
             meta.appendChild(nameEl);
             meta.appendChild(timeEl);
+            var dmTranslateLink = null;
+            if (dmTranslated) {
+                var dmToggle = document.createElement('span');
+                dmToggle.id = 'toggle-dm-' + msgId;
+                dmToggle.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
+                dmToggle.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
+                dmToggle.onclick = function () { toggleDmTranslation(msgId); };
+                meta.appendChild(dmToggle);
+            } else if (settings.showTranslations && !isSelf && currentUser && msg.text && String(msg.text).length > 1 && dmLangDiffers) {
+                dmTranslateLink = document.createElement('span');
+                dmTranslateLink.id = 'translate-dm-' + msgId;
+                dmTranslateLink.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
+                dmTranslateLink.textContent = window.t('translate.btn.translate', 'Translate');
+                dmTranslateLink.onclick = function () { requestDmTranslation(msgId); };
+                meta.appendChild(dmTranslateLink);
+            }
             el.appendChild(meta);
 
             var avatarId = 'dm-avatar-' + msgId;
@@ -4492,10 +4551,20 @@
 
             var bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
-            bubble.textContent = censorText(msg.text || '');
+            bubble.id = 'dm-bubble-' + msgId;
+            bubble.setAttribute('data-state', dmTranslated ? 'translated' : 'original');
+            bubble.setAttribute('data-lang', dmMsgLang);
+            bubble.setAttribute('data-original', msg.text || '');
+            bubble.setAttribute('data-translated', dmTranslated ? censorText(dmTranslated) : '');
+            if (dmTranslated) bubble.style.fontStyle = 'italic';
+            bubble.textContent = censorText(dmTranslated || msg.text || '');
             contentEl.appendChild(bubble);
             if (typeof window.renderEmojis === 'function') {
                 try { window.renderEmojis(bubble); } catch (e) { }
+            }
+
+            if (dmTranslateLink && !dmTranslated && dmMsgLang && dmMsgLang !== dmMyLang && !pendingDmTranslations[msgId]) {
+                queueDmAutoTranslation(msgId, msg.text || '', dmMsgLang, dmMyLang);
             }
 
             rowEl.appendChild(contentEl);
@@ -4506,6 +4575,101 @@
             // their fragment synchronously after this function returns.
             setTimeout(function () { resolveDmAvatar(msg.uid, avatarEl); }, 0);
             return el;
+        }
+
+        function applyDmTranslation(msgId, translated) {
+            var bubble = document.getElementById('dm-bubble-' + msgId);
+            if (!bubble) return;
+            var original = bubble.getAttribute('data-original') || '';
+            if (!translated || String(translated).toLowerCase().trim() === String(original).toLowerCase().trim()) return;
+            var safe = censorText(translated);
+            dmTranslations[msgId] = translated;
+            bubble.setAttribute('data-state', 'translated');
+            bubble.setAttribute('data-translated', safe);
+            bubble.textContent = safe;
+            if (typeof window.renderEmojis === 'function') {
+                try { window.renderEmojis(bubble); } catch (e) { }
+            }
+            var link = document.getElementById('translate-dm-' + msgId);
+            if (link && link.parentNode) link.parentNode.removeChild(link);
+            var msgEl = bubble.closest ? bubble.closest('.msg') : null;
+            var meta = msgEl ? msgEl.querySelector('.msg-meta') : null;
+            if (meta && !document.getElementById('toggle-dm-' + msgId)) {
+                var span = document.createElement('span');
+                span.id = 'toggle-dm-' + msgId;
+                span.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
+                span.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
+                span.onclick = function () { toggleDmTranslation(msgId); };
+                meta.appendChild(span);
+            }
+        }
+
+        function toggleDmTranslation(msgId) {
+            var bubble = document.getElementById('dm-bubble-' + msgId);
+            var toggle = document.getElementById('toggle-dm-' + msgId);
+            if (!bubble || !toggle) return;
+            var original = bubble.getAttribute('data-original') || '';
+            var translated = bubble.getAttribute('data-translated') || '';
+            if (bubble.getAttribute('data-state') === 'translated') {
+                bubble.setAttribute('data-state', 'original');
+                bubble.textContent = censorText(original);
+                toggle.textContent = window.t('kindlechat.msg.show_translated', 'Show Translated');
+            } else {
+                bubble.setAttribute('data-state', 'translated');
+                bubble.textContent = censorText(translated);
+                toggle.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
+            }
+            if (typeof window.renderEmojis === 'function') {
+                try { window.renderEmojis(bubble); } catch (e) { }
+            }
+        }
+
+        function requestDmTranslation(msgId) {
+            var bubble = document.getElementById('dm-bubble-' + msgId);
+            var link = document.getElementById('translate-dm-' + msgId);
+            if (!bubble || !link || pendingDmTranslations[msgId]) return;
+            var text = bubble.getAttribute('data-original') || '';
+            if (!text) return;
+            if (!window.rekindleTranslateClient) {
+                link.textContent = window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+                return;
+            }
+            var target = getEffectiveTranslationLang();
+            var source = bubble.getAttribute('data-lang') || 'auto';
+            pendingDmTranslations[msgId] = true;
+            link.textContent = window.t('translate.msg.translating', 'Translating...');
+            window.rekindleTranslateClient.translate(text, source, target).then(function (translated) {
+                delete pendingDmTranslations[msgId];
+                if (!translated || String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
+                    link.textContent = window.t('translate.msg.same_language', 'Already in this language');
+                    return;
+                }
+                applyDmTranslation(msgId, translated);
+            })['catch'](function (e) {
+                delete pendingDmTranslations[msgId];
+                link.textContent = (e && e.code === 'budget')
+                    ? window.t('translate.msg.budget', 'Translation limit for this session reached. Try again later.')
+                    : window.t('translate.msg.unavailable', 'Translation is unavailable right now. Try again later.');
+            });
+        }
+
+        function queueDmAutoTranslation(msgId, text, source, target) {
+            var client = window.rekindleTranslateClient;
+            if (!client || typeof client.autoTranslate !== 'function') return;
+            var queued = client.autoTranslate({
+                id: 'dm:' + msgId,
+                text: text,
+                source: source,
+                target: target,
+                apply: function (translated) {
+                    delete pendingDmTranslations[msgId];
+                    applyDmTranslation(msgId, translated);
+                },
+                onFail: function () { delete pendingDmTranslations[msgId]; }
+            });
+            // If the queue refused the job (cap/stopped), leave the manual link
+            // usable instead of parking a pending flag forever.
+            if (queued) pendingDmTranslations[msgId] = true;
         }
 
         function openDmReport(msgId) {
@@ -4661,7 +4825,10 @@
                     fail(dmT('kindlechat.dm.self', "You can't message yourself."));
                     return;
                 }
-                callDmWorker({ type: 'dm_request', toUid: profile.uid, text: text }).then(function (result) {
+                var requestLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
+                var requestPayload = { type: 'dm_request', toUid: profile.uid, text: text };
+                if (requestLang) requestPayload.lang = requestLang;
+                callDmWorker(requestPayload).then(function (result) {
                     if (result.error) {
                         if (result.code === 'dm_exists' && result.threadId) {
                             closeModal('dm-new-modal-content');
@@ -5507,6 +5674,11 @@
             var div = document.createElement('div');
             var toggleBtnHtml = '';
             var translateBtnHtml = '';
+            var autoTranslateText = '';
+            var autoTranslateSource = '';
+            var msgLang = normalizeChatLang(msg.lang || '');
+            var myLang = normalizeChatLang(getEffectiveTranslationLang());
+            var langDiffers = chatLangDiffers(msgLang, myLang);
 
             // Determine where this message will be inserted so we can decide
             // whether a reply context preview is needed.
@@ -5720,20 +5892,30 @@
                     // It should also do tagify.
 
                     // Store escaped original text
-                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="translated" data-original="' + escapeHtml(messageText) + '" data-translated="' + escapeHtml(translationText) + '">' + textToDisplay + '</div>';
+                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="translated" data-lang="' + escapeHtml(msgLang) + '" data-original="' + escapeHtml(messageText) + '" data-translated="' + escapeHtml(translationText) + '">' + textToDisplay + '</div>';
                 } else {
                     // Keep the id + original text on an untranslated bubble so a
                     // later on-demand translation can patch it in place (and so
                     // toggleTranslation can restore the original).
-                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="original" data-original="' + escapeHtml(messageText) + '">' + tagify(linkify(wrapAsciiEmojis(textToDisplay))) + '</div>';
+                    bubbleContent = '<div id="bubble-' + msgId + '" class="msg-bubble" data-state="original" data-lang="' + escapeHtml(msgLang) + '" data-original="' + escapeHtml(messageText) + '">' + tagify(linkify(wrapAsciiEmojis(textToDisplay))) + '</div>';
 
                     // On-demand translation link. The server-side fan-out that
                     // filled translations_by_lang is dead (Google's gtx endpoint
                     // blocks every client since 2026-10-19), so the reader
                     // translates what they actually want to read, in their own
                     // browser. See js/translate-client.js.
-                    if (settings.showTranslations && !isSelf && currentUser && messageText && String(messageText).length > 1) {
+                    // Only readers whose language differs from the stored
+                    // detected language see the link. Unknown (old messages)
+                    // keeps the link so nobody loses access to translation.
+                    if (settings.showTranslations && !isSelf && currentUser && messageText && String(messageText).length > 1 && langDiffers) {
                         translateBtnHtml = ' <span id="translate-' + msgId + '" onclick="requestTranslation(\'' + msgId + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left: 5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
+
+                        // Auto-translate a message that is definitely in another
+                        // language. The link above stays as the fallback.
+                        if (msgLang && msgLang !== myLang) {
+                            autoTranslateText = messageText;
+                            autoTranslateSource = msgLang;
+                        }
                     }
                 }
             }
@@ -5832,6 +6014,10 @@
 
             // Resolve avatar after DOM insertion.
             resolveMessageAuthor(msg.uid, div, avatarId);
+
+            if (autoTranslateText && !langTranslations[msgId] && !pendingTranslations[msgId]) {
+                queueMessageAutoTranslation(msgId, autoTranslateText, autoTranslateSource, myLang);
+            }
 
             if (msg.is_flipnote && msg.flipnote_data) {
                 setTimeout(function () { playFlipnote(msgId); }, 200);
@@ -5984,7 +6170,9 @@
             // Cached token first; only force a refresh if the worker rejects it
             // (this used to cost an Identity Toolkit round trip per message).
             tokenSource.getIdToken().then(function (token) {
+                var detectedLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
                 var bodyObj = { type: 'kindlechat', text: text };
+                if (detectedLang) bodyObj.lang = detectedLang;
                 if (replyTarget) {
                     bodyObj.replyTo = {
                         msgId: replyTarget.msgId,
@@ -6675,6 +6863,28 @@
         // never during a feed render: the per-IP budget is characters/day.
         var pendingTranslations = {};
 
+        // Feed-view auto translation. Queued by js/translate-client.js (one
+        // request at a time) so a busy room cannot fire 30 MyMemory calls in one
+        // paint; `langTranslations` makes a re-render free.
+        function queueMessageAutoTranslation(msgId, text, source, target) {
+            var client = window.rekindleTranslateClient;
+            if (!client || typeof client.autoTranslate !== 'function') return;
+            client.autoTranslate({
+                id: 'kindlechat:' + msgId,
+                text: text,
+                source: source,
+                target: target,
+                apply: function (translated) {
+                    if (!translated) return;
+                    if (String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) return;
+                    langTranslations[msgId] = translated;
+                    applyTranslationToRenderedMessage(msgId, translated);
+                    var link = document.getElementById('translate-' + msgId);
+                    if (link && link.parentNode) link.parentNode.removeChild(link);
+                }
+            });
+        }
+
         function requestTranslation(msgId) {
             var link = document.getElementById('translate-' + msgId);
             if (!link || pendingTranslations[msgId] || langTranslations[msgId]) return;
@@ -6693,10 +6903,19 @@
             }
 
             var target = getEffectiveTranslationLang();
+            // Use the stored detection as the source when we have it: it is more
+            // accurate than re-detecting a short message, and MyMemory then gets
+            // an explicit pair instead of its own guess.
+            var knownSource = bubble ? (bubble.getAttribute('data-lang') || '') : '';
+            if (!knownSource) {
+                var knownMsg = generalMsgData[msgId];
+                knownSource = (knownMsg && knownMsg.lang) || '';
+            }
+            var source = knownSource || 'auto';
             pendingTranslations[msgId] = true;
             link.textContent = window.t('translate.msg.translating', 'Translating...');
 
-            window.rekindleTranslateClient.translate(text, 'auto', target).then(function (translated) {
+            window.rekindleTranslateClient.translate(text, source, target).then(function (translated) {
                 delete pendingTranslations[msgId];
                 if (!translated || String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
                     // Already written in the reader's language: nothing to show.
@@ -6737,6 +6956,9 @@
             bubble.setAttribute('data-original', escapeHtml(originalText));
             bubble.setAttribute('data-translated', escapeHtml(safeText));
             bubble.innerHTML = tagify(wrapAsciiEmojis(linkify(escapeHtml(safeText))));
+
+            var link = document.getElementById('translate-' + msgId);
+            if (link && link.parentNode) link.parentNode.removeChild(link);
 
             var meta = bubble.parentNode ? bubble.parentNode.querySelector('.msg-meta') : null;
             if (meta && !document.getElementById('toggle-' + msgId)) {
@@ -7148,6 +7370,7 @@
                 kcTransChangedHandler = null;
                 renderedKindlechatIds = {};
                 langTranslations = {};
+                dmTranslations = {};
             } catch (e) { /* ignore — page is going away */ }
         }
         window.addEventListener('pagehide', kcDetachAllListeners);
