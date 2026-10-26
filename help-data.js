@@ -205,7 +205,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>What it unlocks</h2>
             <ul>
                 <li><b>Mail</b> - IMAP/SMTP email client.</li>
-                <li><b>AI Assistant</b> - built-in Gemini chat (custom API keys also require Pro).</li>
+                <li><b>AI Assistant</b> - built-in AI chat (custom API keys also require Pro).</li>
                 <li><b>Files</b> and <b>Docs</b> - cloud file storage and a document editor.</li>
                 <li><b>Quick ToDo</b> - handwriting OCR task capture.</li>
                 <li><b>AirType</b> - pair your phone as a keyboard for the e-reader.</li>
@@ -1088,7 +1088,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Docs',
         related: ['files', 'notes'],
         body: `
-            <p>Docs is a rich-text document editor for ReKindle+. It can create a document from scratch, open a <code>.doc</code>/<code>.docx</code> from your Files storage, and save the result back as a Word file.</p>
+            <p>Docs is a rich-text document editor for ReKindle+. It can create a document from scratch, open a <code>.docx</code> from your Files storage, and save the result back as a Word file.</p>
             <h2>Creating and editing</h2>
             <ol>
                 <li>Tap <b>Create New Document</b>, or <b>Open from Files</b> to pick an uploaded Word file.</li>
@@ -1106,24 +1106,24 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'files',
         cat: 'productivity',
         title: 'Files',
-        summary: 'ReKindle+ cloud storage for Word documents, shared with the Docs editor.',
-        tags: 'files storage upload docx word cloud 100mb pro download delete docs',
+        summary: 'ReKindle+ cloud storage for documents, images, PDFs and ebooks, shared with Docs and Photo Frame.',
+        tags: 'files storage upload image pdf ebook docx word cloud 100mb pro download delete docs',
         badges: ['REKINDLE+'],
         appHref: 'files',
         appName: 'Files',
         related: ['docs', 'storage'],
         body: `
-            <p>Files stores documents in your ReKindle account so the Docs editor can open them from any device. It is a small document locker, not a general-purpose drive.</p>
+            <p>Files stores documents, images, PDFs and ebooks in your ReKindle account. Word documents can be opened in the <a href="#docs">Docs</a> editor; images and PDFs get an inline preview.</p>
             <h2>Uploading</h2>
             <ol>
-                <li>Tap <b>Upload</b> and choose a <code>.doc</code> or <code>.docx</code> file.</li>
-                <li>Wait for the upload to finish. The file appears in the grid or list.</li>
-                <li>Tap a document to open it in <a href="#docs">Docs</a>. When Docs asks you to open a file, its picker uses this same list.</li>
+                <li>Tap <b>Upload</b> and choose one or more files.</li>
+                <li>Wait for the upload to finish. The files appear in the grid or list.</li>
+                <li>Tap a Word document to open it in <a href="#docs">Docs</a>. When Docs asks you to open a file, its picker uses this same list.</li>
             </ol>
-            <p>The page also suggests uploading from a PC. That is often easier because e-reader file pickers can be awkward; sign in to the same account on the computer and upload there.</p>
+            <p>Uploading from a PC is often easier because e-reader file pickers can be awkward; sign in to the same account on the computer and upload there.</p>
             <h2>Limits</h2>
             <ul>
-                <li>Only Word documents are accepted (<code>.doc</code> and <code>.docx</code>).</li>
+                <li>Images, PDFs, text, EPUB, ZIP and Word documents are accepted. Legacy <code>.doc</code> files must be saved as <code>.docx</code> before Docs can open them.</li>
                 <li>The shared quota is <b>100 MB per account</b>, and Docs saves and Mindmap exports count against it. The page shows how much is used; a save fails when the quota is full.</li>
                 <li>Deleting a file is permanent. Download anything you want to keep first.</li>
             </ul>

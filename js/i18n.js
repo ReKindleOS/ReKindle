@@ -122,8 +122,17 @@
         // Expose for dynamic use
         window.rekindleTranslations = translations;
 
-        // Apply Translations
+        // Apply Translations. A cached locale can resolve before <body> is
+        // parsed (i18n.js often sits early in <head>), which used to leave the
+        // static data-i18n markup untranslated forever. Apply once now when the
+        // document is ready, and again on DOMContentLoaded if it is still
+        // parsing. Existing nodes are also re-scanned when the observer starts.
         applyTranslations(translations);
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+                applyTranslations(translations);
+            });
+        }
 
         // Start Observer for dynamic content
         initObserver(translations);
@@ -219,6 +228,9 @@
                 childList: true,
                 subtree: true
             });
+
+            // Catch markup that was parsed before this observer existed.
+            applyTranslations(translations);
         };
 
         if (document.body) {

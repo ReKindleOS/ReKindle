@@ -427,8 +427,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
 </head>
 
 <body>
@@ -1229,12 +1229,19 @@
                 const record = post.record;
                 const text = record.text || '';
 
-                // Images
+                // Images. Respect Bluesky content labels: hide media on
+                // porn/sexual/nudity/graphic-media until the user opts in.
+                const labelVals = (post.labels || []).map(function (l) { return l && l.val; });
+                const sensitiveLabels = ['porn', 'sexual', 'nudity', 'graphic-media', 'gore'];
+                const isSensitive = labelVals.some(function (v) { return sensitiveLabels.indexOf(v) !== -1; });
                 let imagesHtml = '';
-                if (post.embed && post.embed.images && post.embed.images.length) {
+                if (isSensitive) {
+                    imagesHtml = '<div class="post-sensitive" style="border:2px solid #000;padding:8px;margin:8px 0;font-size:0.8rem;">' +
+                        '<strong>Sensitive media hidden</strong><br>This post is labelled by Bluesky. Open it in Bluesky to view.</div>';
+                } else if (post.embed && post.embed.images && post.embed.images.length) {
                     const shown = post.embed.images.slice(0, 2);
                     shown.forEach(img => {
-                        imagesHtml += `<img src="${img.thumb}" class="post-image" alt="${img.alt || 'Post image'}" width="300" height="200">`;
+                        imagesHtml += `<img src="${this.escapeHtml(img.thumb || '')}" class="post-image" alt="${this.escapeHtml(img.alt || 'Post image')}" width="300" height="200">`;
                     });
                     if (post.embed.images.length > shown.length) {
                         imagesHtml += `<div class="post-image-more">+${post.embed.images.length - shown.length} more image(s)</div>`;
@@ -1282,6 +1289,15 @@
                         <span style="margin-left: auto;">${time}</span>
                     </div>
                 `;
+                el.querySelectorAll('.post-content a').forEach(function (a) {
+                    a.addEventListener('click', function (e) {
+                        const href = a.getAttribute('href') || '';
+                        if (/^https?:/i.test(href)) {
+                            e.preventDefault();
+                            window.location.href = 'browser.html?url=' + encodeURIComponent(href);
+                        }
+                    });
+                });
                 container.appendChild(el);
             },
 
@@ -1480,7 +1496,7 @@
             }
         };
     </script>
-    <script src="time.js?v=4"></script>
+    <script src="time.js?v=5"></script>
 </body>
 
 </html>

@@ -541,10 +541,11 @@
         }
     </style>
     <script src="theme.js?v=33"></script>
-    <script src="time.js?v=4"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="time.js?v=5"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
     <script src="js/emoji-render.js?v=1"></script>
+    <script src="js/safe-html.js?v=1"></script>
 </head>
 
 <body>
@@ -1404,6 +1405,51 @@
         }
 
         // --- READER ---
+        function renderSubstackBody(container, title, html) {
+            container.innerHTML = '';
+            const heading = document.createElement('h1');
+            heading.textContent = title || '';
+            container.appendChild(heading);
+            if (window.rekindleSetSafeHtml) {
+                window.rekindleSetSafeHtml(container, html || '<p>Content not available.</p>');
+            } else {
+                container.appendChild(document.createTextNode(String(html || '')));
+            }
+            renderEmojis(container);
+
+            // Block remote images (tracking pixels) until the reader asks for them.
+            const remote = [];
+            container.querySelectorAll('img[src]').forEach(function (img) {
+                const src = img.getAttribute('src') || '';
+                if (/^https?:/i.test(src)) {
+                    img.setAttribute('data-remote-src', src);
+                    img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==');
+                    remote.push(img);
+                }
+            });
+            if (remote.length) {
+                const bar = document.createElement('div');
+                bar.style.cssText = 'border:1px solid #ccc;background:#f6f6f6;padding:6px 8px;margin:0 0 10px;font-size:0.78rem;';
+                const label = document.createElement('span');
+                label.textContent = 'Remote images are blocked for privacy. ';
+                bar.appendChild(label);
+                const btn = document.createElement('button');
+                btn.className = 'sys-btn';
+                btn.style.cssText = 'font-size:0.75rem;padding:4px 8px;';
+                btn.textContent = 'Load images';
+                btn.onclick = function () {
+                    remote.forEach(function (img) {
+                        const src = img.getAttribute('data-remote-src');
+                        if (src) img.setAttribute('src', src);
+                        img.removeAttribute('data-remote-src');
+                    });
+                    bar.remove();
+                };
+                bar.appendChild(btn);
+                container.insertBefore(bar, container.firstChild);
+            }
+        }
+
         function openReader(post) {
             state.currentArticle = post;
             document.getElementById('reader-modal').style.display = 'flex';
@@ -1412,8 +1458,7 @@
 
             // Substack API usually returns post content in `body_html`
             if (post.body_html) {
-                content.innerHTML = `<h1>${post.title}</h1>` + post.body_html;
-                renderEmojis(content);
+                renderSubstackBody(content, post.title, post.body_html);
             } else {
                 // Fetch full post if snippet
                 content.innerHTML = "Loading full content...";
@@ -1459,16 +1504,14 @@
                 }
 
                 var readerContent = document.getElementById('reader-content');
-                readerContent.innerHTML =
-                    `<h1>${data.title}</h1>` + (data.body_html || "<p>Content not available.</p>");
-                renderEmojis(readerContent);
+                renderSubstackBody(readerContent, data.title, data.body_html);
 
             } catch (e) {
                 console.warn(e);
                 document.getElementById('reader-content').innerHTML = `
                     <div style="color:red; padding:20px;">
                         <h3>Error loading content</h3>
-                        <p>${e.message}</p>
+                        <p>${window.t ? window.t('substack.error.load', 'Could not load this post.') : 'Could not load this post.'}</p>
                         <p>Try opening the original link.</p>
                         <button class="sys-btn" onclick="openOriginal()">Open Original</button>
                     </div>`;

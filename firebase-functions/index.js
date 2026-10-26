@@ -17,6 +17,7 @@ const dns = require("dns").promises;
 const { ImapFlow } = require("imapflow");
 const simpleParser = require("mailparser").simpleParser;
 const nodemailer = require("nodemailer");
+const MailComposer = require("nodemailer/lib/mail-composer");
 const mailOAuth = require("./mail-oauth-config");
 // jose removed — no longer needed after AgeVerif integration removal
 
@@ -815,6 +816,95 @@ exports.fetchEmails = onCall(callOptions, async (request) => {
 });
 
 
+/*
+ * IMAP search. The client uses this instead of filtering the 20 loaded rows.
+ * Query is capped and results are limited so a broad search cannot return the
+ * whole mailbox in one callable response.
+ */
+exports.searchEmails = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'imap');
+    const { imap: imapConfig, path = 'INBOX', query, limit = 30 } = request.data || {};
+
+    if (!imapConfig || !query || !String(query).trim()) {
+        throw new HttpsError('invalid-argument', 'Missing IMAP config or search query.');
+    }
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
+    const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
+    const safeQuery = String(query).trim().slice(0, 200);
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 30));
+
+    const client = new ImapFlow({
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
+        logger: false
+    });
+
+    try {
+        await client.connect();
+        const lock = await client.getMailboxLock(safePath);
+        try {
+            let uids;
+            try {
+                uids = await client.search({
+                    or: [
+                        { subject: safeQuery },
+                        { from: safeQuery },
+                        { text: safeQuery }
+                    ]
+                }, { uid: true });
+            } catch (searchErr) {
+                // Some IMAP servers do not implement TEXT; fall back to headers.
+                uids = await client.search({ subject: safeQuery }, { uid: true });
+            }
+
+            if (!uids || uids.length === 0) {
+                return { success: true, messages: [], query: safeQuery };
+            }
+
+            const selected = uids.slice(-safeLimit);
+            const messages = [];
+            for await (const message of client.fetch(selected.join(','), {
+                envelope: true,
+                source: { maxLength: 1024 },
+                flags: true,
+                internalDate: true
+            }, { uid: true })) {
+                let snippet = '';
+                try {
+                    if (message.source) {
+                        const parsed = await simpleParser(message.source);
+                        snippet = parsed.text ? parsed.text.substring(0, 100).replace(/\s+/g, ' ').trim() : '';
+                    }
+                } catch (e) { }
+                messages.push({
+                    uid: message.uid,
+                    seq: message.seq,
+                    envelope: {
+                        ...message.envelope,
+                        date: message.envelope.date ? message.envelope.date.toISOString() : null
+                    },
+                    flags: Array.from(message.flags),
+                    internalDate: message.internalDate ? message.internalDate.toISOString() : null,
+                    snippet: snippet
+                });
+            }
+
+            messages.sort((a, b) => new Date(b.envelope.date || b.internalDate) - new Date(a.envelope.date || a.internalDate));
+            return { success: true, messages: messages, query: safeQuery };
+        } finally {
+            lock.release();
+        }
+    } catch (err) {
+        logger.error('IMAP Search Error', err);
+        if (err instanceof HttpsError) throw err;
+        throw new HttpsError('internal', 'Could not search the mailbox.');
+    } finally {
+        if (client) await client.logout().catch(() => { });
+    }
+});
+
 exports.moveEmail = onCall(callOptions, async (request) => {
     const auth = await assertMailAccess(request, 'imap');
 
@@ -970,7 +1060,12 @@ exports.fetchEmailBody = onCall(callOptions, async (request) => {
                     date: parsed.date ? parsed.date.toISOString() : null,
                     text: parsed.text,
                     html: cleanedHtml,
-                    attachments: [] // Attachments can be large, handle separately if needed
+                    attachments: (parsed.attachments || []).map((a, index) => ({
+                        index: index,
+                        filename: a.filename || ('attachment-' + (index + 1)),
+                        contentType: a.contentType || 'application/octet-stream',
+                        size: a.size || (a.content ? a.content.length : 0)
+                    }))
                 }
             };
 
@@ -988,16 +1083,102 @@ exports.fetchEmailBody = onCall(callOptions, async (request) => {
 
 
 /*
+ * Download one attachment from a message. The body fetch returns metadata only;
+ * attachment bytes are fetched on demand and capped so a single callable cannot
+ * return an unbounded blob.
+ */
+exports.fetchEmailAttachment = onCall(callOptions, async (request) => {
+    const auth = await assertMailAccess(request, 'imap');
+    const { imap: imapConfig, path = 'INBOX', uid, index } = request.data || {};
+
+    if (!imapConfig || !uid || index === undefined) {
+        throw new HttpsError('invalid-argument', 'Missing IMAP config, UID or attachment index.');
+    }
+    const conn = await resolveMailConnection(auth.uid, imapConfig, 'imap');
+    const safePath = typeof path === 'string' && path ? path.substring(0, 200) : 'INBOX';
+    const attachmentIndex = Number(index);
+    if (!Number.isInteger(attachmentIndex) || attachmentIndex < 0) {
+        throw new HttpsError('invalid-argument', 'Invalid attachment index.');
+    }
+
+    const client = new ImapFlow({
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
+        logger: false
+    });
+
+    try {
+        await client.connect();
+        const lock = await client.getMailboxLock(safePath);
+        try {
+            const message = await client.fetchOne(String(uid), { source: true, uid: true });
+            if (!message || !message.source) {
+                throw new HttpsError('not-found', 'Message not found.');
+            }
+            const parsed = await simpleParser(message.source);
+            const attachment = (parsed.attachments || [])[attachmentIndex];
+            if (!attachment || !attachment.content) {
+                throw new HttpsError('not-found', 'Attachment not found.');
+            }
+            const content = attachment.content;
+            if (content.length > 6 * 1024 * 1024) {
+                throw new HttpsError('resource-exhausted', 'This attachment is too large to download here.');
+            }
+            return {
+                success: true,
+                filename: attachment.filename || ('attachment-' + (attachmentIndex + 1)),
+                contentType: attachment.contentType || 'application/octet-stream',
+                data: content.toString('base64')
+            };
+        } finally {
+            lock.release();
+        }
+    } catch (err) {
+        logger.error('IMAP Attachment Error', err);
+        if (err instanceof HttpsError) throw err;
+        throw new HttpsError('internal', 'Could not download the attachment.');
+    } finally {
+        if (client) await client.logout().catch(() => { });
+    }
+});
+
+/*
  * SMTP Send Email
  * Expects data: {
  *   smtp: { host, port, secure, auth: { user, pass } },
  *   message: { from, to, subject, text, html }
  * }
  */
+async function appendSentCopy(uid, imapConfig, rawMessage) {
+    const conn = await resolveMailConnection(uid, imapConfig, 'imap');
+    const client = new ImapFlow({
+        host: conn.host,
+        port: conn.port,
+        secure: conn.secure,
+        auth: conn.auth,
+        logger: false,
+        socketTimeout: 10000,
+        greetingTimeout: 10000
+    });
+    try {
+        await client.connect();
+        const folders = await client.list();
+        const sent = folders.find(f => f.specialUse === '\\Sent') ||
+            folders.find(f => /^sent(\s|$)/i.test(f.name || ''));
+        if (!sent) return false;
+        await client.append(sent.path, rawMessage, ['\\Seen']);
+        return true;
+    } finally {
+        if (client) await client.logout().catch(() => { });
+    }
+}
+
 exports.sendEmail = onCall(callOptions, async (request) => {
     const auth = await assertMailAccess(request, 'smtp');
 
-    const { smtp: smtpConfig, message } = request.data || {};
+    const { smtp: smtpConfig, imap: imapConfig, message } = request.data || {};
 
     if (!smtpConfig || !message) {
         throw new HttpsError('invalid-argument', 'Missing SMTP config or message');
@@ -1013,6 +1194,32 @@ exports.sendEmail = onCall(callOptions, async (request) => {
     }
     if (String(message.text || '').length + String(message.html || '').length > 1024 * 1024) {
         throw new HttpsError('invalid-argument', 'Message is too large.');
+    }
+
+    const attachments = [];
+    if (Array.isArray(message.attachments) && message.attachments.length) {
+        if (message.attachments.length > 3) {
+            throw new HttpsError('invalid-argument', 'Too many attachments (maximum 3).');
+        }
+        let totalBytes = 0;
+        for (const att of message.attachments) {
+            if (!att || typeof att.data !== 'string' || !att.data) {
+                throw new HttpsError('invalid-argument', 'Invalid attachment.');
+            }
+            const filename = String(att.filename || 'attachment').replace(/[\r\n]/g, '').slice(0, 180);
+            const contentType = /^[\w.+-]+\/[\w.+-]+$/.test(String(att.contentType || ''))
+                ? String(att.contentType)
+                : 'application/octet-stream';
+            const content = Buffer.from(att.data, 'base64');
+            if (!content.length) {
+                throw new HttpsError('invalid-argument', 'Invalid attachment data.');
+            }
+            totalBytes += content.length;
+            if (totalBytes > 4 * 1024 * 1024) {
+                throw new HttpsError('invalid-argument', 'Attachments must total 4 MB or less.');
+            }
+            attachments.push({ filename: filename, content: content, contentType: contentType });
+        }
     }
 
     const transporter = nodemailer.createTransport({
@@ -1031,10 +1238,35 @@ exports.sendEmail = onCall(callOptions, async (request) => {
             to: recipients,
             subject: message.subject,
             text: message.text,
-            html: message.html
+            html: message.html,
+            attachments: attachments
         });
 
-        return { success: true, messageId: info.messageId };
+        // Best-effort copy into the Sent folder. A failed append must never
+        // make the user think the message was not sent.
+        let sentCopy = false;
+        if (imapConfig) {
+            try {
+                const composer = new MailComposer({
+                    from: message.from || conn.auth.user,
+                    to: recipients,
+                    subject: message.subject,
+                    text: message.text,
+                    html: message.html,
+                    attachments: attachments
+                });
+                const raw = await new Promise(function (resolve, reject) {
+                    composer.compile().build(function (err, buf) {
+                        if (err) reject(err); else resolve(buf);
+                    });
+                });
+                sentCopy = await appendSentCopy(auth.uid, imapConfig, raw);
+            } catch (appendErr) {
+                logger.warn('Could not append sent copy', appendErr);
+            }
+        }
+
+        return { success: true, messageId: info.messageId, sentCopy: sentCopy };
     } catch (err) {
         logger.error("SMTP Error", err);
         throw new HttpsError('internal', "Could not send the email.");

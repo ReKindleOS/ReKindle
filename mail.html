@@ -622,11 +622,12 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
-    <script src="time.js?v=4"></script>
+    <script src="time.js?v=5"></script>
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
+    <script src="js/safe-html.js?v=1"></script>
+    <script src="pro-gate.js?v=7"></script>
     
-    <script src="js/i18n.js?v=3"></script>
+    <script src="js/i18n.js?v=4"></script>
     <script src="js/custom-select.js?v=2"></script>
     <style>
         .login-input {
@@ -805,7 +806,7 @@
             <div class="email-list-pane">
                 <div class="search-box">
                     <input type="text" id="search-input" placeholder="Search emails..."
-                        data-i18n-placeholder="mail.ph.search" onkeyup="filterEmails()">
+                        data-i18n-placeholder="mail.ph.search" onkeyup="filterEmails()" onkeydown="if(event.key==='Enter'){event.preventDefault();searchEmailsServer();}" enterkeyhint="search" title="Press Enter to search this folder">
                 </div>
                 <div id="list-container"></div>
             </div>
@@ -980,6 +981,14 @@
                 <textarea id="compose-body" placeholder="Write your message..."
                     data-i18n-placeholder="mail.compose.ph.message" style="height: 150px;"></textarea>
             </div>
+            <div class="form-group">
+                <label data-i18n="mail.compose.label.attach">Attachments</label>
+                <input type="file" id="compose-attach-input" multiple style="display:none" onchange="handleComposeAttachments(this)">
+                <button class="toolbar-btn" type="button" onclick="document.getElementById('compose-attach-input').click()" data-i18n="mail.compose.attach">Attach files</button>
+                <div id="compose-attachments" style="margin-top:6px;font-size:0.8rem;"></div>
+                <p style="font-size:0.7rem;color:#666;margin:6px 0 0;" data-i18n="mail.compose.attach_hint">Up to 3 files, 4 MB total.</p>
+            </div>
+            <button class="toolbar-btn" id="compose-restore-btn" style="display:none;width:100%;margin-bottom:8px;" onclick="restoreComposeDraft()">Restore draft</button>
             <div class="modal-btns">
                 <button class="toolbar-btn" onclick="closeComposeModal()" data-i18n="btn.cancel">Cancel</button>
                 <button class="toolbar-btn primary" onclick="sendEmail()" data-i18n="mail.btn.send">Send</button>
@@ -1445,6 +1454,7 @@
         let allFolders = [];
         let currentFolder = 'INBOX';
         let currentEmail = null;
+        let currentFullEmail = null;
         let userEmail = '';
         let functions;
 
@@ -2598,6 +2608,72 @@
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
+        async function searchEmailsServer() {
+            const input = document.getElementById('search-input');
+            const query = input ? input.value.trim() : '';
+            if (!query) {
+                loadEmails(true);
+                return;
+            }
+            if (!unifiedMode && !imapConfig) {
+                showModal('This mailbox is not connected right now.');
+                return;
+            }
+            const status = document.getElementById('status-bar');
+            const list = document.getElementById('list-container');
+            if (status) status.innerText = 'Searching...';
+            if (list) list.innerHTML = '<div style="padding:20px; text-align:center;">Searching...</div>';
+            try {
+                const searchFn = functions.httpsCallable('searchEmails');
+                let merged = [];
+                if (unifiedMode) {
+                    for (const account of accounts) {
+                        const conn = await connectionForAccount(account);
+                        if (!conn) continue;
+                        try {
+                            const result = await searchFn({
+                                imap: conn.imap,
+                                path: 'INBOX',
+                                query: query,
+                                limit: 30
+                            });
+                            (result.data && result.data.messages ? result.data.messages : []).forEach(function (m) {
+                                m._accountId = account.id;
+                                m._folder = 'INBOX';
+                                merged.push(m);
+                            });
+                        } catch (e) {
+                            console.warn('Search failed for ' + account.email, e);
+                        }
+                    }
+                    merged.sort(function (a, b) { return emailDate(b) - emailDate(a); });
+                } else {
+                    const result = await searchFn({
+                        imap: imapConfig,
+                        path: currentFolder,
+                        query: query,
+                        limit: 30
+                    });
+                    if (!result.data || !result.data.success) throw new Error('Search failed');
+                    merged = result.data.messages || [];
+                }
+                emails = merged;
+                currentCursor = null;
+                isLoadingMore = false;
+                renderEmailList();
+                if (status) {
+                    status.innerText = 'Search results for "' + query + '"' +
+                        (unifiedMode ? ' in all inboxes' : ' in ' + (currentFolder || 'INBOX')) +
+                        ': ' + emails.length;
+                }
+            } catch (e) {
+                console.error('Mail search failed', e);
+                if (list) list.innerHTML = '<div style="padding:20px; text-align:center; color:red;">Search failed: ' +
+                    escapeHtml(e.message || 'unknown error') + '</div>';
+                if (status) status.innerText = 'Search failed.';
+            }
+        }
+
         function filterEmails() {
             const query = document.getElementById('search-input').value.toLowerCase();
             const container = document.getElementById('list-container');
@@ -2673,7 +2749,12 @@
                             </div>
                         </div>
                         <div id="email-body-host" class="email-body" style="border-top:1px solid #ccc; padding-top:10px;"></div>
+                        <div id="remote-images-bar" style="display:none;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #ccc;background:#f6f6f6;font-size:0.8rem;margin-top:8px;"><span>Remote images are blocked for privacy.</span><button class="toolbar-btn" onclick="loadRemoteEmailImages()" style="margin-left:10px;">Load images</button></div>
+                        <div id="email-attachments" style="display:none;padding:8px 0;border-top:1px solid #ccc;margin-top:8px;font-size:0.82rem;"></div>
                     `;
+
+                    currentFullEmail = fullEmail;
+                    renderEmailAttachments(fullEmail.attachments || []);
 
                     // Shadow DOM isolation for email body
                     const host = document.getElementById('email-body-host');
@@ -2761,7 +2842,37 @@
                                 </style>
                             `;
 
-                            shadow.innerHTML = style + (fullEmail.html || fullEmail.text.replace(/\n/g, '<br>'));
+                            shadow.innerHTML = style;
+
+                            const bodyEl = document.createElement('div');
+                            bodyEl.className = 'email-body-content';
+                            shadow.appendChild(bodyEl);
+
+                            // Email HTML is untrusted. Safe-html removes scripts,
+                            // event handlers, forms and dangerous URLs before the
+                            // nodes are appended (never innerHTML).
+                            const rawEmailHtml = fullEmail.html ||
+                                escapeHtml(fullEmail.text || '').replace(/\n/g, '<br>');
+                            if (window.rekindleSetSafeHtml) {
+                                window.rekindleSetSafeHtml(bodyEl, rawEmailHtml);
+                            } else {
+                                bodyEl.textContent = fullEmail.text || '';
+                            }
+
+                            // Block remote images until the user opts in. This
+                            // stops tracking pixels and keeps the Kindle from
+                            // downloading a whole newsletter just to read it.
+                            let remoteImageCount = 0;
+                            bodyEl.querySelectorAll('img[src]').forEach(function (img) {
+                                const src = img.getAttribute('src') || '';
+                                if (/^https?:/i.test(src)) {
+                                    img.setAttribute('data-remote-src', src);
+                                    img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==');
+                                    remoteImageCount++;
+                                }
+                            });
+                            const remoteBar = document.getElementById('remote-images-bar');
+                            if (remoteBar) remoteBar.style.display = remoteImageCount ? 'flex' : 'none';
 
                             // Intercept links to open in Browser app
                             try {
@@ -2784,13 +2895,94 @@
                     }
 
                 } else {
-                    detailsPane.innerHTML = `< div style = "padding:20px; color:red;" > Error loading body: ${result.data.error}</div > `;
+                    detailsPane.innerHTML = '<div style="padding:20px;color:red;">Error loading body: ' +
+                        escapeHtml(String(result.data.error || 'Unknown error')) + '</div>';
                 }
 
             } catch (e) {
                 console.error("Body error", e);
-                detailsPane.innerHTML = `< div style = "padding:20px; color:red;" > Error: ${e.message}</div >`;
+                detailsPane.innerHTML = '<div style="padding:20px;color:red;">Error: ' +
+                    escapeHtml(String(e.message || 'Could not load the message.')) + '</div>';
             }
+        }
+
+        function formatAttachmentSize(bytes) {
+            const n = Number(bytes) || 0;
+            if (n < 1024) return n + ' B';
+            if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+            return (n / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function renderEmailAttachments(attachments) {
+            const box = document.getElementById('email-attachments');
+            if (!box) return;
+            box.innerHTML = '';
+            if (!attachments || attachments.length === 0) {
+                box.style.display = 'none';
+                return;
+            }
+            box.style.display = 'block';
+            const label = document.createElement('b');
+            label.textContent = 'Attachments: ';
+            box.appendChild(label);
+            attachments.forEach(function (att) {
+                const btn = document.createElement('button');
+                btn.className = 'toolbar-btn';
+                btn.style.margin = '4px 6px 0 0';
+                btn.textContent = (att.filename || 'attachment') + ' (' + formatAttachmentSize(att.size) + ')';
+                btn.onclick = function () { downloadEmailAttachment(att.index); };
+                box.appendChild(btn);
+            });
+        }
+
+        async function downloadEmailAttachment(index) {
+            if (!currentEmail || !currentFullEmail) return;
+            const att = (currentFullEmail.attachments || [])[index];
+            if (!att) return;
+            const ctx = await contextForMessage(currentEmail);
+            if (!ctx) {
+                showModal('That account is not available right now.');
+                return;
+            }
+            const status = document.getElementById('status-bar');
+            if (status) status.innerText = 'Downloading ' + att.filename + '...';
+            try {
+                const result = await functions.httpsCallable('fetchEmailAttachment')({
+                    imap: ctx.imap,
+                    path: ctx.folder,
+                    uid: currentEmail.uid,
+                    index: index
+                });
+                if (!result.data || !result.data.success) throw new Error('Download failed');
+                const binary = atob(result.data.data);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], { type: result.data.contentType || 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = result.data.filename || att.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+                if (status) status.innerText = 'Downloaded ' + (result.data.filename || att.filename);
+            } catch (e) {
+                console.error('Attachment download failed', e);
+                if (status) status.innerText = 'Could not download the attachment.';
+            }
+        }
+
+        function loadRemoteEmailImages() {
+            const host = document.getElementById('email-body-host');
+            if (!host || !host.shadowRoot) return;
+            host.shadowRoot.querySelectorAll('img[data-remote-src]').forEach(function (img) {
+                const src = img.getAttribute('data-remote-src');
+                if (src) img.setAttribute('src', src);
+                img.removeAttribute('data-remote-src');
+            });
+            const bar = document.getElementById('remote-images-bar');
+            if (bar) bar.style.display = 'none';
         }
 
         async function toggleReadStatus() {
@@ -2917,14 +3109,148 @@
                 return;
             }
             currentFolder = document.getElementById('folder-select').value;
-            console.log("Changed folder to:", currentFolder); // DEBUG
+            const search = document.getElementById('search-input');
+            if (search) search.value = '';
             loadEmails();
         }
 
+        const COMPOSE_DRAFT_KEY = 'rekindle_mail_compose_draft';
+
+        function getComposeDraft() {
+            try {
+                const draft = JSON.parse(localStorage.getItem(COMPOSE_DRAFT_KEY) || 'null');
+                return draft && (draft.to || draft.subject || draft.body) ? draft : null;
+            } catch (e) { return null; }
+        }
+
+        function saveComposeDraft() {
+            const draft = {
+                to: document.getElementById('compose-to').value,
+                subject: document.getElementById('compose-subject').value,
+                body: document.getElementById('compose-body').value,
+                updated: Date.now()
+            };
+            try {
+                if (draft.to || draft.subject || draft.body) {
+                    localStorage.setItem(COMPOSE_DRAFT_KEY, JSON.stringify(draft));
+                } else {
+                    localStorage.removeItem(COMPOSE_DRAFT_KEY);
+                }
+            } catch (e) { }
+        }
+
+        function clearComposeDraft() {
+            try { localStorage.removeItem(COMPOSE_DRAFT_KEY); } catch (e) { }
+            const btn = document.getElementById('compose-restore-btn');
+            if (btn) btn.style.display = 'none';
+        }
+
+        function restoreComposeDraft() {
+            const draft = getComposeDraft();
+            if (!draft) return;
+            document.getElementById('compose-to').value = draft.to || '';
+            document.getElementById('compose-subject').value = draft.subject || '';
+            document.getElementById('compose-body').value = draft.body || '';
+            const btn = document.getElementById('compose-restore-btn');
+            if (btn) btn.style.display = 'none';
+        }
+
+        let composeAttachments = [];
+        const COMPOSE_MAX_FILES = 3;
+        const COMPOSE_MAX_BYTES = 4 * 1024 * 1024;
+
+        function composeAttachmentBytes() {
+            return composeAttachments.reduce(function (sum, a) { return sum + (a.size || 0); }, 0);
+        }
+
+        function renderComposeAttachments() {
+            const box = document.getElementById('compose-attachments');
+            if (!box) return;
+            box.innerHTML = '';
+            composeAttachments.forEach(function (att, index) {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border:1px solid #ccc;padding:4px 6px;margin:0 0 4px;';
+                const name = document.createElement('span');
+                name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px;';
+                name.textContent = att.filename + ' (' + formatAttachmentSize(att.size) + ')';
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'toolbar-btn';
+                remove.style.cssText = 'padding:2px 6px;font-size:0.7rem;margin-left:8px;';
+                remove.textContent = 'X';
+                remove.onclick = function () {
+                    composeAttachments.splice(index, 1);
+                    renderComposeAttachments();
+                };
+                row.appendChild(name);
+                row.appendChild(remove);
+                box.appendChild(row);
+            });
+        }
+
+        function clearComposeAttachments() {
+            composeAttachments = [];
+            renderComposeAttachments();
+        }
+
+        function handleComposeAttachments(input) {
+            const files = Array.from(input.files || []);
+            input.value = '';
+            if (!files.length) return;
+            if (!window.FileReader) {
+                showModal('Attachments are not supported by this browser.');
+                return;
+            }
+            const remaining = COMPOSE_MAX_FILES - composeAttachments.length;
+            if (remaining <= 0) {
+                showModal('You can attach up to ' + COMPOSE_MAX_FILES + ' files.');
+                return;
+            }
+            const selected = files.slice(0, remaining);
+            if (files.length > remaining) {
+                showModal('You can attach up to ' + COMPOSE_MAX_FILES + ' files.');
+            }
+            const projected = composeAttachmentBytes() + selected.reduce(function (sum, f) { return sum + (f.size || 0); }, 0);
+            if (projected > COMPOSE_MAX_BYTES) {
+                showModal('Attachments must total 4 MB or less.');
+                return;
+            }
+            selected.forEach(function (file) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                    if (composeAttachments.length >= COMPOSE_MAX_FILES ||
+                        composeAttachmentBytes() + file.size > COMPOSE_MAX_BYTES) {
+                        return;
+                    }
+                    const result = String(reader.result || '');
+                    const comma = result.indexOf(',');
+                    if (comma < 0) return;
+                    composeAttachments.push({
+                        filename: file.name || 'attachment',
+                        contentType: file.type || 'application/octet-stream',
+                        data: result.slice(comma + 1),
+                        size: file.size || 0
+                    });
+                    renderComposeAttachments();
+                };
+                reader.onerror = function () {
+                    showModal('Could not read ' + file.name + '.');
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
         function openComposeModal() {
+            clearComposeAttachments();
             document.getElementById('compose-to').value = '';
             document.getElementById('compose-subject').value = '';
             document.getElementById('compose-body').value = '';
+            ['compose-to', 'compose-subject', 'compose-body'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.oninput = saveComposeDraft;
+            });
+            const btn = document.getElementById('compose-restore-btn');
+            if (btn) btn.style.display = getComposeDraft() ? 'block' : 'none';
             document.getElementById('compose-modal').style.display = 'flex';
         }
 
@@ -2961,15 +3287,25 @@
             try {
                 const result = await sendEmailFn({
                     smtp: smtpConfig,
+                    imap: imapConfig,
                     message: {
                         to,
                         subject,
                         text: body,
-                        html: body.replace(/\n/g, '<br>')
+                        html: body.replace(/\n/g, '<br>'),
+                        attachments: composeAttachments.map(function (att) {
+                            return {
+                                filename: att.filename,
+                                contentType: att.contentType,
+                                data: att.data
+                            };
+                        })
                     }
                 });
 
                 if (result.data.success) {
+                    clearComposeDraft();
+                    clearComposeAttachments();
                     closeComposeModal();
                     showModal("Email sent!");
                 } else {

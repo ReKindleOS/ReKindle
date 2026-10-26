@@ -575,11 +575,12 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="time.js?v=4"></script>
+    <script src="time.js?v=5"></script>
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
     <script src="js/custom-select.js?v=2"></script>
+    <script src="js/safe-html.js?v=1"></script>
 </head>
 
 <body>
@@ -1102,14 +1103,20 @@
                 const el = document.createElement('div');
                 el.className = 'account-row';
                 el.innerHTML = `
-                    <img src="${acc.avatar}">
+                    <img src="${escapeHtml(acc.avatar || '')}" alt="">
                     <div>
-                        <div style="font-weight:bold;">${acc.display_name}</div>
-                        <div style="font-size:0.8rem;">@${acc.acct}</div>
+                        <div style="font-weight:bold;">${escapeHtml(acc.display_name || acc.acct || '')}</div>
+                        <div style="font-size:0.8rem;">@${escapeHtml(acc.acct || '')}</div>
                     </div>
                 `;
                 container.appendChild(el);
             });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         function createTootElement(toot) {
@@ -1117,44 +1124,89 @@
             el.className = 'toot';
 
             const displayToot = toot.reblog ? toot.reblog : toot;
-            const reblogPrefix = toot.reblog ? `<div style="font-size:0.75rem; color:#666; margin-bottom:5px; margin-left:52px;">RT ${toot.account.display_name} boosted</div>` : '';
+            const account = displayToot.account || {};
+            const displayName = escapeHtml(account.display_name || account.acct || '');
+            const acct = escapeHtml(account.acct || '');
+            const avatar = escapeHtml(account.avatar_static || '');
+            const reblogName = escapeHtml((toot.account && toot.account.display_name) || (toot.account && toot.account.acct) || '');
+            const reblogPrefix = toot.reblog
+                ? '<div style="font-size:0.75rem; color:#666; margin-bottom:5px; margin-left:52px;">RT ' + reblogName + ' boosted</div>'
+                : '';
+
+            const isSensitive = !!(displayToot.sensitive || displayToot.spoiler_text);
+            const spoiler = displayToot.spoiler_text
+                ? '<div class="toot-spoiler"><strong>' + escapeHtml(displayToot.spoiler_text) + '</strong></div>'
+                : '';
 
             let mediaHtml = '';
             if (displayToot.media_attachments && displayToot.media_attachments.length > 0) {
                 mediaHtml = '<div class="media-grid">';
-                displayToot.media_attachments.forEach(m => {
-                    if (m.type === 'image') mediaHtml += `<img src="${m.preview_url}" class="media-item">`;
+                displayToot.media_attachments.forEach(function (m) {
+                    if (m.type === 'image') {
+                        mediaHtml += '<img src="' + escapeHtml(m.preview_url || '') + '" class="media-item" alt="">';
+                    }
                 });
                 mediaHtml += '</div>';
             }
 
             const isFaved = displayToot.favourited;
             const isBoosted = displayToot.reblogged;
+            const hiddenStyle = isSensitive ? ' style="display:none"' : '';
+            const warning = isSensitive
+                ? '<div class="toot-warning" style="border:2px solid #000;padding:8px;margin:8px 0;font-size:0.82rem;">' +
+                  '<strong>Sensitive content</strong><br>This post may contain content you do not want to see. ' +
+                  '<button type="button" class="sys-btn toot-show-btn" style="margin-top:6px;">Show content</button></div>'
+                : '';
 
-            el.innerHTML = `
-                ${reblogPrefix}
-                <div class="toot-header">
-                    <img src="${displayToot.account.avatar_static}" class="toot-avatar" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0iI2Y1ZjVmNSI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIi8+PC9zdmc+'">
-                    <div>
-                        <div class="toot-author">${displayToot.account.display_name}</div>
-                        <div class="toot-handle">@${displayToot.account.acct}</div>
-                    </div>
-                </div>
-                <div class="toot-content">${displayToot.content}</div>
-                ${mediaHtml}
-                <div class="toot-actions">
-                    <button class="action-btn ${isFaved ? 'faved' : ''}" onclick="toggleAction('${displayToot.id}', 'favourite', this)">
-                        ${isFaved ? '★' : '☆'} <span>${displayToot.favourites_count}</span>
-                    </button>
-                    <button class="action-btn ${isBoosted ? 'boosted' : ''}" onclick="toggleAction('${displayToot.id}', 'reblog', this)">
-                        ${isBoosted ? 'RT' : '⇄'} <span>${displayToot.reblogs_count}</span>
-                    </button>
-                    <button class="action-btn" onclick="replyTo('${displayToot.id}', '${displayToot.account.acct}')">
-                        <span>Reply</span>
-                    </button>
-                </div>
-            `;
-            el.querySelectorAll('a').forEach(a => a.target = "_blank");
+            el.innerHTML = reblogPrefix +
+                '<div class="toot-header">' +
+                '<img src="' + avatar + '" class="toot-avatar" alt="" onerror="this.src=\'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0iI2Y1ZjVmNSI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIi8+PC9zdmc+\'">' +
+                '<div><div class="toot-author">' + displayName + '</div>' +
+                '<div class="toot-handle">@' + acct + '</div></div></div>' +
+                spoiler + warning +
+                '<div class="toot-content"' + hiddenStyle + '></div>' +
+                '<div class="toot-media-wrap"' + hiddenStyle + '>' + mediaHtml + '</div>' +
+                '<div class="toot-actions">' +
+                '<button class="action-btn ' + (isFaved ? 'faved' : '') + '" onclick="toggleAction(\'' + escapeHtml(displayToot.id) + '\', \'favourite\', this)">' +
+                (isFaved ? '★' : '☆') + ' <span>' + Number(displayToot.favourites_count || 0) + '</span></button>' +
+                '<button class="action-btn ' + (isBoosted ? 'boosted' : '') + '" onclick="toggleAction(\'' + escapeHtml(displayToot.id) + '\', \'reblog\', this)">' +
+                (isBoosted ? 'RT' : '⇄') + ' <span>' + Number(displayToot.reblogs_count || 0) + '</span></button>' +
+                '<button class="action-btn" onclick="replyTo(\'' + escapeHtml(displayToot.id) + '\', \'' + acct + '\')"><span>Reply</span></button>' +
+                '</div>';
+
+            const contentEl = el.querySelector('.toot-content');
+            if (contentEl) {
+                if (window.rekindleSetSafeHtml) {
+                    window.rekindleSetSafeHtml(contentEl, displayToot.content || '');
+                } else {
+                    contentEl.textContent = displayToot.content || '';
+                }
+            }
+
+            if (isSensitive) {
+                const showBtn = el.querySelector('.toot-show-btn');
+                if (showBtn) {
+                    showBtn.addEventListener('click', function () {
+                        contentEl.style.display = '';
+                        const mediaWrap = el.querySelector('.toot-media-wrap');
+                        if (mediaWrap) mediaWrap.style.display = '';
+                        const warningEl = el.querySelector('.toot-warning');
+                        if (warningEl) warningEl.style.display = 'none';
+                    });
+                }
+            }
+
+            el.querySelectorAll('a').forEach(function (a) {
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.addEventListener('click', function (e) {
+                    const href = a.getAttribute('href') || '';
+                    if (/^https?:/i.test(href)) {
+                        e.preventDefault();
+                        window.location.href = 'browser.html?url=' + encodeURIComponent(href);
+                    }
+                });
+            });
             return el;
         }
 
@@ -1169,15 +1221,21 @@
                 el.className = 'notification';
                 let icon = '!'; let text = '';
 
-                if (note.type === 'mention') { icon = '@'; text = `<strong>${note.account.display_name}</strong> mentioned you`; }
-                else if (note.type === 'reblog') { icon = 'RT'; text = `<strong>${note.account.display_name}</strong> boosted`; }
-                else if (note.type === 'favourite') { icon = '★'; text = `<strong>${note.account.display_name}</strong> favourited`; }
-                else if (note.type === 'follow') { icon = '+'; text = `<strong>${note.account.display_name}</strong> followed you`; }
+                const noteName = escapeHtml(note.account.display_name || note.account.acct || '');
+                if (note.type === 'mention') { icon = '@'; text = `<strong>${noteName}</strong> mentioned you`; }
+                else if (note.type === 'reblog') { icon = 'RT'; text = `<strong>${noteName}</strong> boosted`; }
+                else if (note.type === 'favourite') { icon = '★'; text = `<strong>${noteName}</strong> favourited`; }
+                else if (note.type === 'follow') { icon = '+'; text = `<strong>${noteName}</strong> followed you`; }
 
                 let contentHtml = '';
-                if (note.status) contentHtml = `<div style="font-size:0.9rem; color:#555; margin-top:5px; border-left:2px solid #ccc; padding-left:8px;">${note.status.content}</div>`;
+                if (note.status) contentHtml = '<div class="notification-content" style="font-size:0.9rem; color:#555; margin-top:5px; border-left:2px solid #ccc; padding-left:8px;"></div>';
 
                 el.innerHTML = `<div style="display:flex; align-items:center; margin-bottom:5px;"><span style="font-size:1.2rem; margin-right:10px;">${icon}</span><span>${text}</span></div>${contentHtml}`;
+                const noteContent = el.querySelector('.notification-content');
+                if (noteContent && note.status) {
+                    if (window.rekindleSetSafeHtml) window.rekindleSetSafeHtml(noteContent, note.status.content || '');
+                    else noteContent.textContent = note.status.content || '';
+                }
                 container.appendChild(el);
             });
         }

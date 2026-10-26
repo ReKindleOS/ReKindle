@@ -228,9 +228,12 @@
     function checkTimezoneOffset() {
         // Never cover a sign-in screen with the timezone prompt; signing in
         // is how the user restores a saved timezone. The index login popup
-        // opens via ?login=true, and this overlay (z-index 99999) would sit
-        // on top of the modal (z-index 10000).
+        // opens via ?login=true, and this overlay would sit on top
+        // of the modal. It is intentionally below .modal-overlay (10000).
         if (/\/(login)(\.html)?\/?$/.test(window.location.pathname || '')) return;
+        try {
+            if (sessionStorage.getItem('rekindle_tz_prompt_snoozed') === '1') return;
+        } catch (e) { }
         try {
             if (new URLSearchParams(window.location.search).get('login') === 'true') return;
         } catch (e) { /* no URLSearchParams: fall through */ }
@@ -352,6 +355,30 @@
                 box-shadow: none;
                 transform: translate(2px, 2px);
             }
+            .tz-later-btn {
+                display: block;
+                width: 100%;
+                min-height: 44px;
+                margin: 8px 0 0 0;
+                padding: 8px 12px;
+                border: 2px solid black;
+                border-radius: 0;
+                background: #eee;
+                color: black;
+                box-shadow: 2px 2px 0 black;
+                font-family: inherit;
+                font-size: 0.85rem;
+                font-weight: bold;
+                text-align: center;
+                cursor: pointer;
+                box-sizing: border-box;
+            }
+            .tz-later-btn:active {
+                background: black;
+                color: white;
+                box-shadow: none;
+                transform: translate(2px, 2px);
+            }
             .tz-signin-hint {
                 font-size: 0.75rem;
                 line-height: 1.35;
@@ -364,7 +391,7 @@
         // Inject Modal HTML
         const overlay = document.createElement('div');
         overlay.id = 'tz-warning-overlay';
-        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9000;display:flex;align-items:center;justify-content:center;';
 
         overlay.innerHTML = `
             <div class="tz-modal-window">
@@ -382,6 +409,7 @@
                         <button type="button" class="tz-signin-btn" id="tz-signin-btn" data-i18n="tz.signin">Sign in instead</button>
                         <p class="tz-signin-hint" data-i18n="tz.signin_hint">Your saved timezone will be restored.</p>
                     </div>
+                    <button type="button" class="tz-later-btn" id="tz-later-btn" data-i18n="tz.later">Later</button>
                 </div>
             </div>
         `;
@@ -507,6 +535,14 @@
         searchInput.addEventListener('input', function () {
             handleSearchInput(this.value);
         });
+
+        var tzLaterBtn = document.getElementById('tz-later-btn');
+        if (tzLaterBtn) {
+            tzLaterBtn.addEventListener('click', function () {
+                try { sessionStorage.setItem('rekindle_tz_prompt_snoozed', '1'); } catch (e) { }
+                dismissTimezonePrompt();
+            });
+        }
 
         var tzSignInBtn = document.getElementById('tz-signin-btn');
         if (tzSignInBtn) {

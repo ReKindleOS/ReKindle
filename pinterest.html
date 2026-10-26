@@ -734,8 +734,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
 </head>
 
 <body>
@@ -1819,6 +1819,52 @@
             }
         };
     </script>
+
+    <script>
+    // Chromium 75 ignores <img loading="lazy">. Defer off-screen pin images
+    // with IntersectionObserver instead, without changing the render templates.
+    (function () {
+        if (typeof IntersectionObserver === 'undefined') return;
+        var PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+        var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var img = entry.target;
+                var src = img.getAttribute('data-lazy-src');
+                if (src) img.setAttribute('src', src);
+                img.removeAttribute('data-lazy-src');
+                observer.unobserve(img);
+            });
+        }, { rootMargin: '300px' });
+
+        function defer(img) {
+            if (!img || img.getAttribute('data-lazy-src')) return;
+            var src = img.getAttribute('src') || '';
+            if (!/^https?:/i.test(src)) return;
+            img.setAttribute('data-lazy-src', src);
+            img.setAttribute('src', PLACEHOLDER);
+            observer.observe(img);
+        }
+
+        function scan(root) {
+            if (!root || !root.querySelectorAll) return;
+            root.querySelectorAll('img.pin-image').forEach(defer);
+            if (root.tagName === 'IMG' && root.classList.contains('pin-image')) defer(root);
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            scan(document);
+            new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    m.addedNodes.forEach(function (node) {
+                        if (node.nodeType === 1) scan(node);
+                    });
+                });
+            }).observe(document.body, { childList: true, subtree: true });
+        });
+    })();
+    </script>
+
 </body>
 
 </html>

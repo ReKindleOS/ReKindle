@@ -12,7 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-    <script src="pro-gate.js?v=6"></script>
+    <script src="pro-gate.js?v=7"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -375,7 +375,7 @@
 
     <link rel="stylesheet" href="css/custom-select.css">
     <script src="theme.js?v=33"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="js/i18n.js?v=4"></script>
     <script src="js/custom-select.js?v=2"></script>
 </head>
 
@@ -388,8 +388,7 @@
             <input type="file" id="file-upload" accept="image/jpeg, image/png, image/webp" multiple style="display:none"
                 onchange="handleUpload(event)">
             <button class="sys-btn-small" onclick="document.getElementById('file-upload').click()"
-                style="position: absolute; left: 45px; top: 6px; z-index: 5;" data-i18n="photoframe.btn.upload">Upload
-                JPEGs</button>
+                style="position: absolute; left: 45px; top: 6px; z-index: 5;" data-i18n="photoframe.btn.upload">Upload photos</button>
             <span class="title-text" style="left: 155px;" data-i18n="photoframe.title">Photo Frame</span>
             <button class="sys-btn-small" id="start-btn" onclick="startSlideshow()"
                 style="position: absolute; right: 8px; top: 6px; z-index: 5;" data-i18n="photoframe.btn.start"
@@ -415,6 +414,13 @@
                 </div>
 
                 <div style="margin-bottom: 15px;">
+                    <label style="display:flex; align-items:center; font-size:0.9rem;">
+                        <input type="checkbox" id="eink-refresh" onchange="savePrefs()" style="width:18px; height:18px; margin-right:10px;">
+                        <span data-i18n="photoframe.settings.refresh">E-ink refresh between slides</span>
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 15px;">
                     <div class="setting-header" data-i18n="photoframe.settings.interval">Slide Duration</div>
                     <select id="slide-interval" onchange="savePrefs()" style="width: 100%;">
                         <option value="10000" data-i18n="photoframe.time.10s">10 Seconds</option>
@@ -437,6 +443,11 @@
                     <div class="storage-bar-container">
                         <div class="storage-bar-fill" id="storage-bar"></div>
                     </div>
+                </div>
+
+                <div style="margin-top:10px;display:flex;align-items:center;flex-wrap:wrap;">
+                    <button class="sys-btn-small" id="offline-cache-btn" onclick="cachePhotosForOffline()" data-i18n="photoframe.offline.save">Save for offline</button>
+                    <span id="offline-status" style="font-size:0.72rem;color:#555;margin-left:8px;"></span>
                 </div>
 
                 <div id="photo-preview-grid" class="photo-grid"></div>
@@ -489,27 +500,88 @@
             const mode = document.getElementById('playback-mode').value;
             const intv = document.getElementById('slide-interval').value;
             const layout = document.getElementById('image-layout').value;
+            const refresh = document.getElementById('eink-refresh') && document.getElementById('eink-refresh').checked;
             localStorage.setItem('rekindle_photoframe_mode', mode);
             localStorage.setItem('rekindle_photoframe_interval', intv);
             localStorage.setItem('rekindle_photoframe_layout', layout);
+            localStorage.setItem('rekindle_photoframe_refresh', refresh ? 'true' : 'false');
         }
 
         function loadPrefs() {
             const mode = localStorage.getItem('rekindle_photoframe_mode') || 'sequential';
             const intv = localStorage.getItem('rekindle_photoframe_interval') || '60000';
             const layout = localStorage.getItem('rekindle_photoframe_layout') || 'contain';
+            const refresh = localStorage.getItem('rekindle_photoframe_refresh') !== 'false';
 
             const modeEl = document.getElementById('playback-mode');
             const intvEl = document.getElementById('slide-interval');
             const layoutEl = document.getElementById('image-layout');
+            const refreshEl = document.getElementById('eink-refresh');
 
             if (modeEl) modeEl.value = mode;
             if (intvEl) intvEl.value = intv;
             if (layoutEl) layoutEl.value = layout;
+            if (refreshEl) refreshEl.checked = refresh;
         }
 
         const MAX_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
+        const PHOTO_CACHE = 'rekindle-photoframe-v1';
         let totalUsage = 0;
+        let currentObjectUrl = null;
+
+        async function getOfflineImageUrl(url) {
+            if (typeof caches === 'undefined') return url;
+            try {
+                const cache = await caches.open(PHOTO_CACHE);
+                const cached = await cache.match(url);
+                if (cached) {
+                    const blob = await cached.blob();
+                    return URL.createObjectURL(blob);
+                }
+            } catch (e) { }
+            return url;
+        }
+
+        async function cachePhotosForOffline() {
+            const status = document.getElementById('offline-status');
+            const btn = document.getElementById('offline-cache-btn');
+            if (typeof caches === 'undefined') {
+                if (status) status.innerText = 'Offline caching is not supported here.';
+                return;
+            }
+            if (!photoData.length) {
+                if (status) status.innerText = 'Upload some photos first.';
+                return;
+            }
+            if (btn) btn.disabled = true;
+            let done = 0;
+            let failed = 0;
+            try {
+                const cache = await caches.open(PHOTO_CACHE);
+                for (let i = 0; i < photoData.length; i++) {
+                    if (status) status.innerText = 'Saving ' + (i + 1) + '/' + photoData.length + '...';
+                    try {
+                        const existing = await cache.match(photoData[i].url);
+                        if (!existing) {
+                            const resp = await fetch(photoData[i].url);
+                            if (resp.ok) await cache.put(photoData[i].url, resp.clone());
+                            else failed++;
+                        }
+                        done++;
+                    } catch (e) {
+                        failed++;
+                    }
+                }
+                if (status) {
+                    status.innerText = 'Saved ' + done + ' photo(s) for offline' + (failed ? ' (' + failed + ' failed)' : '') + '.';
+                }
+            } catch (e) {
+                console.error('Offline cache failed', e);
+                if (status) status.innerText = 'Could not save photos for offline.';
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
 
         function formatSize(bytes) {
             if (bytes === 0) return '0 B';
@@ -615,7 +687,7 @@
             const bar = document.getElementById('storage-bar');
             const text = document.getElementById('storage-text');
             if (bar) bar.style.width = `${percentage}%`;
-            if (text) text.textContent = `${formatSize(totalUsage)} / 100 MB used`;
+            if (text) text.textContent = `${formatSize(totalUsage)} / 100 MB used (shared with Files)`;
 
             if (bar) {
                 if (percentage > 90) {
@@ -627,14 +699,32 @@
         }
 
         async function saveOrderFile() {
-            if (!currentUser || photoData.length === 0) return;
+            if (!currentUser) return;
+            const orderRef = firebase.storage().ref(`users/${currentUser.uid}/photos/_ORDER.json`);
+            if (photoData.length === 0) {
+                try { await orderRef.delete(); } catch (e) { }
+                return;
+            }
             const justNames = photoData.map(p => p.name);
             const blob = new Blob([JSON.stringify(justNames)], { type: 'application/json' });
-            const storageRef = firebase.storage().ref(`users/${currentUser.uid}/photos/_ORDER.json`);
             try {
-                await storageRef.put(blob);
+                await orderRef.put(blob);
             } catch (err) { console.log("Failed to save order"); }
         }
+
+        const previewObserver = ('IntersectionObserver' in window)
+            ? new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    const img = entry.target;
+                    if (img.dataset.src) {
+                        img.src = img.dataset.src;
+                        img.removeAttribute('data-src');
+                    }
+                    previewObserver.unobserve(img);
+                });
+            }, { rootMargin: '300px' })
+            : null;
 
         function renderPreviews() {
             const grid = document.getElementById('photo-preview-grid');
@@ -646,7 +736,14 @@
 
                 const img = document.createElement('img');
                 img.className = 'photo-thumbnail';
-                img.src = p.url;
+                img.alt = '';
+                img.dataset.src = p.url;
+                if (previewObserver) {
+                    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+                    previewObserver.observe(img);
+                } else {
+                    img.src = p.url;
+                }
 
                 const actions = document.createElement('div');
                 actions.className = 'photo-actions';
@@ -662,7 +759,23 @@
                 delBtn.innerText = 'X';
                 delBtn.style.background = 'black';
                 delBtn.style.color = 'white';
-                delBtn.onclick = () => deletePhoto(index);
+                let pendingDelete = false;
+                let pendingTimer = null;
+                delBtn.onclick = function () {
+                    if (!pendingDelete) {
+                        pendingDelete = true;
+                        delBtn.innerText = 'SURE?';
+                        delBtn.style.fontSize = '0.55rem';
+                        pendingTimer = setTimeout(function () {
+                            pendingDelete = false;
+                            delBtn.innerText = 'X';
+                            delBtn.style.fontSize = '';
+                        }, 2500);
+                        return;
+                    }
+                    clearTimeout(pendingTimer);
+                    deletePhoto(index);
+                };
 
                 const dnBtn = document.createElement('button');
                 dnBtn.className = 'sys-btn-small';
@@ -689,6 +802,12 @@
                 if (p.url) {
                     const storageRef = firebase.storage().ref(`users/${currentUser.uid}/photos/${p.name}`);
                     await storageRef.delete();
+                    try {
+                        if (typeof caches !== 'undefined') {
+                            const cache = await caches.open(PHOTO_CACHE);
+                            await cache.delete(p.url);
+                        }
+                    } catch (e) { }
                 }
             } catch (e) { console.log(e); }
 
@@ -903,41 +1022,54 @@
 
             if (photoData[index] && imgEl) {
                 const rawUrl = photoData[index].url;
+                const displayUrl = await getOfflineImageUrl(rawUrl);
+                const previousObjectUrl = currentObjectUrl;
+                currentObjectUrl = displayUrl !== rawUrl ? displayUrl : null;
+                if (previousObjectUrl && previousObjectUrl !== currentObjectUrl) {
+                    setTimeout(function () { URL.revokeObjectURL(previousObjectUrl); }, 5000);
+                }
                 const container = document.getElementById('slideshow-container');
+
+                const refreshEl = document.getElementById('eink-refresh');
+                const shouldRefresh = refreshEl ? refreshEl.checked : true;
+
+                function paint() {
+                    imgEl.src = displayUrl;
+                    if (layout === 'cover') {
+                        imgEl.style.width = '100%';
+                        imgEl.style.height = '100%';
+                        imgEl.style.objectFit = 'cover';
+                    } else {
+                        imgEl.style.width = '';
+                        imgEl.style.height = '';
+                        imgEl.style.objectFit = 'contain';
+                    }
+                    imgEl.style.opacity = '1';
+
+                    // Preload the next 2 images
+                    for (let offset = 1; offset <= 2; offset++) {
+                        let nextIdx = idx + offset;
+                        if (nextIdx >= photoData.length) nextIdx = nextIdx % photoData.length;
+                        const preIndex = (mode === 'shuffle') ? currentShuffledSequence[nextIdx] : nextIdx;
+                        if (photoData[preIndex]) {
+                            const preloader = new Image();
+                            preloader.src = photoData[preIndex].url;
+                        }
+                    }
+                }
+
+                if (!shouldRefresh) {
+                    paint();
+                    return;
+                }
 
                 // Hardware e-ink clear: flash white then black
                 imgEl.style.opacity = '0';
                 container.style.backgroundColor = 'white';
 
-                setTimeout(async () => {
+                setTimeout(function () {
                     container.style.backgroundColor = 'black';
-
-                    setTimeout(async () => {
-                        imgEl.src = rawUrl;
-
-                        if (layout === 'cover') {
-                            imgEl.style.width = '100%';
-                            imgEl.style.height = '100%';
-                            imgEl.style.objectFit = 'cover';
-                        } else {
-                            imgEl.style.width = '';
-                            imgEl.style.height = '';
-                            imgEl.style.objectFit = 'contain';
-                        }
-                        imgEl.style.opacity = '1';
-
-                        // Preload the next 2 images
-                        for (let offset = 1; offset <= 2; offset++) {
-                            let nextIdx = idx + offset;
-                            if (nextIdx >= photoData.length) nextIdx = nextIdx % photoData.length;
-                            const preIndex = (mode === 'shuffle') ? currentShuffledSequence[nextIdx] : nextIdx;
-                            if (photoData[preIndex]) {
-                                const preloader = new Image();
-                                preloader.src = photoData[preIndex].url;
-                            }
-                        }
-
-                    }, 400); // 400ms black flash
+                    setTimeout(paint, 400); // 400ms black flash
                 }, 400); // 400ms white flash
             }
         }

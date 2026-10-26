@@ -12,7 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-    <script src="pro-gate.js?v=6"></script>
+    <script src="pro-gate.js?v=7"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -472,7 +472,8 @@
     </style>
 
     <script src="theme.js?v=33"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="js/i18n.js?v=4"></script>
+    <script src="js/ui-kit.js?v=2"></script>
 </head>
 
 <body>
@@ -560,8 +561,7 @@
     <div class="modal-overlay" id="upload-modal">
         <div class="modal-box">
             <p style="font-weight:bold;" data-i18n="files.modal.upload.title">Upload Files</p>
-            <p style="margin: 10px 0;" data-i18n="files.modal.upload.body">Please upload files to ReKindle using your
-                PC.</p>
+            <p style="margin: 10px 0;" data-i18n="files.modal.upload.body">Choose one or more files from this device. The 100 MB limit is shared with Photo Frame.</p>
             <div class="modal-actions">
                 <button class="btn" onclick="closeUploadModal()"
                     data-i18n="files.modal.upload.btn.cancel">Cancel</button>
@@ -571,7 +571,7 @@
     </div>
 
     <!-- Hidden file input -->
-    <input type="file" id="file-upload" style="display:none" accept=".doc,.docx" onchange="handleFileUpload(this)">
+    <input type="file" id="file-upload" style="display:none" multiple accept=".doc,.docx,.pdf,.txt,.md,.csv,.epub,.zip,.png,.jpg,.jpeg,.gif,.webp" onchange="handleFileUpload(this)">
     </div>
 
     <!-- Preview Modal -->
@@ -765,7 +765,16 @@
             listEl.innerHTML = '';
 
             if (currentFiles.length === 0) {
-                listEl.innerHTML = '<div class="empty-state">No files. Upload something!</div>';
+                listEl.innerHTML = window.rekindleEmptyState
+                    ? window.rekindleEmptyState(
+                        window.t ? window.t('files.empty.no_files', 'No files yet.') : 'No files yet.',
+                        {
+                            icon: 'list',
+                            hint: window.t ? window.t('files.empty.hint', 'Upload documents, images, PDFs or ebooks. 100 MB shared with Photo Frame.') : 'Upload documents, images, PDFs or ebooks.',
+                            action: '<button class="rk-empty-btn" onclick="showUploadModal()">' +
+                                (window.t ? window.t('files.btn.upload', 'Upload') : 'Upload') + '</button>'
+                        })
+                    : '<div class="empty-state">No files. Upload something!</div>';
                 return;
             }
 
@@ -811,7 +820,7 @@
 
                 item.innerHTML = `
                     <div class="file-icon">${iconSvg}</div>
-                    <div class="file-name" title="${file.name}">${file.name}</div>
+                    <div class="file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
                     <div class="file-size">${formatSize(file.size)}</div>
                     ${fileActions}
                 `;
@@ -885,6 +894,10 @@
                 const title = document.getElementById('preview-filename');
                 const downloadBtn = document.getElementById('preview-download-btn');
                 const loading = document.getElementById('preview-loading');
+                const oldFrame = modal.querySelector('iframe.file-pdf-preview');
+                if (oldFrame) { oldFrame.src = 'about:blank'; oldFrame.style.display = 'none'; }
+                const oldPre = modal.querySelector('pre.file-text-preview');
+                if (oldPre) oldPre.style.display = 'none';
 
                 title.textContent = file.name;
                 img.style.display = 'none';
@@ -926,9 +939,66 @@
                 return;
             }
 
-            // Prevent download/open for other types
-            // alert("Preview not available for this file type.");
-            // Actually, maybe we should just notify that they can use the menu to download?
+            if (name.endsWith('.pdf')) {
+                const modal = document.getElementById('preview-modal');
+                const img = document.getElementById('preview-image');
+                const title = document.getElementById('preview-filename');
+                const loading = document.getElementById('preview-loading');
+                title.textContent = file.name;
+                img.style.display = 'none';
+                loading.textContent = 'Loading PDF...';
+                loading.style.display = 'block';
+                modal.classList.add('active');
+                firebase.storage().ref(file.fullPath).getDownloadURL().then(function (url) {
+                    const parent = img.parentNode;
+                    let frame = parent.querySelector('iframe.file-pdf-preview');
+                    if (!frame) {
+                        frame = document.createElement('iframe');
+                        frame.className = 'file-pdf-preview';
+                        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;';
+                        parent.appendChild(frame);
+                    }
+                    frame.src = url;
+                    frame.style.display = 'block';
+                    loading.style.display = 'none';
+                }).catch(function (e) {
+                    loading.textContent = 'Error loading PDF';
+                    console.error(e);
+                });
+                return;
+            }
+
+            if (/\.(txt|md|csv|json|log)$/i.test(name)) {
+                const modal = document.getElementById('preview-modal');
+                const img = document.getElementById('preview-image');
+                const title = document.getElementById('preview-filename');
+                const loading = document.getElementById('preview-loading');
+                title.textContent = file.name;
+                img.style.display = 'none';
+                loading.textContent = 'Loading text...';
+                loading.style.display = 'block';
+                modal.classList.add('active');
+                firebase.storage().ref(file.fullPath).getDownloadURL().then(function (url) {
+                    return fetch(url);
+                }).then(function (res) { return res.text(); }).then(function (text) {
+                    const parent = img.parentNode;
+                    let pre = parent.querySelector('pre.file-text-preview');
+                    if (!pre) {
+                        pre = document.createElement('pre');
+                        pre.className = 'file-text-preview';
+                        pre.style.cssText = 'width:100%;height:100%;overflow:auto;text-align:left;white-space:pre-wrap;margin:0;padding:8px;box-sizing:border-box;font-size:0.8rem;';
+                        parent.appendChild(pre);
+                    }
+                    pre.textContent = text.slice(0, 100000);
+                    pre.style.display = 'block';
+                    loading.style.display = 'none';
+                }).catch(function (e) {
+                    loading.textContent = 'Error loading text';
+                    console.error(e);
+                });
+                return;
+            }
+
             showAlert("Preview not available. Use the menu (...) to download this file.");
         }
 
@@ -968,42 +1038,60 @@
         }
 
         async function handleFileUpload(input) {
-            if (!input.files || input.files.length === 0) return;
-            const file = input.files[0];
+            const files = Array.from(input.files || []);
+            if (files.length === 0 || !currentUser) return;
 
-            // 0. Type Check
-            const validExtensions = ['.doc', '.docx'];
-            const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            const uploadBtn = document.querySelector('.toolbar button');
+            const originalHtml = uploadBtn ? uploadBtn.innerHTML : '';
+            if (uploadBtn) uploadBtn.disabled = true;
+            const statusEl = document.getElementById('storage-text');
+            let uploaded = 0;
+            let failed = 0;
 
-            if (!validExtensions.includes(fileExtension)) {
-                showAlert("Upload failed: Only .doc and .docx files are allowed.");
-                input.value = '';
-                return;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (statusEl) statusEl.innerText = 'Uploading ' + (i + 1) + '/' + files.length + '...';
+
+                if (totalUsage + file.size > MAX_STORAGE_BYTES) {
+                    failed++;
+                    showAlert('Upload failed: Not enough space. File size: ' + formatSize(file.size) +
+                        ', space remaining: ' + formatSize(MAX_STORAGE_BYTES - totalUsage));
+                    continue;
+                }
+
+                let name = file.name || ('file-' + Date.now());
+                let path = `users/${currentUser.uid}/files/${name}`;
+                let suffix = 1;
+                while (currentFiles.some(function (f) { return f.fullPath === path; }) && suffix < 100) {
+                    const dot = name.lastIndexOf('.');
+                    const base = dot > 0 ? name.slice(0, dot) : name;
+                    const ext = dot > 0 ? name.slice(dot) : '';
+                    path = `users/${currentUser.uid}/files/${base} (${suffix})${ext}`;
+                    suffix++;
+                }
+
+                try {
+                    const ref = firebase.storage().ref(path);
+                    await ref.put(file);
+                    totalUsage += file.size;
+                    uploaded++;
+                    updateStorageUI();
+                } catch (err) {
+                    failed++;
+                    console.error('Upload failed', err);
+                }
             }
 
-            // 1. Quota Check
-            if (totalUsage + file.size > MAX_STORAGE_BYTES) {
-                showAlert('Upload failed: Not enough space.<br>File size: ' + formatSize(file.size) + '<br>Space remaining: ' + formatSize(MAX_STORAGE_BYTES - totalUsage));
-                input.value = ''; // Reset
-                return;
+            if (uploadBtn) {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = originalHtml;
             }
-
-            // 2. Upload
-            const ref = firebase.storage().ref(`users/${currentUser.uid}/files/${file.name}`);
-
-            // UI Feedback (simple)
-            const originalText = document.querySelector('.toolbar button').innerHTML;
-            document.querySelector('.toolbar button').textContent = 'Uploading...';
-
-            try {
-                await ref.put(file);
-                // Reload list
-                loadFiles();
-            } catch (err) {
-                showAlert("Upload failed: " + err.message);
-            } finally {
-                document.querySelector('.toolbar button').innerHTML = originalText; // Restore icon
-                input.value = '';
+            input.value = '';
+            await loadFiles();
+            if (failed) {
+                showAlert(failed + ' file(s) could not be uploaded. Check the size limit and connection.');
+            } else if (uploaded && statusEl) {
+                statusEl.innerText = uploaded + ' file(s) uploaded';
             }
         }
 

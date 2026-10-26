@@ -1,8 +1,8 @@
-const CACHE_NAME = 'rekindle-cache-v26'; // Bumped 2026-10-20: force client caches to drop pre-visual-upgrade assets
+const CACHE_NAME = 'rekindle-cache-v27'; // Bumped 2026-10-20: force client caches to drop pre-visual-upgrade assets
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './icons.js?v=7',
+    './icons.js?v=8',
     './theme.js?v=33',
     './logo.svg',
     './discord.svg',

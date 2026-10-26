@@ -12,9 +12,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js" integrity="sha384-+OubPIxtsLCp2uUuSsvWDuBB9oSIEDIYt2qQfYki+vDmSxc6GQsBbBPH6Z6x5wrq" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js" integrity="sha384-6A4YFdmYPT5gmyRp8KegTqUol1Ff3navFf6eyVLErDtdSrikTwa1MQpVhFtubVlq" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js" integrity="sha384-63rjsUQCvpwWyMY+++LxOlJ5jD2kdESy688srqnIXC8g/pmRuDZA69o9jIxjWA0c" crossorigin="anonymous"></script>
-    <script src="pro-gate.js?v=6"></script>
+    <script src="pro-gate.js?v=7"></script>
 
-    <script src="js/i18n.js?v=3"></script>
+    <script src="js/i18n.js?v=4"></script>
     <script src="theme.js?v=33"></script>
 
     <style>
@@ -267,8 +267,19 @@
             flex-shrink: 0;
         }
 
+        #docs-placeholder {
+            position: absolute;
+            top: 24px;
+            left: 34px;
+            color: #999;
+            font-size: 1rem;
+            pointer-events: none;
+            display: none;
+        }
+
         /* CKEditor Document Area */
         #doc-scroll-container {
+            position: relative;
             flex-grow: 1;
             overflow-y: auto;
             overflow-x: hidden;
@@ -380,15 +391,8 @@
         }
     </style>
 
-    <!-- LIBRARIES -->
-    <!-- CKEditor 5 Decoupled (Editor) -->
-    <script src="https://cdn.ckeditor.com/ckeditor5/41.0.0/decoupled-document/ckeditor.js" integrity="sha384-jvwUtyTwsPX3di5QF5Jvl54ttQ0fb9FHAGz+q/QOTIoU9CdKI+DnV5AmiMs+qeUB" crossorigin="anonymous"></script>
-    <!-- Mammoth.js (DOCX -> HTML conversion) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js" integrity="sha384-t9eMqh3OtJXZhvLtmol8r2+23t6vg1GDo1UeyP55BEQdCI67GW2u8Nso+Yzo5m9r" crossorigin="anonymous"></script>
-    <!-- docx library (HTML -> DOCX export) -->
-    <script src="https://unpkg.com/docx@7.1.0/build/index.js" integrity="sha384-lGLqE+x3VglMuTcmrdpm32ZSDEh1a93PZ+jHuVZ8jG4DayHt4qNBJtmwL76C855e" crossorigin="anonymous"></script>
-    <!-- FileSaver.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" integrity="sha384-PlRSzpewlarQuj5alIadXwjNUX+2eNMKwr0f07ShWYLy8B6TjEbm7ZlcN/ScSbwy" crossorigin="anonymous"></script>
+    <!-- Editor libraries are lazy-loaded by ensureEditorLibs() so the
+         startup screen does not download ~2.3 MB before the user chooses. -->
 
 </head>
 
@@ -399,7 +403,7 @@
             <div class="title-stripes"></div>
             <div class="close-box" onclick="confirmClose()">X</div>
             <div class="back-box" onclick="goBack()">Back</div>
-            <span class="title-text" data-i18n="docs.title">Docs</span>
+            <span class="title-text" id="doc-title">Docs</span>
 
             <div class="title-controls">
 
@@ -426,6 +430,7 @@
             <!-- Editor (CKEditor) -->
             <div id="toolbar-container" style="display:none;"></div>
             <div id="doc-scroll-container" style="display:none;">
+                <div id="docs-placeholder">Start writing...</div>
                 <div class="document-editor" id="editor"></div>
             </div>
         </div>
@@ -466,9 +471,15 @@
             <div style="display:flex; flex-direction:column; align-items:center;">
                 <button class="sys-btn" style="width: 100%; justify-content:center; margin-bottom:10px;"
                     onclick="createNewDoc()" data-i18n="docs.btn.new">Create New Document</button>
-                <button class="sys-btn" style="width: 100%; justify-content:center;"
+                <button class="sys-btn" style="width: 100%; justify-content:center; margin-bottom:10px;"
                     onclick="window.location.href='files.html?selectDoc=true'" data-i18n="docs.btn.open_files">Open from
                     Files</button>
+                <button class="sys-btn" id="restore-draft-btn" style="display:none; width:100%; justify-content:center;"
+                    onclick="restoreDraft()" data-i18n="docs.btn.restore_draft">Restore unsaved draft</button>
+            </div>
+            <div id="recent-docs-section" style="display:none;width:100%;margin-top:14px;border-top:1px solid #ccc;padding-top:10px;text-align:left;">
+                <p style="font-size:0.8rem;font-weight:bold;margin:0 0 6px;" data-i18n="docs.recent.title">Recent documents</p>
+                <div id="recent-docs-list"></div>
             </div>
         </div>
     </div>
@@ -576,8 +587,170 @@
             } else {
                 // Show startup modal instead of redirecting
                 document.getElementById('startup-modal').classList.add('active');
+                showDraftRestoreButton();
+                loadRecentDocs();
             }
         };
+
+        // --- LAZY LIBRARY LOADING ---
+        const DOC_SCRIPTS = {
+            editor: {
+                src: 'https://cdn.ckeditor.com/ckeditor5/41.0.0/decoupled-document/ckeditor.js',
+                integrity: 'sha384-jvwUtyTwsPX3di5QF5Jvl54ttQ0fb9FHAGz+q/QOTIoU9CdKI+DnV5AmiMs+qeUB',
+                check: function () { return typeof DecoupledEditor !== 'undefined'; }
+            },
+            mammoth: {
+                src: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js',
+                integrity: 'sha384-t9eMqh3OtJXZhvLtmol8r2+23t6vg1GDo1UeyP55BEQdCI67GW2u8Nso+Yzo5m9r',
+                check: function () { return typeof mammoth !== 'undefined'; }
+            },
+            docx: {
+                src: 'https://unpkg.com/docx@7.1.0/build/index.js',
+                integrity: 'sha384-lGLqE+x3VglMuTcmrdpm32ZSDEh1a93PZ+jHuVZ8jG4DayHt4qNBJtmwL76C855e',
+                check: function () { return !!window.docx; }
+            },
+            filesaver: {
+                src: 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js',
+                integrity: 'sha384-PlRSzpewlarQuj5alIadXwjNUX+2eNMKwr0f07ShWYLy8B6TjEbm7ZlcN/ScSbwy',
+                check: function () { return typeof saveAs === 'function'; }
+            }
+        };
+        const docScriptPromises = {};
+
+        function loadDocScript(key) {
+            const spec = DOC_SCRIPTS[key];
+            if (!spec) return Promise.reject(new Error('Unknown library: ' + key));
+            if (spec.check()) return Promise.resolve();
+            if (docScriptPromises[key]) return docScriptPromises[key];
+            docScriptPromises[key] = new Promise(function (resolve, reject) {
+                const script = document.createElement('script');
+                script.src = spec.src;
+                script.integrity = spec.integrity;
+                script.crossOrigin = 'anonymous';
+                script.onload = function () { resolve(); };
+                script.onerror = function () { reject(new Error('Could not load ' + key)); };
+                document.head.appendChild(script);
+            });
+            return docScriptPromises[key];
+        }
+
+        function ensureEditorLibs() { return loadDocScript('editor'); }
+        function ensureMammoth() { return loadDocScript('mammoth'); }
+        function ensureDocx() { return loadDocScript('docx'); }
+        function ensureFileSaver() { return loadDocScript('filesaver'); }
+
+        const DOC_DRAFT_KEY = 'rekindle_docs_draft';
+        let draftTimer = null;
+
+        function scheduleDraftSave() {
+            clearTimeout(draftTimer);
+            draftTimer = setTimeout(saveDraft, 1500);
+        }
+
+        function saveDraft() {
+            if (!editorInstance) return;
+            try {
+                const draft = {
+                    html: editorInstance.getData(),
+                    path: currentPath || null,
+                    updated: Date.now()
+                };
+                if (draft.html && draft.html.length > 900000) return;
+                localStorage.setItem(DOC_DRAFT_KEY, JSON.stringify(draft));
+            } catch (e) { }
+        }
+
+        function clearDraft() {
+            try { localStorage.removeItem(DOC_DRAFT_KEY); } catch (e) { }
+        }
+
+        function restoreDraft() {
+            try {
+                const draft = JSON.parse(localStorage.getItem(DOC_DRAFT_KEY) || 'null');
+                if (!draft || !draft.html) return;
+                document.getElementById('startup-modal').classList.remove('active');
+                currentPath = draft.path || null;
+                initEditor(draft.html);
+            } catch (e) {
+                showAlert('Could not restore the draft.');
+            }
+        }
+
+        function showDraftRestoreButton() {
+            try {
+                const draft = JSON.parse(localStorage.getItem(DOC_DRAFT_KEY) || 'null');
+                const btn = document.getElementById('restore-draft-btn');
+                if (btn && draft && draft.html) btn.style.display = 'block';
+            } catch (e) { }
+        }
+
+        function setDocTitle(name) {
+            const el = document.getElementById('doc-title');
+            if (el) el.innerText = name || 'Docs';
+        }
+
+        function showDocToast(message) {
+            let el = document.getElementById('docs-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'docs-toast';
+                el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;' +
+                    'background:#000;color:#fff;border:2px solid #fff;padding:8px 12px;font:bold 0.8rem "Geneva","Verdana",sans-serif;';
+                document.body.appendChild(el);
+            }
+            el.innerText = message;
+            el.style.display = 'block';
+            clearTimeout(el._hideTimer);
+            el._hideTimer = setTimeout(function () { el.style.display = 'none'; }, 3000);
+        }
+
+        async function loadRecentDocs() {
+            const section = document.getElementById('recent-docs-section');
+            const list = document.getElementById('recent-docs-list');
+            if (!section || !list) return;
+            const user = typeof firebase !== 'undefined' && firebase.auth ? firebase.auth().currentUser : null;
+            if (!user) {
+                section.style.display = 'none';
+                return;
+            }
+            list.innerHTML = '<span style="font-size:0.78rem;color:#666;">...</span>';
+            try {
+                const res = await firebase.storage().ref('users/' + user.uid + '/files').listAll();
+                const docs = (res.items || []).filter(function (item) {
+                    return /\.docx$/i.test(item.name);
+                });
+                const withMeta = await Promise.all(docs.map(async function (item) {
+                    try {
+                        const meta = await item.getMetadata();
+                        return { item: item, updated: new Date(meta.updated || 0).getTime() };
+                    } catch (e) {
+                        return { item: item, updated: 0 };
+                    }
+                }));
+                withMeta.sort(function (a, b) { return b.updated - a.updated; });
+                const recent = withMeta.slice(0, 5);
+                list.innerHTML = '';
+                if (recent.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+                recent.forEach(function (entry) {
+                    const btn = document.createElement('button');
+                    btn.className = 'sys-btn';
+                    btn.style.cssText = 'display:block;width:100%;text-align:left;margin:0 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                    btn.textContent = entry.item.name.replace(/\.docx$/i, '');
+                    btn.onclick = function () {
+                        document.getElementById('startup-modal').classList.remove('active');
+                        loadFromPath(entry.item.fullPath);
+                    };
+                    list.appendChild(btn);
+                });
+                section.style.display = 'block';
+            } catch (e) {
+                console.warn('Could not load recent documents', e);
+                section.style.display = 'none';
+            }
+        }
 
         function createNewDoc() {
             document.getElementById('startup-modal').classList.remove('active');
@@ -586,6 +759,10 @@
 
         // --- FILE LOADING ---
         async function loadFromPath(path) {
+            if (/\.doc$/i.test(path)) {
+                showAlert('Legacy .doc files are not supported. Open it in Word and save as .docx first.');
+                return;
+            }
             showLoading("Downloading...");
             try {
                 const ref = firebase.storage().ref(path);
@@ -620,6 +797,11 @@
             if (input.files.length === 0) return;
 
             const file = input.files[0];
+            if (/\.doc$/i.test(file.name)) {
+                showAlert('Legacy .doc files are not supported. Open it in Word and save as .docx first.');
+                input.value = '';
+                return;
+            }
             currentPath = null; // New local file, no cloud path
             showLoading("Opening " + file.name + "...");
 
@@ -633,8 +815,15 @@
         }
 
         // --- EDITOR ---
-        function openInEditor(arrayBuffer) {
+        async function openInEditor(arrayBuffer) {
             showLoading("Converting for Editor...");
+            try {
+                await ensureMammoth();
+            } catch (e) {
+                showAlert('Could not load the document converter. Check the connection.');
+                hideLoading();
+                return;
+            }
 
             // Extract indentations and format them with static classes
             const dynamicStyles = [];
@@ -681,7 +870,7 @@
                 });
         }
 
-        function initEditor(initialHtml) {
+        async function initEditor(initialHtml) {
             // If already initialized, just set data
             if (editorInstance) {
                 editorInstance.setData(initialHtml);
@@ -689,8 +878,9 @@
                 return;
             }
 
-            // Verify CKEditor loaded
-            if (typeof DecoupledEditor === 'undefined') {
+            try {
+                await ensureEditorLibs();
+            } catch (e) {
                 showAlert("Editor library failed to load. Please check connection.");
                 hideLoading();
                 return;
@@ -699,6 +889,7 @@
             DecoupledEditor
                 .create(document.querySelector('#editor'), {
                     removePlugins: ['MediaEmbed', 'ImageUpload', 'CloudServices', 'EasyImage', 'CKBox', 'CKFinder'],
+                    placeholder: 'Start writing...',
                     toolbar: ['heading', '|', 'bold', 'italic', 'underline', 'strikethrough', '|', 'bulletedList', 'numberedList', '|', 'outdent', 'indent', '|', 'blockQuote', 'insertTable', '|', 'undo', 'redo']
                 })
                 .then(editor => {
@@ -708,18 +899,30 @@
 
                     editor.setData(initialHtml);
 
-                    // Track changes
+                    // Track changes and keep a local draft so a network or
+                    // save failure cannot silently lose the document.
                     editor.model.document.on('change:data', () => {
                         isDirty = true;
+                        scheduleDraftSave();
+                        updateDocsPlaceholder();
                     });
 
                     showEditorUI();
+                    updateDocsPlaceholder();
+                    try { editor.editing.view.focus(); } catch (e) { }
                 })
                 .catch(error => {
                     console.error(error);
                     showAlert("Editor init failed: " + error);
                     hideLoading();
                 });
+        }
+
+        function updateDocsPlaceholder() {
+            const el = document.getElementById('docs-placeholder');
+            if (!el || !editorInstance) return;
+            const text = String(editorInstance.getData() || '').replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '').trim();
+            el.style.display = text ? 'none' : 'block';
         }
 
         function showEditorUI() {
@@ -733,6 +936,7 @@
 
         // --- EXPORT LOGIC (docx library) ---
         async function generateDocxBlob() {
+            await ensureDocx();
             const html = editorInstance ? editorInstance.getData() : '';
             const { Document, Packer, Paragraph, TextRun, HeadingLevel } = window.docx;
 
@@ -982,6 +1186,10 @@
                 await ref.put(blob, metadata);
                 currentPath = path;
                 isDirty = false; // Reset dirty flag
+                const savedName = path.split('/').pop() || 'document.docx';
+                setDocTitle(savedName.replace(/\.docx$/i, ''));
+                clearDraft();
+                showDocToast('Saved to Files');
                 hideLoading();
             } catch (error) {
                 console.error(error);
@@ -998,7 +1206,7 @@
         // Modify saveDocument to return promise
         function saveDocument() {
             showLoading("Generating file...");
-            return generateDocxBlob().then(blob => {
+            return generateDocxBlob().then(async blob => {
                 let filename = "document.docx";
 
                 if (currentPath && currentUser) {
@@ -1015,8 +1223,11 @@
                         input.focus();
                     });
                 } else {
+                    await ensureFileSaver();
                     saveAs(blob, filename);
                     isDirty = false;
+                    clearDraft();
+                    showDocToast('Downloaded');
                     hideLoading();
                     return Promise.resolve();
                 }

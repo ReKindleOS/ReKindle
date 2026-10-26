@@ -7,7 +7,7 @@
     <meta charset="UTF-8">
 
     <title>AI Assistant</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
@@ -305,10 +305,11 @@
         }
     </style>
     <link rel="stylesheet" href="css/custom-select.css">
-    <script src="time.js?v=4"></script>
+    <script src="time.js?v=5"></script>
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
+    <script src="js/safe-html.js?v=1"></script>
     <script src="js/custom-select.js?v=2"></script>
 </head>
 
@@ -330,12 +331,21 @@
 
         <!-- MODEL SELECTOR BAR -->
         <div id="model-selector-bar">
-            <span id="model-provider-label" style="font-weight:bold; color:#666;" data-i18n="label.gemini">Gemini</span>
+            <span id="model-provider-label" style="font-weight:bold; color:#666;">ReKindle AI</span>
             <select id="quick-model-select" onchange="quickUpdateModel()"></select>
         </div>
 
         <div id="chat-history">
-            <!-- Chat starts empty -->
+            <div id="chat-empty" style="padding:26px 16px 10px;text-align:center;">
+                <h2 style="font-size:1.1rem;margin:0 0 6px;" data-i18n="chat.empty.title">Ask anything</h2>
+                <p style="font-size:0.82rem;color:#555;margin:0 0 14px;line-height:1.4;" data-i18n="chat.empty.body">A quick answer, a draft, or an explanation — without leaving the Kindle.</p>
+                <div style="max-width:360px;margin:0 auto;">
+                    <button class="sys-btn" style="display:block;width:100%;margin:0 0 8px;text-align:left;" data-prompt="Summarise this in five bullet points: " onclick="usePrompt(this)" data-i18n="chat.example.summary">Summarise something</button>
+                    <button class="sys-btn" style="display:block;width:100%;margin:0 0 8px;text-align:left;" data-prompt="Write a short, friendly reply to this message: " onclick="usePrompt(this)" data-i18n="chat.example.reply">Draft a reply</button>
+                    <button class="sys-btn" style="display:block;width:100%;margin:0 0 8px;text-align:left;" data-prompt="Explain this in simple terms: " onclick="usePrompt(this)" data-i18n="chat.example.explain">Explain a tricky idea</button>
+                    <button class="sys-btn" style="display:block;width:100%;margin:0;text-align:left;" data-prompt="Make a short plan for: " onclick="usePrompt(this)" data-i18n="chat.example.plan">Make a plan</button>
+                </div>
+            </div>
         </div>
 
         <div class="input-area">
@@ -436,7 +446,7 @@
                     </div>
                 </div>
                 <p style="font-size:0.7rem; color:#666; margin-top:5px;">
-                    Key is stored locally. <span id="api-key-link-wrap"></span>
+                    Your key is stored on this device only and is never saved to Firestore. <span id="api-key-link-wrap"></span>
                 </p>
 
                 <div style="margin-top: 20px; display: flex; justify-content: center">
@@ -504,6 +514,8 @@
         let aiModel = "";
         let apiKey = "";
         let customEndpoint = "";
+        let conversation = [];
+        const CHAT_HISTORY_KEY = "rekindle_chat_thread";
 
         const PROVIDER_PRESETS = {
             openai:        { name: 'OpenAI',                 type: 'openai',  endpoint: 'https://api.openai.com',                     keyPlaceholder: 'sk-...',     keyHint: 'Get OpenAI Key',      keyUrl: 'https://platform.openai.com/api-keys' },
@@ -640,6 +652,18 @@
             }
         }
 
+        async function aiAuthHeaders() {
+            try {
+                if (typeof firebase === 'undefined' || !firebase.auth) return {};
+                const user = firebase.auth().currentUser;
+                if (!user) return {};
+                const token = await user.getIdToken();
+                return { Authorization: 'Bearer ' + token };
+            } catch (e) {
+                return {};
+            }
+        }
+
         async function fetchModels(alertUser = false, specificPreset = null, specificKey = null) {
             const presetId = specificPreset || document.getElementById('ai-preset-select').value || aiPreset;
             const preset = PROVIDER_PRESETS[presetId];
@@ -661,9 +685,10 @@
             }
 
             try {
+                const authHeaders = await aiAuthHeaders();
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
                     body: JSON.stringify({
                         action: 'list_models',
                         provider: preset.type,
@@ -729,7 +754,6 @@
                     aiPreset: presetId,
                     provider: aiProvider,
                     model: model,
-                    apiKey: key,
                     customEndpoint: endpoint,
                     useByoKey: isChecked,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -770,8 +794,21 @@
                     aiPreset = data.aiPreset || data.provider || 'openai';
                     aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || data.provider || 'openai';
                     aiModel = data.model || '';
-                    apiKey = data.apiKey || '';
+                    apiKey = getSecureItem('chat_api_key') || '';
                     customEndpoint = data.customEndpoint || '';
+
+                    // Legacy versions saved the API key in Firestore. Move it
+                    // to this device once, then delete the cloud copy.
+                    if (data.apiKey) {
+                        if (!apiKey) {
+                            apiKey = data.apiKey;
+                            setSecureItem('chat_api_key', apiKey);
+                        }
+                        db.collection('users').doc(currentUserId)
+                            .collection('privateSettings').doc('ai')
+                            .update({ apiKey: firebase.firestore.FieldValue.delete() })
+                            .catch(function (e) { console.warn('Could not remove legacy AI key', e); });
+                    }
 
                     updateQuickModelBar();
                     updateMessageCounter();
@@ -781,7 +818,7 @@
                     }
                 } else {
                     useByoKey = false;
-                    apiKey = '';
+                    apiKey = getSecureItem('chat_api_key') || '';
                     updateQuickModelBar();
                     updateMessageCounter();
                 }
@@ -902,6 +939,7 @@
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         currentUserId = user.uid;
+                        loadConversation();
 
                         // Load AI Settings
                         loadSettingsFromFirebase();
@@ -1017,6 +1055,7 @@
 
         window.onload = () => {
             initSettings();
+            loadConversation();
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
             waitForFirebase(checkSubscription);
 
@@ -1055,11 +1094,17 @@
             inputEl.value = '';
 
             // 2. Show Loading
-            const loadingId = addMessage("Thinking...", 'ai');
+            const loadingId = addMessage("Thinking...", 'ai', { persist: false });
 
-            // 3. API Call via Proxy
+            // 3. API Call via Proxy. Send the recent thread so the model can
+            // follow the conversation instead of treating every turn as new.
             try {
-                const payload = { prompt: text };
+                const payload = {
+                    prompt: text,
+                    messages: conversation.slice(-12).map(function (m) {
+                        return { role: m.role, content: m.text };
+                    })
+                };
 
                 if (useByoKey) {
                     payload.provider = aiProvider;
@@ -1068,9 +1113,10 @@
                     payload.endpoint = getActiveEndpoint();
                 }
 
+                const authHeaders = await aiAuthHeaders();
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
                     body: JSON.stringify(payload)
                 });
 
@@ -1081,21 +1127,23 @@
                 if (loadingEl) loadingEl.remove();
 
                 if (data.error) {
-                    addMessage("Error: " + (data.error.message || "Unknown worker error"), 'ai');
+                    addMessage("Error: " + (data.error.message || "Unknown worker error"), 'ai', { persist: false });
                 } else if (data.text) {
                     addMessage(data.text, 'ai');
-                    // Increment message count only if NOT using BYO Key
+                    // The worker owns the quota counter now; mirror it locally
+                    // for the display instead of writing a second increment.
                     if (!useByoKey) {
-                        await incrementMessageCount();
+                        dailyMessageCount++;
+                        updateMessageCounter();
                     }
                 } else {
-                    addMessage("Error: Empty response from Oracle.", 'ai');
+                    addMessage("The assistant returned an empty response. Try again.", 'ai', { persist: false });
                 }
 
             } catch (e) {
                 const loadingEl = document.getElementById(loadingId);
                 if (loadingEl) loadingEl.remove();
-                addMessage("Network Error. Check connection.", 'ai');
+                addMessage("Network error. Check the connection and try again.", 'ai', { persist: false });
                 console.error(e);
             }
         }
@@ -1105,8 +1153,60 @@
             window.location.href = 'notes.html?action=new_note';
         }
 
-        function addMessage(text, sender) {
+        function usePrompt(btn) {
+            const input = document.getElementById('user-input');
+            if (!input || !btn) return;
+            input.value = btn.getAttribute('data-prompt') || '';
+            input.focus();
+        }
+
+        function showChatEmpty() {
+            const empty = document.getElementById('chat-empty');
+            if (empty) empty.style.display = '';
+        }
+
+        function hideChatEmpty() {
+            const empty = document.getElementById('chat-empty');
+            if (empty) empty.style.display = 'none';
+        }
+
+        function historyKey() {
+            return CHAT_HISTORY_KEY + (currentUserId ? ':' + currentUserId : '');
+        }
+
+        function loadConversation() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(historyKey()) || '[]');
+                conversation = Array.isArray(saved) ? saved.filter(function (m) {
+                    return m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string';
+                }).slice(-40) : [];
+            } catch (e) {
+                conversation = [];
+            }
             const history = document.getElementById('chat-history');
+            if (history) {
+                history.querySelectorAll('.message').forEach(function (m) { m.remove(); });
+            }
+            if (conversation.length === 0) {
+                showChatEmpty();
+                return;
+            }
+            hideChatEmpty();
+            conversation.forEach(function (m) {
+                addMessage(m.text, m.role === 'user' ? 'user' : 'ai', { persist: false });
+            });
+        }
+
+        function saveConversation() {
+            try {
+                localStorage.setItem(historyKey(), JSON.stringify(conversation.slice(-40)));
+            } catch (e) { }
+        }
+
+        function addMessage(text, sender, options) {
+            options = options || {};
+            const history = document.getElementById('chat-history');
+            if (!history) return;
             const msgDiv = document.createElement('div');
             const id = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             msgDiv.id = id;
@@ -1114,38 +1214,54 @@
 
             if (sender === 'ai' && text !== "Thinking...") {
                 try {
-                    msgDiv.innerHTML = marked.parse(text);
+                    const html = marked.parse(text);
+                    if (window.rekindleSetSafeHtml) {
+                        window.rekindleSetSafeHtml(msgDiv, html);
+                    } else {
+                        msgDiv.innerText = text;
+                    }
                 } catch (e) {
                     msgDiv.innerText = text;
                 }
+                msgDiv.querySelectorAll('a').forEach(function (a) {
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                });
 
-                // Add Copy to Note Button
                 const btn = document.createElement('button');
                 btn.className = 'sys-btn';
                 btn.style.marginTop = '10px';
-                btn.style.display = 'inline-block'; // Ensure it sits on its own line if needed, or inline
+                btn.style.display = 'inline-block';
                 btn.style.fontSize = '0.7rem';
                 btn.innerText = 'Copy to Note';
-                btn.onclick = () => copyToNote(text);
-
-                // Append a line break or container if needed, but appendChild puts it at end
+                btn.onclick = function () { copyToNote(text); };
                 msgDiv.appendChild(document.createElement('br'));
                 msgDiv.appendChild(btn);
-
             } else {
                 msgDiv.innerText = text;
             }
 
             history.appendChild(msgDiv);
             history.scrollTop = history.scrollHeight;
+
+            if (options.persist !== false && text !== "Thinking...") {
+                conversation.push({ role: sender === 'user' ? 'user' : 'assistant', text: text });
+                if (conversation.length > 40) conversation = conversation.slice(-40);
+                saveConversation();
+                hideChatEmpty();
+            }
             return id;
         }
 
         function clearChat() {
-            document.getElementById('chat-history').innerHTML = '';
-            addMessage("Memory cleared.", 'ai');
+            conversation = [];
+            try { localStorage.removeItem(historyKey()); } catch (e) { }
+            const history = document.getElementById('chat-history');
+            if (history) {
+                history.querySelectorAll('.message').forEach(function (m) { m.remove(); });
+            }
+            showChatEmpty();
         }
-
     </script>
 
     <script>

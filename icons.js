@@ -32,7 +32,7 @@ const APPS = [
         featuredOrder: 3,
 
         plus: true,
-        desc: 'Now supporting all mail!',
+        desc: 'All your mailboxes in one place.',
         icon: '<rect x="4" y="8" width="24" height="16" rx="2" stroke="black" stroke-width="2" fill="none"/><path d="M4 10 L16 18 L28 10" fill="none" stroke="black" stroke-width="2"/>'
     },
     {
@@ -80,6 +80,7 @@ const APPS = [
         cat: 'tools',
         beta: true,
         plus: true,
+        desc: 'Your Dropbox files on Kindle.',
         icon: '<g transform="translate(4, 4)"><path d="M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 20.371l6.001 3.822 6-3.822-6-3.822L6 20.371z" fill="black"/></g>'
     },
     {
@@ -87,6 +88,7 @@ const APPS = [
         name: 'AI Assistant',
         cat: 'tools',
         plus: true,
+        desc: 'Ask questions, get answers.',
         icon: '<path d="M16 3 L19 11 L27 14 L19 17 L16 25 L13 17 L5 14 L13 11 Z M6 3 L8 7 L12 8 L8 9 L6 13 L4 9 L0 8 L4 7 Z" fill="black" stroke="none"/>'
     },
     {
@@ -112,6 +114,7 @@ const APPS = [
         name: 'Files',
         plus: true,
         cat: 'tools',
+        desc: 'Cloud storage for your documents.',
         // Folder Icon
         icon: '<path d="M4 6 h8 l2 2 h14 v16 h-24 z" fill="white" stroke="black" stroke-width="2"/><line x1="4" y1="11" x2="28" y2="11" stroke="black" stroke-width="2"/>'
     },
@@ -120,6 +123,7 @@ const APPS = [
         name: 'Docs',
         plus: true,
         cat: 'tools',
+        desc: 'Write and edit Word documents.',
         icon: '<path d="M6 4 h14 l6 6 v18 h-20 z" fill="white" stroke="black" stroke-width="2"/><polyline points="20 4 20 10 26 10" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="22" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="22" y2="18" stroke="black" stroke-width="2"/><line x1="10" y1="22" x2="18" y2="22" stroke="black" stroke-width="2"/>'
     },
     {

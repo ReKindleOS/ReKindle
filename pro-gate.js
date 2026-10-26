@@ -70,7 +70,11 @@
             'position:relative;z-index:1;display:inline-flex;align-items:center;height:100%;box-sizing:border-box;border:none;}',
             '#paywall-overlay .rk-paywall-body{padding:20px 20px 16px;box-sizing:border-box;text-align:center;}',
             '#paywall-overlay .rk-paywall-head{font-size:1.15rem;line-height:1.25;font-weight:bold;margin:0 0 8px;color:#000;}',
-            '#paywall-overlay .rk-paywall-desc{font-size:0.82rem;line-height:1.4;color:#333;max-width:300px;margin:0 auto 16px;}',
+            '#paywall-overlay .rk-paywall-desc{font-size:0.82rem;line-height:1.4;color:#333;max-width:300px;margin:0 auto 12px;}',
+            '#paywall-overlay .rk-paywall-benefits{list-style:none;padding:0;margin:0 0 14px;text-align:left;font-size:0.78rem;line-height:1.45;color:#222;}',
+            '#paywall-overlay .rk-paywall-benefits li{margin:0 0 4px;padding-left:14px;position:relative;}',
+            '#paywall-overlay .rk-paywall-benefits li:before{content:"+";position:absolute;left:0;font-weight:bold;}',
+            '#paywall-overlay .rk-paywall-price{font-size:0.82rem;font-weight:bold;margin:0 0 12px;color:#000;}',
             '#paywall-overlay .rk-paywall-primary,#paywall-overlay .rk-paywall-secondary{display:block;width:100%;',
             'min-height:48px;padding:8px 12px;border:2px solid #000;border-radius:0;box-shadow:2px 2px 0 #000;',
             'margin:0;font-family:inherit;font-size:0.92rem;font-weight:bold;line-height:1.2;cursor:pointer;box-sizing:border-box;}',
@@ -106,14 +110,31 @@
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
 
+        const pageTitle = String(document.title || '').replace(/\s*[\u2014-]\s*ReKindle.*$/i, '').trim();
+        const appName = pageTitle && pageTitle.toLowerCase() !== 'rekindle' ? pageTitle : '';
+        const headline = appName
+            ? (window.tFormat ? window.tFormat('paywall.unlock_app', { app: appName }, 'Unlock ${app} with ReKindle+') : 'Unlock ' + appName + ' with ReKindle+')
+            : paywallText('paywall.unlock', 'Unlock ReKindle+');
+        const cta = currentUser
+            ? paywallText('paywall.subscribe', 'Subscribe \u2014 from $2/month')
+            : paywallText('paywall.login_subscribe', 'Log in to subscribe');
+
         overlay.innerHTML = '<div class="rk-paywall-card">' +
             '<div class="rk-paywall-bar"><div class="rk-paywall-stripes"></div>' +
             '<span class="rk-paywall-title">' + paywallText('paywall.title', 'ReKindle+') + '</span></div>' +
             '<div class="rk-paywall-body">' +
-            '<h2 class="rk-paywall-head">' + paywallText('paywall.unlock', 'Unlock ReKindle+') + '</h2>' +
-            '<p class="rk-paywall-desc">' + paywallText('paywall.desc', 'Support ReKindle development and get access to exclusive apps.') + '</p>' +
+            '<h2 class="rk-paywall-head">' + headline + '</h2>' +
+            '<p class="rk-paywall-desc">' + paywallText('paywall.desc', 'All 13 ReKindle+ apps, cloud storage and AI, in one membership.') + '</p>' +
+            '<ul class="rk-paywall-benefits">' +
+            '<li>' + paywallText('paywall.benefit.apps', 'All 13 ReKindle+ apps') + '</li>' +
+            '<li>' + paywallText('paywall.benefit.cloud', 'Cloud storage, sync and AI') + '</li>' +
+            '<li>' + paywallText('paywall.benefit.cancel', 'Cancel anytime; lifetime option available') + '</li>' +
+            '</ul>' +
+            '<p class="rk-paywall-price">' + paywallText('paywall.price', '$2/month \u00b7 $15/year \u00b7 $30 lifetime') + '</p>' +
             '<button type="button" class="rk-paywall-primary" onclick="window.location.href=\'pay.html\'">' +
-            paywallText('btn.subscribe', 'Subscribe / Login') + '</button>' +
+            cta + '</button>' +
+            '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'help.html#pro\'">' +
+            paywallText('paywall.see', "See what's included") + '</button>' +
             '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'index\'">' +
             paywallText('common.back', 'Back') + '</button>' +
             '<p class="rk-paywall-status" id="paywall-status">' + lastPaywallStatus + '</p>' +
@@ -198,36 +219,45 @@
         }
     }
 
+    let checkPromise = null;
+    let checkCallbacks = [];
+
     function check(callback) {
-        // 1. Initialize Firebase BEFORE the cache shortcut. Pro apps run their
-        // own init inside this callback and many call firebase.auth()/
-        // firestore() synchronously; if the cached `rekindle_pro_expiry` hit
-        // first, those pages threw "No Firebase App '[DEFAULT]' has been
-        // created" and showed their login screen to returning Pro users.
-        if (!initFirebase()) {
-            showPaywall('Error: Firebase not loaded.');
-            if (callback) callback(false);
-            return;
-        }
-
-        // 2. Quick cache check
-        try {
-            const cached = localStorage.getItem(CACHE_KEY);
-            if (cached && parseInt(cached) > Date.now()) {
-                isPro = true;
-                hidePaywall();
-                if (callback) callback(true);
-                // Still verify in background
+        if (typeof callback === 'function') {
+            if (checkComplete) {
+                callback(isPro);
+            } else {
+                checkCallbacks.push(callback);
             }
-        } catch (e) { }
+        }
+        if (checkPromise) return checkPromise;
 
-        // 3. Wait for auth
-        firebase.auth().onAuthStateChanged(async (user) => {
-            currentUser = user;
-            const result = await checkProStatus(user);
-            checkComplete = true;
-            if (callback) callback(result);
+        checkPromise = new Promise(function (resolve) {
+            // Initialize Firebase BEFORE waiting for auth. Pro apps run their
+            // own init inside the callback and many call firebase.auth()/
+            // firestore() synchronously.
+            if (!initFirebase()) {
+                showPaywall('Error: Firebase not loaded.');
+                resolve(false);
+                return;
+            }
+
+            firebase.auth().onAuthStateChanged(async function (user) {
+                currentUser = user;
+                const result = await checkProStatus(user);
+                checkComplete = true;
+                resolve(result);
+            });
+        }).then(function (result) {
+            const callbacks = checkCallbacks.slice();
+            checkCallbacks = [];
+            callbacks.forEach(function (cb) {
+                try { cb(result); } catch (e) { console.error('Pro gate callback failed', e); }
+            });
+            return result;
         });
+
+        return checkPromise;
     }
 
     // Anti-tamper enforcer

@@ -467,8 +467,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
     <link rel="stylesheet" href="css/custom-select.css">
     <script src="js/custom-select.js?v=2"></script>
 </head>
@@ -481,6 +481,7 @@
             <div class="close-box" onclick="location.href='index'">X</div>
             <span class="title-text" data-i18n="quicktodo.title">Quick ToDo</span>
             <div class="header-controls">
+                <span id="sync-status" style="font-size:0.65rem;color:#555;margin-right:8px;">Local</span>
                 <select id="speed-select" onchange="onSpeedChange(this.value)" title="Auto-convert responsiveness">
                     <option value="fast">Fast</option>
                     <option value="normal" selected>Normal</option>
@@ -573,6 +574,18 @@
     <script>
         // --- CONFIG ---
         const WORKER_URL = "https://rekindle-ocr.timjarnott.workers.dev/";
+
+        async function ocrAuthHeaders() {
+            try {
+                if (typeof firebase === 'undefined' || !firebase.auth) return {};
+                const user = firebase.auth().currentUser;
+                if (!user) return {};
+                return { Authorization: 'Bearer ' + await user.getIdToken() };
+            } catch (e) {
+                return {};
+            }
+        }
+
         let ROW_HEIGHT = 50;
         const NUM_ROWS = 16;
         const DELAY_OPTIONS = { fast: 1500, normal: 3500, slow: 6000 };
@@ -726,6 +739,11 @@
         }
 
         // --- SYNC INIT ---
+        function setSyncStatus(text, color) {
+            var el = document.getElementById('sync-status');
+            if (el) { el.innerText = text; el.style.color = color || '#555'; }
+        }
+
         function initFirebase() {
             const db = firebase.firestore();
             if (currentUser) {
@@ -739,6 +757,7 @@
                         }
                     });
                     renderData();
+                    setSyncStatus('Synced', '#1a6b1a');
                 });
             } else {
                 const localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
@@ -747,6 +766,7 @@
                     listIds[i] = localTasks[i].id;
                 }
                 renderData();
+                setSyncStatus('Local');
             }
         }
 
@@ -814,6 +834,7 @@
         var googleSyncInterval = null;
 
         async function startGoogleSync() {
+            setSyncStatus('Google Tasks', '#1a6b1a');
             document.getElementById('auth-overlay').style.display = 'none';
             await fetchGoogleTasks();
             if (googleSyncInterval) clearInterval(googleSyncInterval);
@@ -1214,9 +1235,10 @@
                 const base64 = tempCanvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 
                 // 6. Send to AI
+                const authHeaders = await ocrAuthHeaders();
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
                     body: JSON.stringify({ image: base64 })
                 });
 
@@ -1231,7 +1253,14 @@
                 }
             } catch (err) {
                 console.error(err);
-                listData[rowIndex] = originalText || "Error";
+                listData[rowIndex] = originalText;
+                setTimeout(function () {
+                    var rowEl = document.getElementById('text-' + rowIndex);
+                    if (rowEl && !listData[rowIndex]) {
+                        rowEl.innerText = window.t ? window.t('quicktodo.status.error', "Couldn't read that. Try again.") : "Couldn't read that. Try again.";
+                        rowEl.style.color = '#a00000';
+                    }
+                }, 0);
             } finally {
                 renderData();
                 resetCanvas();

@@ -52,9 +52,25 @@
             flex-direction: column;
             width: 100%;
             max-width: 800px;
-            max-min-height: 90vh;
+            min-height: 90vh;
             position: relative;
         }
+        /* Kindle canvas coordinate fix: theme.js may zoom .window, which makes
+           getBoundingClientRect() disagree with TouchEvent clientX/Y. */
+        .window {
+            zoom: 1 !important;
+            transform: none !important;
+        }
+        .title-bar {
+            zoom: var(--rekindle-scale, 1);
+        }
+        @supports not (zoom: 1) {
+            .title-bar {
+                transform: scale(var(--rekindle-scale, 1));
+                transform-origin: top center;
+            }
+        }
+
 
         /* TITLE BAR */
         .title-bar {
@@ -333,7 +349,7 @@
             padding: 5px;
             width: 100%;
             box-sizing: border-box;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             margin-top: 5px;
         }
 
@@ -343,6 +359,7 @@
 
         .control-group {
             display: flex;
+            margin: 4px 5px;
             /* Attached buttons look */
         }
 
@@ -355,8 +372,8 @@
             border-radius: 0;
             margin: 0;
             border-right: none;
-            width: 40px;
-            height: 32px;
+            width: 48px;
+            height: 48px;
             padding: 0;
             display: flex;
             align-items: center;
@@ -391,7 +408,7 @@
             /* Grey background */
             border-top: 1px solid black;
             box-sizing: border-box;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
         }
 
         .controls-container>*+* {
@@ -525,8 +542,8 @@
         }
     </style>
     <script src="theme.js?v=33"></script>
-    <script src="pro-gate.js?v=6"></script>
-    <script src="js/i18n.js?v=3"></script>
+    <script src="pro-gate.js?v=7"></script>
+    <script src="js/i18n.js?v=4"></script>
 </head>
 
 <body>
@@ -1106,6 +1123,22 @@
             hideLoadingModal();
         }
 
+        function showFlipbookNotice(message) {
+            let el = document.getElementById('flipbook-notice');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'flipbook-notice';
+                el.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:99999;' +
+                    'background:#000;color:#fff;border:2px solid #fff;padding:8px 12px;font:bold 0.8rem "Geneva","Verdana",sans-serif;' +
+                    'max-width:90%;text-align:center;';
+                document.body.appendChild(el);
+            }
+            el.innerText = message;
+            el.style.display = 'block';
+            clearTimeout(el._hideTimer);
+            el._hideTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
+        }
+
         // --- SAVING ---
         let isSaving = false;
         async function performSave() {
@@ -1147,10 +1180,17 @@
             // Save Data
             const key = `flipnote_anim_${animId}`;
             try { localStorage.setItem(key, JSON.stringify(data)); }
-            catch (e) { console.warn("Local save failed (storage full?)", e); }
+            catch (e) {
+                console.warn("Local save failed (storage full?)", e);
+                showFlipbookNotice(window.t ? window.t('flipbook.save.local_failed', 'This device is out of storage. The cloud copy will still be attempted.') : 'This device is out of storage.');
+            }
 
             if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(animId).set(data).catch(console.error);
+                db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(animId).set(data)
+                    .catch(function (e) {
+                        console.error(e);
+                        showFlipbookNotice(window.t ? window.t('flipbook.save.cloud_failed', 'Could not sync this animation. It is saved on this device.') : 'Could not sync this animation.');
+                    });
             }
 
             saveManifest();
@@ -1920,7 +1960,7 @@
             }
         }
     </script>
-    <script src="time.js?v=4"></script>
+    <script src="time.js?v=5"></script>
 
 
 </body>
