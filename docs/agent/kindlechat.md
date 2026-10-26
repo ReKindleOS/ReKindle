@@ -542,25 +542,30 @@ omits the field when the code is missing or unknown:
 | `neighbourhood_posts/{id}/comments/{id}` | `lang` |
 
 `editPost()` and the topic edit path write directly to Firestore, so they recompute `lang`.
-Messages that predate this change have no `lang`; they deliberately keep the Translate link and
-are not auto-translated.
+Messages that predate this change have no `lang`. They keep the Translate link and are
+auto-detected on view: `translate-client.js` waits for the lazy detector, and if the result is the
+reader's language (or unknown/ASCII art) it just retires the now-pointless link; if it is foreign it
+translates and shows **Show Original** like any tagged message.
 
 ### Gating and automatic translation
 
 * **Button gating.** Each render compares the stored `lang` with the reader's language
-  (`getEffectiveTranslationLang()` in chat, `userLang` in Neighbourhood, `documentElement.lang`
+  (`getEffectiveTranslationLang()` in chat, `userLang` in Neighbourhood, the resolved UI language
   in Topics). The Translate link is rendered only when the codes differ **and** the message is not
-  the reader's own and `showTranslations` is on. Unknown `lang` keeps the link visible so legacy
-  content stays translatable.
+  the reader's own and `showTranslations` is on. Unknown `lang` keeps the link visible until the
+  on-view detection confirms the language, at which point a same-language message's link is removed.
 * **Do not show the link for same-language content.** This was the point of the change: the old
   on-demand link appeared on every foreign-looking bubble, including English messages read by
   English readers.
 * **Auto translation.** `js/translate-client.js` exposes `autoTranslate({id, text, source,
-  target, apply})`. It runs one MyMemory request at a time, 350 ms apart, with a **24-job / 20,000
-  character** ceiling per page view, stops after a `budget` error or three consecutive provider
-  failures, and caches by exact text in `sessionStorage`. Pages keep their own translation map
+  target, apply})`. It runs one MyMemory request at a time, 350 ms apart, with a **24-request /
+  20,000-character** ceiling per page view, stops after a `budget` error or three consecutive
+  provider failures, and caches by exact text in `sessionStorage`. Pass `source: 'auto'` when the
+  message has no stored `lang`; the queue waits for `js/lang-detect.js`, detects the source, and
+  treats same-language/unknown text as a no-op (it calls `apply(original)` so the page can retire
+  the link) without spending the request budget. Pages keep their own translation map
   (`langTranslations`, `dmTranslations`, `postTranslations`, `commentTranslations`,
-  `topicTranslations`) so a re-render is free and the `Show Original` toggle works.
+  `topicTranslations`) so a re-render is free and the **Show Original** toggle works.
 * **Why the queue matters.** A feed render with 30 foreign posts must not fire 30 API calls in
   one paint on a Kindle. The queue also leaves the explicit link in place as the fallback.
 * **KindleChat's `showTranslations` setting is the opt-out** for both the link and auto

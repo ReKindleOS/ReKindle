@@ -59,10 +59,15 @@ assert.ok(/topicLangDiffers\(msgLang\)/.test(topics), 'topic comments must be ga
 
 // --- client: auto translation is queued, not a synchronous fan-out --------
 assert.ok(/queueMessageAutoTranslation/.test(chat), 'KindleChat must auto-translate viewed foreign messages');
+assert.ok(/autoTranslateSource = msgLang \|\| 'auto'/.test(chat), 'KindleChat must auto-detect messages without a stored lang');
 assert.ok(/queueDmAutoTranslation/.test(chat), 'KindleChat DMs must auto-translate viewed foreign messages');
+assert.ok(/dmMsgLang \|\| 'auto'/.test(chat), 'KindleChat DMs must auto-detect messages without a stored lang');
 assert.ok(/queuePostAutoTranslation/.test(neighbourhood), 'neighbourhood posts must auto-translate viewed foreign posts');
+assert.ok(/postLang \|\| 'auto'/.test(neighbourhood), 'neighbourhood posts must auto-detect posts without a stored lang');
 assert.ok(/queueCommentAutoTranslation/.test(neighbourhood), 'neighbourhood comments must auto-translate viewed foreign comments');
+assert.ok(/commentLang \|\| 'auto'/.test(neighbourhood), 'neighbourhood comments must auto-detect comments without a stored lang');
 assert.ok(/queueTopicAutoTranslation/.test(topics), 'topic comments must auto-translate viewed foreign comments');
+assert.ok(/msgLang \|\| 'auto'/.test(topics), 'topic comments must auto-detect comments without a stored lang');
 assert.ok(/autoTranslate: autoTranslate/.test(translateClient), 'translate-client must expose the auto queue');
 
 // The queue is what keeps a feed render from firing N requests in one paint.

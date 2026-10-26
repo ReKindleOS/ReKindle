@@ -12,8 +12,9 @@
  *
  * `detect()` is synchronous and never waits. If the bundle is not there yet it
  * uses the tiny stopword fallback in js/translate-client.js and marks the result
- * unreliable. Detection is best-effort: a message with no `lang` is treated as
- * "unknown", which shows the Translate link but does not auto-translate.
+ * unreliable. Detection is best-effort: a message with no `lang` is detected on
+ * view by the auto queue (which waits for this bundle), so legacy content is
+ * translated too; same-language/unknown results are a no-op.
  */
 (function () {
     'use strict';

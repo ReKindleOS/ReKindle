@@ -814,8 +814,10 @@ per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` 
    is ever needed it must go on the **ReKindle Social** account (`js/social-endpoints.js`), never the
    main account's 100k/day Free quota. See [usage-limits.md](usage-limits.md).
 2. **Auto-translate on view, but never a synchronous fan-out.** Social pages call
-   `autoTranslate()`, which runs one request at a time, 350 ms apart, capped at 24 jobs / 20,000
-   characters per page view and stopped by a budget error or three consecutive failures. The
+   `autoTranslate()`, which runs one request at a time, 350 ms apart, capped at 24 requests /
+   20,000 characters per page view and stopped by a budget error or three consecutive failures.
+   Pass `source: 'auto'` for legacy content with no stored `lang`: the queue waits for the
+   detector, and same-language/unknown text is a no-op (it does not spend the request budget). The
    explicit Translate link remains as the fallback. Never loop the feed and fire a request per
    item: the budget is characters/day per IP, and a household/school/share-house network shares
    one budget. Chat is repetitive and the cache keys on the text, so repeats are free. See

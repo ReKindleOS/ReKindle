@@ -1236,7 +1236,31 @@
         // The resolved UI language (i18n.js writes documentElement.lang). Base
         // code only, so pt-BR / zh-Hans compare equal to the stored `lang`.
         function topicUserLang() {
-            var lang = document.documentElement.lang || (navigator.language || 'en');
+            // i18n.js writes the resolved language to <html lang>. Before it has
+            // fetched the locale file, fall back to the user's explicit choice,
+            // then the browser. navigator.language alone is wrong on Kindles:
+            // it can stay en-US while the account is set to Spanish.
+            var lang = document.documentElement.lang;
+            if (!lang) {
+                lang = localStorage.getItem('rekindle_language') || 'auto';
+                if (!lang || lang === 'auto') {
+                    lang = '';
+                    try {
+                        var loc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
+                        if (loc && loc.country_code) {
+                            var cc = String(loc.country_code).toUpperCase();
+                            var byCountry = {
+                                ES: 'es', MX: 'es', AR: 'es', CL: 'es', CO: 'es', PE: 'es', VE: 'es', UY: 'es',
+                                PT: 'pt', BR: 'pt', PL: 'pl', DE: 'de', AT: 'de', CH: 'de', IT: 'it', FR: 'fr',
+                                BE: 'fr', CA: 'fr', RU: 'ru', BY: 'ru', KZ: 'ru', CN: 'zh', TW: 'zh', HK: 'zh',
+                                SG: 'zh', VN: 'vi'
+                            };
+                            lang = byCountry[cc] || '';
+                        }
+                    } catch (e) { /* no saved location */ }
+                    if (!lang) lang = navigator.language || 'en';
+                }
+            }
             var base = String(lang).toLowerCase().replace(/_/g, '-').split('-')[0];
             var client = window.rekindleTranslateClient;
             return client && client.normalizeLang ? client.normalizeLang(base) : base;
@@ -2461,8 +2485,8 @@
 
             renderEmojis(msgEl);
 
-            if (msg.id && currentUser && msg.authorId && msg.authorId !== currentUser.uid && msgLang && msgLang !== myLang && !topicTranslated) {
-                queueTopicAutoTranslation(msg, msgLang, myLang);
+            if (msg.id && currentUser && msg.authorId && msg.authorId !== currentUser.uid && langDiffers && !topicTranslated) {
+                queueTopicAutoTranslation(msg, msgLang || 'auto', myLang);
             }
 
             // Resolve real name and avatar (the underlying DB call is already async)
@@ -2563,6 +2587,11 @@
                 target: target,
                 apply: function (translated) {
                     if (!translated) return;
+                    if (String(translated).toLowerCase().trim() === String(msg.body || '').toLowerCase().trim()) {
+                        var sameLink = document.getElementById('topic-translate-' + msg.id);
+                        if (sameLink && sameLink.parentNode) sameLink.parentNode.removeChild(sameLink);
+                        return;
+                    }
                     topicTranslations[msg.id] = translated;
                     applyTopicTranslation(msg.id, translated);
                 }

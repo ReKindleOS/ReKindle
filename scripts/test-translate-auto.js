@@ -81,6 +81,29 @@ async function run() {
     assert.strictEqual(fetchCalls.length, before, 'a repeated string must be served from cache');
     assert.strictEqual(cachedApplied.length, 1, 'cached result is applied');
 
+    // source:'auto' is the legacy/no-stored-lang path. Same-language and
+    // unknown/ASCII-art text must not hit the network (they only retire the
+    // pointless Translate link); a foreign string is detected and translated.
+    const beforeAuto = fetchCalls.length;
+    const originalApplied = [];
+    client.autoTranslate({ id: 'auto-same', text: 'hello my friend', source: 'auto', target: 'en', apply: t => originalApplied.push(t) });
+    await wait(450);
+    assert.strictEqual(fetchCalls.length, beforeAuto, 'auto-detected same language must not fetch');
+    assert.deepStrictEqual(originalApplied, ['hello my friend'], 'same-language auto returns the original for the link cleanup');
+
+    const artApplied = [];
+    client.autoTranslate({ id: 'auto-art', text: '¯\\_(ツ)_/¯', source: 'auto', target: 'en', apply: t => artApplied.push(t) });
+    await wait(450);
+    assert.strictEqual(fetchCalls.length, beforeAuto, 'unknown/ASCII art must not be translated');
+    assert.deepStrictEqual(artApplied, ['¯\\_(ツ)_/¯'], 'unknown text returns the original for the link cleanup');
+
+    const foreignApplied = [];
+    client.autoTranslate({ id: 'auto-foreign', text: 'hola amigo mio', source: 'auto', target: 'en', apply: t => foreignApplied.push(t) });
+    await wait(700);
+    assert.ok(fetchCalls[fetchCalls.length - 1].indexOf('langpair=es%7Cen') !== -1,
+        'auto source must use the detected language pair: ' + fetchCalls[fetchCalls.length - 1]);
+    assert.strictEqual(foreignApplied.length, 1, 'foreign auto result is applied');
+
     // Budget: a session at the cap makes the next explicit translate fail with
     // code 'budget'; the queue must then stop accepting jobs.
     storage.setItem('rk-tr-calls', String(client._sessionBudget));

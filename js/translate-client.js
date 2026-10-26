@@ -44,7 +44,8 @@
  * needed use the ReKindle Social account (js/social-endpoints.js).
  *
  * AUTO-TRANSLATION (2026-10-26): social pages translate a post/message on view
- * when its stored `lang` differs from the reader's language. That is opt-out
+ * when its stored `lang` differs from the reader's language (or is missing and
+ * the on-view detector finds a foreign language). That is opt-out
  * via KindleChat's showTranslations setting, queued one request at a time with
  * its own 24-job ceiling (`autoTranslate()`), and cached in sessionStorage by
  * exact text, so a re-render or a second reader on the same device is free.
@@ -235,9 +236,33 @@
 
     var WORD_SPLIT = /[^0-9a-z\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]+/;
 
+    var LATIN_HINT = /[A-Za-z\u00C0-\u024F]/g;
+
+    function countHint(text, re) {
+        // SCRIPT_HINTS regexes are reused (`lastIndex` would make `.test` stateful),
+        // so build a fresh global matcher for counting.
+        var m = text.match(new RegExp(re.source, 'g'));
+        return m ? m.length : 0;
+    }
+
     function heuristicDetect(body, fallback) {
-        for (var i = 0; i < SCRIPT_HINTS.length; i++) {
-            if (SCRIPT_HINTS[i].re.test(body)) return SCRIPT_HINTS[i].lang;
+        var latin = countHint(body, LATIN_HINT);
+        var bestScript = null;
+        var bestCount = 0;
+        for (var h = 0; h < SCRIPT_HINTS.length; h++) {
+            var scriptCount = countHint(body, SCRIPT_HINTS[h].re);
+            if (scriptCount > bestCount) {
+                bestCount = scriptCount;
+                bestScript = SCRIPT_HINTS[h].lang;
+            }
+        }
+        if (bestScript) {
+            // A single kana/hangul character is usually ASCII art. A non-Latin
+            // script also has to be at least as common as Latin text to win.
+            var scriptAllowed = (bestScript === 'ja' || bestScript === 'ko')
+                ? bestCount >= 2
+                : !(latin > 0 && bestCount < latin);
+            if (scriptAllowed) return bestScript;
         }
 
         var tokens = body.toLowerCase().split(WORD_SPLIT);
@@ -265,19 +290,19 @@
         }
         if (bestLang) return bestLang;
 
-        // Nothing matched: ASCII-only text is far more likely to be English than
-        // anything else here, and the caller treats source === target as a no-op.
-        return fallback || 'en';
+        // Nothing matched. `detectSync` supplies 'en'; the auto queue passes ''
+        // so it can tell unknown/ASCII-art text from English.
+        return fallback || '';
     }
 
     function detectInfo(text, fallback) {
         var body = String(text === null || text === undefined ? '' : text);
-        if (!body.trim()) return { lang: fallback || 'en', reliable: false, source: 'none' };
+        if (!body.trim()) return { lang: fallback || '', reliable: false, source: 'none' };
         if (window.rekindleLangDetect && typeof window.rekindleLangDetect.detect === 'function') {
             try {
                 var info = window.rekindleLangDetect.detect(body);
                 return {
-                    lang: (info && info.lang) || fallback || 'en',
+                    lang: (info && info.lang) || fallback || '',
                     reliable: !!(info && info.reliable),
                     source: (info && info.source) || 'lang-detect'
                 };
@@ -291,7 +316,9 @@
     }
 
     function detectSync(text, fallback) {
-        return detectInfo(text, fallback).lang;
+        // Public detection calls default to en (the old heuristic contract); the
+        // auto queue calls detectInfo() directly with '' to keep "unknown".
+        return detectInfo(text, typeof fallback === 'undefined' ? 'en' : fallback).lang;
     }
 
     function detect(text, fallback) {
@@ -352,6 +379,7 @@
     // Translate link stays visible as the fallback if the queue stops (budget,
     // offline, provider error).
     var AUTO_MAX_JOBS = 24;
+    var AUTO_QUEUE_MAX = 60;
     var AUTO_MAX_CHARS = 20000;
     var AUTO_GAP_MS = 350;
     var autoQueue = [];
@@ -373,38 +401,86 @@
         if (autoActive || autoStopped) return;
         var job = autoQueue.shift();
         if (!job) return;
-        if (autoJobsStarted >= AUTO_MAX_JOBS) {
-            autoStopped = true;
-            autoQueue.length = 0;
-            return;
-        }
         autoActive = true;
-        autoJobsStarted++;
-        autoChars += String(job.text).length;
-        translate(job.text, job.source || 'auto', job.target).then(function (translated) {
-            autoActive = false;
-            autoFailures = 0;
+
+        // A message with no stored `lang` is detected here instead. Wait for the
+        // accurate detector bundle rather than sending the stopword heuristic's
+        // guess to MyMemory; `load()` is idempotent and resolves null on failure.
+        var prepare = Promise.resolve();
+        if ((!job.source || job.source === 'auto') && window.rekindlePostLanguage &&
+            typeof window.rekindlePostLanguage.load === 'function') {
             try {
-                if (typeof job.apply === 'function' && translated) job.apply(translated);
+                prepare = Promise.resolve(window.rekindlePostLanguage.load()).catch(function () { return null; });
             } catch (e) {
-                // A page render bug must not wedge the queue.
-                if (typeof console !== 'undefined' && console.warn) console.warn('auto-translate apply failed:', e);
+                prepare = Promise.resolve();
             }
-            autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
-        }, function (err) {
-            autoActive = false;
-            if (err && err.code === 'budget') {
+        }
+
+        prepare.then(function () {
+            var source = job.source;
+            if (!source || source === 'auto') {
+                // `source:'auto'` means the caller had no stored language. Use
+                // the detector's answer, but treat "none" as unknown rather than
+                // defaulting to English and translating ASCII art.
+                var info = detectInfo(job.text, '');
+                source = (info && info.lang && info.source !== 'none') ? info.lang : '';
+            }
+
+            // Do not let an unknown-but-same-language message burn the network
+            // budget or a queue slot. The page's apply() sees the original text
+            // and retires the now-pointless Translate link.
+            if (sameLanguage(source, job.target)) {
+                autoActive = false;
+                autoFailures = 0;
+                try {
+                    if (typeof job.apply === 'function') job.apply(job.text);
+                } catch (e) {
+                    if (typeof console !== 'undefined' && console.warn) console.warn('auto-translate apply failed:', e);
+                }
+                autoTimer = setTimeout(drainAutoQueue, 20);
+                return;
+            }
+
+            if (autoJobsStarted >= AUTO_MAX_JOBS) {
+                autoActive = false;
                 autoStopped = true;
-            } else {
-                autoFailures++;
-                // Three consecutive provider/network failures: stop rather than
-                // hammer MyMemory (or a dead network) for the rest of the feed.
-                if (autoFailures >= 3) autoStopped = true;
+                autoQueue.length = 0;
+                return;
             }
-            try {
-                if (typeof job.onFail === 'function') job.onFail(err);
-            } catch (e) { /* best effort */ }
-            autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
+            if (autoChars + String(job.text).length > AUTO_MAX_CHARS) {
+                autoActive = false;
+                autoStopped = true;
+                autoQueue.length = 0;
+                return;
+            }
+
+            autoJobsStarted++;
+            autoChars += String(job.text).length;
+            return translate(job.text, source, job.target).then(function (translated) {
+                autoActive = false;
+                autoFailures = 0;
+                try {
+                    if (typeof job.apply === 'function' && translated) job.apply(translated);
+                } catch (e) {
+                    // A page render bug must not wedge the queue.
+                    if (typeof console !== 'undefined' && console.warn) console.warn('auto-translate apply failed:', e);
+                }
+                autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
+            }, function (err) {
+                autoActive = false;
+                if (err && err.code === 'budget') {
+                    autoStopped = true;
+                } else {
+                    autoFailures++;
+                    // Three consecutive provider/network failures: stop rather than
+                    // hammer MyMemory (or a dead network) for the rest of the feed.
+                    if (autoFailures >= 3) autoStopped = true;
+                }
+                try {
+                    if (typeof job.onFail === 'function') job.onFail(err);
+                } catch (e) { /* best effort */ }
+                autoTimer = setTimeout(drainAutoQueue, AUTO_GAP_MS);
+            });
         });
     }
 
@@ -414,10 +490,10 @@
         if (opts.source && sameLanguage(opts.source, opts.target)) return false;
         var key = autoKey(opts);
         if (autoAttempted[key]) return false;
-        if (autoQueue.length >= AUTO_MAX_JOBS) return false;
-        var estimated = autoChars;
-        for (var q = 0; q < autoQueue.length; q++) estimated += String(autoQueue[q].text || '').length;
-        if (estimated + String(opts.text).length > AUTO_MAX_CHARS) return false;
+        // Queue capacity is deliberately larger than the network-request cap:
+        // same-language/unknown jobs drain without a request and must not block
+        // a later foreign message in the same feed.
+        if (autoQueue.length >= AUTO_QUEUE_MAX) return false;
         autoAttempted[key] = true;
         autoQueue.push(opts);
         if (!autoActive && !autoTimer) autoTimer = setTimeout(drainAutoQueue, 120);
@@ -447,6 +523,7 @@
         _detectSync: detectSync,
         _resetAutoTranslate: resetAutoTranslate,
         _autoMaxJobs: AUTO_MAX_JOBS,
+        _autoQueueMax: AUTO_QUEUE_MAX,
         _sessionBudget: SESSION_BUDGET,
         _contact: MYMEMORY_CONTACT
     };

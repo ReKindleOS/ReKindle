@@ -4563,8 +4563,8 @@
                 try { window.renderEmojis(bubble); } catch (e) { }
             }
 
-            if (dmTranslateLink && !dmTranslated && dmMsgLang && dmMsgLang !== dmMyLang && !pendingDmTranslations[msgId]) {
-                queueDmAutoTranslation(msgId, msg.text || '', dmMsgLang, dmMyLang);
+            if (dmTranslateLink && !dmTranslated && !pendingDmTranslations[msgId]) {
+                queueDmAutoTranslation(msgId, msg.text || '', dmMsgLang || 'auto', dmMyLang);
             }
 
             rowEl.appendChild(contentEl);
@@ -4663,6 +4663,11 @@
                 target: target,
                 apply: function (translated) {
                     delete pendingDmTranslations[msgId];
+                    if (translated && String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
+                        var sameLink = document.getElementById('translate-dm-' + msgId);
+                        if (sameLink && sameLink.parentNode) sameLink.parentNode.removeChild(sameLink);
+                        return;
+                    }
                     applyDmTranslation(msgId, translated);
                 },
                 onFail: function () { delete pendingDmTranslations[msgId]; }
@@ -5910,12 +5915,12 @@
                     if (settings.showTranslations && !isSelf && currentUser && messageText && String(messageText).length > 1 && langDiffers) {
                         translateBtnHtml = ' <span id="translate-' + msgId + '" onclick="requestTranslation(\'' + msgId + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left: 5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
 
-                        // Auto-translate a message that is definitely in another
-                        // language. The link above stays as the fallback.
-                        if (msgLang && msgLang !== myLang) {
-                            autoTranslateText = messageText;
-                            autoTranslateSource = msgLang;
-                        }
+                        // Auto-translate this message on view. When the stored
+                        // `lang` is missing (legacy content) translate() detects
+                        // it first; a same-language result is a no-op. The link
+                        // above stays as the fallback.
+                        autoTranslateText = messageText;
+                        autoTranslateSource = msgLang || 'auto';
                     }
                 }
             }
@@ -6876,7 +6881,13 @@
                 target: target,
                 apply: function (translated) {
                     if (!translated) return;
-                    if (String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) return;
+                    if (String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
+                        // Detection says this is already the reader's language;
+                        // retire the manual link rather than leaving a no-op.
+                        var sameLink = document.getElementById('translate-' + msgId);
+                        if (sameLink && sameLink.parentNode) sameLink.parentNode.removeChild(sameLink);
+                        return;
+                    }
                     langTranslations[msgId] = translated;
                     applyTranslationToRenderedMessage(msgId, translated);
                     var link = document.getElementById('translate-' + msgId);

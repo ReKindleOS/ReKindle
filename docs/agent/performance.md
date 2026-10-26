@@ -22,9 +22,10 @@ The comments listener was `innerHTML = ''` + re-render ALL (≤100) comments per
 `js/lang-detect.js` is a ~366 KB raw / ~119 KB gzip ELD model. Do not add it as a
 `<script>` on social pages. `js/post-language.js` injects it on composer focus
 (and again 4 s after load) so a reader who never posts pays nothing; the send
-path falls back to the stopword heuristic until it arrives. This is why the
-KindleChat/Neighbourhood/Topics load-budget numbers did not move when post
-language detection landed.
+path falls back to the stopword heuristic until it arrives. The auto-translate
+queue also requests it when it meets legacy content with no stored `lang`, so
+foreign old posts still switch. This is why the KindleChat/Neighbourhood/Topics
+load-budget numbers did not move when post language detection landed.
 
 ### KindleChat message pipeline (kindlechat.html)
 - Initial 50-message batch renders with `history.style.display = 'none'`, then shows + scrolls once (one reflow instead of 50). Safe because `renderMessage`/`getMessageInsertionInfo` do no layout reads — keep it that way.
