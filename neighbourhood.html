@@ -1315,17 +1315,16 @@
 
         // Language detection is lazy (see js/post-language.js). Start it when a
         // post/comment composer is focused, and once more after the feed settles.
-        (function initPostLanguage() {
+        function detectPostLang(text) {
+            var pl = window.rekindlePostLanguage;
+            if (!pl || typeof pl.isReady !== 'function' || !pl.isReady()) return '';
+            return pl.detectLang(text);
+        }
+
+        function loadPostLanguageSoon() {
             if (!window.rekindlePostLanguage) return;
-            window.rekindlePostLanguage.loadSoon(4000);
-            document.addEventListener('focusin', function (e) {
-                var target = e.target;
-                if (!target || !target.id) return;
-                if (target.id === 'input-post' || target.id.indexOf('comment-input-') === 0) {
-                    window.rekindlePostLanguage.load();
-                }
-            });
-        })();
+            setTimeout(function () { window.rekindlePostLanguage.load(); }, 4000);
+        }
 
         function normalizeUserLang(code) {
             if (!code) return '';
@@ -3232,6 +3231,7 @@
             var postLang = normalizeUserLang(post.lang || '');
             var myLang = normalizeUserLang(typeof userLang !== 'undefined' ? userLang : 'en');
             var langDiffers = postLangDiffers(postLang);
+            var postKnownForeign = !!postLang && postLang !== myLang;
 
             if (postTranslations[post.id]) {
                 isTranslatedDisplay = true;
@@ -3271,11 +3271,11 @@
             // Show the Translate link only when the stored detected language
             // differs from this reader's language. Unknown old posts keep it.
             let translateBtnHtml = '';
-            if (!isTranslatedDisplay && currentUser && post.uid && post.uid !== currentUser.uid && post.text && langDiffers) {
-                // The link is also the fallback when automatic translation is
-                // budget-limited or offline.
+            if (!isTranslatedDisplay && currentUser && post.uid && post.uid !== currentUser.uid && post.text && postKnownForeign) {
+                // Visible only for a known foreign post. Unknown legacy posts
+                // are auto-detected on view without a manual button.
                 const tlLabel = window.t ? window.t('translate.btn.translate', 'Translate') : 'Translate';
-                translateBtnHtml = `<div style="margin-top: 5px;"><span id="translate-${escapeHtml(post.id)}" onclick="requestPostTranslation('${escapeHtml(post.id)}')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${tlLabel}</span></div>`;
+                translateBtnHtml = `<div style="margin-top: 5px;"><span id="translate-${escapeHtml(post.id)}" onclick="requestPostTranslation('${escapeHtml(post.id)}')" style="display:none; font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${tlLabel}</span></div>`;
             }
 
             if (window.filterBadWords) {
@@ -3505,6 +3505,7 @@
             var commentLang = normalizeUserLang(comment.lang || '');
             var commentMyLang = normalizeUserLang(typeof userLang !== 'undefined' ? userLang : 'en');
             var commentLangDiffers = postLangDiffers(commentLang);
+            var commentKnownForeign = !!commentLang && commentLang !== commentMyLang;
             var commentKey = postId + '/' + comment.id;
             var commentIsTranslated = false;
             var commentToggleHtml = '';
@@ -3514,9 +3515,9 @@
                 displayText = censorProfileText(commentTranslations[commentKey]);
                 var cmtToggleLabel = window.t ? window.t('kindlechat.msg.show_original', 'Show Original') : 'Show Original';
                 commentToggleHtml = '<span id="cmt-toggle-' + escapeHtml(comment.id) + '" onclick="toggleCommentTranslation(\'' + escapeJsString(postId) + '\', \'' + escapeJsString(comment.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + cmtToggleLabel + '</span>';
-            } else if (commentLangDiffers && currentUser && comment.uid && comment.uid !== currentUser.uid) {
+            } else if (commentKnownForeign && currentUser && comment.uid && comment.uid !== currentUser.uid) {
                 var cmtTlLabel = window.t ? window.t('translate.btn.translate', 'Translate') : 'Translate';
-                commentTranslateHtml = '<span id="cmt-translate-' + escapeHtml(comment.id) + '" onclick="requestCommentTranslation(\'' + escapeJsString(postId) + '\', \'' + escapeJsString(comment.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + cmtTlLabel + '</span>';
+                commentTranslateHtml = '<span id="cmt-translate-' + escapeHtml(comment.id) + '" onclick="requestCommentTranslation(\'' + escapeJsString(postId) + '\', \'' + escapeJsString(comment.id) + '\')" style="display:none; font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + cmtTlLabel + '</span>';
             }
 
             const commentDiv = document.createElement('div');
@@ -3670,15 +3671,21 @@
             });
         }
 
+        function showCommentTranslateLink(commentId) {
+            var link = document.getElementById('cmt-translate-' + commentId);
+            if (link) link.style.display = 'inline-block';
+        }
+
         function queueCommentAutoTranslation(postId, comment, source, target) {
             var client = window.rekindleTranslateClient;
             if (!client || typeof client.autoTranslate !== 'function') return;
             var key = postId + '/' + comment.id;
-            client.autoTranslate({
+            var queued = client.autoTranslate({
                 id: 'neighbourhood-comment:' + key,
                 text: comment.text || '',
                 source: source,
                 target: target,
+                onFail: function () { showCommentTranslateLink(comment.id); },
                 apply: function (translated) {
                     if (!translated) return;
                     if (String(translated).toLowerCase().trim() === String(comment.text || '').toLowerCase().trim()) {
@@ -3690,6 +3697,7 @@
                     applyCommentTranslation(postId, comment.id, translated);
                 }
             });
+            if (!queued) showCommentTranslateLink(comment.id);
         }
 
         function submitComment(postId) {
@@ -3721,7 +3729,7 @@
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + t
                         },
-                        body: JSON.stringify({ type: 'neighbourhood_comment', postId: postId, text: text, lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '') })
+                        body: JSON.stringify({ type: 'neighbourhood_comment', postId: postId, text: text, lang: detectPostLang(text) })
                     });
                 }
                 return postWith(token).then(function (resp) {
@@ -3742,6 +3750,7 @@
                 }
                 input.value = '';
                 input.disabled = false;
+                loadPostLanguageSoon();
             }).catch(err => {
                 var outage = window.rekindleWorkerClient && window.rekindleWorkerClient.errorMessage(err);
                 if (outage) {
@@ -4048,7 +4057,7 @@
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + t
                         },
-                        body: JSON.stringify({ type: 'neighbourhood_post', text: text, lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '') })
+                        body: JSON.stringify({ type: 'neighbourhood_post', text: text, lang: detectPostLang(text) })
                     });
                 }
                 return postWith(token).then(function (resp) {
@@ -4160,15 +4169,21 @@
             if (link && link.parentNode) link.parentNode.removeChild(link);
         }
 
+        function showPostTranslateLink(postId) {
+            var link = document.getElementById('translate-' + postId);
+            if (link) link.style.display = 'inline-block';
+        }
+
         function queuePostAutoTranslation(post, source, target) {
             var client = window.rekindleTranslateClient;
             if (!client || typeof client.autoTranslate !== 'function') return;
-            client.autoTranslate({
+            var queued = client.autoTranslate({
                 // Keyed by text, not post id, so editing a post can translate
                 // again and two identical posts share one request.
                 text: post.text || '',
                 source: source,
                 target: target,
+                onFail: function () { showPostTranslateLink(post.id); },
                 apply: function (translated) {
                     if (!translated) return;
                     if (String(translated).toLowerCase().trim() === String(post.text || '').toLowerCase().trim()) {
@@ -4180,6 +4195,7 @@
                     applyPostTranslationToRendered(post.id, translated);
                 }
             });
+            if (!queued) showPostTranslateLink(post.id);
         }
 
         function toggleTranslation(postId) {
@@ -4307,12 +4323,13 @@
                 if (trimmedEdit.length > 280) { showAlertModal("Message too long (max 280 chars).", "Error"); return; }
                 if (containsUrl(trimmedEdit)) { showAlertModal("Links and URLs are not allowed.", "Error"); return; }
                 if (containsPromotedTerm(trimmedEdit)) { showAlertModal("Promotional content is not allowed.", "Error"); return; }
-                socialDb.collection('neighbourhood_posts').doc(id).update({ text: trimmedEdit, lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(trimmedEdit) : '') })
+                socialDb.collection('neighbourhood_posts').doc(id).update({ text: trimmedEdit, lang: detectPostLang(trimmedEdit) })
                     .then(function () {
                         // The cached auto-translation belongs to the old text.
                         // Drop it so the re-render shows the edit; the queue's
                         // text-keyed dedupe lets the new text translate again.
                         delete postTranslations[id];
+                        loadPostLanguageSoon();
                     })
                     .catch(e => showAlertModal("Update failed: " + e.message, "Error"));
             });

@@ -52,7 +52,10 @@ assert.ok(/type: 'topic'[\s\S]{0,600}lang:/.test(topics), 'topics must send lang
 
 // --- client: Translate links are gated on the stored language -------------
 assert.ok(/langDiffers/.test(chat), 'KindleChat must compare stored lang with the reader language');
-assert.ok(/&& langDiffers/.test(chat), 'KindleChat translate link must be gated by langDiffers');
+assert.ok(/knownForeign/.test(chat), 'KindleChat translate link must only appear for a known foreign language');
+assert.ok(/postKnownForeign/.test(neighbourhood), 'neighbourhood translate links must only appear for a known foreign language');
+assert.ok(/commentKnownForeign/.test(neighbourhood), 'neighbourhood comment links must only appear for a known foreign language');
+assert.ok(/msgKnownForeign/.test(topics), 'topic comment links must only appear for a known foreign language');
 assert.ok(/postLangDiffers\(postLang\)/.test(neighbourhood), 'neighbourhood posts must be gated by stored lang');
 assert.ok(/commentLangDiffers/.test(neighbourhood), 'neighbourhood comments must be gated by stored lang');
 assert.ok(/topicLangDiffers\(msgLang\)/.test(topics), 'topic comments must be gated by stored lang');
@@ -61,6 +64,10 @@ assert.ok(/topicLangDiffers\(msgLang\)/.test(topics), 'topic comments must be ga
 assert.ok(/queueMessageAutoTranslation/.test(chat), 'KindleChat must auto-translate viewed foreign messages');
 assert.ok(/autoTranslateSource = msgLang \|\| 'auto'/.test(chat), 'KindleChat must auto-detect messages without a stored lang');
 assert.ok(/bubble\.closest\('\.msg'\)/.test(chat), 'KindleChat must find .msg-meta above .msg-row when adding Show Original');
+assert.ok(/setAttribute\('data-original', originalText\)/.test(chat), 'chat original text must be stored raw (no double escaping)');
+assert.ok(!/setAttribute\('data-original', escapeHtml/.test(chat), 'chat original text must not be pre-escaped');
+assert.ok(!/setting-translation-lang/.test(chat), 'the separate translation-language dropdown must stay removed');
+assert.ok(/function getEffectiveTranslationLang\(\)[\s\S]{0,180}return userLang;/.test(chat), 'translations must target the system/UI language');
 assert.ok(!/bubble\.parentNode\.querySelector\('\.msg-meta'\)/.test(chat), 'the .msg-meta lookup must not search inside .msg-row');
 assert.ok(/queueDmAutoTranslation/.test(chat), 'KindleChat DMs must auto-translate viewed foreign messages');
 assert.ok(/dmMsgLang \|\| 'auto'/.test(chat), 'KindleChat DMs must auto-detect messages without a stored lang');

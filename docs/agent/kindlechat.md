@@ -551,12 +551,17 @@ translates and shows **Show Original** like any tagged message.
 
 * **Button gating.** Each render compares the stored `lang` with the reader's language
   (`getEffectiveTranslationLang()` in chat, `userLang` in Neighbourhood, the resolved UI language
-  in Topics). The Translate link is rendered only when the codes differ **and** the message is not
-  the reader's own and `showTranslations` is on. Unknown `lang` keeps the link visible until the
-  on-view detection confirms the language, at which point a same-language message's link is removed.
+  in Topics). The Translate button is rendered **only for a known foreign language**; same-language
+  and unknown/legacy messages get no manual button. Unknown messages are still auto-detected on
+  view, so foreign legacy content translates and gets Show Original without cluttering every
+  message with a Translate link.
 * **Do not show the link for same-language content.** This was the point of the change: the old
   on-demand link appeared on every foreign-looking bubble, including English messages read by
-  English readers.
+  English readers. Unknown messages are not assumed to be foreign: no button, but the auto queue
+  still detects them.
+* **Translations always target the user's system/UI language.** The KindleChat "Translation
+  Language" dropdown was removed on 2026-10-27; `getEffectiveTranslationLang()` returns `userLang`.
+  Stored `settings.translationLang` values are ignored.
 * **Adding Show Original after a render:** `.msg-meta` is a **sibling of `.msg-row`**, not a
   descendant of the bubble's immediate parent. Use `bubble.closest('.msg').querySelector('.msg-meta')`;
   the old `bubble.parentNode.querySelector('.msg-meta')` silently returned null, so on-view
@@ -576,7 +581,17 @@ translates and shows **Show Original** like any tagged message.
   translation. Neighbourhood/Topics have no setting and always auto-translate foreign content.
 * **Manual translation uses the stored source**: `requestTranslation`/`requestPostTranslation`
   pass `data-lang` instead of `'auto'`, so MyMemory gets an explicit pair rather than re-guessing
-  a short message.
+  a short message. The manual link is a fallback for known-foreign messages; it is hidden when
+  automatic translation succeeds.
+* **Entity handling:** translation `data-*` attributes store **raw** text (`setAttribute` does not
+  parse entities). Escaping them before `setAttribute` caused the 2026-10-27
+  `I&#039;ll` Show Translated bug; `translate-client.js` also decodes provider HTML entities once
+  before returning a translation.
+* **Send-path performance (2026-10-27):** do not preload the detector on composer focus or page
+  load. That 119 KB download competed with the message POST on a slow Kindle. `detectPostLang()`
+  only tags when the detector is already ready; otherwise the message is sent without `lang` and
+  the auto queue detects it on view. A successful post warms the detector 4 s later, off the send
+  path. Chat also pauses new auto request jobs while a send is in flight.
 * `fireTranslationRequest()` stays retired. Do not re-enable the server fan-out without a keyed
   provider: it fired up to 4 Worker requests and 4 forced `getIdToken(true)` refreshes per message.
 * `langTranslations` and the scoped `translations_by_lang/<lang>` listener are unchanged, so any

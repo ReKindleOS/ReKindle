@@ -57,6 +57,8 @@ async function run() {
         });
     }, storage);
 
+    assert.strictEqual(client._decodeEntities('I&#039;ll &amp; you &#x27;ok&#x27;'), "I'll & you 'ok'", 'provider HTML entities are decoded once');
+
     // source === target is a no-op and must not hit the network.
     const skipped = client.autoTranslate({ id: 'same', text: 'hello', source: 'en', target: 'en', apply: () => { throw new Error('must not apply'); } });
     assert.strictEqual(skipped, false, 'same-language jobs are not queued');

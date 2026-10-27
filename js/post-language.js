@@ -1,20 +1,18 @@
 /*
  * Post-time language detection helper (2026-10-26).
  *
- * js/lang-detect.js is ~365 KB raw / ~119 KB gzip (a trimmed ELD n-gram model
+ * js/lang-detect.js is ~366 KB raw / ~119 KB gzip (a trimmed ELD n-gram model
  * plus a chat lexicon). Loading that on every social page would undo the
  * Kindle load-path work, so it is injected on demand:
  *
- *   - when the reader focuses a composer (chat, post, comment, topic form),
- *     which gives the download time to finish while they type;
- *   - and again 4 s after the page loads, so an already-typed draft still gets
- *     a language tag.
+ *   - the auto-translate queue calls load() when it meets a message with no
+ *     stored `lang` (legacy content), and waits for it before guessing a source;
+ *   - a successful post warms it 1.5 s later, off the send path, so subsequent
+ *     messages can be tagged accurately.
  *
- * `detect()` is synchronous and never waits. If the bundle is not there yet it
- * uses the tiny stopword fallback in js/translate-client.js and marks the result
- * unreliable. Detection is best-effort: a message with no `lang` is detected on
- * view by the auto queue (which waits for this bundle), so legacy content is
- * translated too; same-language/unknown results are a no-op.
+ * It is deliberately NOT loaded on composer focus or page load: that 119 KB
+ * competed with the message POST on slow Kindle connections. `detect()` is
+ * synchronous and never waits.
  */
 (function () {
     'use strict';
@@ -87,21 +85,19 @@
         return detect(text).lang || '';
     }
 
+    function isReady() {
+        return !!window.rekindleLangDetect;
+    }
+
     function ensureAndDetect(text) {
         return load().then(function () { return detect(text); });
     }
 
-    // Delayed preload: after the first paint and the live listeners have
-    // settled, not before.
-    function loadSoon(delay) {
-        setTimeout(load, typeof delay === 'number' ? delay : 4000);
-    }
-
     window.rekindlePostLanguage = {
         load: load,
-        loadSoon: loadSoon,
         detect: detect,
         detectLang: detectLang,
+        isReady: isReady,
         ensureAndDetect: ensureAndDetect
     };
 })();

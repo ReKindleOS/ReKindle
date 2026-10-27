@@ -1245,6 +1245,17 @@
 
         // The resolved UI language (i18n.js writes documentElement.lang). Base
         // code only, so pt-BR / zh-Hans compare equal to the stored `lang`.
+        function detectPostLang(text) {
+            var pl = window.rekindlePostLanguage;
+            if (!pl || typeof pl.isReady !== 'function' || !pl.isReady()) return '';
+            return pl.detectLang(text);
+        }
+
+        function loadPostLanguageSoon() {
+            if (!window.rekindlePostLanguage) return;
+            setTimeout(function () { window.rekindlePostLanguage.load(); }, 4000);
+        }
+
         function topicUserLang() {
             // i18n.js writes the resolved language to <html lang>. Before it has
             // fetched the locale file, fall back to the user's explicit choice,
@@ -1284,18 +1295,6 @@
 
         // Language detection is a lazy bundle (js/post-language.js); start it
         // when a composer is focused and once after the page settles.
-        (function initPostLanguage() {
-            if (!window.rekindlePostLanguage) return;
-            window.rekindlePostLanguage.loadSoon(4000);
-            document.addEventListener('focusin', function (e) {
-                var target = e.target;
-                if (!target || !target.id) return;
-                if (target.id === 'msg-input' || target.id === 'new-title' || target.id === 'new-subheading') {
-                    window.rekindlePostLanguage.load();
-                }
-            });
-        })();
-
         var topicTranslations = {};
         var pendingTopicTranslations = {};
         var currentTopicId = null;
@@ -2440,6 +2439,7 @@
             var msgLang = msg.lang ? String(msg.lang).toLowerCase().replace(/_/g, '-').split('-')[0] : '';
             var myLang = topicUserLang();
             var langDiffers = topicLangDiffers(msgLang);
+            var msgKnownForeign = !!msgLang && msgLang !== myLang;
             var topicTranslated = msg.id ? topicTranslations[msg.id] : '';
             var topicToggleHtml = '';
             var topicTranslateHtml = '';
@@ -2448,8 +2448,8 @@
                 if (window.rekindleCensorPromotedTerms) displayBody = window.rekindleCensorPromotedTerms(displayBody);
                 if (window.filterBadWords) displayBody = window.filterBadWords(displayBody);
                 topicToggleHtml = '<span id="topic-toggle-' + escapeHtml(msg.id) + '" onclick="toggleTopicTranslation(\'' + escapeJsString(msg.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + window.t('kindlechat.msg.show_original', 'Show Original') + '</span>';
-            } else if (msg.id && langDiffers && currentUser && msg.authorId && msg.authorId !== currentUser.uid) {
-                topicTranslateHtml = '<span id="topic-translate-' + escapeHtml(msg.id) + '" onclick="requestTopicTranslation(\'' + escapeJsString(msg.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
+            } else if (msg.id && msgKnownForeign && currentUser && msg.authorId && msg.authorId !== currentUser.uid) {
+                topicTranslateHtml = '<span id="topic-translate-' + escapeHtml(msg.id) + '" onclick="requestTopicTranslation(\'' + escapeJsString(msg.id) + '\')" style="display:none; font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
             }
 
             var nameBadge = '';
@@ -2587,14 +2587,20 @@
             });
         }
 
+        function showTopicTranslateLink(msgId) {
+            var link = document.getElementById('topic-translate-' + msgId);
+            if (link) link.style.display = 'inline-block';
+        }
+
         function queueTopicAutoTranslation(msg, source, target) {
             var client = window.rekindleTranslateClient;
             if (!client || typeof client.autoTranslate !== 'function') return;
-            client.autoTranslate({
+            var queued = client.autoTranslate({
                 id: 'topic-comment:' + msg.id,
                 text: msg.body || '',
                 source: source,
                 target: target,
+                onFail: function () { showTopicTranslateLink(msg.id); },
                 apply: function (translated) {
                     if (!translated) return;
                     if (String(translated).toLowerCase().trim() === String(msg.body || '').toLowerCase().trim()) {
@@ -2606,6 +2612,7 @@
                     applyTopicTranslation(msg.id, translated);
                 }
             });
+            if (!queued) showTopicTranslateLink(msg.id);
         }
 
         function openUserProfile(uid) {
@@ -2929,7 +2936,7 @@
                                 'Content-Type': 'application/json',
                                 'Authorization': 'Bearer ' + t
                             },
-                            body: JSON.stringify({ type: 'topic_comment', topicId: postingTopicId, body: text, lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '') })
+                            body: JSON.stringify({ type: 'topic_comment', topicId: postingTopicId, body: text, lang: detectPostLang(text) })
                         });
                     }
                     return postWith(token).then(function (resp) {
@@ -2952,6 +2959,7 @@
                         showAlertModal(result.error);
                         return;
                     }
+                    loadPostLanguageSoon();
                     // Only clear if the user has not started typing something new.
                     if (input.value.trim() === text.trim()) input.value = '';
                     var newCount = result.commentCount;
@@ -3319,9 +3327,10 @@
                                 title: title,
                                 subheading: subheading,
                                 icon: selectedIconSvg,
-                                lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(title + ' ' + subheading) : '')
+                                lang: detectPostLang(title + ' ' + subheading)
                             }).then(function () {
                                 closeCreateModal();
+                                loadPostLanguageSoon();
                             }).catch(function(err) {
                                 if (err && err.code === 'PERMISSION_DENIED') {
                                     showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
@@ -3341,9 +3350,10 @@
                                 title: title,
                                 subheading: subheading,
                                 icon: selectedIconSvg,
-                                lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(title + ' ' + subheading) : '')
+                                lang: detectPostLang(title + ' ' + subheading)
                             }).then(function () {
                                 closeCreateModal();
+                                loadPostLanguageSoon();
                             }).catch(function(err) {
                                 if (err && err.code === 'PERMISSION_DENIED') {
                                     showAlertModal("Unable to post. This may be due to a missing age-verification or account restriction. Please sign out and back in, or contact support.");
@@ -3401,9 +3411,7 @@
                             subheading: subheading,
                             icon: selectedIconSvg,
                             poll: pollData,
-                            lang: (window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(
-                                [title, subheading, pollData && pollData.question, pollData && pollData.options ? pollData.options.join(' ') : ''].join(' ')
-                            ) : '')
+                            lang: detectPostLang([title, subheading, pollData && pollData.question, pollData && pollData.options ? pollData.options.join(' ') : ''].join(' '))
                         })
                     }).then(function (resp) {
                         return window.rekindleWorkerClient
@@ -3421,6 +3429,7 @@
                     }
                     closeCreateModal();
                     selectTopic(result.id);
+                    loadPostLanguageSoon();
                 }).catch(function(err) {
                     if (submitBtn) {
                         submitBtn.disabled = false;

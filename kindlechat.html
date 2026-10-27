@@ -1877,29 +1877,6 @@
                         General chat.</div>
                 </div>
 
-                <div style="margin: 15px 0;">
-                    <label style="display:block; font-size:0.9rem; font-weight:bold; margin-bottom:4px;"
-                        data-i18n="kindlechat.settings.trans_lang">Translation Language</label>
-                    <select id="setting-translation-lang"
-                        style="width:100%; border:2px solid black; border-radius:0; padding:6px; font-family:inherit; font-size:0.9rem; background:white;">
-                        <option value="auto" data-i18n="kindlechat.settings.trans_lang_auto">Auto (System Language)
-                        </option>
-                        <option value="en">English</option>
-                        <option value="es">Español</option>
-                        <option value="pt">Português</option>
-                        <option value="pl">Polski</option>
-                        <option value="de">Deutsch</option>
-                        <option value="it">Italiano</option>
-                        <option value="fr">Français</option>
-                        <option value="ru">Русский</option>
-                        <option value="zh">中文</option>
-                        <option value="vi">Tiếng Việt</option>
-                    </select>
-                    <div style="font-size:0.8rem; color:#666; margin-top:4px;"
-                        data-i18n="kindlechat.settings.trans_lang_desc">
-                        Choose an alternative language for translations. "Auto" matches your system language.</div>
-                </div>
-
                 <div style="margin: 15px 0;" id="dm-requests-setting">
                     <label style="display:flex; align-items:center; cursor:pointer;">
                         <input type="checkbox" id="setting-dm-requests"
@@ -2286,10 +2263,23 @@
         var userLang = resolveUserLanguage();
 
         function getEffectiveTranslationLang() {
-            if (settings.translationLang && settings.translationLang !== 'auto') {
-                return settings.translationLang;
-            }
+            // Translations always use the user's system/UI language. The old
+            // separate translation-language dropdown was removed on 2026-10-27.
             return userLang;
+        }
+
+        // Only tag a post when the accurate detector is already loaded. Loading
+        // it inside the send handler competed with the POST on slow Kindle
+        // connections; the first message is tagged on view instead (auto source).
+        function detectPostLang(text) {
+            var pl = window.rekindlePostLanguage;
+            if (!pl || typeof pl.isReady !== 'function' || !pl.isReady()) return '';
+            return pl.detectLang(text);
+        }
+
+        function loadPostLanguageSoon() {
+            if (!window.rekindlePostLanguage) return;
+            setTimeout(function () { window.rekindlePostLanguage.load(); }, 4000);
         }
 
         // Base ISO 639-1 code: pt-BR -> pt, zh-Hans -> zh, en_US -> en.
@@ -2309,8 +2299,7 @@
 
         var settings = {
             showTranslations: true, // Default to true for all users to see translations
-            showAdminTools: false,
-            translationLang: 'auto'
+            showAdminTools: false
         };
         var isCurrentUserMod = false;
         var isModeratorMode = false;
@@ -2560,21 +2549,6 @@
                 }
             });
 
-            // Language detection is a 365 KB lazy bundle. Start downloading when a
-            // composer is focused, and again after the page has settled, so a
-            // message sent later that session still gets a `lang` tag.
-            (function initPostLanguage() {
-                if (!window.rekindlePostLanguage) return;
-                window.rekindlePostLanguage.loadSoon(4000);
-                document.addEventListener('focusin', function (e) {
-                    var target = e.target;
-                    if (!target || !target.id) return;
-                    if (target.id === 'msg-input' || target.id === 'dm-message') {
-                        window.rekindlePostLanguage.load();
-                    }
-                });
-            })();
-
             // Enter key
             document.getElementById('msg-input').addEventListener("keydown", function (e) {
                 var enterToSend = localStorage.getItem('rekindle_enter_to_send_chat') !== 'false'; // Default true
@@ -2651,7 +2625,6 @@
             document.getElementById('setting-enter-to-send').checked = (localStorage.getItem('rekindle_enter_to_send_chat') !== 'false');
             document.getElementById('setting-show-translations').checked = settings.showTranslations;
             document.getElementById('setting-show-admin-tools').checked = settings.showAdminTools;
-            document.getElementById('setting-translation-lang').value = settings.translationLang || 'auto';
 
             var dmRequestsSetting = document.getElementById('dm-requests-setting');
             var dmRequestsCheckbox = document.getElementById('setting-dm-requests');
@@ -4176,9 +4149,12 @@
             checkRules(function () {
                 isSendingMessage = true;
                 markSendBusy();
+                if (window.rekindleTranslateClient && window.rekindleTranslateClient.pauseAutoTranslate) {
+                    window.rekindleTranslateClient.pauseAutoTranslate();
+                }
                 setTimeout(function () { isSendingMessage = false; }, 4000);
                 var threadId = currentRoomId;
-                var dmLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
+                var dmLang = detectPostLang(text);
                 var dmPayload = { type: 'dm_message', threadId: threadId, text: text };
                 if (dmLang) dmPayload.lang = dmLang;
                 callDmWorker(dmPayload).then(function (result) {
@@ -4197,6 +4173,7 @@
                         return;
                     }
                     inputEl.innerHTML = '';
+                    loadPostLanguageSoon();
                 })['catch'](function (e) {
                     resetSendState();
                     console.error('DM send failed:', e);
@@ -4494,6 +4471,7 @@
             var dmMsgLang = normalizeChatLang(msg.lang || '');
             var dmMyLang = normalizeChatLang(getEffectiveTranslationLang());
             var dmLangDiffers = chatLangDiffers(dmMsgLang, dmMyLang);
+            var dmKnownForeign = !!dmMsgLang && dmMsgLang !== dmMyLang;
             var dmTranslated = settings.showTranslations ? (dmTranslations[msgId] || '') : '';
 
             var el = document.createElement('div');
@@ -4524,10 +4502,10 @@
                 dmToggle.textContent = window.t('kindlechat.msg.show_original', 'Show Original');
                 dmToggle.onclick = function () { toggleDmTranslation(msgId); };
                 meta.appendChild(dmToggle);
-            } else if (settings.showTranslations && !isSelf && currentUser && msg.text && String(msg.text).length > 1 && dmLangDiffers) {
+            } else if (settings.showTranslations && !isSelf && currentUser && msg.text && String(msg.text).length > 1 && dmKnownForeign) {
                 dmTranslateLink = document.createElement('span');
                 dmTranslateLink.id = 'translate-dm-' + msgId;
-                dmTranslateLink.style.cssText = 'font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
+                dmTranslateLink.style.cssText = 'display:none; font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;';
                 dmTranslateLink.textContent = window.t('translate.btn.translate', 'Translate');
                 dmTranslateLink.onclick = function () { requestDmTranslation(msgId); };
                 meta.appendChild(dmTranslateLink);
@@ -4575,7 +4553,8 @@
                 try { window.renderEmojis(bubble); } catch (e) { }
             }
 
-            if (dmTranslateLink && !dmTranslated && !pendingDmTranslations[msgId]) {
+            if (settings.showTranslations && !isSelf && currentUser && msg.text && String(msg.text).length > 1 &&
+                dmLangDiffers && !dmTranslated && !pendingDmTranslations[msgId]) {
                 queueDmAutoTranslation(msgId, msg.text || '', dmMsgLang || 'auto', dmMyLang);
             }
 
@@ -4665,6 +4644,11 @@
             });
         }
 
+        function showDmTranslateLink(msgId) {
+            var link = document.getElementById('translate-dm-' + msgId);
+            if (link) link.style.display = 'inline-block';
+        }
+
         function queueDmAutoTranslation(msgId, text, source, target) {
             var client = window.rekindleTranslateClient;
             if (!client || typeof client.autoTranslate !== 'function') return;
@@ -4682,11 +4666,15 @@
                     }
                     applyDmTranslation(msgId, translated);
                 },
-                onFail: function () { delete pendingDmTranslations[msgId]; }
+                onFail: function () {
+                    delete pendingDmTranslations[msgId];
+                    showDmTranslateLink(msgId);
+                }
             });
             // If the queue refused the job (cap/stopped), leave the manual link
             // usable instead of parking a pending flag forever.
             if (queued) pendingDmTranslations[msgId] = true;
+            else showDmTranslateLink(msgId);
         }
 
         function openDmReport(msgId) {
@@ -4842,7 +4830,7 @@
                     fail(dmT('kindlechat.dm.self', "You can't message yourself."));
                     return;
                 }
-                var requestLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
+                var requestLang = detectPostLang(text);
                 var requestPayload = { type: 'dm_request', toUid: profile.uid, text: text };
                 if (requestLang) requestPayload.lang = requestLang;
                 callDmWorker(requestPayload).then(function (result) {
@@ -4892,6 +4880,7 @@
                     };
                     updateDmUnreadDot();
                     openDmThread(result.threadId);
+                    loadPostLanguageSoon();
                 })['catch'](function (e) {
                     console.error('DM request failed:', e);
                     fail(dmT('kindlechat.dm.network', 'Network error. Please try again.'));
@@ -5921,18 +5910,22 @@
                     // blocks every client since 2026-10-19), so the reader
                     // translates what they actually want to read, in their own
                     // browser. See js/translate-client.js.
-                    // Only readers whose language differs from the stored
-                    // detected language see the link. Unknown (old messages)
-                    // keeps the link so nobody loses access to translation.
-                    if (settings.showTranslations && !isSelf && currentUser && messageText && String(messageText).length > 1 && langDiffers) {
-                        translateBtnHtml = ' <span id="translate-' + msgId + '" onclick="requestTranslation(\'' + msgId + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left: 5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
-
-                        // Auto-translate this message on view. When the stored
-                        // `lang` is missing (legacy content) translate() detects
-                        // it first; a same-language result is a no-op. The link
-                        // above stays as the fallback.
-                        autoTranslateText = messageText;
-                        autoTranslateSource = msgLang || 'auto';
+                    //
+                    // The button is rendered only for a message whose stored
+                    // language is KNOWN and differs from the reader's. Unknown
+                    // legacy messages do not show a button; the auto queue
+                    // detects them on view and either translates them (adding
+                    // Show Original) or leaves them alone.
+                    if (settings.showTranslations && !isSelf && currentUser && messageText && String(messageText).length > 1) {
+                        var knownForeign = !!msgLang && msgLang !== myLang;
+                        if (knownForeign) {
+                            translateBtnHtml = ' <span id="translate-' + msgId + '" onclick="requestTranslation(\'' + msgId + '\')" style="display:none; font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left: 5px;">' + window.t('translate.btn.translate', 'Translate') + '</span>';
+                        }
+                        if (langDiffers) {
+                            // Known foreign or unknown/legacy: translate on view.
+                            autoTranslateText = messageText;
+                            autoTranslateSource = msgLang || 'auto';
+                        }
                     }
                 }
             }
@@ -6101,6 +6094,9 @@
 
         function resetSendState() {
             isSendingMessage = false;
+            if (window.rekindleTranslateClient && window.rekindleTranslateClient.resumeAutoTranslate) {
+                window.rekindleTranslateClient.resumeAutoTranslate();
+            }
             var sendBtn = document.getElementById('send-btn');
             if (sendBtn) {
                 sendBtn.disabled = false;
@@ -6177,6 +6173,9 @@
             }
             isSendingMessage = true;
             markSendBusy();
+            if (window.rekindleTranslateClient && window.rekindleTranslateClient.pauseAutoTranslate) {
+                window.rekindleTranslateClient.pauseAutoTranslate();
+            }
             // Escape hatch only for a genuinely stuck request: every settle path
             // calls resetSendState(). At 3s this fired while a slow moderation
             // POST was still in flight and let the same text be sent twice.
@@ -6187,7 +6186,7 @@
             // Cached token first; only force a refresh if the worker rejects it
             // (this used to cost an Identity Toolkit round trip per message).
             tokenSource.getIdToken().then(function (token) {
-                var detectedLang = window.rekindlePostLanguage ? window.rekindlePostLanguage.detectLang(text) : '';
+                var detectedLang = detectPostLang(text);
                 var bodyObj = { type: 'kindlechat', text: text };
                 if (detectedLang) bodyObj.lang = detectedLang;
                 if (replyTarget) {
@@ -6237,6 +6236,7 @@
                 replyTarget = null;
                 resetSendState();
                 if (window.rekindleRecordChatMessage) window.rekindleRecordChatMessage(text);
+                loadPostLanguageSoon();
                 // Server-side translation fan-out disabled 2026-10-26: it cost up
                 // to 4 Worker invocations and 4 forced token refreshes per message
                 // and has produced nothing since Google blocked the gtx endpoint on
@@ -6263,7 +6263,6 @@
 
         function saveSettings() {
             settings.showTranslations = document.getElementById('setting-show-translations').checked;
-            settings.translationLang = document.getElementById('setting-translation-lang').value || 'auto';
             var enterToSend = document.getElementById('setting-enter-to-send').checked;
 
             if (currentUsername === 'ukiyo') {
@@ -6295,7 +6294,6 @@
                     var parsed = JSON.parse(saved);
                     settings.showTranslations = parsed.showTranslations !== undefined ? parsed.showTranslations : settings.showTranslations;
                     settings.showAdminTools = parsed.showAdminTools !== undefined ? parsed.showAdminTools : false;
-                    settings.translationLang = parsed.translationLang || 'auto';
                 } catch (e) { }
             }
 
@@ -6883,14 +6881,20 @@
         // Feed-view auto translation. Queued by js/translate-client.js (one
         // request at a time) so a busy room cannot fire 30 MyMemory calls in one
         // paint; `langTranslations` makes a re-render free.
+        function showChatTranslateLink(msgId) {
+            var link = document.getElementById('translate-' + msgId);
+            if (link) link.style.display = 'inline-block';
+        }
+
         function queueMessageAutoTranslation(msgId, text, source, target) {
             var client = window.rekindleTranslateClient;
             if (!client || typeof client.autoTranslate !== 'function') return;
-            client.autoTranslate({
+            var queued = client.autoTranslate({
                 id: 'kindlechat:' + msgId,
                 text: text,
                 source: source,
                 target: target,
+                onFail: function () { showChatTranslateLink(msgId); },
                 apply: function (translated) {
                     if (!translated) return;
                     if (String(translated).toLowerCase().trim() === String(text).toLowerCase().trim()) {
@@ -6906,6 +6910,10 @@
                     if (link && link.parentNode) link.parentNode.removeChild(link);
                 }
             });
+            // Hidden unless automatic translation could not be queued (budget,
+            // cap, offline). This is the "translate buttons hidden by default"
+            // fallback.
+            if (!queued) showChatTranslateLink(msgId);
         }
 
         function requestTranslation(msgId) {
@@ -6976,8 +6984,11 @@
 
             var safeText = censorText(text);
             bubble.setAttribute('data-state', 'translated');
-            bubble.setAttribute('data-original', escapeHtml(originalText));
-            bubble.setAttribute('data-translated', escapeHtml(safeText));
+            // Store raw text: setAttribute does not parse HTML entities. Escaping
+            // here would store `&#039;` literally, and toggleTranslation() would
+            // escape it again on the way out (the "I&#039;ll" bug).
+            bubble.setAttribute('data-original', originalText);
+            bubble.setAttribute('data-translated', safeText);
             bubble.innerHTML = tagify(wrapAsciiEmojis(linkify(escapeHtml(safeText))));
 
             var link = document.getElementById('translate-' + msgId);

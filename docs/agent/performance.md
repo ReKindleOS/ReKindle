@@ -18,13 +18,14 @@ Unconditional `draw()` every rAF costs e-ink compositing + (with any AA pixel) f
 ### Incremental comments via `docChanges()` (neighbourhood.html)
 The comments listener was `innerHTML = ''` + re-render ALL (≤100) comments per snapshot. Now uses `snapshot.docChanges()`: added → render only the new node (position via `snapshot.docs[change.newIndex - 1]` — query is newest-first, DOM is oldest-first), removed → remove that node, modified → re-render in place. Elements carry `data-comment-id` for lookup. topics.html comments were already incremental; their eager initial load now appends through a `DocumentFragment` (`appendMessage(msg, prepend, container)`).
 
-### Language detection stays off the load path (2026-10-26)
+### Language detection stays off the load path (2026-10-27)
 `js/lang-detect.js` is a ~366 KB raw / ~119 KB gzip ELD model. Do not add it as a
-`<script>` on social pages. `js/post-language.js` injects it on composer focus
-(and again 4 s after load) so a reader who never posts pays nothing; the send
-path falls back to the stopword heuristic until it arrives. The auto-translate
-queue also requests it when it meets legacy content with no stored `lang`, so
-foreign old posts still switch. This is why the KindleChat/Neighbourhood/Topics
+`<script>` on social pages, and do not preload it on composer focus: that 119 KB
+download competed with the message POST on a slow Kindle and made sending feel
+slow. `js/post-language.js` is loaded only when the auto queue meets legacy
+content with no stored `lang`, or 4 s after a successful post (off the send
+path). Until it is ready, `detectPostLang()` sends no `lang`; the message is
+detected on view instead. This is why the KindleChat/Neighbourhood/Topics
 load-budget numbers did not move when post language detection landed.
 
 ### KindleChat message pipeline (kindlechat.html)

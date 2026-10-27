@@ -156,6 +156,26 @@
         return result;
     }
 
+    // MyMemory sometimes returns HTML entities in translatedText (notably
+    // `&#039;` for an apostrophe). Decode them once here; every display path
+    // escapes the plain text itself, so a stored raw entity would otherwise be
+    // escaped twice and shown literally.
+    var NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+    function decodeEntities(text) {
+        return String(text).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, function (match, code) {
+            if (code.charAt(0) === '#') {
+                var hex = code.charAt(1) === 'x' || code.charAt(1) === 'X';
+                var value = parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10);
+                if (!isNaN(value) && value >= 0 && value <= 0x10FFFF) {
+                    try { return String.fromCodePoint(value); } catch (e) { return match; }
+                }
+                return match;
+            }
+            var named = NAMED_ENTITIES[code.toLowerCase()];
+            return named === undefined ? match : named;
+        });
+    }
+
     async function myMemoryTranslate(text, source, target) {
         var url = MYMEMORY_URL +
             '?q=' + encodeURIComponent(text) +
@@ -168,7 +188,7 @@
         if (!out || typeof out !== 'string' || BAD_RESULT.test(out)) {
             throw makeError('unavailable', 'MyMemory returned no translation');
         }
-        return out;
+        return decodeEntities(out);
     }
 
     async function translateChunk(text, source, target) {
@@ -386,6 +406,7 @@
     var autoAttempted = {};
     var autoActive = false;
     var autoStopped = false;
+    var autoPaused = false;
     var autoTimer = null;
     var autoJobsStarted = 0;
     var autoChars = 0;
@@ -396,9 +417,24 @@
         return 'txt:' + hashText(String(opts.text || '')) + ':' + normalizeLang(opts.target);
     }
 
+    function failQueuedJobs(err) {
+        while (autoQueue.length) {
+            var job = autoQueue.shift();
+            try {
+                if (typeof job.onFail === 'function') job.onFail(err);
+            } catch (e) { /* page fallback must not wedge the queue */ }
+        }
+    }
+
     function drainAutoQueue() {
         autoTimer = null;
         if (autoActive || autoStopped) return;
+        if (autoPaused) {
+            // A message is being sent. Keep MyMemory traffic off the connection
+            // until the POST settles.
+            autoTimer = setTimeout(drainAutoQueue, 400);
+            return;
+        }
         var job = autoQueue.shift();
         if (!job) return;
         autoActive = true;
@@ -444,13 +480,13 @@
             if (autoJobsStarted >= AUTO_MAX_JOBS) {
                 autoActive = false;
                 autoStopped = true;
-                autoQueue.length = 0;
+                failQueuedJobs(makeError('budget', 'Auto-translation request limit reached'));
                 return;
             }
             if (autoChars + String(job.text).length > AUTO_MAX_CHARS) {
                 autoActive = false;
                 autoStopped = true;
-                autoQueue.length = 0;
+                failQueuedJobs(makeError('budget', 'Auto-translation character limit reached'));
                 return;
             }
 
@@ -476,6 +512,7 @@
                     // hammer MyMemory (or a dead network) for the rest of the feed.
                     if (autoFailures >= 3) autoStopped = true;
                 }
+                if (autoStopped) failQueuedJobs(err || makeError('unavailable', 'Auto-translation stopped'));
                 try {
                     if (typeof job.onFail === 'function') job.onFail(err);
                 } catch (e) { /* best effort */ }
@@ -500,11 +537,23 @@
         return true;
     }
 
+    function pauseAutoTranslate() {
+        autoPaused = true;
+    }
+
+    function resumeAutoTranslate() {
+        autoPaused = false;
+        if (!autoActive && !autoTimer && autoQueue.length) {
+            autoTimer = setTimeout(drainAutoQueue, 100);
+        }
+    }
+
     function resetAutoTranslate() {
         autoQueue.length = 0;
         autoAttempted = {};
         autoActive = false;
         autoStopped = false;
+        autoPaused = false;
         autoJobsStarted = 0;
         autoChars = 0;
         autoFailures = 0;
@@ -519,12 +568,15 @@
         normalizeLang: normalizeLang,
         sameLanguage: sameLanguage,
         autoTranslate: autoTranslate,
+        pauseAutoTranslate: pauseAutoTranslate,
+        resumeAutoTranslate: resumeAutoTranslate,
         // Exposed for tests/diagnostics only.
         _detectSync: detectSync,
         _resetAutoTranslate: resetAutoTranslate,
         _autoMaxJobs: AUTO_MAX_JOBS,
         _autoQueueMax: AUTO_QUEUE_MAX,
         _sessionBudget: SESSION_BUDGET,
-        _contact: MYMEMORY_CONTACT
+        _contact: MYMEMORY_CONTACT,
+        _decodeEntities: decodeEntities
     };
 })();

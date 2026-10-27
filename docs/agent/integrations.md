@@ -803,7 +803,8 @@ Consequences observed in production: `kindlechat/translations_by_lang/*` stops a
 | translate (retry) | one retry of the same MyMemory GET after 250 ms | a second provider is deliberately not used — see the WebKit CORS note below |
 
 Consumers: `translate.html` (the whole app), KindleChat general chat and DMs,
-Neighbourhood posts/comments, and Topics comments. The helper caches in memory + `sessionStorage`
+Neighbourhood posts/comments, and Topics comments. Social translations always target the reader's
+system/UI language; the old KindleChat translation-language dropdown was removed on 2026-10-27. The helper caches in memory + `sessionStorage`
 (`rk-tr:` keys), chunks at 450 characters (MyMemory rejects `q` > 500), budgets 200 network calls
 per session, and throws a typed `{ code }` (`unavailable` / `detect` / `budget` / `empty`).
 
