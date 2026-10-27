@@ -262,3 +262,22 @@ Both are covered by `scripts/test-pro-grant.js`. See
 [payments.md](payments.md#2026-10-26-a-brand-new-payer-never-got-pro-fixed) for the incident that
 exposed it.
 
+### The Users tab's Stripe reference comes from `users/{uid}` (2026-10-27)
+
+The user detail line shows, in order of preference:
+
+1. `Stripe: <cus_...>` from `users/{uid}.stripeCustomerId`, linked to
+   `dashboard.stripe.com/customers/<id>`;
+2. `Stripe checkout: <cs_...>` from `users/{uid}.stripeCheckoutSessionId`, linked to
+   `dashboard.stripe.com/search?query=<id>` — this is the only Stripe handle a lifetime
+   purchase has, because Stripe creates no Customer for `mode=payment` Checkout unless
+   `customer_creation=always` is requested;
+3. `Stripe: not linked` when a Pro account has neither field (tooltip points at the backfill).
+
+The lookup box resolves both `cus_...` and `cs_...` inputs
+(`where('stripeCustomerId' | 'stripeCheckoutSessionId', '==', input)`). There is no Stripe API
+call from the page — the browser has no Stripe key. Historical rows were filled by
+`admin/backfill_stripe_customers.js` (and the Stripe worker now records the session id on every
+checkout); see
+[payments.md](payments.md#2026-10-27-lifetime-buyers-show-no-stripe-id-in-the-moderation-console).
+

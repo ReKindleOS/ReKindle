@@ -738,7 +738,7 @@
         <div class="panel" id="panel-users">
             <div class="toolbar">
                 <label for="admin-user-input">Username, UID, email or Stripe ID:</label>
-                <input type="text" id="admin-user-input" placeholder="name, uid, email, cus_..." style="flex:1;min-width:180px;" onkeydown="if(event.key==='Enter')adminLookupUser()">
+                <input type="text" id="admin-user-input" placeholder="name, uid, email, cus_..., cs_..." style="flex:1;min-width:180px;" onkeydown="if(event.key==='Enter')adminLookupUser()">
                 <button class="btn-primary" id="admin-lookup-btn" onclick="adminLookupUser()">Lookup</button>
             </div>
 
@@ -1827,9 +1827,10 @@
                 }
             }
 
-            // 5. Stripe customer id (cus_...)
-            if (!uid && input.indexOf('cus_') === 0) {
-                var stripeSnap = await firestore.collection('users').where('stripeCustomerId', '==', input).limit(1).get();
+            // 5. Stripe id: cus_... customer or cs_... Checkout Session
+            if (!uid && (input.indexOf('cus_') === 0 || input.indexOf('cs_') === 0)) {
+                var stripeField = input.indexOf('cus_') === 0 ? 'stripeCustomerId' : 'stripeCheckoutSessionId';
+                var stripeSnap = await firestore.collection('users').where(stripeField, '==', input).limit(1).get();
                 if (!stripeSnap.empty) {
                     var stripeDoc = stripeSnap.docs[0];
                     uid = stripeDoc.id;
@@ -1865,6 +1866,7 @@
             var proExpiresAt = (proData && proData.proExpiresAt) ? proData.proExpiresAt.toDate() : null;
             var subscriptionType = (proData && proData.subscriptionType) || '';
             var stripeCustomerId = (proData && proData.stripeCustomerId) || null;
+            var stripeCheckoutSessionId = (proData && proData.stripeCheckoutSessionId) || null;
 
             var authStatusResult = results[2];
             var isFirebaseDisabled = false;
@@ -1906,6 +1908,7 @@
                 hasUserDoc: proDoc.exists,
                 subscriptionType: subscriptionType,
                 stripeCustomerId: stripeCustomerId,
+                stripeCheckoutSessionId: stripeCheckoutSessionId,
                 isFirebaseDisabled: isFirebaseDisabled,
                 authStatusError: authStatusError,
                 isSocialFirebaseDisabled: isSocialFirebaseDisabled,
@@ -1931,13 +1934,29 @@
         var ipLabel = u.ip || '(not recorded)';
         var firebaseLabel = u.authStatusError ? 'Error checking status' : (u.isFirebaseDisabled ? 'Disabled (banned)' : 'Active');
         var socialFirebaseLabel = u.socialAuthStatusError ? 'Error checking status' : (u.isSocialFirebaseDisabled ? 'Banned from social apps' : 'Active');
+        // Stripe reference: a customer id when there is one, otherwise the
+        // Checkout Session id (Stripe creates no Customer for payment-mode
+        // checkouts, so lifetime buyers only ever had a checkout session).
+        // Both open the matching record in the Stripe dashboard.
+        var stripeLabel = '';
+        if (u.stripeCustomerId) {
+            stripeLabel = ' &nbsp;|&nbsp; Stripe: <a href="https://dashboard.stripe.com/customers/'
+                + encodeURIComponent(u.stripeCustomerId) + '" target="_blank" rel="noopener">'
+                + escapeHtml(u.stripeCustomerId) + '</a>';
+        } else if (u.stripeCheckoutSessionId) {
+            stripeLabel = ' &nbsp;|&nbsp; Stripe checkout: <a href="https://dashboard.stripe.com/search?query='
+                + encodeURIComponent(u.stripeCheckoutSessionId) + '" target="_blank" rel="noopener" title="No Stripe customer on this purchase; the Checkout Session is the payment record.">'
+                + escapeHtml(u.stripeCheckoutSessionId) + '</a>';
+        } else if (u.isPro) {
+            stripeLabel = ' &nbsp;|&nbsp; Stripe: <span title="No Stripe reference on this user record. Run admin/backfill_stripe_customers.js to link it from Stripe.">not linked</span>';
+        }
 
         document.getElementById('admin-user-info').innerHTML =
             '<div class="admin-user-detail">'
             + '<strong>' + escapeHtml(u.emailHandle || u.uid) + '</strong>'
             + ' <span class="hint">' + escapeHtml(u.email || '(no email)')
             + ' &nbsp;|&nbsp; UID: ' + escapeHtml(u.uid)
-            + (u.stripeCustomerId ? ' &nbsp;|&nbsp; Stripe: ' + escapeHtml(u.stripeCustomerId) : '')
+            + stripeLabel
             + '</span>'
             + '</div>'
             + '<div class="admin-badges">'

@@ -190,8 +190,15 @@ export default {
                 // checkout.session.completed was ever lost, the uid in
                 // metadata is the fallback that lets us still grant Pro.
                 params.set('metadata[uid]', uid);
-                if (plan === 'lifetime') params.set('payment_intent_data[metadata][uid]', uid);
-                else params.set('subscription_data[metadata][uid]', uid);
+                if (plan === 'lifetime') {
+                    params.set('payment_intent_data[metadata][uid]', uid);
+                    // Payment mode creates no Stripe Customer by default, which
+                    // is why lifetime buyers had no cus_... to show in the
+                    // moderation console. Only valid for payment mode.
+                    params.set('customer_creation', 'always');
+                } else {
+                    params.set('subscription_data[metadata][uid]', uid);
+                }
 
                 const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
                     method: 'POST',
@@ -266,7 +273,8 @@ export default {
                     stripeCustomerId,
                     subscriptionType,
                     eventCreated,
-                    subscriptionId: subscriptionIdOf(session.subscription)
+                    subscriptionId: subscriptionIdOf(session.subscription),
+                    checkoutSessionId: session.id
                 });
                 if (written && written.status === 'user_not_found') {
                     return new Response('Retry: checkout uid is not a Firebase Auth account', { status: 500 });
@@ -539,7 +547,7 @@ async function recordStripeState(env, token, uid, opts) {
 }
 
 // --- FIRESTORE UPDATE ---
-async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, stripeCustomerId = null, subscriptionType = null, eventCreated = null, subscriptionId = null } = {}) {
+async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, stripeCustomerId = null, subscriptionType = null, eventCreated = null, subscriptionId = null, checkoutSessionId = null } = {}) {
     const token = await getGoogleAccessToken(env);
     const projectId = env.FIREBASE_PROJECT_ID;
     const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
@@ -620,6 +628,17 @@ async function updateFirestoreUser(env, uid, { days = null, expiresAt = null, st
     if (stripeCustomerId) {
         updateMask += '&updateMask.fieldPaths=stripeCustomerId';
         fields.stripeCustomerId = { stringValue: stripeCustomerId };
+    }
+
+    // Payment-mode Checkout Sessions have no Stripe Customer unless the session
+    // was created with `customer_creation=always`, so lifetime purchases used to
+    // store no Stripe reference at all (168 of the 171 lifetime buyers in the
+    // 2026-10-26 audit). The Checkout Session id always identifies the payment;
+    // the moderation console shows it when there is no customer id and
+    // admin/backfill_stripe_customers.js fills the historical ones.
+    if (checkoutSessionId) {
+        updateMask += '&updateMask.fieldPaths=stripeCheckoutSessionId';
+        fields.stripeCheckoutSessionId = { stringValue: checkoutSessionId };
     }
 
     // Store Subscription Type (recurring vs lifetime)

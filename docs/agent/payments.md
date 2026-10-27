@@ -282,6 +282,72 @@ social *attempts* (a report or post the user did not retry), not stored data.
    Free subrequest limit makes a 7k-user pass impossible in one invocation.
    Treat it as a small backfill, not a reconciliation tool.
 
+## 2026-10-27: lifetime buyers show no Stripe id in the moderation console
+
+The console's Users tab printed `Stripe: cus_...` from
+`users/{uid}.stripeCustomerId`, so a lifetime buyer with no such field looked
+like a broken page: the owner searched `flamefencerplus`
+(`FzXS0W5zPHPXcbMnfa0C7c8mj8q2`) and `ryguy248248`
+(`S5n8bf81aKdaLEejxw9POrZRRUx1`) and got "Pro: Yes — lifetime" with no Stripe
+reference. **168 of the 171** lifetime buyers in the 2026-10-26 audit are in that
+state.
+
+Root cause — **Stripe never created a Customer for those purchases**:
+
+* `mode=payment` (the lifetime plan) creates a Customer **only** when the
+  Checkout Session asks for one (`customer_creation=always`). Without it,
+  `session.customer` is `null`; subscription mode always creates a Customer,
+  which is why every `paid-active` subscriber has a `cus_...`.
+* `/create-checkout` did not set `customer_creation`, and
+  `updateFirestoreUser()` only writes `stripeCustomerId` when
+  `session.customer` is set, so lifetime grants stored no Stripe reference at
+  all — not a lost field, a field that never existed. (The audit still counts
+  them as paid because it matches Checkout Sessions by `client_reference_id`,
+  which is the Firebase uid.)
+* The 3 lifetime buyers that do have a customer id had a subscription at some
+  point.
+
+Fix, in three parts:
+
+1. **The Checkout Session id is always available.** Every session carries its
+   own `cs_...` id (and `client_reference_id` = uid), and that id opens the
+   payment in the Stripe dashboard. The webhook now writes
+   `users/{uid}.stripeCheckoutSessionId` on every checkout grant, and the console
+   shows it as `Stripe checkout: cs_...` (linked to
+   `dashboard.stripe.com/search?query=<id>`) when there is no customer id. A
+   `cs_...` value in the Users search box resolves the user too.
+2. **Future lifetime purchases get a real Customer.** `/create-checkout` now
+   sends `customer_creation=always` for `plan=lifetime` (payment mode only;
+   setting it on subscription mode is a Stripe error), so new lifetime buyers get
+   a `cus_...` and the existing customer path works.
+3. **Historical rows are backfilled** by `admin/backfill_stripe_customers.js`,
+   which lists completed Checkout Sessions once and writes
+   `stripeCustomerId` when a session has a customer, otherwise
+   `stripeCheckoutSessionId`:
+
+   ```bash
+   STRIPE_KEY=rk_live_... node admin/backfill_stripe_customers.js        # dry run + CSV
+   STRIPE_KEY=rk_live_... node admin/backfill_stripe_customers.js --fix  # write
+   ```
+
+   * `--only-uid=<uid>[,<uid>]` limits the run to named accounts.
+   * It only fills empty fields: it never overwrites a linked value, reports two
+     customer ids (or a different existing session id) as a conflict, and never
+     creates a `users/{uid}` document unless `--create-docs` is passed.
+   * Every run writes `admin/backups/stripe-customers-backfill-<date>.csv`, dry
+     run included. Regression test:
+     `scripts/test-backfill-stripe-customers.js`.
+
+Remaining state the console can still show: `Stripe: not linked` when a Pro user
+has neither field (e.g. a purely manual grant, or a session older than the
+500-session audit window). For those, the audit CSV's `checkout_email` column
+finds the payer in the Stripe dashboard by hand (e.g. `flamefencerplus` paid with
+`Catmanf011@gmail.com`, customer name "janice ferenchick").
+
+Deploy order for this fix: **worker first** (`rekindle-stripe`, so new checkouts
+record the session id and create lifetime customers), then the `moderation.html`
+build. The backfill can run any time after the worker deploy.
+
 ## Open items
 
 - No durable `stripe_events/{eventId}` log/dedupe yet. The reconciler and the
