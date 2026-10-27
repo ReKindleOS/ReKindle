@@ -92,6 +92,40 @@ const SHIPPED = [
         id: '-P4htMUDUJx4Z1KzGXG9',
         title: 'Remove the alerts in Neighborhood, Topics and KindleChat',
         why: 'Sending during the 2026-10-25 quota outage no longer pops an alert on every attempt: KindleChat keeps the typed message and shows one message per two-minute cooldown, and Neighbourhood/Topics use js/worker-client.js for the same friendly error. Normal posting has no alert.'
+    },
+    // Sweep 4 - 2026-10-27, after 24ee67a deployed (Pages + moderation Worker).
+    // These are the rows docs/agent/backlog.md listed as "close after this pass
+    // deploys". Verified live: /maze serves Easy/Normal/Hard, /theme.js contains
+    // __rkAuthBusy, and /js/translate-client.js?v=3 is served.
+    {
+        id: '-P1xxX2H-mw7CdAYDxzA',
+        title: 'Translate broken',
+        why: 'Translation moved into the browser via js/translate-client.js (MyMemory with LibreTranslate fallback) on 2026-10-26, so the Translate app, KindleChat and Neighbourhood no longer depend on the dead gtx/lingva endpoints.'
+    },
+    {
+        id: '-P2U4lIHw8RpXTXIQbLZ',
+        title: 'please i cant even sign in',
+        why: 'The 2026-10-26 sign-in fix: theme.js skips the service-worker controllerchange reload while signing in, the session is pinned with setPersistence(LOCAL) before auth, and an unexpected sign-out now prompts instead of silently dropping the session (live theme.js carries __rkAuthBusy).'
+    },
+    {
+        id: '-P4dTra4d9ZuCcP0Ixv7',
+        title: 'sign in glitch',
+        why: 'Same 2026-10-26 sign-in fix set as "please i cant even sign in" - the post-login reload that flashed the profile and then showed the guest state no longer fires.'
+    },
+    {
+        id: '-P2aNV3zhT7mk3KCEaPi',
+        title: 'PEOPLE KEEP SPAM REPORTING',
+        why: 'Since 2026-10-26 a single report no longer deletes chat/comment/DM content on its own: it is removed only when moderation confirms it or a second, different person reports it, and report misuse is still rate-limited in the worker.'
+    },
+    {
+        id: '-Oy5K55IArk3Qy-aJbyZ',
+        title: 'Report Function',
+        why: 'Reported content is now re-checked instead of removed instantly (2026-10-26): one report holds the content for review unless moderation confirms it, exactly as this row asked.'
+    },
+    {
+        id: '-P4qSoQgU0ysrQuJRqZO',
+        title: 'make the mazes harder',
+        why: 'Maze gained Easy / Normal / Hard difficulty levels on 2026-10-26 (maze.html, deployed at /maze).'
     }
 ];
 
@@ -121,11 +155,11 @@ const SHIPPED = [
         console.log((APPLY ? 'DONE ' : 'WOULD DONE ') + entry.id + '  ' + entry.title + '  (' + entry.why + ')');
         if (APPLY) {
             await root.child(entry.id).update({ status: 'done' });
-            changed++;
         }
+        changed++;
     }
 
-    console.log('\n' + (APPLY ? 'Applied to ' + changed : 'Dry run: would update ' + SHIPPED.length) + ' record(s); skipped ' + skipped + '.');
+    console.log('\n' + (APPLY ? 'Applied to ' + changed : 'Dry run: would update ' + changed) + ' record(s); skipped ' + skipped + '.');
     if (!APPLY) console.log('Re-run with --apply to write.');
     process.exit(0);
 })().catch(function (err) {

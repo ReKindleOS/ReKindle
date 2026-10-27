@@ -463,10 +463,12 @@ live streaming of high scores (8).
 4. **Neighbourhood comments** still have no translate affordance (posts do). Low volume, but it is
    the obvious next tap-target if the feature is popular.
 
-### Board rows ready to close after this pass deploys (do **not** mark early)
+### Board rows closed after this pass deployed (2026-10-27)
 
-`admin/mark_shipped_suggestions.js` is title-checked — add these ids to its `SHIPPED` list **after**
-the Pages deploy + the moderation Worker deploy, then dry-run and `--apply`:
+The `24ee67a` fixes were live when checked on 2026-10-27 (`/maze` serves Easy/Normal/Hard,
+`/theme.js` contains `__rkAuthBusy`, `/js/translate-client.js?v=3` is served), so
+`admin/mark_shipped_suggestions.js` was run with `--apply` against these six rows. The board then
+stood at **194 open / 275 done** (from 197/269 at the 2026-10-26 read; three new rows had arrived).
 
 | id | title | why it is fixed |
 | :--- | :--- | :--- |
