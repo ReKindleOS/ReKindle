@@ -125,7 +125,7 @@ security_events/{uid}/{pushId} = {
 1. Deploy the functions: `firebase deploy --only functions` (or the repo's
    normal deploy workflow). The callable must exist before Settings offers the
    path; until then the UI shows the "temporarily unavailable" message.
-2. Deploy RTDB rules: `npm run deploy:rules:rtdb`. The nodes are already denied
+2. Deploy RTDB rules: `firebase deploy --only database:rules`. The nodes are already denied
    by default, so this is documentation/explicitness, but keep them in sync.
 
 ### Deploy gotcha: a gen2 callable can land without its Cloud Run invoker (2026-10-26)

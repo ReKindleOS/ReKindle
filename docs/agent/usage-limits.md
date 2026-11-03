@@ -330,11 +330,12 @@ KV (story): 4,020 reads / 3,540 writes / 420 deletes per 30 days — negligible 
 **Deployed 2026-10-25 ~22:50 UTC** (Pages + both chat Workers). The checklist, kept
 for the next change of this kind:
 
-1. **Pages:** `npm run deploy:prod` (the build has passed; `_deploy/main` has no
-   `functions/_middleware.js`). This ships the middleware removal, the 60-topic
+1. **Pages:** deploy the guarded `_deploy/main` build (via CI, or the manual
+   command in [legacy-build.md](legacy-build.md); the build has already passed and
+   `_deploy/main` has no `functions/_middleware.js`). This ships the middleware removal, the 60-topic
    sidebar, the translation-listener bound, `js/social-token-cache.js`,
    `js/worker-client.js` and the outage handling in KindleChat / Neighbourhood /
-   Topics. Beta: `npm run deploy:beta`.
+   Topics. Beta: deploy the beta branch via CI.
 2. **Cleanup function:** `firebase deploy --only functions:cleanupSocial --project
    rekindle-dd1fa`.
 3. **KPM Worker:** already deployed with `cd workers/rekindle-kpm && npx wrangler

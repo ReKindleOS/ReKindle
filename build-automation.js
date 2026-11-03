@@ -24,12 +24,13 @@ fs.removeSync('./_deploy/legacy/libs');
 const ignoreList = [
     'node_modules', '.git', '.github', '_deploy',
     'build-automation.js', 'package.json', 'package-lock.json',
-    'wrangler.toml', '.gitignore', '.DS_Store',
+    'wrangler.toml', '.gitignore', '.DS_Store', '.wrangler',
     'workers', 'scripts', 'screenshots', 'admin', 'Sync', 'pocketbase',
     // Kindle launcher source; the built downloads/ are generated below.
     'kindle',
     // Firebase Backend Files (Keep in repo, ignore for hosting)
     'firebase.json', '.firebaserc', 'firestore.rules', 'firestore.indexes.json', 'rtdb-rules.json',
+    'firestore-social.rules', 'rtdb-social-rules.json', 'storage.rules',
     // CREDENTIALS — MUST NEVER BE PUBLISHED. These were live on rekindle.ink and
     // beta.rekindle.ink until 2026-10-20 because they were missing from this list:
     //  /service-account.json          (rekindle-dd1fa admin key)
@@ -48,8 +49,9 @@ const ignoreList = [
 const FORBIDDEN_IN_DEPLOY = [
     'service-account.json', 'service-account-social.json', '.env',
     'firebase-functions', 'firebase-social.json', 'firebase.json',
-    'rtdb-rules.json', 'firestore.rules', 'workers', 'scripts', 'admin',
-    'akinator-service'
+    'rtdb-rules.json', 'firestore.rules', 'firestore-social.rules',
+    'rtdb-social-rules.json', 'storage.rules', 'workers', 'scripts', 'admin',
+    'akinator-service', '.wrangler'
 ];
 
 // DOM APIs used by the app that WebKit ~534 (Kobo / pre-Chromium Kindle)

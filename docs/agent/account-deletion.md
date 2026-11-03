@@ -165,7 +165,7 @@ warning and continues; the modal warns users to cancel a recurring plan on
 ```bash
 # 1. RTDB indexes first — the social queries need them. Deploying functions
 #    before this makes deletion fail safely (Auth stays), so order matters.
-npm run deploy:rules:social:rtdb
+firebase deploy --config firebase-social.json --only database:rules --project rekindle-socials
 
 # 2. The callable.
 firebase deploy --only functions:deleteAccount --project rekindle-dd1fa
@@ -174,7 +174,8 @@ firebase deploy --only functions:deleteAccount --project rekindle-dd1fa
 #    Add STRIPE_KEY=... to firebase-functions/.env, then redeploy the function.
 
 # 4. Deploy the site (settings.html changed; no shared JS/CSS URL bump needed).
-npm run deploy:prod   # or deploy:beta
+# Deploy the guarded build (see docs/agent/legacy-build.md); local npm deploy
+# scripts were removed 2026-11-03.
 ```
 
 No Firestore rules deploy is required: the Admin SDK bypasses rules and the

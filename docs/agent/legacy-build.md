@@ -292,3 +292,20 @@ would only move short windows to the top of the screen.
 - QtWebKit 538.1 has no devtools or console. Use `/probe` for on-device diagnosis.
 - The Kobo repaint quirk (post-load `<body>` class changes dropping elements) still applies to
   any new post-load styling; prefer setting classes on `<html>` in `<head>`.
+
+## Deploy guard (2026-11-03, after the 2026-10-19 secret exposure)
+
+`npx wrangler pages deploy .` published the repo root, which is how
+`firebase-functions/.env`, `service-account.json`, `service-account-social.json` and
+`akinator-service/` became downloadable from the old Lite/Legacy deployment URLs.
+
+- `scripts/deploy-guard.js <dir>` refuses anything outside `_deploy/` and walks the
+  target for `.env`, `service-account*`, rules files and backend dirs. The
+  `deploy:prod` / `deploy:beta` npm scripts were removed on 2026-11-03; run the
+  guard manually after `npm run build`, and CI runs it for all three targets.
+- `scripts/wrangler-guard.sh` is a sourceable shell function that blocks
+  `wrangler pages deploy .` (note: `npx wrangler` bypasses shell functions).
+- `build-automation.js` now also ignores `.wrangler`, `firestore-social.rules`,
+  `rtdb-social-rules.json` and `storage.rules`; the rules were live at
+  `https://rekindle.ink/storage.rules` etc. until the next deploy. Pages caches
+  non-HTML assets for up to 7 days, so purge the rekindle.ink cache after deploying.
