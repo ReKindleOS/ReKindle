@@ -14,8 +14,15 @@
  *
  * The server then decides whether the claimed value is believable:
  *
- *     allowed = min(absoluteMax, startingPoint + rate * secondsSinceRunStart)
+ *     allowed = min(absoluteMax, startingPoint + rate * secondsSinceLastAccept)
  *     startingPoint = max(previousBest, base)
+ *
+ * where `secondsSinceLastAccept` is measured from the later of the run start
+ * and the run's `lastSubmitAt` (2026-11). Using `startedAt` on every call
+ * replayed the whole run's clock against `previousBest`, so a burst of
+ * submissions could multiply the same idle minutes into the maximum. The
+ * anchor lives on the run document the transaction already reads, so the fix
+ * costs no extra reads, writes or invocations.
  *
  * so a value can only grow as fast as a (very good) human could actually play.
  * `base` is a floor, not a per-run bonus: adding it every time would let a
@@ -247,11 +254,22 @@ async function submitScore(request) {
         if (!startedAt || typeof startedAt.toMillis !== 'function') {
             return { accepted: false, reason: 'stale-run' };
         }
-        const ageMs = Date.now() - startedAt.toMillis();
+        const nowMs = Date.now();
+        const ageMs = nowMs - startedAt.toMillis();
         if (ageMs < 0 || ageMs > RUN_MAX_AGE_MS) {
             return { accepted: false, reason: 'run-expired' };
         }
-        const elapsed = Math.max(0, Math.min(RUN_MAX_ELAPSED_S, ageMs / 1000));
+        // Credit only the time since the LAST accepted submission, not since
+        // the run opened. `prev` already contains every second credited so
+        // far; re-adding `now - startedAt` to it replayed the same clock on
+        // every call. A console loop of 34 submits could therefore turn a few
+        // idle minutes into the absolute maximum (2026-11 report). The anchor
+        // is the same run document that is already read here, so this costs no
+        // extra reads, writes or function invocations.
+        const lastAt = isFiniteNumber(run.lastSubmitAt) && run.lastSubmitAt > 0 ? run.lastSubmitAt : 0;
+        const anchorMs = Math.max(startedAt.toMillis(), lastAt);
+        const sinceMs = Math.max(0, nowMs - anchorMs);
+        const elapsed = Math.min(RUN_MAX_ELAPSED_S, sinceMs / 1000);
         const docSnap = await tx.get(docRef);
         const previous = docSnap.exists ? (docSnap.data() || {}) : {};
 
@@ -303,7 +321,7 @@ async function submitScore(request) {
         updates.verified = true;
 
         tx.set(docRef, updates, { merge: true });
-        tx.set(runRef, { lastSubmitAt: Date.now() }, { merge: true });
+        tx.set(runRef, { lastSubmitAt: nowMs }, { merge: true });
 
         return { accepted: true, best: updates };
     });

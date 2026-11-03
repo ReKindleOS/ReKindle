@@ -224,9 +224,60 @@ Flow:
 1. Game page includes `<script src="js/score-submit.js" data-game="surfer"></script>` (after the Firebase compat scripts). On auth it calls `startGameRun`, which writes `game_runs/{uid}_{game}` with a **server** `startedAt`.
 2. When the game ends, `window.RekindleScores.submit('leaderboard_surfer', { score: n })` calls `submitScore`.
 3. The server accepts a new best only if
-   `max(prev, base) + rate × secondsSinceRunStart <= n <= absMax` — `base` replaces `prev` only for a brand-new entry, it does **not** stack on every run (otherwise reloading would farm it) — then writes `username` (looked up from RTDB `users_public`), `timestamp` (server) and `verified: true`.
+   `max(prev, base) + rate × secondsSinceLastAcceptedSubmission <= n <= absMax` — `base` replaces `prev` only for a brand-new entry, it does **not** stack on every run (otherwise reloading would farm it) — then writes `username` (looked up from RTDB `users_public`), `timestamp` (server) and `verified: true`. The time anchor is `max(run.startedAt, run.lastSubmitAt)`; see the burst section below.
 
 So a fabricated value is capped by *how long the game was actually open*, and a hard per-game maximum. Rejected attempts are logged to `score_audit` (admin-only) for review.
+
+### Burst / repeated submits (2026-11)
+
+A user sent in this console loop as an exploit:
+
+```javascript
+(async () => {
+    for (let i = 0; i <= 67; i += 2) {
+        await window.RekindleScores.submit('leaderboard_surfer', { score: i * 10000 });
+    }
+})().then(() => console.log('done check the result'));
+```
+
+Why it worked against the first design: the allowance added
+`rate × (now - run.startedAt)` to `previousBest` **on every call**, but
+`previousBest` already contained the previous claim. So each accepted submit
+re-earned the same idle seconds. After a tab had been open long enough, the
+loop could walk 0 → 20,000 → … → the absolute max, one call at a time, and
+every step looked "believable". It also cost one function invocation and one
+Firestore transaction per iteration.
+
+The fix has two layers, and neither adds a read, a write or an invocation:
+
+| Layer | File | Behaviour |
+| :--- | :--- | :--- |
+| Client coalescing | `js/score-submit.js` | At most one submission per collection per 4 s window; calls inside the window are merged into the newest payload and the middle ones never reach the network. `submit()` resolves as soon as the payload is queued, not when the send finishes, so an `await` loop cannot serialise the burst back into one call per window. 34 calls → 2 (`startGameRun` + one `submitScore`). |
+| Server anchoring | `firebase-functions/scores.js` | The credit clock starts at `max(startedAt, lastSubmitAt)`, which the transaction already reads. A second claim one second later may only add `rate × 1`, so the burst above banks at most the first value. Still zero extra operations. |
+
+`lastSubmitAt` was already being written on every accepted submission but was
+never read; the fix uses that existing field. The same change makes a reload
+inside a run harmless: `startGameRun` keeps `startedAt` and `lastSubmitAt`
+already caps the claim.
+
+`scripts/test-scores.js` (in `npm test`) stubs Firestore/admin in memory and
+replays the loop on a fresh run and on a 30-minute-idle run, then asserts an
+honest 2-minute run still lands and that the client helper makes at most two
+network calls for 34 submissions.
+
+**Residual, and why there is no perfect zero-cost fix:** a run is still just
+"the page was open". A user can idle and then submit one value the time
+allowance permits (the documented residual risk below). Proving play would
+need in-game heartbeats — extra writes/invocations — so the design accepts the
+bounded, audited version instead. Likewise, a console can call the
+`submitScore` callable directly and burn invocations; the client coalescing
+only removes the copy-paste version. The callable is on the Blaze project
+(2M free invocations/month), and rejected values are still cheap: no writes,
+one audit row per user per minute.
+
+If you change `js/score-submit.js`, bump `?v=` in every HTML page that loads it
+(all 20 leaderboard pages) — the edge cache keeps the old helper for up to
+7 days otherwise.
 
 ### Adding / changing a leaderboard
 

@@ -134,15 +134,99 @@
         });
     }
 
+    // ---- Burst coalescing (2026-11) ---------------------------------------
+    // A console loop such as
+    //   for (i = 0; i <= 66; i += 2) await RekindleScores.submit('leaderboard_surfer', { score: i * 10000 })
+    // used to cost one function invocation and one Firestore transaction per
+    // iteration. No game in the app submits more than once per finished game,
+    // so anything inside this window is a burst: keep only the newest payload
+    // per collection and send it once, when the window closes. The dropped
+    // calls never reach the network, so this *reduces* usage; it is not a
+    // security boundary (the console can call the callable directly) — the
+    // server-side anchoring in firebase-functions/scores.js is.
+    var MIN_SUBMIT_GAP_MS = 4000;
+    var lastSentAt = 0;
+    var pending = {};
+    var flushTimer = null;
+    var flushing = false;
+
+    function pendingCount() {
+        var n = 0;
+        for (var key in pending) {
+            if (Object.prototype.hasOwnProperty.call(pending, key)) n++;
+        }
+        return n;
+    }
+
+    function queue(collection, data) {
+        var slot = pending[collection];
+        if (!slot) {
+            slot = pending[collection] = { data: null };
+        }
+        slot.data = sanitize(data);
+    }
+
+    function scheduleFlush() {
+        if (flushTimer || flushing || !pendingCount()) return;
+        var wait = MIN_SUBMIT_GAP_MS - (Date.now() - lastSentAt);
+        if (wait <= 0) {
+            flushAll();
+            return;
+        }
+        flushTimer = window.setTimeout(function () {
+            flushTimer = null;
+            flushAll();
+        }, wait);
+    }
+
+    // Different collections are separate boards (hanoi_3 … hanoi_7), so they
+    // are sent back to back; the gap only governs repeats of the same burst.
+    function flushAll() {
+        if (flushing) return;
+        var collections = [];
+        for (var key in pending) {
+            if (Object.prototype.hasOwnProperty.call(pending, key)) collections.push(key);
+        }
+        if (!collections.length) return;
+
+        flushing = true;
+        var index = 0;
+
+        function step() {
+            if (index >= collections.length) {
+                flushing = false;
+                scheduleFlush();
+                return;
+            }
+            var collection = collections[index++];
+            var slot = pending[collection];
+            delete pending[collection];
+            if (!slot) { step(); return; }
+            lastSentAt = Date.now();
+
+            beginRun().then(function () {
+                if (!runId) return { accepted: false, reason: 'no-run' };
+                return send(collection, slot.data, 1);
+            }).catch(function (e) {
+                log('submit failed:', e && e.message ? e.message : e);
+                return { accepted: false, reason: 'error' };
+            }).then(step);
+        }
+
+        step();
+    }
+
+    // Resolves as soon as the payload is queued, not when the network call
+    // finishes. That matters for the console loop above: if submit() only
+    // resolved after a throttled send, `await` would turn the burst into one
+    // invocation every 4s (still 34 calls). Resolving immediately lets the
+    // loop finish, so only the newest payload is ever sent. No caller reads
+    // the result; every game treats a submission as fire-and-forget.
     function submit(collection, data) {
         if (!uid || !collection) return Promise.resolve({ accepted: false, reason: 'signed-out' });
-        return beginRun().then(function () {
-            if (!runId) return { accepted: false, reason: 'no-run' };
-            return send(collection, data, 1);
-        }).catch(function (e) {
-            log('submit failed:', e && e.message ? e.message : e);
-            return { accepted: false, reason: 'error' };
-        });
+        queue(collection, data);
+        scheduleFlush();
+        return Promise.resolve({ accepted: true, queued: true });
     }
 
     function attach() {
