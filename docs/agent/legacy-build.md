@@ -301,8 +301,8 @@ would only move short windows to the top of the screen.
 
 - `scripts/deploy-guard.js <dir>` refuses anything outside `_deploy/` and walks the
   target for `.env`, `service-account*`, rules files and backend dirs. The
-  `deploy:prod` / `deploy:beta` npm scripts were removed on 2026-11-03; run the
-  guard manually after `npm run build`, and CI runs it for all three targets.
+  `deploy:prod` / `deploy:beta` npm scripts run it after `npm run build`, and CI
+  runs it for all three targets.
 - `scripts/wrangler-guard.sh` is a sourceable shell function that blocks
   `wrangler pages deploy .` (note: `npx wrangler` bypasses shell functions).
 - `build-automation.js` now also ignores `.wrangler`, `firestore-social.rules`,

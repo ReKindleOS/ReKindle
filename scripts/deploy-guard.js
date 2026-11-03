@@ -9,6 +9,7 @@
  *
  * Usage:
  *   node scripts/deploy-guard.js _deploy/main
+ *   npm run deploy:prod   (runs this before wrangler)
  *   (then) npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main
  *
  * Only directories under _deploy/ may be published.

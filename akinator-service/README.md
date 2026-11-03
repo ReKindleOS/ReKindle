@@ -84,9 +84,9 @@ Then:
 
 1. Change `BACKEND_URL` in `akinator.html` to the Northflank URL.
 2. `npm test && npm run build`.
-3. Deploy the beta branch via CI, play a full game on `beta.rekindle.ink/akinator`
+3. `npm run deploy:beta`, play a full game on `beta.rekindle.ink/akinator`
    (start, several answers, guess, continue).
-4. Deploy `main` via CI, repeat on `rekindle.ink`.
+4. `npm run deploy:prod`, repeat on `rekindle.ink`.
 5. Keep the Firebase `akinator` function deployed for ~48h as a rollback. Then
    delete it (`firebase functions:delete akinator --project rekindle-dd1fa
    --region us-central1 --force`), remove the export from
