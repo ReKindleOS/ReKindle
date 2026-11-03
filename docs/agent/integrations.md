@@ -408,7 +408,7 @@ repo, but the page no longer calls it. Deploy the function with
 
 **Not yet live:** the `substack.html` change still needs a Pages deploy. The
 working tree has unrelated uncommitted work, so do not deploy it until that is
-ready to ship (local npm deploy scripts were removed 2026-11-03).
+ready to ship (local Pages deploy scripts were removed 2026-11-03).
 
 ### Pro gate init order (2026-10-24)
 

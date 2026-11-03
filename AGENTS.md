@@ -694,7 +694,7 @@ Example pattern: `functions/api/reddit.js`.
 `npx wrangler pages deploy .` uploads **everything in the directory, including `.gitignore`d files**. `service-account.json`, `service-account-social.json` and `firebase-functions/.env` (which also holds `OPENAI_API_KEY`) were publicly downloadable from both `rekindle.ink` and `beta.rekindle.ink` until 2026-10-20 because the deploy scripts pointed at `.` and `build-automation.js`'s `ignoreList` did not exclude them.
 
 **Rules:**
-*   Deploy the build output, never the source tree: `npm run build && npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main` (prod) or `--branch=beta` (beta). No npm deploy scripts (removed 2026-11-03).
+*   Deploy the build output, never the source tree: `npm run build && npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main` (prod) or `--branch=beta` (beta). Pages deploy scripts removed 2026-11-03.
 *   `_deploy/main` must contain `functions/` — Cloudflare Pages needs it at the deploy root, and `build-automation.js` copies it in.
 *   `build-automation.js` has `FORBIDDEN_IN_DEPLOY` + `assertNoSecretsInDeploy()`: the build aborts if any credential file survives the copy. Keep that list in sync with `ignoreList` when adding new secret files.
 *   Pages caches non-HTML assets on the edge (`s-maxage=604800`). A file removed from a deployment can still be served from the custom-domain cache for up to 7 days — purge the cache (or rotate the credential) after any accidental publish.

@@ -286,7 +286,7 @@ node scripts/set-dm-flag.js --env=beta --enabled=true
 node scripts/set-dm-flag.js --env=prod --enabled=true
 ```
 
-Deploy order: worker → `firebase deploy --config firebase-social.json --only database:rules --project rekindle-socials` → Pages → enable beta → two-account beta test → enable prod. The client hides the tab on the next load; the worker rejects new sends within 60 s (isolate cache). Existing data and rules are untouched, but the UI stays hidden until the switch is re-enabled (the kill switch is for stopping new contact, not for granting emergency data access).
+Deploy order: worker → `npm run deploy:rules:social:rtdb` → Pages → enable beta → two-account beta test → enable prod. The client hides the tab on the next load; the worker rejects new sends within 60 s (isolate cache). Existing data and rules are untouched, but the UI stays hidden until the switch is re-enabled (the kill switch is for stopping new contact, not for granting emergency data access).
 
 ### Tests / admin
 
