@@ -99,19 +99,29 @@ class HttpsError extends Error {
     }
 }
 
-function stub(request, exports) {
-    const resolved = require.resolve(request, { paths: [fnDir] });
-    require.cache[resolved] = {
-        id: resolved,
-        filename: resolved,
-        loaded: true,
-        exports: exports
-    };
-}
-
-stub('firebase-admin', fakeAdmin);
-stub('firebase-functions/logger', { warn() {}, info() {}, error() {}, debug() {} });
-stub('firebase-functions/v2/https', { HttpsError });
+/* Stub by request string through Module._load, not require.resolve.
+ *
+ * CI runs `npm ci` at the repository root only, so `firebase-functions/` has
+ * no node_modules on the runner: `firebase-functions/logger` and
+ * `firebase-functions/v2/https` cannot be resolved even though they resolve
+ * on a dev machine that installed that package. Resolving first made this
+ * test pass locally and fail the deploy with MODULE_NOT_FOUND (run #385,
+ * 2026-11-03, "Static audit + unit tests"). Interception never touches the
+ * filesystem, so the test stays hermetic with root dependencies alone.
+ */
+const Module = require('module');
+const stubs = {
+    'firebase-admin': fakeAdmin,
+    'firebase-functions/logger': { warn() {}, info() {}, error() {}, debug() {} },
+    'firebase-functions/v2/https': { HttpsError }
+};
+const realModuleLoad = Module._load;
+Module._load = function (request) {
+    if (Object.prototype.hasOwnProperty.call(stubs, request)) {
+        return stubs[request];
+    }
+    return realModuleLoad.apply(this, arguments);
+};
 
 const { startGameRun, submitScore } = require(path.join(fnDir, 'scores.js'));
 
