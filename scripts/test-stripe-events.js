@@ -118,6 +118,13 @@ const path = require('path');
     assert.ok(worker.includes('subscription_data[metadata][uid]'), 'checkout must store the uid on the subscription');
     assert.ok(worker.includes("getRes.status === 404"), 'unknown uid must not create a partial user document');
     assert.ok(worker.includes("endsWith('/health')"), 'worker must expose /health');
+    // Health must be able to prove the Firebase credential works, not just that
+    // the binding exists: a rotated service-account key left every webhook
+    // 500-ing while /health still said ok (2026-11-03).
+    assert.ok(worker.includes("url.searchParams.get('deep')"), 'health must support ?deep=1');
+    assert.ok(worker.includes('firebaseAuth'), 'deep health must report firebaseAuth');
+    assert.ok(worker.includes('webhookSecret'), 'health must report whether the webhook secret is bound');
+    assert.ok(worker.includes('getGoogleAccessToken(env, true)'), 'deep health must force a fresh token, not the isolate cache');
     assert.ok(worker.includes('Ignoring stale grant'), 'grant path must ignore stale retries');
     assert.ok(!/return new Response\('Received'/.test(worker.split('checkout.session.completed')[1] || ''), 'checkout must not fall through to a silent 200');
 

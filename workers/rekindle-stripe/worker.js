@@ -36,14 +36,35 @@ export default {
         // Lets an uptime monitor distinguish "worker is up" from the
         // CORS-less `error code: 1027` page returned when the account is over
         // its Workers Free daily request limit.
+        //
+        // `firebase` only proves the binding exists. On 2026-11-03 the
+        // Firebase service-account key was rotated but the Worker secrets were
+        // not updated, so every webhook died at the OAuth token exchange while
+        // this endpoint still reported ok:true. Add ?deep=1 to actually mint a
+        // token (one subrequest) and report firebaseAuth; point the alerting
+        // monitor at that URL.
         if (request.method === 'GET' && url.pathname.endsWith('/health')) {
-            return new Response(JSON.stringify({
+            const deep = url.searchParams.get('deep') === '1';
+            const health = {
                 ok: true,
                 service: 'rekindle-stripe',
                 stripeKey: !!env.STRIPE_KEY,
+                webhookSecret: !!env.STRIPE_WEBHOOK_SECRET,
                 firebase: !!(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY)
-            }), {
-                status: 200,
+            };
+            if (deep) {
+                try {
+                    await getGoogleAccessToken(env, true);
+                    health.firebaseAuth = true;
+                } catch (err) {
+                    console.error('Deep health check failed: Firebase token exchange failed:', err.message);
+                    health.ok = false;
+                    health.firebaseAuth = false;
+                    health.error = 'firebase_auth_failed';
+                }
+            }
+            return new Response(JSON.stringify(health), {
+                status: health.ok ? 200 : 503,
                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
             });
         }
@@ -938,8 +959,8 @@ async function verifyFirebaseIdToken(env, idToken) {
 }
 
 // --- GOOGLE AUTH (Service Account JWT) ---
-async function getGoogleAccessToken(env) {
-    if (googleTokenCache.token && googleTokenCache.expiresAt > Date.now()) {
+async function getGoogleAccessToken(env, force = false) {
+    if (!force && googleTokenCache.token && googleTokenCache.expiresAt > Date.now()) {
         return googleTokenCache.token;
     }
     const clientEmail = env.FIREBASE_CLIENT_EMAIL;

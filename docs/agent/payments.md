@@ -260,8 +260,10 @@ social *attempts* (a report or post the user did not retry), not stored data.
 
 ## Runbook: after any Cloudflare/Worker outage
 
-1. `curl -s https://rekindle-stripe.timjarnott.workers.dev/health` — expect
-   `{"ok":true,...}`. A `429` `error code: 1027` means the account cap is back.
+1. `curl -s 'https://rekindle-stripe.timjarnott.workers.dev/health?deep=1'` —
+   expect `"ok":true` **and** `"firebaseAuth":true`. A `429` `error code: 1027`
+   means the account cap is back; `503 firebase_auth_failed` means the Worker's
+   Firebase credentials are stale (see the 2026-11-03 section).
 2. Stripe Workbench → Webhooks → endpoint → **Event deliveries**, filter
    `Failed`/`Pending` for the outage window; resend anything still failed.
 3. Run the reconciler read-only:
@@ -347,6 +349,65 @@ finds the payer in the Stripe dashboard by hand (e.g. `flamefencerplus` paid wit
 Deploy order for this fix: **worker first** (`rekindle-stripe`, so new checkouts
 record the session id and create lifetime customers), then the `moderation.html`
 build. The backfill can run any time after the worker deploy.
+
+## 2026-11-03: rotated service-account key silently broke every webhook (fixed 2026-11-04)
+
+The Firebase service-account key was rotated on 2026-11-03 11:55 AEDT
+(`service-account.json` and `service-account-social.json` were re-downloaded), but
+the `rekindle-stripe` Worker still held the **old** `FIREBASE_PRIVATE_KEY` /
+`FIREBASE_CLIENT_EMAIL` secrets. Google rejected the JWT grant,
+`getGoogleAccessToken()` threw, and every webhook returned 500 **after exactly
+one subrequest** — the OAuth token call. `/health` kept reporting `ok:true`
+because it only proved the bindings existed, so nothing alerted.
+
+Stripe retries a failed delivery for up to 3 days, so grants were silently
+delayed and then lost. The report was a purchase by `umema2021@icloud.com` that
+never gave `meimei@rekindle.ink` (`HC2J9BqxK2duxk1vI1S6OEy4AuO2`) Pro. The
+checkout itself was correct — `client_reference_id` **and** `metadata.uid` both
+carried her uid (`cs_live_b11W…`, `sub_1UY2Cz…`, 2026-11-04T11:18Z).
+
+How it was identified:
+
+- `GET /v1/events?delivery_success=false` (see the runbook query) returned 27
+  events since 28 Oct, almost all with `pending_webhooks: 1`.
+- Cloudflare GraphQL `workersInvocationsAdaptive` showed each failed delivery
+  made exactly **1 subrequest**; a successful grant makes 9–11. The failure was
+  therefore before any Firestore read/write, i.e. in the token exchange.
+- `service-account.json`'s mtime matched the rotation, and the new key minted a
+  token locally — only the Worker's copy was stale.
+
+**Fix:** `wrangler secret put FIREBASE_CLIENT_EMAIL` and
+`wrangler secret put FIREBASE_PRIVATE_KEY` from `service-account.json`, then
+redeploy. `/health?deep=1` now forces a real token and returns
+`503 {"ok":false,"firebaseAuth":false,"error":"firebase_auth_failed"}` when the
+credential is dead (plain `/health` stays cheap and only checks bindings).
+
+**Repair (2026-11-04):** `node admin/reconcile_stripe.js --since
+2026-11-03T04:00:00Z --fix-grants` repaired 11 items (the reported account plus
+six monthly renewals and one lifetime/monthly double purchase);
+`--fix-revocations` revoked the two cancellations the outage had missed. Two
+cases needed manual work: `kiirabg@rekindle.ink` (`n6VvUWSr…`) had no
+`users/{uid}` document yet (the reconciler cannot create one), and
+`shcrj@rekindle.ink`'s March subscription had no `metadata.uid`, so its renewals
+could never resolve after the October checkout overwrote her
+`stripeCustomerId` — the subscription now carries `metadata.uid`. Final
+read-only run: `paid-not-pro=0`, `cancelled-still-pro=0`.
+
+**Rule: rotating the service-account key is a two-part change.** Update the
+Worker secrets in the same session, then
+`curl 'https://rekindle-stripe.timjarnott.workers.dev/health?deep=1'` and expect
+`"firebaseAuth":true`. Any other Worker holding a copy of the key needs the same
+treatment.
+
+**Billing follow-ups from this incident (not done automatically):**
+
+- `earth2aries@rekindle.ink` (`SybwbfBN…`) paid $30 lifetime at 03:25Z, saw no
+  Pro, then paid $2/month at 04:11Z. Lifetime is applied; the duplicate monthly
+  subscription is still active and needs cancelling/refunding.
+- `shcrj@rekindle.ink` has two active $2/month subscriptions (`sub_1TFMj2…`
+  from 2026-03 and `sub_1UViZb…` from 2026-10-29) because the March one was
+  never cancelled. Both bill monthly; cancel the March one and decide on a
+  refund for the overlap.
 
 ## Open items
 
