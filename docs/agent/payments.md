@@ -399,15 +399,23 @@ Worker secrets in the same session, then
 `"firebaseAuth":true`. Any other Worker holding a copy of the key needs the same
 treatment.
 
-**Billing follow-ups from this incident (not done automatically):**
+**Billing follow-ups from this incident:**
 
 - `earth2aries@rekindle.ink` (`SybwbfBN…`) paid $30 lifetime at 03:25Z, saw no
   Pro, then paid $2/month at 04:11Z. Lifetime is applied; the duplicate monthly
   subscription is still active and needs cancelling/refunding.
-- `shcrj@rekindle.ink` has two active $2/month subscriptions (`sub_1TFMj2…`
+- `shcrj@rekindle.ink` had two active $2/month subscriptions (`sub_1TFMj2…`
   from 2026-03 and `sub_1UViZb…` from 2026-10-29) because the March one was
-  never cancelled. Both bill monthly; cancel the March one and decide on a
-  refund for the overlap.
+  never cancelled. **Resolved 2026-11-05:** the March subscription was
+  cancelled and its overlapping October charge (`ch_3UUxfTA…`, $2) refunded
+  (`re_3UUxfT…`). Before requesting the cancellation, `stripeCustomerId` was
+  pointed at the October customer and `stripe_state.subscriptionId` at the
+  October subscription, so the `customer.subscription.deleted` was dismissed as
+  `different_subscription` and the `charge.refunded` no longer matched a user —
+  her Pro never dropped. Note that the restricted key required **Stripe
+  approval requests** for both the cancellation and the refund
+  (`/v2/core/approval_requests`), approved in the dashboard within the 24 h
+  window.
 
 ## Open items
 
