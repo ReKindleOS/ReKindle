@@ -149,6 +149,40 @@ function isSafePathPart(value) {
     return !/[.#$\[\]/\s]/.test(value);
 }
 
+/**
+ * Live-game paths, derived from the small `matchmaking` node.
+ *
+ * `matchmaking/{gameType}/{matchId}` is the public listing for an open lobby and
+ * the game itself lives at `games/{gameType}/{matchId}`, so the user's lobby
+ * seat can be found without reading `games` (which held ~15,900 matches / 60 MB
+ * in November 2026 — reading it whole OOM-killed the function).
+ *
+ * Both halves matter: the listing must go when the user was the host, and the
+ * seat must go even in a lobby someone else hosts, otherwise the lobby keeps a
+ * phantom player. The chat nodes under each match are never included: in-game
+ * chat is retained history (see docs/agent/account-deletion.md).
+ */
+function buildLiveGameDeletePaths(matchmaking, uid) {
+    const updates = {};
+    if (!isValidUid(uid)) return updates;
+    if (!matchmaking || typeof matchmaking !== 'object') return updates;
+
+    Object.keys(matchmaking).forEach(function (gameType) {
+        if (!isSafePathPart(gameType)) return;
+        const matches = matchmaking[gameType];
+        if (!matches || typeof matches !== 'object') return;
+        Object.keys(matches).forEach(function (matchId) {
+            if (!isSafePathPart(matchId)) return;
+            const listing = matches[matchId] || {};
+            if (listing.hostUid === uid) {
+                updates['matchmaking/' + gameType + '/' + matchId] = null;
+            }
+            updates['games/' + gameType + '/' + matchId + '/players/' + uid] = null;
+        });
+    });
+    return updates;
+}
+
 function buildPrimaryUserDeletePaths(uid, handle) {
     const updates = {};
     if (!isValidUid(uid)) return updates;
@@ -237,6 +271,7 @@ module.exports = {
     pickUsername,
     isValidUid,
     isSafePathPart,
+    buildLiveGameDeletePaths,
     buildPrimaryUserDeletePaths,
     buildSocialProfileDeletePaths,
     buildSocialUserDeletePaths,

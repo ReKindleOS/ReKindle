@@ -48,6 +48,7 @@ const {
     emailHandle,
     pickUsername,
     isValidUid,
+    buildLiveGameDeletePaths,
     buildPrimaryUserDeletePaths,
     buildSocialProfileDeletePaths,
     shouldDeleteReportForUser,
@@ -733,46 +734,32 @@ async function cleanupPrimaryRtdb(ctx) {
         throw new Error('Freewrite cleanup failed: ' + e.message);
     }
 
-    // Live-game listings hosted by the user (ghost lobbies otherwise linger
-    // until the index validator removes them). Also remove the user's chat
-    // lines from every live match and their presence from open lobbies. Active
-    // match state is deliberately left alone: deleting a player mid-game would
-    // corrupt the match for everyone else, and turns/AFK timers already deal
-    // with a vanished player.
+    // Live games.
+    //
+    // Delete the listings the user hosts (ghost lobbies otherwise linger until
+    // the index validator removes them) AND the user's seat in every other open
+    // lobby. Both come from `matchmaking`, which is small: its keys are the
+    // match ids, so the seat path is `games/{type}/{matchId}/players/{uid}` and
+    // no `games` read is needed.
+    //
+    // `games/*/*/chat` is deliberately NOT swept. In November 2026 `games` held
+    // ~15,900 matches / 60 MB; finding one user's chat lines required reading
+    // all of it, which OOM-killed the function (container death -> a 503 with
+    // no CORS headers in the browser). In-game chat is history and is retained
+    // like KindleChat history; finished matches will age out via the games
+    // retention job in docs/agent/backlog.md instead. Do not reintroduce a
+    // whole-node read of `games` here.
     try {
         const mmSnap = await rtdb.ref('matchmaking').once('value');
-        const updates = {};
-        mmSnap.forEach(function (gameNode) {
-            gameNode.forEach(function (matchNode) {
-                const value = matchNode.val() || {};
-                if (value.hostUid === uid && isSafeRtdbKey(gameNode.key) && isSafeRtdbKey(matchNode.key)) {
-                    updates['matchmaking/' + gameNode.key + '/' + matchNode.key] = null;
-                }
-            });
-        });
-
-        const gamesSnap = await rtdb.ref('games').once('value');
-        gamesSnap.forEach(function (gameNode) {
-            gameNode.forEach(function (matchNode) {
-                if (!isSafeRtdbKey(gameNode.key) || !isSafeRtdbKey(matchNode.key)) return;
-                const base = 'games/' + gameNode.key + '/' + matchNode.key;
-                const match = matchNode.val() || {};
-                matchNode.child('chat').forEach(function (msg) {
-                    const value = msg.val() || {};
-                    if (value.uid === uid && isSafeRtdbKey(msg.key)) {
-                        updates[base + '/chat/' + msg.key] = null;
-                    }
-                });
-                if (match.status === 'lobby' && match.players && match.players[uid]) {
-                    updates[base + '/players/' + uid] = null;
-                }
-            });
-        });
-
-        if (Object.keys(updates).length > 0) await rtdb.ref().update(updates);
+        const updates = buildLiveGameDeletePaths(mmSnap.val(), uid);
+        const paths = Object.keys(updates).length;
+        if (paths > 0) {
+            await rtdb.ref().update(updates);
+            summary.rtdbNodes += paths;
+        }
     } catch (e) {
         if (e instanceof HttpsError) throw e;
-        throw new Error('Matchmaking/game cleanup failed: ' + e.message);
+        throw new Error('Matchmaking/live-game cleanup failed: ' + e.message);
     }
 
     assertWithinBudget(deadline);

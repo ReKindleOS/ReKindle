@@ -16,6 +16,62 @@ has been verified on a Kindle or an e-ink panel — that is part of the work.
 P3 = maintainability. `risk` is the chance the change breaks something a test cannot catch.
 
 
+## 2026-11-10 · Games node retention (`cleanupGames`)
+
+**Why this exists.** Account deletion stopped sweeping in-game chat on 2026-11-10.
+Finding one user's chat lines required reading the whole `games` node, and that
+read OOM-killed the `deleteAccount` container (browser saw a CORS-less 503 — see
+[account-deletion.md](account-deletion.md#2026-11-10-incident-the-cors-error-that-was-really-an-oom)).
+Game chat is now retained history, like KindleChat, and **nothing ages it out**.
+
+**Measured 2026-11-10 (primary RTDB, `rekindle-dd1fa`)**
+
+| Node | Size | Children |
+| :--- | ---: | ---: |
+| `games` | 60.3 MB | 15,951 matches (11,645 UNO, 3,894 Pictionary, 86 chess) |
+| `games/uno` alone | ~40 MB | 11,645 |
+| `matchmaking` | ~0 | 5 (the only open lobbies) |
+
+Paged with `orderByKey().limitToFirst(200)` + `startAfter(lastKey)` the full scan
+was 15,951 matches in 31 s at an **83 MB peak heap**, so a paged job is safe in a
+512 MiB function. Reading it in one `once('value')` is not: that is the OOM.
+
+**Blocker: match nodes carry no timestamp.** Verified sub-keys for UNO, chess and
+Pictionary: `status` (`lobby|playing|finished`), `players`, `host`, plus game
+state; there is **no** `createdAt` / `startedAt` / `finishedAt` / `updatedAt`.
+Keys are short random ids (`j7kx3l758`), not 20-char push ids, so RTDB's
+key-encoded timestamp trick does not work either. Age cannot be derived.
+
+**Work required**
+
+1. Write `finishedAt = firebase.database.ServerValue.TIMESTAMP` where each live
+   game marks the match finished (`liveuno.html`, `livechess.html`,
+   `livecheckers.html`, `liveconnect4.html`, `livedotsandboxes.html`,
+   `livetictactoe.html`, `liveyahtzee.html`, `livepictionary.html`), ideally via
+   one shared helper. Backfill is impossible, so old matches stay until their
+   presence stamps age out (see the fallback) or are accepted as orphaned.
+2. Add a scheduled v2 function (mirror `cleanupSocial` in `firebase-functions/index.js`)
+   that, per game type, pages `games/{type}` by key and deletes matches where
+   `status === 'finished'` **and** `finishedAt` is older than the retention
+   window (proposal: 30 days — chat history parity with KindleChat). Never touch
+   `lobby` / `playing` matches.
+3. While there, delete `matchmaking/{type}/{matchId}` entries whose
+   `games/{type}/{matchId}` node no longer exists (the dashboard validator in
+   `index.html` soft-repairs these client-side today).
+4. Keep it out of `deleteAccount`: account deletion must never read `games`
+   whole again (`scripts/test-account-deletion.js` asserts this).
+
+**Fallback if (1) is deferred:** treat a finished match as stale when none of its
+human `players/{uid}` has a `presence/{uid}` record. Presence is cleared on
+disconnect, so this only deletes matches whose players are all offline — safe,
+but it cannot honour a retention window and would delete a just-finished match
+as soon as everyone leaves.
+
+**Cost check:** a daily paged scan of `games` reads ~60 MB/day (RTDB download
+allowance is 10 GB/month on the social project; the primary project is Blaze, so
+this is billed but trivial). Once old matches are gone the daily read shrinks to
+the active window.
+
 ## 2026-11-10 · Suggestions "Problem" triage
 
 Fixes for the free-text problem reports that were open on the Suggestions board

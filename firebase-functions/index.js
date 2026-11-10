@@ -2101,9 +2101,13 @@ exports.submitScore = onCall(callOptions, scoreHandlers.submitScore);
 
 /**
  * Permanent account deletion. See firebase-functions/account-deletion.js and
- * docs/agent/account-deletion.md. The longer timeout covers a full social +
- * personal data sweep; the Auth record is deleted last so a timeout is
- * retryable.
+ * docs/agent/account-deletion.md. The longer timeout covers a full personal
+ * data sweep; the Auth record is deleted last so a timeout is retryable.
+ *
+ * Memory stays at 512 MiB because the 2026-11-10 OOM was a whole-node read of
+ * `games` (~15,900 matches / 60 MB), not a budget problem: that read is gone
+ * and the sweep now peaks around 100 MB. Raising memory would only have hidden
+ * it.
  */
 const accountDeletion = require("./account-deletion");
 exports.deleteAccount = onCall(

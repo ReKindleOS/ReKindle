@@ -107,7 +107,7 @@ password server-side in `deleteAccount` before touching data.
 3. Primary Firestore (user tree, leaderboards, game runs, audits, uploads,
    legacy rooms, entitlements).
 4. Primary RTDB (profiles, presence, timeouts, suggestions, freewrite,
-   matchmaking, live-game membership).
+   `matchmaking` listings, live-lobby seats via `matchmaking`).
 5. Social profile records (`users_public/{uid}`, `user_cards/{uid}`,
    `users_private/{uid}`) so social apps resolve to Deleted User.
 6. Firebase Storage `users/{uid}/**`.
@@ -139,7 +139,7 @@ Rules:
 | Project | Data |
 | :--- | :--- |
 | Primary Firestore | `users/{uid}` and every subcollection (`settings`, `notes`, `tasks`, `journal`, `library`, `pro_data`, `privateSettings`, `reading_*`, `watchlist`, `chatLimits`, …), every `leaderboard_*` doc, `game_runs/{uid}_{game}`, `score_audit` rows, `interactive_uploads` / `sheet_music_uploads` owned by the user, `word_games` where `p1_uid`/`p2_uid` matches, `config/supporters[email]`, `config/moderators[uid]`, legacy Firestore `rooms/*/messages` written by the user and the user's handle in each room's `participants` |
-| Primary RTDB | `users_public/{uid}`, `user_cards/{uid}`, `users_private/{uid}`, `presence/{uid}`, `timeouts/{uid}`, `moderators/{uid}`, `mail_rate_limits/{uid}`, `password_reset_limits/{uid}`, `security_events/{uid}`, `kindlechat/user_limits/{handle}`, `suggestions` authored by the user plus their `upvotes/{uid}` and comments on other suggestions, `freewrite_sessions` with `ownerId == uid`, `matchmaking/*` listings hosted by the user, the user's `games/*/*/chat` lines, and their `players/{uid}` node in open lobbies |
+| Primary RTDB | `users_public/{uid}`, `user_cards/{uid}`, `users_private/{uid}`, `presence/{uid}`, `timeouts/{uid}`, `moderators/{uid}`, `mail_rate_limits/{uid}`, `password_reset_limits/{uid}`, `security_events/{uid}`, `kindlechat/user_limits/{handle}`, `suggestions` authored by the user plus their `upvotes/{uid}` and comments on other suggestions, `freewrite_sessions` with `ownerId == uid`, `matchmaking/*` listings hosted by the user, and their `players/{uid}` node in open lobbies (derived from `matchmaking`, **not** by reading `games`) |
 | Primary Storage | `users/{uid}/files/**`, `users/{uid}/photos/**` (bucket-wide prefix) |
 | Social RTDB profile | `users_public/{uid}`, `user_cards/{uid}`, `users_private/{uid}` — username, avatar seed/custom avatar, social private profile |
 | Auth | primary `rekindle-dd1fa` user |
@@ -155,6 +155,7 @@ The **social-project** copies and all social history stay.
 | :--- | :--- |
 | **All social Firestore history** — topics, comments, poll votes, neighbourhood posts/comments | Age-based retention in [social-cleanup.md](social-cleanup.md); treated exactly like an active account |
 | **All social RTDB history** — KindleChat messages/translations/art index, reactions, DM threads/messages, reports | Same age-based retention (DMs are never cleaned) |
+| **In-game chat lines** (`games/{type}/{matchId}/chat`) | History, treated like KindleChat history. Sweeping them required reading the whole `games` node (~15,900 matches / 60 MB in 2026-11), which OOM-killed the function (see the incident below). Finished matches will age out via the games retention job in [backlog.md](backlog.md); until that ships they persist. |
 | Social `timeouts`, rate limits, `dm_prefs`, `dm_blocks` | Social account state; not history, but not needed for the Deleted User rendering. Left untouched to keep the deletion write set tiny. |
 | Social Auth user (`rekindle-socials`) | No social login path survives without the primary Auth record; leave it as history |
 | `banned_ips`, primary `users_private` ban linkage | Network-level safety. Deleting an account must not let a banned user evade a ban; moderators remove bans manually. |
@@ -163,6 +164,60 @@ The **social-project** copies and all social history stay.
 | Stripe invoices / payment records | Financial record-keeping, held by Stripe. |
 | Cloud Logging entries | Operational logs, provider retention; no content is intentionally logged. |
 | Orphaned `translations_by_lang` / `art_index` entries | Pre-existing orphan class; one-time sweep on the backlog. |
+
+## 2026-11-10 incident: the "CORS error" that was really an OOM
+
+**Symptom.** Pressing *Delete Account* on `https://rekindle.ink` failed with:
+
+```
+Origin https://rekindle.ink is not allowed by Access-Control-Allow-Origin. Status code: 503
+Fetch API cannot load https://us-central1-rekindle-dd1fa.cloudfunctions.net/deleteAccount
+```
+
+The status was **503 without CORS headers**, so the browser could not read a body
+and the callable rejected with a generic error. Nothing in the function's own
+CORS config was wrong: an unauthenticated `curl` with an `Origin` header returns
+`401` **with** `access-control-allow-origin`. A platform-level 503 (instance
+death) never passes through the function's CORS handling, which is why the
+error message blames CORS.
+
+**Root cause.** `cleanupPrimaryRtdb()` read the whole `games` node with a single
+`once('value')` to find the user's chat lines in live matches, then called
+`val()` per match. Measured 2026-11-10:
+
+| Node | Size | Children |
+| :--- | ---: | ---: |
+| `games` | **60.3 MB** | 15,951 matches (11,645 UNO, 3,894 Pictionary) |
+| `suggestions` | 1.0 MB | 751 |
+| `freewrite_sessions` | 0.04 MB | 95 |
+| `matchmaking` | ~0 | 5 |
+
+Cloud Logging for the failing invocation:
+
+```
+deleteAccount: starting
+Memory limit of 512 MiB exceeded with 517 MiB used
+FATAL ERROR: Ineffective mark-compacts near heap limit - JavaScript heap out of memory
+```
+
+So the container was OOM-killed mid-request. Retries could not help: every
+attempt died at the same step.
+
+**Fix (policy change, 2026-11-10).** Account deletion no longer sweeps in-game
+chat. It only reads the small `matchmaking` node and derives both the user's
+listings and their lobby seats (`buildLiveGameDeletePaths`), so `games` is never
+read. Consequence: a deleted account's in-game chat lines stay in the match and
+age out with the match itself via the planned games retention job
+([backlog.md](backlog.md)), exactly like KindleChat history.
+
+**Do not reintroduce a whole-node `games` read.** `scripts/test-account-deletion.js`
+asserts the handler contains no `ref('games').once(...)` / `.get(...)`. If a
+future feature really needs per-user game data, page it with
+`orderByKey().limitToFirst(N)` + `startAfter(lastKey)` (200 matches kept peak
+heap at 83 MB and scanned all 15,951 matches in 31 s) or add an index node.
+
+**Memory is deliberately still 512 MiB.** The budget was never the problem;
+raising it would only have hidden the unbounded read.
 
 ## Social rendering after deletion
 
@@ -228,10 +283,18 @@ node scripts/test-account-deletion.js
 ```
 
 Covers the confirmation rules (including the empty-username trap), the 10-minute
-window, uid/path safety, the primary RTDB path inventory, report ownership and
-the handler preconditions (unauthenticated, stale login, wrong/blank
-confirmation). The obsolete "rejects when the social project is not configured"
-case was removed with the policy change.
+window, uid/path safety, the primary RTDB path inventory, the live-game path
+builder (host listing + lobby seat, never chat), report ownership, the handler
+preconditions (unauthenticated, stale login, wrong/blank confirmation) and the
+"no whole-node `games` read" regression guard from the 2026-11-10 OOM.
+
+Hermetic run without deployed functions (checks the real `account-deletion.js`
+loads and the live-game paths, using the local service account):
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=service-account.json \
+  node -e "require('./firebase-functions/account-deletion.js')" && echo ok
+```
 
 Manual with a throwaway account:
 
@@ -249,6 +312,9 @@ Manual with a throwaway account:
      `users_private/{uid}` are **gone**; a social page shows a blank avatar and
      "Deleted User" for that uid.
    * The chat message, topic/comment and post/comment **still exist**.
+   * The user's in-game chat line in a live match **still exists** (retained by
+     policy) but their `players/{uid}` node is gone from open lobbies and their
+     hosted `matchmaking` listings are removed.
 5. Re-register the same username; it should succeed (Auth email is free).
 6. Wait for/trigger `cleanupSocial`; old social content should age out on the
    normal schedule, not because the account was deleted.
@@ -268,6 +334,10 @@ Manual with a throwaway account:
   permission error, or a failed `config/supporters` / `config/moderators` write
   aborts the sweep while the account still exists; retry after fixing the
   configuration. A 404 bucket is treated as empty.
+* **In-game chat lines are retained.** Sweeping them needs a full `games` read
+  (~60 MB), which OOM-killed the function on 2026-11-10. They age out only when
+  the games retention job lands; until then they persist like KindleChat
+  history. Lobby seats are still removed, via `matchmaking`.
 * **Primary legacy KindleChat** (`rekindle-dd1fa`'s `kindlechat/messages`) is
   still not swept: chat has lived in the social project since the split. If
   legacy data is found, add `uid`/`user` indexes to the primary rules and reuse

@@ -199,6 +199,44 @@ check('social profile delete paths cover username/avatar/private profile only', 
     for (const key of Object.keys(paths)) assert.strictEqual(paths[key], null);
 });
 
+check('live-game paths remove the host listing and every lobby seat, never chat', function () {
+    const paths = lib.buildLiveGameDeletePaths({
+        uno: { m1: { hostUid: 'u1' }, m2: { hostUid: 'u2' } },
+        chess: { m3: { hostUid: 'u9' } }
+    }, 'u1');
+    assert.deepStrictEqual(Object.keys(paths).sort(), [
+        'games/chess/m3/players/u1',
+        'games/uno/m1/players/u1',
+        'games/uno/m2/players/u1',
+        'matchmaking/uno/m1'
+    ].sort());
+    Object.keys(paths).forEach(function (key) {
+        assert.strictEqual(paths[key], null);
+        assert.ok(key.indexOf('/chat/') === -1, 'in-game chat is history and must be retained');
+    });
+});
+
+check('live-game paths drop unsafe keys and invalid uids', function () {
+    assert.deepStrictEqual(lib.buildLiveGameDeletePaths(null, 'u1'), {});
+    assert.deepStrictEqual(lib.buildLiveGameDeletePaths({ uno: null }, 'u1'), {});
+    assert.deepStrictEqual(lib.buildLiveGameDeletePaths({ 'bad/type': { m1: {} } }, 'u1'), {});
+    assert.deepStrictEqual(lib.buildLiveGameDeletePaths({ uno: { 'bad.key': {} } }, 'u1'), {});
+    assert.deepStrictEqual(lib.buildLiveGameDeletePaths({ uno: { m1: {} } }, 'bad/uid'), {});
+});
+
+check('handler never reads the whole games node', function () {
+    // 2026-11-10: reading games/* whole pulled ~15,900 matches / 60 MB into a
+    // 512 MiB container and the instance was OOM-killed mid-request. The
+    // browser could not even show an error: the platform's 503 carries no CORS
+    // headers, so it surfaced as "not allowed by Access-Control-Allow-Origin".
+    // Lobby seats now come from the small `matchmaking` node.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'firebase-functions', 'account-deletion.js'), 'utf8');
+    assert.strictEqual(/ref\(\s*['"]games['"]\s*\)\s*\.once\(/.test(source), false,
+        'must not read games/* whole: it OOM-kills the function');
+    assert.strictEqual(/ref\(\s*['"]games['"]\s*\)\s*\.get\(/.test(source), false,
+        'must not read games/* whole: it OOM-kills the function');
+});
+
 check('report ownership checks both reporter and reported user', function () {
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1', reportedUserId: 'u2' }, 'u1'), true);
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1', reportedUserId: 'u2' }, 'u2'), true);
