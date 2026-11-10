@@ -185,6 +185,21 @@ const SHIPPED = [
         why: 'Long DM threads now keep #chat-history scrollable (min-height:0), scroll to the composer after layout settles, and bring the composer into view when focused.'
     },
     {
+        id: '-Oyn6jZTNTjXwsOl1yoi',
+        title: 'Language Spanish and Spanish problem',
+        why: 'Language now shows one "Spanish (Spain)" card (es flag) and one "Spanish (Mexico)" card (mx flag), instead of two identical Spanish cards. Added Tatoeba codes to the remaining entries so sentence mode does not receive undefined.'
+    },
+    {
+        id: '-P-2C2pOJ1OXbapa1x9w',
+        title: 'Surfer game is hard to view',
+        why: 'Surfer now draws a persistent 1-bit top-centre action hint for the nearest obstacle in the player lane (up = jump, down = roll, left/right = train lane change), so the required move is readable before the obstacle detail is. Deployed 2026-11-10.'
+    },
+    {
+        id: '-P1RnoKa8Ya2O-GhNJj-',
+        title: 'Pixel art',
+        why: 'The 2026-10-27 manifest union/empty-write guard in pixel.html restores cloud manifest entries after localStorage is wiped and refuses to overwrite a non-empty cloud list. mergeManifests() regression-tested 2026-11-10.'
+    },
+    {
         id: '-P60c5re1InQwr4qoCyk',
         title: 'Account Deletion Wont Work',
         why: 'Policy change 2026-11-10: deleteAccount no longer sweeps the social project, so social Firestore quota or missing indexes cannot block deletion. It removes the main-project account/private data, Storage files, Auth record and the social profile nodes (username/avatar), so social apps show a blank avatar and "Deleted User"; social history is retained and aged by cleanupSocial. Deployed.'

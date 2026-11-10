@@ -15,7 +15,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
     <script src="js/score-submit.js?v=2" data-game="surfer"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="js/i18n.js?v=4"></script>
+    <script src="js/i18n.js?v=5"></script>
 
     <style>
         :root {
@@ -1045,6 +1045,74 @@
             drawCircleOutline(16, 14, 5);
             ctx.fillRect(15, 13, 2, 2);
             drawPixelText('x' + coinsCollected, 26, 10, 2);
+            drawActionHint();
+        }
+
+        // Persistent lane/action hint for the nearest obstacle in the player's
+        // lane. The report (2026-08-15) said the obstacle arrows are too fast to
+        // read on e-ink; the hint gives the same information early and does not
+        // rely on obstacle detail. Strict 1-bit: integer fillRect only.
+        var HINT_GLYPHS = {
+            up:    ['00100', '01110', '11111', '00100', '00100', '00100', '00100'],
+            down:  ['00100', '00100', '00100', '00100', '11111', '01110', '00100'],
+            left:  ['00100', '01000', '11111', '01000', '00100', '00000', '00000'],
+            right: ['00100', '00010', '11111', '00010', '00100', '00000', '00000'],
+            both:  ['00100', '01010', '11111', '01010', '00100', '00000', '00000']
+        };
+
+        function nearestLaneObstacle() {
+            var best = null;
+            for (var i = 0; i < obstacles.length; i++) {
+                var o = obstacles[i];
+                if (!o || o.resolved || o.lane !== player.lane) continue;
+                if (o.z <= 1 || o.z > 18) continue;
+                if (!best || o.z < best.z) best = o;
+            }
+            return best;
+        }
+
+        function hintForObstacle(o) {
+            if (!o) return null;
+            if (o.type === T_BARRIER) return 'up';
+            if (o.type === T_SIGN) return 'down';
+            if (o.type === T_TRAIN) {
+                if (player.lane === 0) return 'right';
+                if (player.lane === 2) return 'left';
+                return 'both';
+            }
+            return null;
+        }
+
+        function drawHintGlyph(kind, cx, cy, scale) {
+            var rows = HINT_GLYPHS[kind];
+            if (!rows) return;
+            var width = rows[0].length * scale;
+            var x0 = Math.round(cx - width / 2);
+            var y0 = Math.round(cy - rows.length * scale / 2);
+            for (var y = 0; y < rows.length; y++) {
+                for (var x = 0; x < rows[y].length; x++) {
+                    if (rows[y].charAt(x) === '1') {
+                        ctx.fillRect(x0 + x * scale, y0 + y * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        function drawActionHint() {
+            var kind = hintForObstacle(nearestLaneObstacle());
+            if (!kind) return;
+            var w = kind === 'both' ? 34 : 26;
+            var x = Math.round(CX - w / 2);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x, 3, w, 26);
+            ctx.fillStyle = '#000';
+            outlineRect(ctx, x, 3, w, 26, 2);
+            if (kind === 'both') {
+                drawHintGlyph('left', x + 9, 16, 2);
+                drawHintGlyph('right', x + w - 9, 16, 2);
+            } else {
+                drawHintGlyph(kind, x + w / 2, 16, 2);
+            }
         }
 
         function draw() {
