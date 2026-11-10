@@ -1097,7 +1097,8 @@
                 provider: account.provider || 'custom',
                 email: account.email,
                 label: account.label || '',
-                oauth: account.oauth || null,
+                // The refresh token never reaches this browser. accountId is an
+                // opaque server-side mailbox id, not a credential.
                 accountId: account.accountId || null,
                 imap: account.imap || null,
                 smtp: account.smtp || null,
@@ -1107,6 +1108,11 @@
 
         function saveAccountsLocal() {
             try {
+                // passEnc is AES-256-GCM ciphertext; OAuth refresh/access tokens
+                // never reach this browser; accountId is an opaque server-side
+                // mailbox id. The CodeQL query sees the account object as
+                // sensitive, so this is a reviewed false positive.
+                // codeql[js/clear-text-storage-of-sensitive-data]
                 localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.map(serializeAccount)));
                 if (activeAccountId) localStorage.setItem(ACTIVE_ACCOUNT_KEY, activeAccountId);
                 else localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
@@ -1127,7 +1133,6 @@
                             provider: a.provider || 'custom',
                             email: a.email,
                             label: a.label || '',
-                            oauth: a.oauth || null,
                             accountId: a.accountId || null,
                             imap: a.imap || null,
                             smtp: a.smtp || null,
@@ -1262,7 +1267,7 @@
             const idx = accounts.findIndex(a =>
                 a.id === account.id ||
                 (String(a.email).toLowerCase() === String(account.email).toLowerCase()
-                    && (a.oauth || '') === (account.oauth || '')));
+                    && (a.provider || '') === (account.provider || '')));
             if (idx >= 0) {
                 accounts[idx] = Object.assign({}, accounts[idx], account, { id: accounts[idx].id });
             } else {
@@ -1293,7 +1298,7 @@
             activeAccountId = account.id;
             userEmail = account.email;
 
-            if (account.oauth === 'microsoft') {
+            if (account.provider === 'microsoft') {
                 const cfg = { oauth: 'microsoft', accountId: account.accountId || account.id };
                 imapConfig = cfg;
                 smtpConfig = cfg;
@@ -1364,7 +1369,7 @@
             if (!account) return null;
             if (account._imap && account._smtp) return { imap: account._imap, smtp: account._smtp };
 
-            if (account.oauth === 'microsoft') {
+            if (account.provider === 'microsoft') {
                 const cfg = { oauth: 'microsoft', accountId: account.accountId || account.id };
                 account._imap = cfg;
                 account._smtp = cfg;
@@ -1425,7 +1430,7 @@
             const account = accounts.find(a => a.id === id);
             if (!account) return;
 
-            if (account.oauth === 'microsoft' && functions) {
+            if (account.provider === 'microsoft' && functions) {
                 try {
                     await functions.httpsCallable('mailMicrosoftDisconnect')({
                         accountId: account.accountId || account.id
@@ -1818,7 +1823,7 @@
 
                 const meta = document.createElement('div');
                 meta.className = 'account-meta';
-                meta.innerText = (account.oauth === 'microsoft'
+                meta.innerText = (account.provider === 'microsoft'
                     ? 'Outlook / Hotmail'
                     : ((account.imap && account.imap.host) || 'IMAP')) +
                     (account.label ? ' - ' + account.email : '');
@@ -1846,7 +1851,7 @@
 
                 const remove = document.createElement('button');
                 remove.className = 'sys-btn';
-                remove.innerText = account.oauth === 'microsoft' ? 'Sign out' : 'Remove';
+                remove.innerText = account.provider === 'microsoft' ? 'Sign out' : 'Remove';
                 remove.onclick = () => removeAccount(account.id);
                 actions.appendChild(remove);
                 row.appendChild(actions);
@@ -1961,7 +1966,7 @@
 
             const emailField = document.getElementById('outlook-email');
             const active = getActiveAccount();
-            if (!emailField.value && active && active.oauth === 'microsoft') {
+            if (!emailField.value && active && active.provider === 'microsoft') {
                 emailField.value = active.email;
             }
             const btn = document.getElementById('btn-outlook-connect');
@@ -2216,9 +2221,10 @@
                 // kept per account, so several accounts can coexist.
                 const authUser = firebase.auth().currentUser;
                 const passEnc = authUser ? await encryptPassword(pass, authUser.uid) : null;
+                const imapHostName = String(imapHost || '').trim().toLowerCase();
                 const stored = addOrUpdateAccount({
                     id: newAccountId('acct'),
-                    provider: (imapHost || '').toLowerCase().indexOf('gmail.com') > -1 ? 'gmail' : 'custom',
+                    provider: /(^|\.)gmail\.com$/.test(imapHostName) ? 'gmail' : 'custom',
                     email: user,
                     imap: { host: imapHost, port: imapPort },
                     smtp: { host: smtpHost, port: smtpPort },
@@ -2996,11 +3002,20 @@
             }
         }
 
+        function safeRemoteImageSrc(value) {
+            try {
+                const parsed = new URL(String(value), window.location.href);
+                return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+            } catch (e) {
+                return '';
+            }
+        }
+
         function loadRemoteEmailImages() {
             const host = document.getElementById('email-body-host');
             if (!host || !host.shadowRoot) return;
             host.shadowRoot.querySelectorAll('img[data-remote-src]').forEach(function (img) {
-                const src = img.getAttribute('data-remote-src');
+                const src = safeRemoteImageSrc(img.getAttribute('data-remote-src'));
                 if (src) img.setAttribute('src', src);
                 img.removeAttribute('data-remote-src');
             });
@@ -3432,17 +3447,16 @@
                         provider: a.provider || 'custom',
                         email: a.email,
                         label: a.label || '',
-                        oauth: a.oauth || null,
                         accountId: a.accountId || null,
                         imap: a.imap || null,
                         smtp: a.smtp || null,
                         passEnc: a.passEnc || null
                     }));
                     localAccounts.forEach(local => {
-                        const key = local.email.toLowerCase() + '|' + (local.oauth || '');
+                        const key = local.email.toLowerCase() + '|' + (local.provider || '');
                         const exists = accounts.some(remote =>
                             remote.id === local.id ||
-                            (remote.email.toLowerCase() + '|' + (remote.oauth || '')) === key);
+                            (remote.email.toLowerCase() + '|' + (remote.provider || '')) === key);
                         if (!exists) accounts.push(local);
                     });
 

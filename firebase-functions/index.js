@@ -13,6 +13,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const net = require("net");
+const crypto = require("crypto");
 const dns = require("dns").promises;
 const { ImapFlow } = require("imapflow");
 const simpleParser = require("mailparser").simpleParser;
@@ -1539,7 +1540,7 @@ exports.mailMicrosoftPoll = onCall(callOptions, async (request) => {
         }
     });
     if (!accountId) {
-        accountId = 'ms' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        accountId = 'ms' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
     }
 
     await admin.database().ref(`${MS_ACCOUNT_PATH}/${auth.uid}/${accountId}`).set({

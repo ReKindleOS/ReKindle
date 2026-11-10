@@ -83,7 +83,9 @@ async function main() {
             if (method === 'GET') return new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 });
             return doc({});
         }
-        if (url.indexOf('identitytoolkit.googleapis.com') !== -1) {
+        let identityHost = '';
+        try { identityHost = new URL(url).hostname; } catch (e) { /* not an absolute URL */ }
+        if (identityHost === 'identitytoolkit.googleapis.com') {
             const body = JSON.parse((init && init.body) || '{}');
             const ids = Array.isArray(body.localId) ? body.localId : [body.localId];
             const known = {

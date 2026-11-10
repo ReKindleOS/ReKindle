@@ -27,6 +27,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const cheerio = require('cheerio');
 const { seoFor, slugs, SITE } = require('./seo-pages');
 
 const ROOT = path.join(__dirname, '..');
@@ -147,15 +148,15 @@ function headBlock(seo) {
 function hasTextHeading(html) {
     // Headings inside <script> are template strings (browser.html, help.html,
     // newspaper.html, readwise.html, rssreader.html build their articles in JS)
-    // and are not part of the served document.
-    const withoutScripts = html.replace(/<script\b[\s\S]*?<\/script>/gi, '');
-    const re = /<h1\b[^>]*>([\s\S]*?)<\/h1>/gi;
-    let m;
-    while ((m = re.exec(withoutScripts))) {
-        const body = m[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-        if (body) return true;
-    }
-    return false;
+    // and are not part of the served document. Cheerio treats script bodies as
+    // text, so this avoids the <script>-stripping regex CodeQL flags.
+    const $ = cheerio.load(html);
+    let found = false;
+    $('h1').each(function () {
+        const body = $(this).text().replace(/\u00a0/g, ' ').trim();
+        if (body) found = true;
+    });
+    return found;
 }
 
 function stripGenerated(html) {

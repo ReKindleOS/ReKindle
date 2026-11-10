@@ -30,6 +30,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const cheerio = require('cheerio');
 const os = require('os');
 const path = require('path');
 
@@ -143,14 +144,14 @@ for (const file of pages) {
     }
 
     // 7. headings: exactly one with text, outside <script> templates.
-    const withoutScripts = html.replace(/<script\b[\s\S]*?<\/script>/gi, '');
-    const h1s = (withoutScripts.match(/<h1\b[^>]*>[\s\S]*?<\/h1>/gi) || []).filter(function (h) {
-        return h.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0;
-    });
-    if (h1s.length === 0) fail(file + ': no <h1> with text');
+    const $headings = cheerio.load(html);
+    const h1s = $headings('h1').filter(function () {
+        return $headings(this).text().replace(/\u00a0/g, ' ').trim().length > 0;
+    }).length;
+    if (h1s === 0) fail(file + ': no <h1> with text');
     // index_old.html is a legacy layout kept for ?layout=old users and is
     // noindex, so it is the one page allowed its two decorative headings.
-    if (!seo.noindex && h1s.length > 1) fail(file + ': ' + h1s.length + ' <h1> elements with text');
+    if (!seo.noindex && h1s > 1) fail(file + ': ' + h1s + ' <h1> elements with text');
 
     // 9. checked-in HTML must match the metadata table.
     const expected = render(html, seo);
