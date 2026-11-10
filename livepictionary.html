@@ -628,9 +628,12 @@ function showScreen(name) {
 function generateId() { return Math.random().toString(36).substr(2, 9); }
 
 let authInitTimer = null;
+let authHomeTimer = null;
 auth.onAuthStateChanged(function(user) {
     if (authInitTimer) { clearTimeout(authInitTimer); authInitTimer = null; }
+    if (authHomeTimer) { clearTimeout(authHomeTimer); authHomeTimer = null; }
     if (user) {
+        closeAlert();
         myUid = user.uid;
         const dn = user.displayName || (user.email ? user.email.split('@')[0] : 'Player');
         currentUser = { uid: user.uid, name: dn };
@@ -640,8 +643,9 @@ auth.onAuthStateChanged(function(user) {
         // localStorage. Wait a short moment before treating it as a real
         // sign-out / missing-auth situation.
         authInitTimer = setTimeout(function() {
+            authInitTimer = null;
             showAlert(tfmt('pictionary.alert.signin_title', 'Sign In Required'), tfmt('pictionary.alert.signin_msg', 'Please log in from the home screen first.'));
-            setTimeout(goHome, 3000);
+            authHomeTimer = setTimeout(goHome, 3000);
         }, 1200);
     }
 });
@@ -788,7 +792,7 @@ function attachRefs() {
         if (seenStrokeKeys[key]) return;
         seenStrokeKeys[key] = true;
         const s = snap.val();
-        drawStrokeOnCanvas(s);
+        if (strokeBelongsToDrawer(s)) drawStrokeOnCanvas(s);
     });
     strokesRef.on('child_removed', function() {
         // Full redraw after any removal (undo / clear)
@@ -917,6 +921,7 @@ async function startMatch() {
         round: 1,
         drawerIdx: 0,
         drawOrder: order,
+        drawerUid: order[0],
         chooseEndsAt: serverTime() + 15000,
         wordChoices: pickWords(3),
         currentWord: null,
@@ -940,16 +945,32 @@ function pickWords(n) {
     return out;
 }
 
+function currentDrawerUid() {
+    if (!gameState) return null;
+    if (gameState.drawerUid) return gameState.drawerUid;
+    return gameState.drawOrder ? gameState.drawOrder[gameState.drawerIdx] : null;
+}
+
+// A stroke must come from the player whose turn it is. Older clients did not
+// add `u`; those are still drawn so a cached page does not lose its canvas.
+// New games carry drawerUid, and the RTDB rules under games/pictionary enforce
+// the same check server-side (rtdb-rules.json).
+function strokeBelongsToDrawer(s) {
+    if (!s || !s.u) return true;
+    const uid = currentDrawerUid();
+    return !uid || s.u === uid;
+}
+
 function isDrawer() {
-    if (!gameState || !gameState.drawOrder) return false;
-    return gameState.drawOrder[gameState.drawerIdx] === currentUser.uid;
+    if (!currentUser) return false;
+    return currentDrawerUid() === currentUser.uid;
 }
 
 function updateHud() {
     const rlbl = document.getElementById('round-label');
     rlbl.innerText = tfmt('pictionary.hud.round', 'Round ${n}/${total}', { n: gameState.round || 1, total: gameState.rounds || 3 });
 
-    const drawerUid = gameState.drawOrder ? gameState.drawOrder[gameState.drawerIdx] : null;
+    const drawerUid = currentDrawerUid();
     const drawerName = drawerUid && gameState.players[drawerUid] ? gameState.players[drawerUid].name : '--';
     document.getElementById('drawer-label').innerText = isDrawer()
         ? tfmt('pictionary.hud.you_drawing', 'You are drawing')
@@ -1128,6 +1149,7 @@ async function advanceTurn() {
         status: 'choosing',
         round: nextRound,
         drawerIdx: nextIdx,
+        drawerUid: order[nextIdx],
         chooseEndsAt: serverTime() + 15000,
         wordChoices: pickWords(3),
         currentWord: null,
@@ -1152,6 +1174,7 @@ async function backToLobby() {
         round: 0,
         drawerIdx: 0,
         drawOrder: null,
+        drawerUid: null,
         currentWord: null,
         wordLength: null,
         lastWord: null,
@@ -1376,7 +1399,7 @@ async function redrawAllStrokes() {
     seenStrokeKeys = {};
     Object.keys(all).forEach(k => {
         seenStrokeKeys[k] = true;
-        drawStrokeOnCanvas(all[k]);
+        if (strokeBelongsToDrawer(all[k])) drawStrokeOnCanvas(all[k]);
     });
 }
 
@@ -1475,7 +1498,7 @@ async function handleCorrectGuess() {
     const already = Object.values(players).filter(p => p.guessedRound === gameState.round).length;
     const order = already + 1;
 
-    const drawerUid = gameState.drawOrder[gameState.drawerIdx];
+    const drawerUid = currentDrawerUid();
     const drawTime = gameState.drawTime || 80;
     const timeLeft = Math.max(0, Math.ceil((gameState.roundEndsAt - serverTime()) / 1000));
 

@@ -539,13 +539,25 @@
 
         function flipBoard() { isFlipped = !isFlipped; renderBoard(); }
 
+        let authInitTimer = null;
+        let authHomeTimer = null;
+
         auth.onAuthStateChanged(function(user) {
+            if (authInitTimer) { clearTimeout(authInitTimer); authInitTimer = null; }
+            if (authHomeTimer) { clearTimeout(authHomeTimer); authHomeTimer = null; }
             if (user) {
+                closeAlert();
                 currentUser = { uid: user.uid, name: (user.email ? user.email.split('@')[0] : 'Player') };
                 checkUrlForMatch();
             } else {
-                showAlert("Sign In Required", "Please log in from the home screen first.");
-                setTimeout(goHome, 3000);
+                // Firebase auth can briefly report null while it initialises
+                // from localStorage. Wait a moment before treating it as a
+                // real sign-out, and cancel the redirect if the user arrives.
+                authInitTimer = setTimeout(function() {
+                    authInitTimer = null;
+                    showAlert("Sign In Required", "Please log in from the home screen first.");
+                    authHomeTimer = setTimeout(goHome, 3000);
+                }, 1200);
             }
         });
         

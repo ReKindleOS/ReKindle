@@ -517,3 +517,53 @@ fixed 500×500 canvas, so the grids are 10×10 / 20×20 / 25×25 and every wall 
   untouched, so a bigger grid just means a longer single solution.
 * The leaderboard contract is unchanged (`js/score-submit.js data-game="maze"`, `leaderboard_maze`);
   the level is not part of the score payload.
+
+## Pictionary stroke authorization (2026-11-10)
+
+Board report `-P2CcrX3YbQ9hgv4le0F`: "somebody was drawing over my drawing". Only the
+drawer's client enabled the canvas, but `games` is `.write: auth != null`, so any
+authenticated client could push a stroke (or edit game state) during someone else's turn.
+
+* Game node is **`games/pictionary/{matchId}`** (not `games/livepictionary` — the page is
+  `livepictionary.html`, the data key is `pictionary`).
+* `startMatch()` now writes `drawerUid: order[0]`; `advanceTurn()` writes
+  `drawerUid: order[nextIdx]`; `backToLobby()` clears it. `currentDrawerUid()` prefers that
+  field and falls back to `drawOrder[drawerIdx]` for matches created before the change.
+* `rtdb-rules.json` adds a `.validate` under `games/pictionary/$matchId/strokes/$strokeId`:
+  a stroke's `u` must equal `auth.uid` (when present) and, when `drawerUid` exists, the
+  writer must be the drawer. A `.validate` at the child rejects the write even though the
+  parent `.write` grants it. Matches without `drawerUid` stay permissive for old clients.
+* `strokeBelongsToDrawer()` filters other players' strokes on render as defence in depth;
+  strokes without `u` (legacy) are still drawn. `undoStroke()` already used `u`.
+* Still open by design: the parent `.write` allows any auth user to clear `strokes` or edit
+  other game state. Tightening that needs per-game rules (the blanket `games` grant would
+  have to be split), which is a separate change.
+
+## Live-game sign-in grace (2026-11-10)
+
+Board report `-P5nwnnXkmxTt3BQ85ly`: "it keeps saying that I need to sign in, when I
+already am." Every live game used to run this on the first null `onAuthStateChanged`
+callback:
+
+```js
+if (user) { ... } else {
+    showAlert("Sign In Required", ...);
+    setTimeout(goHome, 3000);
+}
+```
+
+Firebase restores the session asynchronously, and a service-worker reload / token refresh
+can deliver that null callback before the session is back. The player was then shown
+"Sign In Required" and kicked home three seconds later.
+
+`livepictionary.html` already had the right pattern; it is now on all eight live-game
+pages (`livechess`, `livedotsandboxes`, `livetictactoe`, `liveyahtzee`, `liveuno`,
+`liveconnect4`, `livecheckers`, `livepictionary`):
+
+* `authInitTimer` delays the alert for **1200 ms**, so only a real signed-out visit sees it.
+* `authHomeTimer` is cleared and `closeAlert()` is called as soon as a user arrives, so a
+  late sign-in cancels the alert and the redirect instead of racing them.
+* `checkUrlForMatch()` runs from the same callback, so a user arriving from a match link is
+  still joined normally.
+
+When adding a live game, copy this block rather than the old instant-alert version.

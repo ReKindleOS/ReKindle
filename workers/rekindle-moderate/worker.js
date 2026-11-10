@@ -14,6 +14,8 @@
  * then writes to Firebase using a service account (bypasses security rules).
  */
 
+import { applyModerationPolicy } from "./moderation-policy.mjs";
+
 const ALLOWED_ORIGINS = [
     "https://beta.rekindle.ink",
     "https://rekindle.ink",
@@ -1257,12 +1259,28 @@ async function moderateContent(text, apiKey, imageUrl) {
         return { flagged: false, categories: {} };
     }
 
-    const moderationResult = {
+    const rawResult = {
         flagged: result.flagged === true,
         categories: result.categories || {},
         categoryScores: result.category_scores || {},
         appliedInputTypes: result.category_applied_input_types || {}
     };
+
+    // Text uses REKINDLE's per-category thresholds so ordinary words ("die",
+    // "evil") do not reject a whole message; images keep the model's verdict.
+    // See moderation-policy.mjs and scripts/test-moderation-policy.js.
+    const policy = applyModerationPolicy(rawResult, { isImage: !!imageUrl });
+
+    const moderationResult = {
+        flagged: policy.flagged,
+        categories: policy.categories,
+        categoryScores: rawResult.categoryScores,
+        appliedInputTypes: rawResult.appliedInputTypes
+    };
+
+    if (rawResult.flagged && !policy.flagged) {
+        console.log("[MODERATION] OpenAI flagged but policy suppressed:", JSON.stringify(policy.suppressed), "scores:", JSON.stringify(rawResult.categoryScores));
+    }
 
     console.log("[MODERATION] OpenAI result — flagged:", moderationResult.flagged, "categories:", JSON.stringify(moderationResult.categories), "scores:", JSON.stringify(moderationResult.categoryScores), "appliedInputTypes:", JSON.stringify(moderationResult.appliedInputTypes));
 
@@ -1368,7 +1386,7 @@ function reportCommentError(comment) {
 /* ------------------------------------------------------------------ */
 /*  LOGGING                                                            */
 /* ------------------------------------------------------------------ */
-async function logAutomodRejection(uid, contentType, text, categories, accessToken, options) {
+async function logAutomodRejection(env, uid, contentType, text, categories, options) {
     try {
         const opts = options || {};
         const entry = {
@@ -1381,7 +1399,12 @@ async function logAutomodRejection(uid, contentType, text, categories, accessTok
             timestamp: { ".sv": "timestamp" },
             source: "openai_moderation"
         };
-        await rtdbPushWithAccessToken("automod_log", entry, accessToken);
+        // automod_log is writable only by the owner and the social service
+        // account (rtdb-social-rules.json). This used to pass the caller's ID
+        // token, which every ordinary user is denied, so the catch below
+        // silently swallowed every rejection and the log stayed empty.
+        const token = await getCachedAccessToken(env);
+        await rtdbPushWithAccessToken("automod_log", entry, token);
     } catch (e) {
         console.error("Failed to log automod rejection:", e);
     }
@@ -2236,7 +2259,7 @@ export default {
                 if (!skipOpenAIModeration && trimmed) {
                     const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
                     if (mod.flagged) {
-                        await logAutomodRejection(uid, "kindlechat", trimmed, mod.categories, accessToken);
+                        await logAutomodRejection(env, uid, "kindlechat", trimmed, mod.categories);
                         return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                     }
                 }
@@ -2394,7 +2417,7 @@ export default {
 
                 const mod = await moderateContent(text, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "dm_request", text, mod.categories, accessToken, { storeText: false });
+                    await logAutomodRejection(env, uid, "dm_request", text, mod.categories, { storeText: false });
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
@@ -2484,7 +2507,7 @@ export default {
 
                 const mod = await moderateContent(text, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "dm", text, mod.categories, accessToken, { storeText: false });
+                    await logAutomodRejection(env, uid, "dm", text, mod.categories, { storeText: false });
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
@@ -2715,7 +2738,7 @@ export default {
                 }
                 const mod = await moderateContent(textToModerate, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "topic", textToModerate, mod.categories, accessToken);
+                    await logAutomodRejection(env, uid, "topic", textToModerate, mod.categories);
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
@@ -2767,7 +2790,7 @@ export default {
                 // Moderation
                 const mod = await moderateContent(commentText, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "topic_comment", commentText, mod.categories, accessToken);
+                    await logAutomodRejection(env, uid, "topic_comment", commentText, mod.categories);
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
@@ -2833,7 +2856,7 @@ export default {
                 // Moderation
                 const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "neighbourhood_post", trimmed, mod.categories, accessToken);
+                    await logAutomodRejection(env, uid, "neighbourhood_post", trimmed, mod.categories);
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 
@@ -2873,7 +2896,7 @@ export default {
                 // Moderation
                 const mod = await moderateContent(trimmed, env.OPENAI_API_KEY);
                 if (mod.flagged) {
-                    await logAutomodRejection(uid, "neighbourhood_comment", trimmed, mod.categories, accessToken);
+                    await logAutomodRejection(env, uid, "neighbourhood_comment", trimmed, mod.categories);
                     return new Response(JSON.stringify({ error: moderationErrorMessage(mod) }), { status: 400, headers });
                 }
 

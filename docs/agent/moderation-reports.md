@@ -281,3 +281,35 @@ call from the page — the browser has no Stripe key. Historical rows were fille
 checkout); see
 [payments.md](payments.md#2026-10-27-lifetime-buyers-show-no-stripe-id-in-the-moderation-console).
 
+
+## Text-moderation thresholds (2026-11-10)
+
+OpenAI's `omni-moderation-latest` `flagged` verdict was applied wholesale, so ordinary
+conversation was rejected: "I wanted to tell my petfish died" (violence) and "evil"
+(harassment) were the board examples in `-P4yKVDOwcezy4DVXoS3`. The worker now applies
+`workers/rekindle-moderate/moderation-policy.mjs`:
+
+| Category | Required score |
+| :--- | :--- |
+| `violence` | 0.80 |
+| `harassment` | 0.75 |
+| `self-harm`, `hate`, `sexual`, `sexual/minors`, `hate/threatening`, `harassment/threatening`, `self-harm/intent`, `self-harm/instructions`, `violence/graphic` | 0.0 (the model's own flag stands) |
+| any unknown category, or a missing/non-numeric score | the model's own flag stands (fail closed) |
+
+Images are **not** relaxed: `applyModerationPolicy(result, { isImage: true })` keeps the
+model's verdict, because an image false negative is worse than a text false positive.
+Suppressed flags are logged once per call (`[MODERATION] OpenAI flagged but policy
+suppressed: ...`) and the full scores stay on the `automod_log` entry, so the thresholds can
+be tuned from real traffic instead of guesses. `scripts/test-moderation-policy.js` (in
+`npm test`) pins the table and the fail-closed behaviour. **Keep the test in sync when
+editing the policy.**
+
+The link-guard half of the same report was already fixed on 2026-11-10: punctuation,
+numbers and `@mentions` no longer read as URLs (`scripts/test-link-guard.js`).
+
+**Automod logging (fixed 2026-11-10).** `logAutomodRejection()` used to pass the
+caller's Firebase ID token to `rtdbPushWithAccessToken("automod_log", ...)`. The social
+rules allow writes only from `ukiyo@rekindle.ink` or the social service account, so every
+ordinary rejection failed inside the `catch` and `/automod_log` stayed empty. It now uses
+`getCachedAccessToken(env)` (service account), which also makes the threshold-suppression
+log line useful for tuning.
