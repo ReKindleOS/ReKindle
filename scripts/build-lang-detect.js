@@ -4,10 +4,10 @@
  * Run: npm run build:lang
  *
  * Bundles a trimmed Efficient Language Detector (ELD) database with the small
- * wrapper in scripts/lang-detect-entry.js. Only the eight Latin-script UI
- * languages are included; ru/zh/ja/ko/ar/he/el/th/hi are resolved by Unicode
- * script before ELD is consulted, so bundling their n-gram models would be
- * wasted bytes on a Kindle.
+ * wrapper in scripts/lang-detect-entry.js. It uses ELD's ExtraSmall database
+ * for every shipped language that ELD knows (36; Indonesian, Nepali and
+ * Swahili are not in ELD and are handled by lexicon rules). Medium is no more
+ * accurate for the close pairs (no/da, id/ms) and costs ~2x the bytes.
  *
  * The generated file is committed: deploys copy source files, and CI does not
  * need to install a 9 MB dev dependency just to ship a static asset. Re-run this
@@ -21,21 +21,28 @@ const esbuild = require('esbuild');
 
 const root = path.join(__dirname, '..');
 const outFile = path.join(root, 'js', 'lang-detect.js');
-const LATIN_LANGS = ['en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'vi'];
+const DETECT_LANGS = [
+    'en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'ru', 'vi', 'zh',
+    'nl', 'sv', 'da', 'no', 'tr', 'ro', 'hu', 'cs', 'sk', 'bg',
+    'uk', 'sr', 'hr', 'sl', 'el', 'he', 'ar', 'hi', 'bn', 'ta',
+    'ur', 'th', 'ja', 'ko', 'ms', 'tl'
+];
 const ELD_VERSION = JSON.parse(fs.readFileSync(path.join(root, 'node_modules', 'eld', 'package.json'), 'utf8')).version;
 
 async function loadNgrams() {
-    const url = pathToFileURL(path.join(root, 'node_modules', 'eld', 'src', 'ngrams', 'medium.js')).href;
+    const url = pathToFileURL(path.join(root, 'node_modules', 'eld', 'src', 'ngrams', 'extrasmall.js')).href;
     const mod = await import(url);
     return mod.ngramsData;
 }
 
 function makeSubset(data) {
     const oldIds = Object.keys(data.languages)
-        .filter(id => LATIN_LANGS.indexOf(data.languages[id]) !== -1)
+        .filter(id => DETECT_LANGS.indexOf(data.languages[id]) !== -1)
         .map(Number);
-    if (oldIds.length !== LATIN_LANGS.length) {
-        throw new Error('eld database is missing one of: ' + LATIN_LANGS.join(', '));
+    if (oldIds.length !== DETECT_LANGS.length) {
+        const have = oldIds.map(id => data.languages[id]);
+        const missing = DETECT_LANGS.filter(lang => have.indexOf(lang) === -1);
+        throw new Error('eld database is missing: ' + missing.join(', '));
     }
     const remap = {};
     oldIds.forEach((oldId, index) => { remap[oldId] = index; });
@@ -58,7 +65,7 @@ function makeSubset(data) {
     }
 
     return {
-        type: 'RK-' + data.type + '-latin8',
+        type: 'RK-' + data.type + '-' + DETECT_LANGS.length,
         languages,
         isSubset: true,
         ngrams

@@ -1,61 +1,270 @@
 (function () {
-    // 1. Detect Language
-    // Check querystring first for testing ?lang=es
-    var urlParams = new URLSearchParams(window.location.search);
-    var lang = urlParams.get('lang');
+    'use strict';
 
-    // Then check LocalStorage
-    if (!lang) {
-        lang = localStorage.getItem('rekindle_language') || 'auto';
+    /* ------------------------------------------------------------------
+     * LANGUAGE REGISTRY - the single source of truth for UI languages.
+     *
+     * Add a language here (and to SHIPPED once its locale files exist); every
+     * page then gets it automatically: js/i18n.js resolves the language,
+     * settings.html builds its dropdown from shippedLanguages(), and the social
+     * pages use current()/resolveAuto() instead of their old private maps.
+     *
+     * `countries` is deliberately not stored per language: a country can have
+     * several official languages (BE, CA, CH, IN...), so COUNTRY_LANGUAGE is a
+     * flat table and the first shipped match wins. Kindles can report
+     * navigator.language as en-US regardless of the account's language, which
+     * is why the country table matters for "Auto (Location)".
+     *
+     * Test guard: node scripts/test-locales.js checks every SHIPPED code has
+     * locales/<code>.json + locales/privacy-<code>.json, that no orphan locale
+     * file exists, and that ${placeholders} match en.json.
+     * ---------------------------------------------------------------- */
+    var LANGUAGES = [
+        { code: 'en', name: 'English', native: 'English', dir: 'ltr' },
+        { code: 'de', name: 'German', native: 'Deutsch', dir: 'ltr' },
+        { code: 'es', name: 'Spanish', native: 'Español', dir: 'ltr' },
+        { code: 'fr', name: 'French', native: 'Français', dir: 'ltr' },
+        { code: 'it', name: 'Italian', native: 'Italiano', dir: 'ltr' },
+        { code: 'pl', name: 'Polish', native: 'Polski', dir: 'ltr' },
+        { code: 'pt', name: 'Portuguese', native: 'Português', dir: 'ltr' },
+        { code: 'ru', name: 'Russian', native: 'Русский', dir: 'ltr' },
+        { code: 'vi', name: 'Vietnamese', native: 'Tiếng Việt', dir: 'ltr' },
+        { code: 'zh', name: 'Chinese', native: '中文', dir: 'ltr' },
+        { code: 'zh-Hant', name: 'Chinese (Traditional)', native: '繁體中文', dir: 'ltr' },
+        { code: 'nl', name: 'Dutch', native: 'Nederlands', dir: 'ltr' },
+        { code: 'sv', name: 'Swedish', native: 'Svenska', dir: 'ltr' },
+        { code: 'da', name: 'Danish', native: 'Dansk', dir: 'ltr' },
+        { code: 'no', name: 'Norwegian', native: 'Norsk', dir: 'ltr' },
+        { code: 'fi', name: 'Finnish', native: 'Suomi', dir: 'ltr' },
+        { code: 'is', name: 'Icelandic', native: 'Íslenska', dir: 'ltr' },
+        { code: 'tr', name: 'Turkish', native: 'Türkçe', dir: 'ltr' },
+        { code: 'cs', name: 'Czech', native: 'Čeština', dir: 'ltr' },
+        { code: 'sk', name: 'Slovak', native: 'Slovenčina', dir: 'ltr' },
+        { code: 'hu', name: 'Hungarian', native: 'Magyar', dir: 'ltr' },
+        { code: 'ro', name: 'Romanian', native: 'Română', dir: 'ltr' },
+        { code: 'bg', name: 'Bulgarian', native: 'Български', dir: 'ltr' },
+        { code: 'uk', name: 'Ukrainian', native: 'Українська', dir: 'ltr' },
+        { code: 'sr', name: 'Serbian', native: 'Српски', dir: 'ltr' },
+        { code: 'hr', name: 'Croatian', native: 'Hrvatski', dir: 'ltr' },
+        { code: 'sl', name: 'Slovenian', native: 'Slovenščina', dir: 'ltr' },
+        { code: 'bs', name: 'Bosnian', native: 'Bosanski', dir: 'ltr' },
+        { code: 'mk', name: 'Macedonian', native: 'Македонски', dir: 'ltr' },
+        { code: 'sq', name: 'Albanian', native: 'Shqip', dir: 'ltr' },
+        { code: 'el', name: 'Greek', native: 'Ελληνικά', dir: 'ltr' },
+        { code: 'he', name: 'Hebrew', native: 'עברית', dir: 'rtl' },
+        { code: 'ar', name: 'Arabic', native: 'العربية', dir: 'rtl' },
+        { code: 'fa', name: 'Persian', native: 'فارسی', dir: 'rtl' },
+        { code: 'ur', name: 'Urdu', native: 'اردو', dir: 'rtl' },
+        { code: 'hi', name: 'Hindi', native: 'हिन्दी', dir: 'ltr' },
+        { code: 'bn', name: 'Bengali', native: 'বাংলা', dir: 'ltr' },
+        { code: 'ta', name: 'Tamil', native: 'தமிழ்', dir: 'ltr' },
+        { code: 'te', name: 'Telugu', native: 'తెలుగు', dir: 'ltr' },
+        { code: 'th', name: 'Thai', native: 'ไทย', dir: 'ltr' },
+        { code: 'ja', name: 'Japanese', native: '日本語', dir: 'ltr' },
+        { code: 'ko', name: 'Korean', native: '한국어', dir: 'ltr' },
+        { code: 'id', name: 'Indonesian', native: 'Bahasa Indonesia', dir: 'ltr' },
+        { code: 'ms', name: 'Malay', native: 'Bahasa Melayu', dir: 'ltr' },
+        { code: 'tl', name: 'Filipino', native: 'Filipino', dir: 'ltr' },
+        { code: 'sw', name: 'Swahili', native: 'Kiswahili', dir: 'ltr' },
+        { code: 'af', name: 'Afrikaans', native: 'Afrikaans', dir: 'ltr' },
+        { code: 'ca', name: 'Catalan', native: 'Català', dir: 'ltr' },
+        { code: 'gl', name: 'Galician', native: 'Galego', dir: 'ltr' },
+        { code: 'eu', name: 'Basque', native: 'Euskara', dir: 'ltr' },
+        { code: 'lt', name: 'Lithuanian', native: 'Lietuvių', dir: 'ltr' },
+        { code: 'lv', name: 'Latvian', native: 'Latviešu', dir: 'ltr' },
+        { code: 'et', name: 'Estonian', native: 'Eesti', dir: 'ltr' },
+        { code: 'ga', name: 'Irish', native: 'Gaeilge', dir: 'ltr' },
+        { code: 'cy', name: 'Welsh', native: 'Cymraeg', dir: 'ltr' },
+        { code: 'lb', name: 'Luxembourgish', native: 'Lëtzebuergesch', dir: 'ltr' },
+        { code: 'km', name: 'Khmer', native: 'ខ្មែរ', dir: 'ltr' },
+        { code: 'my', name: 'Burmese', native: 'မြန်မာ', dir: 'ltr' },
+        { code: 'si', name: 'Sinhala', native: 'සිංහල', dir: 'ltr' },
+        { code: 'ne', name: 'Nepali', native: 'नेपाली', dir: 'ltr' },
+        { code: 'uz', name: 'Uzbek', native: 'Oʻzbekcha', dir: 'ltr' },
+        { code: 'kk', name: 'Kazakh', native: 'Қазақша', dir: 'ltr' },
+        { code: 'mn', name: 'Mongolian', native: 'Монгол', dir: 'ltr' },
+        { code: 'ka', name: 'Georgian', native: 'ქართული', dir: 'ltr' },
+        { code: 'hy', name: 'Armenian', native: 'Հայերեն', dir: 'ltr' },
+        { code: 'az', name: 'Azerbaijani', native: 'Azərbaycanca', dir: 'ltr' },
+        { code: 'am', name: 'Amharic', native: 'አማርኛ', dir: 'ltr' },
+        { code: 'yo', name: 'Yoruba', native: 'Yorùbá', dir: 'ltr' },
+        { code: 'ku', name: 'Kurdish', native: 'Kurdî', dir: 'ltr' },
+        { code: 'lo', name: 'Lao', native: 'ລາວ', dir: 'ltr' },
+        { code: 'or', name: 'Odia', native: 'ଓଡ଼ିଆ', dir: 'ltr' },
+        { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ', dir: 'ltr' },
+        { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી', dir: 'ltr' },
+        { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', dir: 'ltr' },
+        { code: 'ml', name: 'Malayalam', native: 'മലയാളം', dir: 'ltr' },
+        { code: 'mr', name: 'Marathi', native: 'मराठी', dir: 'ltr' },
+        { code: 'be', name: 'Belarusian', native: 'Беларуская', dir: 'ltr' }
+    ];
+
+    var LANGUAGE_BY_CODE = {};
+    for (var li = 0; li < LANGUAGES.length; li++) {
+        LANGUAGE_BY_CODE[LANGUAGES[li].code] = LANGUAGES[li];
     }
 
-    // Handle "auto" language (Detect by Location)
-    if (lang === 'auto') {
-        try {
-            var manualLoc = JSON.parse(localStorage.getItem('rekindle_location_manual'));
-            if (manualLoc && manualLoc.country_code) {
-                var cc = manualLoc.country_code.toUpperCase();
-                var esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
-                var ptCountries = ['PT', 'BR'];
-                var plCountries = ['PL'];
-                var deCountries = ['DE', 'AT', 'CH', 'LI'];
-                var itCountries = ['IT', 'SM', 'VA'];
-                var frCountries = ['FR', 'BE', 'CA', 'CH', 'LU', 'MC', 'SN'];
-                var ruCountries = ['RU', 'BY', 'KZ', 'KG'];
-                var zhCountries = ['CN', 'TW', 'HK', 'SG'];
-                var viCountries = ['VN'];
+    // Country -> language. Keep CH=de, CA=fr and SG=zh: those are the existing
+    // choices, and changing them would silently move users to another language.
+    // Ambiguous countries (IN, PK, PH, MY, KE, TZ, ZA) are deliberately absent,
+    // as are English-majority countries: the en fallback already handles them,
+    // and mapping US -> en would override a Spanish/Chinese browser.
+    var COUNTRY_LANGUAGE = {
+        ES: 'es', MX: 'es', AR: 'es', CL: 'es', CO: 'es', PE: 'es', VE: 'es', CU: 'es',
+        DO: 'es', PR: 'es', GT: 'es', HN: 'es', SV: 'es', NI: 'es', CR: 'es', PA: 'es',
+        EC: 'es', BO: 'es', PY: 'es', UY: 'es',
+        PT: 'pt', BR: 'pt',
+        PL: 'pl',
+        DE: 'de', AT: 'de', CH: 'de', LI: 'de',
+        IT: 'it', SM: 'it', VA: 'it',
+        CN: 'zh', TW: 'zh-Hant', HK: 'zh-Hant', SG: 'zh',
+        VN: 'vi',
+        FR: 'fr', BE: 'fr', CA: 'fr', LU: 'fr', MC: 'fr', SN: 'fr',
+        RU: 'ru', BY: 'ru', KZ: 'ru', KG: 'ru',
+        NL: 'nl', SE: 'sv', DK: 'da', NO: 'no', FI: 'fi', IS: 'is', TR: 'tr',
+        CZ: 'cs', SK: 'sk', HU: 'hu', RO: 'ro', BG: 'bg', UA: 'uk', RS: 'sr',
+        HR: 'hr', SI: 'sl', BA: 'bs', MK: 'mk', AL: 'sq', GR: 'el',
+        IL: 'he', SA: 'ar', AE: 'ar', EG: 'ar', MA: 'ar', DZ: 'ar', TN: 'ar',
+        JO: 'ar', LB: 'ar', KW: 'ar', QA: 'ar', BH: 'ar', OM: 'ar', YE: 'ar',
+        SY: 'ar', IQ: 'ar', LY: 'ar',
+        IR: 'fa', BD: 'bn', LK: 'si', NP: 'ne', TH: 'th',
+        JP: 'ja', KR: 'ko', ID: 'id', AD: 'ca', LT: 'lt', LV: 'lv', EE: 'et',
+        GE: 'ka', AM: 'hy', AZ: 'az', MN: 'mn', UZ: 'uz', KH: 'km', MM: 'my',
+        ET: 'am'
+    };
 
-                if (esCountries.indexOf(cc) !== -1) lang = 'es';
-                else if (ptCountries.indexOf(cc) !== -1) lang = 'pt';
-                else if (plCountries.indexOf(cc) !== -1) lang = 'pl';
-                else if (deCountries.indexOf(cc) !== -1) lang = 'de';
-                else if (itCountries.indexOf(cc) !== -1) lang = 'it';
-                else if (zhCountries.indexOf(cc) !== -1) lang = 'zh';
-                else if (viCountries.indexOf(cc) !== -1) lang = 'vi';
-                else if (frCountries.indexOf(cc) !== -1) lang = 'fr';
-                else if (ruCountries.indexOf(cc) !== -1) lang = 'ru';
-                else lang = null; // Fallback to browser detection
-            } else {
-                lang = null; // Fallback
-            }
+    // Languages with a shipped locale file. Order is irrelevant; settings sorts
+    // by native name. Add a code here only after BOTH locale files exist.
+    var SHIPPED = [
+        'en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'ru', 'vi', 'zh', 'zh-Hant',
+        'nl', 'sv', 'da', 'no', 'tr', 'ro', 'hu', 'cs', 'sk', 'bg', 'uk',
+        'sr', 'hr', 'sl', 'el', 'he', 'ar', 'hi', 'bn', 'ta', 'ne', 'ur',
+        'th', 'ja', 'ko', 'id', 'ms', 'tl', 'sw'
+    ];
+
+    // ISO 639-1 base code. Handles pt-BR / zh-Hans / en_US plus the legacy
+    // codes browsers still emit and the 3-letter codes a few keyboards use.
+    function normalizeLang(code) {
+        if (!code || typeof code !== 'string') return '';
+        var lower = code.toLowerCase().replace(/_/g, '-');
+        // Traditional Chinese is a real shipped locale (zh-Hant.json), not a
+        // region variant of zh.json. Check it before the base-code split.
+        if (lower === 'zh-hant' || lower === 'zh-tw' || lower === 'zh-hk' || lower === 'zh-mo') {
+            return 'zh-Hant';
+        }
+        var base = lower.split('-')[0];
+        if (base === 'iw') return 'he';
+        if (base === 'in') return 'id';
+        if (base === 'nb' || base === 'nn') return 'no';
+        if (base === 'fil') return 'tl';
+        return base;
+    }
+
+    function getLanguage(code) {
+        return LANGUAGE_BY_CODE[normalizeLang(code)] || null;
+    }
+
+    function isShipped(code) {
+        return SHIPPED.indexOf(normalizeLang(code)) !== -1;
+    }
+
+    function shippedLanguages() {
+        var out = [];
+        for (var i = 0; i < SHIPPED.length; i++) {
+            if (LANGUAGE_BY_CODE[SHIPPED[i]]) out.push(LANGUAGE_BY_CODE[SHIPPED[i]]);
+        }
+        return out;
+    }
+
+    function countryLanguage(countryCode) {
+        if (!countryCode) return '';
+        return COUNTRY_LANGUAGE[String(countryCode).toUpperCase()] || '';
+    }
+
+    function readStoredLocation() {
+        try {
+            var raw = localStorage.getItem('rekindle_location_manual');
+            return raw ? JSON.parse(raw) : null;
         } catch (e) {
-            lang = null;
+            return null;
         }
     }
 
-    // Then check Browser
-    if (!lang) {
-        lang = navigator.language.split('-')[0];
+    // Country first (Kindles often report en-US), then the browser, then English.
+    // A match is only used when that language actually has locale files.
+    function resolveAuto(countryCode, browserLang) {
+        var byCountry = countryLanguage(countryCode);
+        if (byCountry && isShipped(byCountry)) return byCountry;
+        var byBrowser = normalizeLang(browserLang);
+        if (byBrowser && isShipped(byBrowser)) return byBrowser;
+        return 'en';
     }
 
-    // Default to 'en'
-    if (!lang) lang = 'en';
+    // The language this device should use: an explicit saved choice when it is
+    // shipped, otherwise Auto (saved location -> browser -> English).
+    function currentLanguage() {
+        var stored = null;
+        try { stored = localStorage.getItem('rekindle_language'); } catch (e) { /* private mode */ }
+        if (stored && stored !== 'auto') {
+            var chosen = normalizeLang(stored);
+            return isShipped(chosen) ? chosen : 'en';
+        }
+        var loc = readStoredLocation();
+        return resolveAuto(loc && loc.country_code, navigator.language);
+    }
+
+    var registry = {
+        list: LANGUAGES,
+        languages: LANGUAGE_BY_CODE,
+        countries: COUNTRY_LANGUAGE,
+        shipped: SHIPPED.slice(),
+        normalize: normalizeLang,
+        get: getLanguage,
+        isShipped: isShipped,
+        shippedLanguages: shippedLanguages,
+        countryLanguage: countryLanguage,
+        resolveAuto: resolveAuto,
+        current: currentLanguage,
+        direction: function (code) {
+            var meta = getLanguage(code);
+            return (meta && meta.dir) || 'ltr';
+        }
+    };
+
+    if (typeof window !== 'undefined') window.rekindleLanguages = registry;
+    // Node (scripts/test-locales.js) gets the registry without the DOM loader.
+    if (typeof module === 'object' && module && module.exports) {
+        module.exports = registry;
+        return;
+    }
+    if (typeof window === 'undefined') return;
+
+    /* ------------------------------------------------------------------
+     * BROWSER LOADER
+     * ---------------------------------------------------------------- */
+
+    // 1. Detect Language. ?lang= is a QA override and skips the shipped check
+    //    (a locale file can be previewed before it is added to SHIPPED).
+    var urlParams = new URLSearchParams(window.location.search);
+    var requestedLang = urlParams.get('lang');
+    var lang;
+    if (requestedLang && requestedLang !== 'auto') {
+        lang = normalizeLang(requestedLang) || 'en';
+    } else {
+        lang = currentLanguage();
+    }
+
+    // Set lang/dir synchronously so consumers that read <html lang> before the
+    // locale fetch resolves (social language gating, screen readers) see the
+    // resolved language rather than the markup's initial "en".
+    document.documentElement.lang = lang;
+    document.documentElement.dir = registry.direction(lang);
 
     // 2. Detect Extra Localization File
     var mainScript = document.currentScript || document.querySelector('script[src*="i18n.js"]');
     var extraPrefix = mainScript ? mainScript.getAttribute('data-i18n-file') : null;
 
-    // 3. Expose Globals (Must happen BEFORE early exit)
+    // 3. Expose Globals (Must happen BEFORE the async fetch)
     window.rekindleTranslations = window.rekindleTranslations || {};
     window.t = function (key, defaultText) {
         if (window.rekindleTranslations && window.rekindleTranslations[key]) {
@@ -95,18 +304,13 @@
     }
 
     // 4. Lazy Load Translations
+    //
+    // locales/en.json is never fetched: every data-i18n element already carries
+    // English copy, and window.t() falls back to the inline default. The extra
+    // file (privacy) is still fetched for English, but the main file is not.
     var files = [];
-    files.push('locales/' + lang + '.json');
+    if (lang !== 'en') files.push('locales/' + lang + '.json');
     if (extraPrefix) files.push('locales/' + extraPrefix + '-' + lang + '.json');
-
-    // English needs no locale file: every data-i18n element already carries its
-    // English copy in the markup, and window.t() falls back to the inline
-    // default. locales/en.json is 173 KB / 3,520 keys and was fetched and
-    // JSON.parsed on every navigation just to resolve a handful of
-    // attribute-only strings. Pages with data-i18n-file still fetch theirs.
-    if (lang === 'en' && !extraPrefix) {
-        files.length = 0;
-    }
 
     Promise.all(files.map(function (url) {
         return fetch(url).then(function (res) { return res.ok ? res.json() : {}; });
@@ -137,8 +341,8 @@
         // Start Observer for dynamic content
         initObserver(translations);
 
-        // Set HTML Lang
-        document.documentElement.lang = lang;
+        // lang/dir were set synchronously before the fetch; nothing to do here.
+        // (Kept as a marker for the RTL note: registry.direction() drives dir.)
         if (document.body) {
             document.body.classList.add('lang-' + lang);
         } else {

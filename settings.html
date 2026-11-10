@@ -891,19 +891,10 @@
                     <strong><span data-i18n="settings.language">Language</span> <span
                             class="beta-badge">BETA</span></strong>
                     <div class="setting-desc" data-i18n="settings.desc.language">System language.</div>
+                    <div class="setting-desc" data-i18n="settings.language_note" style="font-size:0.75rem;">New languages are machine-translated in beta. Report mistakes in Suggestions.</div>
                 </div>
                 <select id="language-select" onchange="saveLanguage()">
                     <option value="auto">Auto (Location)</option>
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="pt">Português</option>
-                    <option value="pl">Polski</option>
-                    <option value="de">Deutsch</option>
-                    <option value="it">Italiano</option>
-                    <option value="fr">Français</option>
-                    <option value="ru">Русский</option>
-                    <option value="zh">中文</option>
-                    <option value="vi">Tiếng Việt</option>
                 </select>
             </div>
 
@@ -1045,7 +1036,7 @@
 
     <script src="time.js?v=5"></script>
     <script src="theme.js?v=35"></script> <!-- Inject Theme Script -->
-    <script src="js/i18n.js?v=4"></script>
+    <script src="js/i18n.js?v=5"></script>
     <script src="js/custom-select.js?v=2"></script>
 
     <!-- Hidden Canvas for generating Pattern (32x32px) -->
@@ -2437,53 +2428,9 @@
             // Load Location
             updateLocationDisplay();
 
-            // Load Language
-            const lang = localStorage.getItem('rekindle_language') || 'auto';
-            const langSelect = document.getElementById('language-select');
-            if (langSelect) {
-                langSelect.value = lang;
-
-                // Update Auto Label with Resolved Language
-                const autoOption = langSelect.querySelector('option[value="auto"]');
-                if (autoOption) {
-                    let resolvedLang = 'en'; // Default
-
-                    // 1. Try to get the actual applied language from HTML tag if available (fastest if i18n already ran)
-                    if (document.documentElement.lang) {
-                        resolvedLang = document.documentElement.lang;
-                    }
-
-                    // 2. If 'auto', we can re-calculate to be sure (in case i18n hasn't finished)
-                    if (lang === 'auto') {
-                        try {
-                            const manualLoc = readStoredLocation();
-                            if (manualLoc && manualLoc.country_code) {
-                                const cc = manualLoc.country_code.toUpperCase();
-                                const esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
-                                const ptCountries = ['PT', 'BR'];
-                                const plCountries = ['PL'];
-                                const deCountries = ['DE', 'AT', 'CH', 'LI'];
-
-                                if (esCountries.indexOf(cc) !== -1) resolvedLang = 'es';
-                                else if (ptCountries.indexOf(cc) !== -1) resolvedLang = 'pt';
-                                else if (plCountries.indexOf(cc) !== -1) resolvedLang = 'pl';
-                                else if (deCountries.indexOf(cc) !== -1) resolvedLang = 'de';
-                                else resolvedLang = navigator.language.split('-')[0];
-                            } else {
-                                resolvedLang = navigator.language.split('-')[0];
-                            }
-                        } catch (e) {
-                            resolvedLang = navigator.language.split('-')[0];
-                        }
-                    } else {
-                        resolvedLang = lang;
-                    }
-
-                    const names = { en: 'English', es: 'Español', pt: 'Português', pl: 'Polski', de: 'Deutsch' };
-                    const name = names[resolvedLang] || resolvedLang.toUpperCase();
-                    autoOption.innerText = `Auto (${name})`;
-                }
-            }
+            // Load Language. renderLanguageOptions() rebuilds the list from the
+            // registry and restores the saved value (normalising legacy codes).
+            renderLanguageOptions();
 
             // Load Unit System
             const unitSystem = localStorage.getItem('rekindle_unit_system') || 'auto';
@@ -2505,60 +2452,51 @@
             });
         };
 
-        function updateAutoLabels() {
-            // Update Auto Label with Resolved Language
-            const langSelect = document.getElementById('language-select');
-            const lang = localStorage.getItem('rekindle_language') || 'auto';
+        // Build the language dropdown from the registry. The static markup keeps
+        // only the Auto option, so adding a locale does not require editing
+        // settings.html in two places (the old duplicated map drifted).
+        function renderLanguageOptions() {
+            const select = document.getElementById('language-select');
+            const reg = window.rekindleLanguages;
+            if (!select || !reg || typeof reg.shippedLanguages !== 'function') return;
 
+            const stored = localStorage.getItem('rekindle_language') || 'auto';
+            const normalize = typeof reg.normalize === 'function' ? reg.normalize : function (value) { return value; };
+            const current = stored === 'auto' ? 'auto' : (normalize(stored) || stored);
+            const langs = reg.shippedLanguages().slice().sort(function (a, b) {
+                return a.native.localeCompare(b.native);
+            });
+
+            while (select.firstChild) select.removeChild(select.firstChild);
+
+            const auto = document.createElement('option');
+            auto.value = 'auto';
+            auto.textContent = 'Auto (Location)';
+            select.appendChild(auto);
+
+            langs.forEach(function (lang) {
+                const option = document.createElement('option');
+                option.value = lang.code;
+                option.textContent = lang.native;
+                select.appendChild(option);
+            });
+
+            select.value = current;
+            // A saved code that is no longer shipped falls back to Auto.
+            if (select.value !== current) select.value = 'auto';
+        }
+
+        function updateAutoLabels() {
+            // "Auto (Deutsch)" - the resolved language, not just the code.
+            const langSelect = document.getElementById('language-select');
             if (langSelect) {
                 const autoOption = langSelect.querySelector('option[value="auto"]');
-                if (autoOption) {
-                    let resolvedLang = 'en'; // Default
-
-                    // 1. Try to get the actual applied language from HTML tag if available (fastest if i18n already ran)
-                    if (document.documentElement.lang) {
-                        resolvedLang = document.documentElement.lang;
-                    }
-
-                    // 2. If 'auto', we can re-calculate to be sure (in case i18n hasn't finished)
-                    if (lang === 'auto') {
-                        try {
-                            const manualLoc = readStoredLocation();
-                            if (manualLoc && manualLoc.country_code) {
-                                const cc = manualLoc.country_code.toUpperCase();
-                                const esCountries = ['ES', 'MX', 'AR', 'CL', 'CO', 'PE', 'VE', 'CU', 'DO', 'PR', 'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'EC', 'BO', 'PY', 'UY'];
-                                const ptCountries = ['PT', 'BR'];
-                                const plCountries = ['PL'];
-                                const deCountries = ['DE', 'AT', 'CH', 'LI'];
-                                const itCountries = ['IT', 'SM', 'VA'];
-                                const frCountries = ['FR', 'BE', 'CA', 'CH', 'LU', 'MC', 'SN'];
-                                const ruCountries = ['RU', 'BY', 'KZ', 'KG'];
-                                const zhCountries = ['CN', 'TW', 'HK', 'SG'];
-                                const viCountries = ['VN'];
-
-                                if (esCountries.indexOf(cc) !== -1) resolvedLang = 'es';
-                                else if (ptCountries.indexOf(cc) !== -1) resolvedLang = 'pt';
-                                else if (plCountries.indexOf(cc) !== -1) resolvedLang = 'pl';
-                                else if (deCountries.indexOf(cc) !== -1) resolvedLang = 'de';
-                                else if (itCountries.indexOf(cc) !== -1) resolvedLang = 'it';
-                                else if (zhCountries.indexOf(cc) !== -1) resolvedLang = 'zh';
-                                else if (viCountries.indexOf(cc) !== -1) resolvedLang = 'vi';
-                                else if (frCountries.indexOf(cc) !== -1) resolvedLang = 'fr';
-                                else if (ruCountries.indexOf(cc) !== -1) resolvedLang = 'ru';
-                                else resolvedLang = navigator.language.split('-')[0];
-                            } else {
-                                resolvedLang = navigator.language.split('-')[0];
-                            }
-                        } catch (e) {
-                            resolvedLang = navigator.language.split('-')[0];
-                        }
-                    } else {
-                        resolvedLang = lang;
-                    }
-
-                    const names = { en: 'English', es: 'Español', pt: 'Português', pl: 'Polski', de: 'Deutsch', it: 'Italiano', fr: 'Français', ru: 'Русский', zh: '中文', vi: 'Tiếng Việt' };
-                    const name = names[resolvedLang] || resolvedLang.toUpperCase();
-                    autoOption.innerText = `Auto (${name})`;
+                const reg = window.rekindleLanguages;
+                if (autoOption && reg && typeof reg.current === 'function') {
+                    const resolved = reg.current();
+                    const meta = typeof reg.get === 'function' ? reg.get(resolved) : null;
+                    const name = (meta && meta.native) || String(resolved).toUpperCase();
+                    autoOption.innerText = 'Auto (' + name + ')';
                 }
             }
 

@@ -12,11 +12,12 @@
  *   Lingua on the published sentence benchmark and is pure JavaScript, so it
  *   runs in the Kindle browser without WASM or a network call.
  *
- * Why only eight languages:
- *   The app's UI ships en, de, es, fr, it, pl, pt, ru, vi, zh. Russian, Chinese,
- *   Japanese and Korean are settled by Unicode script before ELD runs, so the
- *   bundled model only needs the eight Latin-script languages. That keeps the
- *   bundle at ~420 KB raw (~100 KB gzip) instead of ELD's 940 KB full XS set.
+ * Why ExtraSmall and 36 languages:
+ *   The UI ships 40 languages. ELD's ExtraSmall database covers 36 of them
+ *   (Indonesian, Nepali and Swahili are absent and use small lexicon rules).
+ *   ExtraSmall is no less accurate than Medium on the close pairs that matter
+ *   (no/da, id/ms) and keeps the lazy bundle near 200 KB gzip instead of the
+ *   ~450 KB a full medium set would need.
  *
  * Detection is intentionally not loaded on page load: see
  * js/post-language.js. Nothing here touches the network.
@@ -64,13 +65,59 @@ var SCRIPT_RANGES = [
     { lang: 'he', re: /[\u0590-\u05ff]/g },
     { lang: 'el', re: /[\u0370-\u03ff]/g },
     { lang: 'th', re: /[\u0e00-\u0e7f]/g },
-    { lang: 'hi', re: /[\u0900-\u097f]/g }
+    { lang: 'hi', re: /[\u0900-\u097f]/g },
+    { lang: 'bn', re: /[\u0980-\u09ff]/g },
+    { lang: 'ta', re: /[\u0b80-\u0bff]/g }
 ];
 var LATIN_RE = /[A-Za-z\u00c0-\u024f]/g;
 
 function countMatches(text, re) {
     var m = text.match(re);
     return m ? m.length : 0;
+}
+
+
+// Scripts shared by several shipped languages need word evidence. These lists
+// are deliberately small and distinctive; the first language with the most
+// hits wins, and an unknown Cyrillic/Arabic/Devanagari message keeps the old
+// fallback (ru / ar / hi).
+var SCRIPT_WORD_SETS = {
+    uk: 'привіт як справи сьогодні що не знаю робити дякую будь ласка добрий ранок вечір на добраніч до зустрічі кохаю тебе мене ти він вона ми ви вони це та але дуже тільки зараз тут там день ніч рік раз люди час вода кава пиво гроші сім я робота школа дім',
+    bg: 'здравей как си днес какво не знам правя благодаря моля добро утро вечер лека нощ до скоро обичам те мене ти той тя ние вие това и но много само сега тук там ден нощ година път хора време вода кафе бира пари семейство аз работа училище дом',
+    sr: 'здраво како си данас шта не знам радим хвала молим добро јутро вече лаку ноћ видимо се волим те мене ти он она ми ви они то и али веома само сада овде тамо дан ноћ година пут људи време вода кафа пиво новац породица ја посао школа кућа',
+    ur: 'ہیلو آج کیسے ہیں مجھے نہیں معلوم کیا کروں شکریہ مہربانی صبح بخیر شب میں تم وہ ہم آپ یہ اور لیکن بہت صرف اب یہاں وہاں دن رات سال بار لوگ وقت پانی کافی بیئر پیسے خاندان کام سکول گھر',
+    ne: 'नमस्ते आज कस्तो छ छन् मलाई थाहा के गर्ने गर्न गर्छ पर्छ लाई सँग भन्ने गरे भयो हुन्छ र पनि तर धेरै अलि अहिले भोलि हिजो खाना पानी घर स्कुल काम समय मान्छे साथी परिवार धन्यवाद म तिमी उनी हामी तपाईं'
+};
+var SCRIPT_WORD_SPLIT = /[\s.,!?;:()"'«»…،؟।]+/;
+var SCRIPT_WORD_LOOKUP = {};
+(function buildScriptWords() {
+    for (var lang in SCRIPT_WORD_SETS) {
+        if (!Object.prototype.hasOwnProperty.call(SCRIPT_WORD_SETS, lang)) continue;
+        var list = SCRIPT_WORD_SETS[lang].split(/\s+/);
+        var set = {};
+        for (var i = 0; i < list.length; i++) if (list[i]) set[list[i]] = true;
+        SCRIPT_WORD_LOOKUP[lang] = set;
+    }
+})();
+
+function scriptWordLanguage(text, langs, minCount) {
+    var tokens = String(text).toLowerCase().split(SCRIPT_WORD_SPLIT);
+    var best = '';
+    var bestCount = 0;
+    for (var l = 0; l < langs.length; l++) {
+        var lang = langs[l];
+        var set = SCRIPT_WORD_LOOKUP[lang];
+        if (!set) continue;
+        var count = 0;
+        for (var i = 0; i < tokens.length; i++) {
+            if (tokens[i] && set[tokens[i]]) count++;
+        }
+        if (count >= (minCount || 1) && count > bestCount) {
+            bestCount = count;
+            best = lang;
+        }
+    }
+    return best;
 }
 
 function scriptLanguage(text) {
@@ -94,6 +141,18 @@ function scriptLanguage(text) {
     // language switch. The non-Latin script has to be at least as common as the
     // Latin one.
     if (latin > 0 && bestCount < latin) return '';
+
+    // Shared scripts: use distinctive words/characters before the generic
+    // fallback. Urdu uses Arabic script, but ٹ/ڈ/ڑ/ں/ے/ہ are not Arabic.
+    if (best === 'ru') {
+        var cyr = scriptWordLanguage(text, ['uk', 'bg', 'sr'], 2);
+        if (cyr) return cyr;
+    }
+    if (best === 'ar') {
+        if (/[\u0679\u0688\u0691\u06ba\u06d2\u06c1\u06d3]/.test(text)) return 'ur';
+        if (scriptWordLanguage(text, ['ur'])) return 'ur';
+    }
+    if (best === 'hi' && scriptWordLanguage(text, ['ne'], 2)) return 'ne';
     return best;
 }
 
@@ -111,7 +170,14 @@ var WORD_LISTS = {
     it: 'il lo la i gli le un uno una di del dello della dei degli delle che chi cosa e ed e sono era essere ho hai ha abbiamo avete hanno io tu lui lei noi voi loro mi ti ci vi si mio mia miei tuo tua suo sua nostro vostra per con senza su sotto tra fra da in a al alla ai alle non piu molto poco ma come quando dove perche se si no bene male tutto tutti niente qualcosa sempre mai ancora gia qui qua la li adesso ora oggi domani ieri dopo prima poi anche solo pero quindi allora ciao grazie buongiorno buonasera buonanotte salve scusa scusi prego amico amica ragazzo ragazza voglio vuoi vuole posso puoi puo devo deve so sai sa fare fatto dire detto andare vado vai va venire vengo vieni viene vedere vedo vedi vede mangiare bello bella buono buona migliore peggiore nuovo vecchio grande piccolo felice triste stanco affamato divertente strano fantastico settimana mese anno sera mattina pomeriggio comprare negozio scuola soldi acqua caffe birra famiglia genitori madre padre figlio figlia fratello sorella casa lavoro tempo cibo delizioso deliziosa inglese italiano libro film cane gatto carino carina dovremmo vederci presto appena finito leggerlo sembra buona idea scusa perso messaggio ora inizia credere',
     pt: 'o a os as um uma uns umas de do da dos das que quem e e sao era ser estar estou estas esta estamos estao tenho tens tem temos eu tu ele ela nos vos eles elas voce voces me te se lhe lhes meu minha meus minhas teu tua seu sua nosso nossa para por com sem sobre entre em no na nos nas ao aos nao mais menos muito pouco mas como quando onde porque se sim bem mal tudo todo toda nada algo alguem ninguem sempre nunca ainda ja aqui ai ali agora hoje amanha ontem depois antes entao tambem so apenas talvez realmente ola oi obrigado obrigada bom boa dia noite tarde tchau ate logo amigo amiga cara quero queres quer posso podes pode devo deve sei sabe saber fazer feito dizer dito ir vou vai vamos vir venho vem ver vejo ve gosto gosta gostei comer beber dormir falar amar odiar adorar aprender ingles portugues livro filme cachorro gato fofo bonito bonita lindo linda novo velho grande pequeno feliz triste cansado fome engracado estranho legal otimo semana mes ano manha comprar loja escola dinheiro agua cafe cerveja familia pais mae pai filho filha irmao irma casa trabalho tempo comida delicioso deliciosa comeca comecei comecou comecar horas podes podia deviamos encontrar acabei consigo acreditar enviar link estava estavas comido deliciosa desculpa perdi tua mensagem terminei ler',
     pl: 'i a ale lub albo czy ze zeby bo poniewaz wiec jednak tylko juz jeszcze tez takze bardzo malo duzo wiecej mniej wszystko nic cos ktos nikt zawsze nigdy teraz potem wczesniej pozniej dzis dzisiaj wczoraj jutro rano wieczor noc dzien dobry dobra dobre czesc hej witaj dzieki dziekuje przepraszam prosze tak nie moze chyba oczywiscie wlasnie tutaj tam gdzie kiedy jak dlaczego kto co ktory ktora ktore ja ty on ona ono my wy oni one mnie ciebie jego jej nas was ich moj moja moje twoj twoja twoje nasz nasza wasz wasza jest sa byl byla bylo byli byc jestem jestes jestesmy jestescie mam masz ma mamy macie maja miec chce chcesz chcemy chcecie chca chciec moge mozesz mozemy mozecie moga musze musisz musi musimy musicie musza wiem wiesz wie wiemy wiecie wiedza wiedziec robic robie robisz robi isc ide idziesz idzie przyjsc przyjde przyjdziesz przyjdzie widziec widze widzisz widzi jesc jem jesz je pic pije pijesz pijemy lubic lubie lubisz lubi zly zla zle piekny piekna piekne ladny ladna ladne smaczny smaczna smaczne pyszny pyszna pyszne sklep dom praca szkola czas ludzie osoba rzecz sprawa swiat zycie reka glowa oko rok raz sposob miejsce koniec poczatek pomoc problem pytanie odpowiedz rozmowa wiadomosc wiadomosci zdjecie film ksiazka muzyka jedzenie woda kawa piwo pieniadze rodzina matka ojciec syn corka brat siostra przyjaciel przyjaciolka szczesliwy smutny zmeczony glodny smieszny dziwny swietny super lepszy najlepszy gorszy najgorszy nowy stary duzy maly dobranoc zobaczenia sie powinnismy wkrotce spotkac ktorej zaczyna przegapilem wiadomosc skonczylem czytac swietny pomysl zagrac gre mozemy wyslac link',
-    vi: 'va la cua co khong duoc trong mot nhung cac cho voi de nay do kia nao gi ai sao tai vi neu thi ma hoac cung rat qua lam hon nhat chi da dang se vua moi sap tung chua chang dau day ay toi minh ban anh chi em ong ba chung ta ho no nguoi cai con chiec viec dieu chuyen luc khi nay gio hom mai sang trua chieu dem ngay thang nam tuan nha truong cong hoc choi an uong ngu di den ve ra vao len xuong noi bao biet hieu thich yeu ghet muon can phai nen the xong roi nhe nha vang da cam on xin chao tam biet hen gap lai khoe vui buon tot xau dep hay gioi ngon dat re nhanh cham nhieu it to nho lon be cu dung sai that thuc su hoi kha cuc vo cung tieng viet tieng anh sach phim cho meo dep trai xinh gai cuoi tuan thang nam qua nay mai buoi gia dinh bo me cha con trai gai nha cua hang tien nuoc ca phe bia thuc an'
+    ro: 'si eu tu el ea noi voi ei ele sa sunt este era fost fi am ai are avem aveti au as avea vreau vrei vrea pot poti poate trebuie stiu stii stim faci face facem facut spune zice merge vin vezi auzi citi scrie mananca bea dormi iubi ura place vrea stii invata romana engleza carte film caine pisica frumos frumoasa bun buna bun mai bun cel mai bun rau nou vechi mare mic fericit trist obosit flamand amuzant ciudat grozav super saptamana luna an dimineata seara noapte zi cumpara magazin scoala bani apa cafea bere familie parinti mama tata fiu fiica frate sora prieten prietena casa munca timp mancare delicios delicioasa salut buna bine multumesc mersi te rog scuze da nu astazi maine ieri acum aici acolo unde cand de ce cine ce care cum pentru cu fara despre intre la in pe sub langa dupa inainte apoi deja inca mereu niciodata toti toate nimic ceva cineva nimeni foarte putin mult mai putin destul poate sigur corect gresit',
+    vi: 'va la cua co khong duoc trong mot nhung cac cho voi de nay do kia nao gi ai sao tai vi neu thi ma hoac cung rat qua lam hon nhat chi da dang se vua moi sap tung chua chang dau day ay toi minh ban anh chi em ong ba chung ta ho no nguoi cai con chiec viec dieu chuyen luc khi nay gio hom mai sang trua chieu dem ngay thang nam tuan nha truong cong hoc choi an uong ngu di den ve ra vao len xuong noi bao biet hieu thich yeu ghet muon can phai nen the xong roi nhe nha vang da cam on xin chao tam biet hen gap lai khoe vui buon tot xau dep hay gioi ngon dat re nhanh cham nhieu it to nho lon be cu dung sai that thuc su hoi kha cuc vo cung tieng viet tieng anh sach phim cho meo dep trai xinh gai cuoi tuan thang nam qua nay mai buoi gia dinh bo me cha con trai gai nha cua hang tien nuoc ca phe bia thuc an',
+    no: 'og i jeg det at en et den til er som pa for med han av ikke der sa var meg seg men ett har om vi min mitt ha hadde hun na over da ved fra du ut sin dem oss opp man kan hans hvor eller hva hvordan skal selv sjol her alle vil bli ble blitt kunne inn nar vere kom noen noe ville dere som deres kun ja etter ned skulle denne for deg si sine sitt mot a meget hvorfor ingen samme hvilken hvordan ingen mellom vare slik beste kanskje takk hei veldig gjerne sammen mange fordi blir vaere noe ingen aldri alltid ogsa bare na her der dag kveld natt deg meg oss dere deres min din sin',
+    da: 'og i jeg det at en et den til er som pa for med han af ikke der sa var mig sig men et har om vi min mit have havde hun nu over da ved fra du ud sin dem os op man kan hans hvor eller hvad skal selv hjalp her alle vil blive blev blevet kunne ind nar vaere kom nogen noget ville jer deres kun ja efter ned skulle denne for dig sige sine sit mod at meget hvorfor ingen samme hvilken hvordan mellem vaere sa kanskje tak hej meget gerne sammen mange fordi bliver vaere noget ingen aldrig altid ogsa bare nu her der dag aften nat dig mig os jer',
+    id: 'dan yang di ke dari untuk dengan pada ini itu saya kamu kita mereka dia tidak bukan sudah belum bisa harus mau ingin akan sedang telah juga hanya sangat lebih paling karena tetapi tapi namun kalau jika ketika saat hari kabar dilakukan berbuat malam pagi siang besok kemarin sekarang nanti tadi sini sana apa siapa kapan dimana mengapa bagaimana berapa ada tahu faham mengerti suka cinta benci makan minum tidur pergi datang lihat dengar baca tulis bicara bilang kata rumah kerja sekolah uang air kopi bir makanan teman keluarga ibu ayah anak kakak adik terima kasih maaf tolong halo hai selamat pagi malam apa kabar bagaimana kabar nggak banget udah aja deh kok sih ya',
+    ms: 'dan yang di ke dari untuk dengan pada ini itu saya awak kita mereka dia tidak bukan sudah belum boleh mahu hendak akan sedang telah juga hanya sangat lebih paling kerana tetapi tapi namun kalau jika apabila bila hari khabar dibuat malam pagi tengah hari esok semalam sekarang nanti tadi sini sana apa siapa bila mana mengapa bagaimana berapa ada tahu faham mengerti suka cinta benci makan minum tidur pergi datang lihat dengar baca tulis cakap kata rumah kerja sekolah duit air kopi bir makanan kawan keluarga emak ayah anak abang adik terima kasih maaf tolong halo hai selamat pagi malam apa khabar tak aje lah',
+    sw: 'na ya kwa katika ni si lakini pia tu sasa leo kesho jana asante karibu habari yako mimi wewe yeye sisi ninyi wao mzuri mbaya ndiyo hapana tafadhali samahani rafiki familia chakula maji kahawa pesa kazi shule nyumbani kwangu kwako kwake kwetu kwenu kwao hii hiyo hilo wale yule huyu nini kwa nini vipi lini wapi nani jinsi gani sana kidogo zaidi bado tena hata bila juu chini mbele nyuma ndani nje hapa pale huko saa dakika muda mwaka mwezi wiki siku usiku asubuhi jioni mchana'
+
 };
 
 // Whole-message greetings/thanks. These are the cases ELD is weakest on
@@ -261,7 +327,7 @@ function lexiconScore(text) {
 
 function detect(text) {
     var body = cleanText(text);
-    if (!body || !/[A-Za-z\u00c0-\u024f\u0370-\u03ff\u0400-\u04ff\u0590-\u05ff\u0600-\u06ff\u0900-\u097f\u0e00-\u0e7f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(body)) {
+    if (!body || !/[A-Za-z\u00c0-\u024f\u0370-\u03ff\u0400-\u04ff\u0590-\u05ff\u0600-\u06ff\u0900-\u097f\u0980-\u09ff\u0b80-\u0bff\u0e00-\u0e7f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(body)) {
         return { lang: '', reliable: false, source: 'none' };
     }
 
@@ -292,6 +358,14 @@ function detect(text) {
 
     var lex = lexiconScore(body);
     var shortText = body.length <= 48;
+
+    // Close pairs that ExtraSmall confuses: Norwegian/Danish and
+    // Indonesian/Malay. Swahili is not in ELD at all. A strong lexicon match
+    // overrides ELD even for a long message.
+    var LEXICON_OVERRIDE = { no: 1, da: 1, id: 1, ms: 1, sw: 1, ro: 1 };
+    if (lex.lang && LEXICON_OVERRIDE[lex.lang] && lex.score >= 2.2 && lex.margin >= 1.0) {
+        return { lang: lex.lang, reliable: true, source: 'lexicon' };
+    }
 
     if (lex.lang && lex.score > 0 && (shortText || !eldReliable)) {
         var minScore = eldReliable ? 2.2 : 1.0;

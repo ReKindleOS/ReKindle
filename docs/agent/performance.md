@@ -19,8 +19,8 @@ Unconditional `draw()` every rAF costs e-ink compositing + (with any AA pixel) f
 The comments listener was `innerHTML = ''` + re-render ALL (≤100) comments per snapshot. Now uses `snapshot.docChanges()`: added → render only the new node (position via `snapshot.docs[change.newIndex - 1]` — query is newest-first, DOM is oldest-first), removed → remove that node, modified → re-render in place. Elements carry `data-comment-id` for lookup. topics.html comments were already incremental; their eager initial load now appends through a `DocumentFragment` (`appendMessage(msg, prepend, container)`).
 
 ### Language detection stays off the load path (2026-10-27)
-`js/lang-detect.js` is a ~366 KB raw / ~119 KB gzip ELD model. Do not add it as a
-`<script>` on social pages, and do not preload it on composer focus: that 119 KB
+`js/lang-detect.js` is a ~713 KB raw / ~221 KB gzip ELD model. Do not add it as a
+`<script>` on social pages, and do not preload it on composer focus: that 221 KB
 download competed with the message POST on a slow Kindle and made sending feel
 slow. `js/post-language.js` is loaded only when the auto queue meets legacy
 content with no stored `lang`, or 4 s after a successful post (off the send

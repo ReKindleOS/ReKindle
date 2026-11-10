@@ -236,7 +236,9 @@
         { lang: 'he', re: /[\u0590-\u05FF]/ },
         { lang: 'el', re: /[\u0370-\u03FF]/ },
         { lang: 'th', re: /[\u0E00-\u0E7F]/ },
-        { lang: 'hi', re: /[\u0900-\u097F]/ }
+        { lang: 'hi', re: /[\u0900-\u097F]/ },
+        { lang: 'bn', re: /[\u0980-\u09FF]/ },
+        { lang: 'ta', re: /[\u0B80-\u0BFF]/ }
     ];
 
     // Word sets (already lowercased). Deliberately overlapping common words

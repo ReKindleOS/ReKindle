@@ -1,8 +1,9 @@
 /*
  * Post-time language detection helper (2026-10-26).
  *
- * js/lang-detect.js is ~366 KB raw / ~119 KB gzip (a trimmed ELD n-gram model
- * plus a chat lexicon). Loading that on every social page would undo the
+ * js/lang-detect.js is ~713 KB raw / ~221 KB gzip (ELD ExtraSmall for 36
+ * languages, plus chat-lexicon rules for Indonesian/Nepali/Swahili and the
+ * close Latin pairs). Loading that on every social page would undo the
  * Kindle load-path work, so it is injected on demand:
  *
  *   - the auto-translate queue calls load() when it meets a message with no
@@ -10,7 +11,7 @@
  *   - a successful post warms it 1.5 s later, off the send path, so subsequent
  *     messages can be tagged accurately.
  *
- * It is deliberately NOT loaded on composer focus or page load: that 119 KB
+ * It is deliberately NOT loaded on composer focus or page load: that 221 KB
  * competed with the message POST on slow Kindle connections. `detect()` is
  * synchronous and never waits.
  */
@@ -19,7 +20,7 @@
 
     if (window.rekindlePostLanguage) return;
 
-    var DETECT_URL = 'js/lang-detect.js?v=1';
+    var DETECT_URL = 'js/lang-detect.js?v=2';
     var loading = null;
     var failed = false;
     var failedAt = 0;

@@ -507,17 +507,19 @@ on-view translation.
 
 * **`js/lang-detect.js`** is a generated bundle of the [Efficient Language Detector](https://github.com/nitotm/efficient-language-detector-js)
   (ELD 2.1.0, Apache-2.0, see `licenses/efficient-language-detector-*`) plus a small chat
-  lexicon. It bundles ELD's **Medium** n-gram database for the eight Latin-script UI languages
-  (`en, de, es, fr, it, pl, pt, vi`); `ru`, `zh`, `ja`, `ko`, `ar`, `he`, `el`, `th` and `hi` are
-  settled by Unicode script before ELD runs. Size: **~366 KB raw / ~119 KB gzip**. The XML/HTML
-  header in the file carries the attribution; do not delete it.
+  lexicon. It bundles ELD's **ExtraSmall** n-gram database for all 36 shipped languages that ELD
+  knows; Indonesian, Nepali and Swahili are not in ELD and use small lexicon rules. Close pairs
+  (no/da, id/ms) also get lexicons that can override the model. Scripts (Cyrillic, Arabic,
+  Devanagari, Bengali, Tamil, CJK, Greek, Hebrew, Thai) are classified before/around ELD. Size:
+  **~713 KB raw / ~221 KB gzip**. The XML/HTML header in the file carries the attribution; do not
+  delete it.
 * **Regenerate with `npm run build:lang`** (`scripts/build-lang-detect.js`, entry
   `scripts/lang-detect-entry.js`). `eld` is a devDependency only; the generated file is committed
   so production deploys do not need the 9 MB package. Bump `DETECT_URL` in `js/post-language.js`
   (and `js/post-language.js?v=` in the pages) after regenerating, otherwise the immutable edge/SW
   cache keeps the old bundle.
 * **Lazy loading.** `js/post-language.js` injects the bundle when a composer is focused and again
-  4 s after page load. Do not add it as a parser-blocking `<script>`: that is 119 KB on every
+  4 s after page load. Do not add it as a parser-blocking `<script>`: that is 221 KB on every
   social page for readers who never post. If the bundle is not ready, the send path falls back to
   the old stopword heuristic and still sends a `lang`; the message is then less accurately tagged.
 * **Accuracy.** ELD Medium was 100% on the accented 8-language sentence corpus and the chat
@@ -588,7 +590,7 @@ translates and shows **Show Original** like any tagged message.
   `I&#039;ll` Show Translated bug; `translate-client.js` also decodes provider HTML entities once
   before returning a translation.
 * **Send-path performance (2026-10-27):** do not preload the detector on composer focus or page
-  load. That 119 KB download competed with the message POST on a slow Kindle. `detectPostLang()`
+  load. That 221 KB download competed with the message POST on a slow Kindle. `detectPostLang()`
   only tags when the detector is already ready; otherwise the message is sent without `lang` and
   the auto queue detects it on view. A successful post warms the detector 4 s later, off the send
   path. Chat also pauses new auto request jobs while a send is in flight.

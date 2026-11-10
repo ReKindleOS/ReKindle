@@ -89,7 +89,7 @@ assert.ok(/sameLanguage\(opts\.source, opts\.target\)/.test(translateClient), 'a
 assert.ok(/detectInfo: detectInfo/.test(translateClient), 'translate-client must expose detection info');
 
 // --- detection bundle is lazy, versioned and attributed -------------------
-assert.ok(/DETECT_URL = 'js\/lang-detect\.js\?v=1'/.test(postLanguage), 'post-language must lazy-load the versioned bundle');
+assert.ok(/DETECT_URL = 'js\/lang-detect\.js\?v=2'/.test(postLanguage), 'post-language must lazy-load the versioned bundle');
 assert.ok(/script\.async = true/.test(postLanguage), 'the detection bundle must not block parsing');
 assert.ok(/Efficient Language Detector/.test(langDetect), 'the detection bundle must carry ELD attribution');
 assert.ok(/Apache License 2\.0/.test(langDetect), 'the detection bundle must carry the Apache-2.0 notice');
@@ -98,7 +98,7 @@ assert.ok(fs.existsSync(path.join(root, 'licenses', 'efficient-language-detector
 
 for (const [name, html] of [['kindlechat.html', chat], ['neighbourhood.html', neighbourhood], ['topics.html', topics]]) {
     assert.ok(/js\/translate-client\.js\?v=3/.test(html), name + ' must load translate-client v3');
-    assert.ok(/js\/post-language\.js\?v=1/.test(html), name + ' must load post-language v1');
+    assert.ok(/js\/post-language\.js\?v=2/.test(html), name + ' must load post-language v2');
 }
 
 assert.ok(pkg.scripts['build:lang'], 'package.json must expose npm run build:lang');

@@ -1519,7 +1519,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use the swap arrows to reverse the pair.</li>
             </ol>
             <p>Short phrases work best. Idioms, names and technical terms can come out oddly; treat the result as a draft, especially for anything important.</p>
-            <div class="note"><b>KindleChat translations are separate:</b> chat messages are translated automatically by ReKindle's own translation worker into every supported language. See <a href="#kindlechat">KindleChat</a>.</div>
+            <div class="note"><b>KindleChat translations are separate:</b> messages written in another language are translated in your browser into your language when you view them, and <b>Show Original</b> switches back. See <a href="#kindlechat">KindleChat</a>.</div>
         `
     },
     {
@@ -2083,7 +2083,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Scroll to the top of the chat to load older messages.</li>
             </ol>
             <h2>Translations</h2>
-            <p>Messages are translated into every supported language by ReKindle's translation worker. Open <b>Settings</b> and choose <b>Translation Language</b>, or leave it on Auto to follow your system language. When <b>Show Translations</b> is on, each message is replaced by its translation and a <b>Show Original</b> control switches back. If a translation is missing, it may still arrive - retries continue for a few minutes after sending.</p>
+            <p>Messages written in another language are translated in your browser into your language as you view them (translation needs a connection). When <b>Show Translations</b> is on, each message is replaced by its translation and a <b>Show Original</b> control switches back. The <b>Translate</b> link is the manual fallback while a translation loads or if it fails.</p>
             <h2>Emoji and ASCII art</h2>
             <p>The smiley button opens a picker with Unicode emoji (shown as OpenMoji images, so they display correctly on Kindle) and a tab of ASCII art emoticons. The composer inserts the right form; type plain text normally.</p>
             <h2>Art gallery</h2>
