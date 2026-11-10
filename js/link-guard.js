@@ -33,9 +33,11 @@
     // does not change; the chain checks reuse the same TLD set.
     var TLD_SRC = 'com|net|org|io|co|ai|app|dev|edu|gov|mil|int|biz|info|name|pro|museum|aero|coop|jobs|mobi|travel|arpa|asia|cat|tel|xxx|post|geo|mail|onion|bit|crypto|eth|us|uk|au|ca|de|fr|jp|cn|kr|ru|br|mx|es|it|nl|se|no|fi|dk|pl|cz|at|ch|be|pt|ie|nz|za|in|sg|hk|tw|id|th|vn|ph|my|xyz|club|online|site|top|ink|cc|tv|ws|me|nu|gg|to|vc|link|ly|sh';
 
-    var DOTTED_RE = new RegExp('\\b[a-z0-9-]+\\s*\\.\\s*(?:' + TLD_SRC + ')\\b');
+    // The label/gap/TLD are captured so a sentence period followed by an
+    // ordinary word cannot be mistaken for a domain. See dottedDomainIsLink().
+    var DOTTED_RE = new RegExp('\\b([a-z0-9-]+)(\\s*)\\.(\\s*)(' + TLD_SRC + ')\\b', 'g');
     var TLD_RE = new RegExp('^(?:' + TLD_SRC + ')$');
-    var IP_RE = /\b\d{1,3}\s*\.\s*\d{1,3}\s*\.\s*\d{1,3}\s*\.\s*\d{1,3}\b/;
+    var IP_RE = /\b(\d{1,3})\s*\.\s*(\d{1,3})\s*\.\s*(\d{1,3})\s*\.\s*(\d{1,3})\b/g;
     var PROTOCOL_RE = /\bh\s*[xt]\s*[xt]\s*p\s*s?\s*[:/]{1,4}/;
 
     // TLDs that are also ordinary English words. A comma/space-split run that
@@ -110,26 +112,38 @@
         var atoms = [];
         var m;
         while ((m = atomRe.exec(t)) !== null) {
-            atoms.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+            atoms.push({
+                text: m[0],
+                start: m.index,
+                end: m.index + m[0].length,
+                // A label directly after "@" is an @mention, not a hostname.
+                mention: m.index > 0 && t.charAt(m.index - 1) === '@'
+            });
         }
 
         var runs = [];
-        var run = { labels: [], gaps: [], end: 0, slash: false };
+        var run = { labels: [], mentions: [], gaps: [], end: 0, slash: false };
         for (var i = 0; i < atoms.length; i++) {
             if (!run.labels.length) {
                 run.labels.push(atoms[i].text);
+                run.mentions.push(atoms[i].mention);
                 run.end = atoms[i].end;
                 continue;
             }
             var gap = t.slice(run.end, atoms[i].start);
             var kind = gapKind(gap);
-            if (kind === 'break') {
+            // A period followed by whitespace (but no whitespace before it)
+            // ends a sentence: do not join "app. app crashed" into one
+            // potential hostname run. "example . com" keeps its space before
+            // the dot, so it is still treated as an obfuscated domain.
+            if (kind === 'break' || (kind === 'dot' && /^\.+\s+$/.test(gap))) {
                 run.slash = /[\/\\]/.test(gap);
                 runs.push(run);
-                run = { labels: [atoms[i].text], gaps: [], end: atoms[i].end, slash: false };
+                run = { labels: [atoms[i].text], mentions: [atoms[i].mention], gaps: [], end: atoms[i].end, slash: false };
                 continue;
             }
             run.labels.push(atoms[i].text);
+            run.mentions.push(atoms[i].mention);
             run.gaps.push(kind);
             run.end = atoms[i].end;
         }
@@ -153,10 +167,19 @@
         return false;
     }
 
-    function windowIsLink(labels, kinds, tailSlash) {
+    function windowIsLink(labels, kinds, tailSlash, mentions) {
         var n = labels.length;
         var last = labels[n - 1];
         if (!TLD_RE.test(last)) return false;
+
+        // "@alice123 no way" / "@alice123 app is down" are mentions followed by
+        // ordinary words, even though the numeric handle looks like a host
+        // signal. Never treat a window containing an @mention as a domain.
+        if (mentions) {
+            for (var mi = 0; mi < mentions.length; mi++) {
+                if (mentions[mi]) return false;
+            }
+        }
 
         var allSpace = true;
         var allDot = true;
@@ -171,10 +194,26 @@
         var signal = hostSignal(labels, tailSlash);
 
         if (allSpace) {
-            if (signal) return true;
-            // "example com" (but not "the app" / "great net").
-            return n === 2 && /^(?:com|net|org)$/.test(last) &&
-                labels[0].length >= 5 && !WORD_TLDS[last];
+            // Space-separated text is much more likely to be a sentence than a
+            // hostname, so a bare digit ("I have 2 app ideas", "room 5 net",
+            // "2026 app") is not enough. Hyphens, "www", a hosting suffix
+            // ("netlify app") or a trailing slash still are.
+            var hostSuffix = false;
+            for (var hi = 0; hi < labels.length - 1; hi++) {
+                if (HOST_SUFFIXES[labels[hi] + '.' + labels[hi + 1]]) { hostSuffix = true; break; }
+            }
+            if (hostSuffix || labels[0] === 'www' || tailSlash) return true;
+            var hasHyphen = false;
+            for (var hj = 0; hj < labels.length - 1; hj++) {
+                if (labels[hj].indexOf('-') !== -1) { hasHyphen = true; break; }
+            }
+            if (n === 2) {
+                if (hasHyphen) return true;
+                // "example com" (but not "the app" / "great net" / "100 com").
+                return /^(?:com|net|org)$/.test(last) &&
+                    labels[0].length >= 5 && !WORD_TLDS[last];
+            }
+            return hasHyphen;
         }
 
         // Comma / bracket / "dot" split.
@@ -198,11 +237,63 @@
                 if (windowIsLink(
                     run.labels.slice(start, end + 1),
                     run.gaps.slice(start, end),
-                    run.slash && end === n - 1
+                    run.slash && end === n - 1,
+                    run.mentions.slice(start, end + 1)
                 )) {
                     return true;
                 }
             }
+        }
+        return false;
+    }
+
+    // A dotted domain, with sentence punctuation excluded. The original check
+    // was a bare /label.tld/ regex, so ordinary chat was rejected whenever a
+    // sentence ended in a word that is also a TLD ("I like it. In fact",
+    // "thanks. no problem", "@alice123. me too"). Those are the exact false
+    // positives reported on 2026-11-01, 2026-11-03 and 2026-11-09.
+    //
+    // Rules:
+    //   * A dot followed by a space is sentence punctuation, unless there is
+    //     also a space before it ("example . me") or a real host signal.
+    //   * TLDs that are ordinary words ("me", "in", "at", "no", ...) need a
+    //     host signal or a 4+ character first label before they count.
+    //   * Non-word TLDs ("com", "net", "app", ...) keep the old behaviour.
+    function dottedDomainIsLink(t) {
+        var m;
+        DOTTED_RE.lastIndex = 0;
+        while ((m = DOTTED_RE.exec(t)) !== null) {
+            var left = m[1];
+            var gapBefore = m[2];
+            var gapAfter = m[3];
+            var tld = m[4];
+            var wordTld = !!WORD_TLDS[tld];
+            var signal = /[0-9]/.test(left) || left.indexOf('-') !== -1 || left === 'www';
+
+            // A dot followed by a space (but not preceded by one) is a
+            // sentence period, whatever follows: "I opened the app. app
+            // crashed", "@alice123. app is down". "www. com" is the exception.
+            if (gapAfter && !gapBefore) {
+                if (left === 'www') return true;
+                continue;
+            }
+            if (!wordTld) return true;
+            if (signal) return true;
+            // "example.me" / "example . me" are domain-shaped; "it.in" is not.
+            if (left.length >= 4) return true;
+        }
+        return false;
+    }
+
+    function dottedIpIsLink(t) {
+        var m;
+        IP_RE.lastIndex = 0;
+        while ((m = IP_RE.exec(t)) !== null) {
+            var ok = true;
+            for (var i = 1; i <= 4; i++) {
+                if (parseInt(m[i], 10) > 255) { ok = false; break; }
+            }
+            if (ok) return true;
         }
         return false;
     }
@@ -212,8 +303,8 @@
         var t = normalize(text);
         if (PROTOCOL_RE.test(t)) return true;
         if (/\bwww\s*\./.test(t)) return true;
-        if (DOTTED_RE.test(t)) return true;
-        if (IP_RE.test(t)) return true;
+        if (dottedDomainIsLink(t)) return true;
+        if (dottedIpIsLink(t)) return true;
 
         var runs = collectRuns(t);
         for (var i = 0; i < runs.length; i++) {

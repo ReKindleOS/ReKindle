@@ -19,6 +19,19 @@ service-account wiring. A Worker would need hand-rolled Firestore batch REST and
 OAuth token minting for the same Firebase read/delete bill. One Cloud Scheduler job
 and one daily invocation fit the free tiers.
 
+## Deleted accounts
+
+Account deletion deliberately does **not** remove social history. A deleted
+account's posts, comments, messages and DMs are retained and aged by exactly the
+same cutoffs below as an active account's history: there is no tombstone, no
+per-account sweep and no special case in this job.
+
+The one exception is the social profile record: `deleteAccount` removes
+`users_public/{uid}`, `user_cards/{uid}` and `users_private/{uid}` so the social
+apps render a blank white avatar and "Deleted User". The cleanup job itself
+never deletes profiles, timeouts or pending reports, for active or deleted
+accounts alike. See [account-deletion.md](account-deletion.md).
+
 ## Retention
 
 | Data | Project / path | Kept | Action |

@@ -840,6 +840,7 @@
 <link rel="preconnect" href="https://rekindle-dd1fa-default-rtdb.firebaseio.com">
 <link rel="preconnect" href="https://rekindle-socials-default-rtdb.firebaseio.com">
     <script src="theme.js?v=35"></script>
+    <script src="js/deleted-user.js?v=1"></script>
     <link rel="stylesheet" href="css/custom-select.css?v=1">
     <script src="js/i18n.js?v=4"></script>
     <link rel="stylesheet" href="js/system-dialog.css?v=2">
@@ -1083,7 +1084,7 @@
     <script src="time.js?v=5"></script>
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
-    <script src="js/link-guard.js?v=1"></script>
+    <script src="js/link-guard.js?v=5"></script>
     <script src="js/social-endpoints.js?v=1"></script>
     <script src="js/worker-client.js?v=1"></script>
     <script src="js/custom-select.js?v=2"></script>
@@ -2403,7 +2404,7 @@
             // Format time header for hover or future use
             var dateHeader = window.rekindleFormatTime(dateObj, { weekday: 'short', month: 'short', day: 'numeric' });
 
-            var safeName = escapeHtml(msg.authorId ? msg.authorId.substring(0, 8) : window.t('common.anonymous', 'Anonymous'));
+            var safeName = escapeHtml(window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
             var delBtn = '';
             if (isModMode && msg.id) {
                 delBtn += '<span style="color:red; cursor:pointer; margin-left:5px; font-weight:bold;" onclick="deleteComment(\'' + msg.id + '\')">[X]</span>';
@@ -3107,8 +3108,13 @@
                 modalTitle.innerText = window.t('topics.modal.create.title', "New Topic");
                 submitBtn.innerText = window.t('topics.btn.new', "Create");
                 document.getElementById('new-title').disabled = false; // Allow title for new topics
-                selectedIconSvg = null; // No default
-                picker.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#666; padding:10px;">Please search for an icon above.</div>';
+                // Start with a built-in icon selected and visible. The icon
+                // search below calls an external API, which can be slow or
+                // unavailable on Kindle; without this default the picker stayed
+                // blank and submit said "Please select an icon" (suggestions
+                // reports 2026-11-02 and 2026-11-05).
+                selectedIconSvg = TOPIC_ICONS['chat'];
+                renderDefaultIcons();
             }
 
             document.getElementById('modal-overlay').style.display = 'flex';
@@ -3131,6 +3137,27 @@
             }
         }
 
+        // Iconify returns names like "mdi:chat", but the SVG endpoint is
+        // /{prefix}/{name}.svg, NOT /{prefix}:{name}.svg. Building the wrong
+        // URL made every search result a blank, unselectable tile (suggestions
+        // reports 2026-11-02 and 2026-11-05: "only blank unselectable icons
+        // show up", "it says choose a symbol").
+        function iconifyUrl(iconName) {
+            return 'https://api.iconify.design/' + String(iconName).replace(':', '/') + '.svg';
+        }
+
+        function renderLocalIconMatches(picker, query, selected) {
+            var q = String(query || '').toLowerCase();
+            var shown = 0;
+            for (var key in TOPIC_ICONS) {
+                if (!TOPIC_ICONS.hasOwnProperty(key)) continue;
+                if (q && key.indexOf(q) === -1) continue;
+                renderPickerIcon(picker, TOPIC_ICONS[key], !!selected);
+                shown++;
+            }
+            return shown;
+        }
+
         function searchIcons(query) {
             var picker = document.getElementById('icon-picker');
             if (!query.trim()) {
@@ -3147,17 +3174,27 @@
                 }
             }
 
-            picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">Searching...</div>';
+            // Render matches from the built-in set immediately. The icon search
+            // API is a nice-to-have: when it is blocked, slow or down the user
+            // can still pick an icon and create the topic.
+            picker.innerHTML = '';
+            var localCount = renderLocalIconMatches(picker, query, false);
+            if (localCount === 0) {
+                picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">Searching...</div>';
+            }
 
             xhrGet('https://api.iconify.design/search?query=' + encodeURIComponent(query) + '&limit=20&palette=false')
                 .then(function (data) {
-                    picker.innerHTML = '';
                     if (!data.icons || data.icons.length === 0) {
-                        picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found.</div>';
+                        if (localCount === 0) {
+                            picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found.</div>';
+                        }
                         return;
                     }
 
-                    var shownCount = 0;
+                    // The built-in rows are already in the picker; do not wipe
+                    // them out when the remote results arrive.
+                    var shownCount = localCount;
                     data.icons.forEach(function (iconName) {
                         // Extra safety: Filter the icon name itself
                         if (window.filterBadWords) {
@@ -3170,7 +3207,7 @@
 
                         var el = document.createElement('div');
                         el.className = 'icon-option';
-                        var imgUrl = 'https://api.iconify.design/' + iconName + '.svg';
+                        var imgUrl = iconifyUrl(iconName);
                         el.style.backgroundImage = 'url(\'' + imgUrl + '\')';
                         el.style.backgroundSize = '60%';
                         el.style.backgroundPosition = 'center';
@@ -3182,6 +3219,9 @@
                                     selectedIconSvg = svg;
                                     Array.prototype.slice.call(picker.children).forEach(function (c) { c.classList.remove('selected'); });
                                     el.classList.add('selected');
+                                })
+                                .catch(function () {
+                                    showAlertModal(window.t('topics.alert.icon_failed', 'Could not load that icon. Please choose one of the built-in icons.'));
                                 });
                         };
                         picker.appendChild(el);
@@ -3192,8 +3232,12 @@
                         picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found.</div>';
                     }
                 })
-                .catch(function (e) {
-                    picker.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:red;">Error searching.</div>';
+                .catch(function () {
+                    // Keep the built-in matches visible; only show the error
+                    // when there is nothing selectable at all.
+                    if (localCount === 0) {
+                        picker.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No icons found. Choose one of the built-in icons by clearing the search.</div>';
+                    }
                 });
         }
 
@@ -3475,12 +3519,14 @@
             if (!uid || !element) return;
 
             function applyCard(card, el) {
-                if (!card) {
-                    // No user card available — only draw avatar with uid fallback, preserve existing name
-                    if (avatarId) drawAvatar(avatarId, uid);
+                if (!card || (window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) {
+                    // Account deleted (or a profile that never existed): blank
+                    // avatar and a neutral name, never the uid prefix.
+                    el.innerText = window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User';
+                    if (avatarId) drawAvatar(avatarId, null);
                     return;
                 }
-                var kindleName = card.username || uid.substring(0, 8);
+                var kindleName = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
 
                 var isDev = (kindleName === 'ukiyo');
                 if (!isDev && currentUser && uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink') isDev = true;
@@ -3511,7 +3557,10 @@
 
                 if (avatarId) {
                     var seed = (card && (card.customAvatar || card.avatarSeed)) ? (card.customAvatar || card.avatarSeed) : uid;
-                    drawAvatar(avatarId, seed);
+                    // The uid is the fallback when a custom avatar is empty
+                    // (all-zero) or malformed: those used to render a blank
+                    // canvas (suggestions report 2026-11-06, "i cant see pfps").
+                    drawAvatar(avatarId, seed, uid);
                 }
             }
 
@@ -3522,7 +3571,7 @@
         }
 
         // --- DRAW AVATAR (Ported from Neighbourhood) ---
-        function drawAvatar(canvasId, seed) {
+        function drawAvatar(canvasId, seed, fallbackSeed) {
             var canvas = document.getElementById(canvasId);
             if (!canvas) return;
             var ctx = canvas.getContext('2d');
@@ -3532,26 +3581,58 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#000';
 
+            // Missing/deleted profile: stay blank white. Callers must not pass
+            // a uid fallback when the user-card lookup returned nothing.
+            if (seed === null || seed === undefined || seed === '') return;
+
+            // Firebase returns a sparse array as an object. Convert it back when
+            // it has a 8x8/16x16 pixel count, otherwise the avatar is blank.
+            if (seed && typeof seed === 'object' && !Array.isArray(seed)) {
+                var numeric = [];
+                var numericOk = true;
+                for (var nk in seed) {
+                    if (!seed.hasOwnProperty(nk)) continue;
+                    var idx = parseInt(nk, 10);
+                    if (isNaN(idx) || idx < 0) { numericOk = false; break; }
+                    numeric[idx] = seed[nk];
+                }
+                if (numericOk && (numeric.length === 64 || numeric.length === 256)) {
+                    for (var miss = 0; miss < numeric.length; miss++) {
+                        if (numeric[miss] === undefined) numeric[miss] = 0;
+                    }
+                    seed = numeric;
+                }
+            }
+
             // Check if seed is a custom array
             if (Array.isArray(seed)) {
-                // Determine grid size based on array length
+                // Determine grid size based on array length (8x8 or 16x16 only)
                 var gridSize = Math.sqrt(seed.length);
-                var pixelSize = canvas.width / gridSize;
+                if (gridSize === 8 || gridSize === 16) {
+                    var pixelSize = canvas.width / gridSize;
+                    var visiblePixels = 0;
 
-                for (var i = 0; i < seed.length; i++) {
-                    var v = seed[i];
-                    if (v > 0) {
-                        var x = i % gridSize;
-                        var y = Math.floor(i / gridSize);
-                        if (v < 1) {
-                            var s = Math.round((1 - v) * 255);
-                            ctx.fillStyle = 'rgb(' + s + ',' + s + ',' + s + ')';
+                    for (var i = 0; i < seed.length; i++) {
+                        var v = seed[i];
+                        if (v > 0) {
+                            visiblePixels++;
+                            var x = i % gridSize;
+                            var y = Math.floor(i / gridSize);
+                            if (v < 1) {
+                                var s = Math.round((1 - v) * 255);
+                                ctx.fillStyle = 'rgb(' + s + ',' + s + ',' + s + ')';
+                            }
+                            ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                            if (v < 1) ctx.fillStyle = '#000';
                         }
-                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
-                        if (v < 1) ctx.fillStyle = '#000';
                     }
+
+                    // An all-zero custom avatar is a valid "blank" choice, but
+                    // showing an empty square for the user looks broken. Fall
+                    // back to the procedural pattern instead.
+                    if (visiblePixels > 0) return;
+                    seed = fallbackSeed || 'default';
                 }
-                return;
             }
 
             // Procedural Logic (16x16 symmetric with fun patterns)

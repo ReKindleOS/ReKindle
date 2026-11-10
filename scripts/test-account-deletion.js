@@ -12,6 +12,7 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 
 const lib = require('../firebase-functions/account-deletion-lib');
@@ -191,12 +192,30 @@ check('social delete paths cover rate limits, legacy caches, DMs prefs and profi
     });
 });
 
+check('social profile delete paths cover username/avatar/private profile only', function () {
+    assert.deepStrictEqual(lib.buildSocialProfileDeletePaths('bad.uid'), {});
+    const paths = lib.buildSocialProfileDeletePaths('uid123');
+    assert.deepStrictEqual(Object.keys(paths).sort(), ['user_cards/uid123', 'users_private/uid123', 'users_public/uid123']);
+    for (const key of Object.keys(paths)) assert.strictEqual(paths[key], null);
+});
+
 check('report ownership checks both reporter and reported user', function () {
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1', reportedUserId: 'u2' }, 'u1'), true);
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1', reportedUserId: 'u2' }, 'u2'), true);
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1', reportedUserId: 'u2' }, 'u3'), false);
     assert.strictEqual(lib.shouldDeleteReportForUser(null, 'u1'), false);
     assert.strictEqual(lib.shouldDeleteReportForUser({ reporterId: 'u1' }, 'bad/uid'), false);
+});
+
+check('handler never sweeps social data', function () {
+    // Policy 2026-11-10: account deletion removes main-project data only.
+    // Social history is retained and aged by cleanupSocial, so any call from
+    // the deleteAccount handler into the social sweep is a regression.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'firebase-functions', 'account-deletion.js'), 'utf8');
+    assert.strictEqual(/await\s+cleanupSocialFirestore\s*\(/.test(source), false, 'cleanupSocialFirestore must not be called');
+    assert.strictEqual(/await\s+cleanupSocialRtdb\s*\(/.test(source), false, 'cleanupSocialRtdb must not be called');
+    assert.strictEqual(/socialAuth\.deleteUser\s*\(/.test(source), false, 'social Auth user must be left in place');
+    assert.strictEqual(/await\s+cleanupSocialProfile\s*\(ctx\)/.test(source), true, 'social profile cleanup must be called');
 });
 
 check('summary counters start at zero and add numerically', function () {
@@ -221,7 +240,7 @@ check('summary counters start at zero and add numerically', function () {
         );
     });
 
-    await checkAsync('rejects when the social project is not configured', async function () {
+    await checkAsync('rejects when social profile access is not configured', async function () {
         await assert.rejects(
             () => deleteAccount({
                 auth: { uid: 'uid123', token: { email: 'alice@rekindle.ink', auth_time: Math.floor(Date.now() / 1000) } },

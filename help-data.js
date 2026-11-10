@@ -151,7 +151,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p><b>Forgot the current password?</b> If you are still signed in on this device, choose <b>Forgot your current password?</b> in the same box, type your username to confirm, and set a new password (at least 8 characters). This works from the live session - there is no "forgot password" email because accounts do not require an email address. Only do this on a device you control: anyone who can use a device you are signed in on could reset the password too.</p>
             <p>If you are signed out and locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
             <h2>Deleting your account</h2>
-            <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your profile, files, posts, chat messages, direct messages, scores and suggestions from both Firebase projects. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
+            <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account, profile, files, scores and suggestions from the main project. Your social username and profile picture are removed, so other people see "Deleted User" with a blank avatar. Your public social history (posts, comments, chat messages and DMs) stays in the social project and ages out under the normal retention policy. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
             <h2>Age verification for social apps</h2>
             <p>KindleChat, Neighbourhood and Topics require an age check before they load. You enter your date of birth and country; ReKindle checks the minimum social-media age for that country. The check is a self-declaration, not an ID upload, and the social apps stay locked until it is complete - browsing, posting and messaging all need it.</p>
             <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used for the age check and kept in your account's age-verification record for audit and support. See the <a href="privacy.html">Privacy Policy</a>.</div>
@@ -379,7 +379,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Recently added</h2>
             <ul>
                 <li><b>Mail: Outlook and Hotmail</b> - Microsoft sign-in codes replace app passwords, so a Microsoft mailbox works without typing a password on the Kindle.</li>
-                <li><b>Delete Account</b> - permanent self-service deletion in Settings, including cloud files, posts, chat messages and scores.</li>
+                <li><b>Delete Account</b> - permanent self-service deletion in Settings, including cloud files, scores and the main profile.</li>
                 <li><b>Forgot current password</b> - reset the password from a signed-in device without an email address.</li>
                 <li><b>Dark mode</b> - Light, Dark and Auto (Night) themes are available again, marked BETA.</li>
                 <li><b>Changelog</b> - a searchable list of every commit, linked from the About panel.</li>
@@ -433,7 +433,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> from the address used at checkout. Include your ReKindle username, the purchase date and the amount. Do not post card details or receipts on the Suggestions board or in chat.</p>
             <p>If Pro disappeared after a renewal, open the ReKindle+ page and confirm the subscription is active under <b>Manage Subscription</b> first; the membership webhook can take a minute to land. A refund is handled case by case - a cancelled subscription stops future renewals but does not automatically refund the current period.</p>
             <h2>How do I delete my account or data?</h2>
-            <p>Sign in, open <b>Settings</b> and tap <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account plus its content - notes, files, posts, chat messages, DMs, scores and suggestions - from both Firebase projects.</p>
+            <p>Sign in, open <b>Settings</b> and tap <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account plus its main-project content - notes, files, scores and suggestions. Your social username and profile picture are removed (other people see "Deleted User" with a blank avatar). Public social history is retained and ages out under the normal retention policy.</p>
             <p>If you subscribe to ReKindle+, check <b>Manage Subscription</b> on the ReKindle+ page afterwards and cancel there if the plan is still active. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Guest data can be removed by clearing the browser's site data.</p>
             <h2>Why is a game or app missing?</h2>
             <p>Check Settings for <b>Disable Games</b>, check whether the app is hidden in Edit mode, and check the A-Z index for a renamed app. Some unlisted pages are described in <a href="#hidden-legacy">Unlisted &amp; legacy pages</a>.</p>
@@ -3696,7 +3696,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>Google Tasks / Calendar / Contacts</b> connect via Google OAuth. <b>iCalendar (.ics)</b> and <b>CardDAV / vCard</b> accept read-only feed URLs.</li>
             </ul>
             <h2>Account</h2>
-            <p>Change your password here, including the <b>Forgot your current password?</b> reset while you are signed in. <b>Delete Account</b> permanently removes the account and its data after you re-enter your password and type your username. ReKindle+ status and subscription management are also available from this area and the ReKindle+ page.</p>
+            <p>Change your password here, including the <b>Forgot your current password?</b> reset while you are signed in. <b>Delete Account</b> permanently removes the account and its main-project data after you re-enter your password and type your username; public social history is retained under the normal retention policy. ReKindle+ status and subscription management are also available from this area and the ReKindle+ page.</p>
         `
     },
     {
@@ -3775,7 +3775,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ul>
             <p>Each service has its own privacy policy. Do not paste secrets or sensitive personal data into third-party apps.</p>
             <h2>Deleting data</h2>
-            <p>Clear browser site data to remove guest data and local caches. To delete your account and cloud records, sign in and use <b>Settings -> Delete Account</b>; it removes your profile, files, posts, chat messages and scores from both Firebase projects. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
+            <p>Clear browser site data to remove guest data and local caches. To delete your account and cloud records, sign in and use <b>Settings -> Delete Account</b>; it removes your profile, files and scores from the main project; public social history (posts, comments, chat messages and DMs) is retained and ages out under the normal retention policy. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
         `
     },
     {

@@ -50,15 +50,25 @@ family:
     spaced letters), `www.`, dotted domain, dotted IP.
 3.  **Label runs:** every run of hostname labels (`[a-z0-9-]+`) joined by
     dot-like separators is walked. A slash/query ends the host (a trailing
-    slash counts as a host signal).
+    slash counts as a host signal). A label directly after `@` is an
+    **@mention**, and a window containing one is never treated as a domain:
+    `"@alice123 no way"` and `"@alice123 app is down"` used to be rejected
+    because the numeric handle looked like a host signal (fixed 2026-11-10).
 4.  **A window (2–4 labels) is a link** when its last label is a TLD *and* it
     looks like a host, not a sentence:
-    *   real dots → left to the legacy dotted check (keeps sentence-boundary
-        behaviour such as "home. Me too" unchanged);
-    *   spaces only → needs a host signal: a label with a digit or hyphen,
-        `www`, a known hosting suffix (`netlify.app`, `vercel.app`,
-        `github.io`, …), or a trailing slash. Two-label `"example com"` is
-        also caught for `com|net|org` when the first label is 5+ characters;
+    *   real dots → **sentence punctuation is not a domain** (fixed
+        2026-11-10). A dot followed by whitespace with no whitespace before
+        it ("it. In", "hello. me", "@alice123. app is down", "the app. app
+        crashed") ends the run, so the old false positives are gone. A space
+        before the dot ("example . com") or no spaces at all ("example.com")
+        still counts. Word TLDs (`me`, `in`, `at`, `no`, …) also need a
+        domain-shaped label (`example.me`, `my-site.it`, `alice123.me`);
+    *   spaces only → needs a host signal: a **hyphen**, `www`, a known
+        hosting suffix (`netlify.app`, `vercel.app`, `github.io`, …) or a
+        trailing slash. A bare digit is deliberately not enough, because
+        ordinary sentences contain numbers (`"I have 2 app ideas"`, `"room 5
+        net"`, `"2026 app"`); two-label `"example com"` is also caught for
+        `com|net|org` when the first label is 5+ characters;
     *   comma/bracket/spelled-dot → two labels need a digit/hyphen label, a
         known hosting suffix, or a 5+ character first label; three or more
         labels are treated as a host unless the TLD is an ordinary English
@@ -69,7 +79,10 @@ The word-TLD exemption is what keeps chat usable: `"hello, me and my friend"`,
 `"yes, to me"`, `"I love this online"`, `"send me, link"`, `"good morning,
 world"` and `"this is a great app"` are all allowed, while
 `"nexora-chat-v12,netlify,app/"` is blocked by its hyphen/digit label and
-trailing slash.
+trailing slash. `scripts/test-link-guard.js` also locks down the 2026-11
+false-positive reports: `"I like it. In fact"`, `"thanks. no problem"`,
+`"@alice123. me too"` and `"@alice123 no way"` are allowed; `"example . com"`,
+`"example . me"`, `"alice123.me"` and real IPs still block.
 
 ### Trade-offs / known limits
 

@@ -126,6 +126,68 @@ const SHIPPED = [
         id: '-P4qSoQgU0ysrQuJRqZO',
         title: 'make the mazes harder',
         why: 'Maze gained Easy / Normal / Hard difficulty levels on 2026-10-26 (maze.html, deployed at /maze).'
+    },
+    // Sweep 5 - 2026-11-10, the 2026-11 open "Problem" reports. Pages + the
+    // moderation Worker were deployed; see docs/agent/backlog.md.
+    {
+        id: '-P5hhOK8PhVc0F9HXtwW',
+        title: 'topics creation issue',
+        why: 'Topics always rejected creation because every icon search result 404ed (Iconify URL used a colon instead of a slash), and no icon was selected by default. topics.html now builds the right URL, starts with a built-in icon selected, and keeps built-in search matches when Iconify is unavailable.'
+    },
+    {
+        id: '-P5hfYmCLXYoagwnIOo0',
+        title: 'topics cant be made',
+        why: 'Same Topics icon-picker bug: "choose a symbol" was the icon validation after no result could be selected. Fixed and deployed 2026-11-10.'
+    },
+    {
+        id: '-P5hezHNDonl-zrnnsjN',
+        title: 'i ant post a topic',
+        why: 'Same Topics icon-picker bug ("choose a symbol"); fixed and deployed 2026-11-10.'
+    },
+    {
+        id: '-P5P2IkpwzJmNX11ePJJ',
+        title: 'when trying to make a topic the icons wont show up',
+        why: 'Iconify names are "prefix:name" but the SVG endpoint is /prefix/name.svg; the wrong URL made every result a blank tile. Fixed in topics.html.'
+    },
+    {
+        id: '-P5jNMiX8qMCvbrrtsra',
+        title: 'i cant see pfps',
+        why: 'Empty (all-zero) and sparse custom avatars rendered as blank canvases. topics.html, kindlechat.html and neighbourhood.html now fall back to the uid pattern.'
+    },
+    {
+        id: '-P5yj2mFxZR0ir_j5q3L',
+        title: 'REMOVE LINK FLAGS',
+        why: 'Link guard false positives: a sentence period after a word that is also a TLD ("it. In", "thanks. no problem") and @mentions with digits ("@alice123 no way") were rejected. Fixed in js/link-guard.js + the moderation Worker, with parity tests.'
+    },
+    {
+        id: '-P5Tk44q22lqKCIs6VIr',
+        title: 'Filter',
+        why: 'Same link-guard false positives (punctuation, numbers and @mentions); fixed and deployed 2026-11-10.'
+    },
+    {
+        id: '-P5MSv9LN9YacFAfvamu',
+        title: 'Too much flags',
+        why: 'Same link-guard false positives; fixed and deployed 2026-11-10.'
+    },
+    {
+        id: '-P5_4hRFLbuR5-6KmFpQ',
+        title: 'when iopen the life calendar the format is correct',
+        why: 'Life Calendar now accepts DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, YYYY-MM-DD, YYYY/MM/DD and ISO timestamps, validates real calendar dates and rejects future dates.'
+    },
+    {
+        id: '-P5Gtzo3lzi_OYsdokhB',
+        title: 'perfect circle cannot draw a circle',
+        why: 'Perfect Circle now caches the canvas rect and batches touchmoves into one animation-frame stroke instead of a forced layout and full-path stroke per event.'
+    },
+    {
+        id: '-P4xE9il3QkL_RlT5zsx',
+        title: 'problem with dms',
+        why: 'Long DM threads now keep #chat-history scrollable (min-height:0), scroll to the composer after layout settles, and bring the composer into view when focused.'
+    },
+    {
+        id: '-P60c5re1InQwr4qoCyk',
+        title: 'Account Deletion Wont Work',
+        why: 'Policy change 2026-11-10: deleteAccount no longer sweeps the social project, so social Firestore quota or missing indexes cannot block deletion. It removes the main-project account/private data, Storage files, Auth record and the social profile nodes (username/avatar), so social apps show a blank avatar and "Deleted User"; social history is retained and aged by cleanupSocial. Deployed.'
     }
 ];
 

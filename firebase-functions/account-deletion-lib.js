@@ -57,9 +57,19 @@ const PRIMARY_USER_RTDB_ROOTS = [
     'security_events'
 ];
 
-// Social-project RTDB nodes keyed by uid. DM threads/messages/blocks are not in
-// this list because they have to be discovered and removed as a graph (see
-// account-deletion.js).
+// Social-project profile nodes. Account deletion removes these so social apps
+// fall back to "Deleted User" + a blank avatar; the account's posts/messages
+// and all other social history are retained.
+const SOCIAL_PROFILE_RTDB_ROOTS = [
+    'users_public',
+    'user_cards',
+    'users_private'
+];
+
+// Legacy social-project RTDB nodes keyed by uid. deleteAccount no longer calls
+// buildSocialUserDeletePaths(): social history is retained and cleanupSocial
+// deletes it by age. Keep these paths only for the historical test coverage and
+// in case the policy is revisited.
 const SOCIAL_USER_RTDB_ROOTS = [
     'users_public',
     'user_cards',
@@ -152,6 +162,15 @@ function buildPrimaryUserDeletePaths(uid, handle) {
     return updates;
 }
 
+function buildSocialProfileDeletePaths(uid) {
+    const updates = {};
+    if (!isValidUid(uid)) return updates;
+    for (let i = 0; i < SOCIAL_PROFILE_RTDB_ROOTS.length; i++) {
+        updates[SOCIAL_PROFILE_RTDB_ROOTS[i] + '/' + uid] = null;
+    }
+    return updates;
+}
+
 function buildSocialUserDeletePaths(uid) {
     const updates = {};
     if (!isValidUid(uid)) return updates;
@@ -209,6 +228,7 @@ module.exports = {
     FIRESTORE_BATCH_SIZE,
     CHAT_BATCH_SIZE,
     PRIMARY_USER_RTDB_ROOTS,
+    SOCIAL_PROFILE_RTDB_ROOTS,
     SOCIAL_USER_RTDB_ROOTS,
     normalizeAccountName,
     confirmationMatches,
@@ -218,6 +238,7 @@ module.exports = {
     isValidUid,
     isSafePathPart,
     buildPrimaryUserDeletePaths,
+    buildSocialProfileDeletePaths,
     buildSocialUserDeletePaths,
     shouldDeleteReportForUser,
     emptySummary,

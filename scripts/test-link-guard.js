@@ -63,7 +63,15 @@ const BLOCKED = [
     'hxxp://x',
     'h t t p s : / / x',
     '127.0.0.1',
-    'example . com'
+    '192.168.1.1',
+    'example . com',
+    /* Domains whose TLD is also an ordinary word still count when the label
+       is domain-shaped (long, hyphenated or containing a digit). */
+    'example.me',
+    'example . me',
+    'my-site.it',
+    'alice123.me',
+    'user@example.me'
 ];
 
 /* Ordinary chat that must not be rejected. */
@@ -90,7 +98,40 @@ const ALLOWED = [
     'good game, wp',
     'NEW WEBSITE v12',
     'hello, world',
-    'happy birthday, tim'
+    'happy birthday, tim',
+    /* Sentence punctuation followed by an ordinary word that is also a TLD
+       (reported 2026-11-01, 2026-11-03 and 2026-11-09). */
+    'I like it. In fact, it is great',
+    'thanks. no problem',
+    'that is cool. at least I hope so',
+    'ok. be there soon',
+    'hi. us too',
+    'wait. as if',
+    'I cannot. my bad',
+    'so. to be fair',
+    'hello. me and my friend',
+    /* Mentions with digits in the name are not domains. */
+    '@alice123. me too',
+    '@user42. no way',
+    'tag @user42. thanks!',
+    '@alice123 no way',
+    '@alice123 me too',
+    '@alice123 app is down',
+    'hi @alice123 net is slow',
+    'thanks @user42, it works',
+    /* Invalid IPs / non-domain dotted numbers. */
+    '999.1.1.1',
+    '2026. 11. 09',
+    /* Ordinary numbers in a sentence are not host signals. */
+    'I have 2 app ideas',
+    'my 2nd app is broken',
+    'room 5 net is down',
+    '2026 app update',
+    'top 10 apps',
+    /* A sentence period ends the hostname run, whatever word follows. */
+    'I opened the app. app crashed',
+    '@alice123. app is down',
+    'hello... me too'
 ];
 
 (async () => {

@@ -787,6 +787,7 @@
 <link rel="preconnect" href="https://rekindle-dd1fa-default-rtdb.firebaseio.com">
 <link rel="preconnect" href="https://rekindle-socials-default-rtdb.firebaseio.com">
     <script src="theme.js?v=35"></script>
+    <script src="js/deleted-user.js?v=1"></script>
     <link rel="stylesheet" href="css/custom-select.css?v=1">
     <script src="js/i18n.js?v=4"></script>
     <link rel="stylesheet" href="js/system-dialog.css?v=2">
@@ -1215,7 +1216,7 @@
     <script src="time.js?v=5"></script>
     <script src="bad_words.js?v=4"></script>
     <script src="js/promo-ban.js?v=1"></script>
-    <script src="js/link-guard.js?v=1"></script>
+    <script src="js/link-guard.js?v=5"></script>
     <script src="js/social-endpoints.js?v=1"></script>
     <script src="js/worker-client.js?v=1"></script>
     <script src="js/translate-client.js?v=3"></script>
@@ -1819,7 +1820,7 @@
                     // Populate View Mode
                     renderProfileView(p, true); // true = isMe
 
-                    drawAvatar('my-avatar', p.customAvatar || p.avatarSeed || currentUser.uid);
+                    drawAvatar('my-avatar', p.customAvatar || p.avatarSeed || currentUser.uid, currentUser.uid);
                     updatePrivacyButton();
                 })
                 .catch(err => {
@@ -2006,7 +2007,7 @@
             }
 
             // Draw View Avatar
-            drawAvatar('profile-view-avatar', profile.customAvatar || profile.avatarSeed || (profile.uid || ''));
+            drawAvatar('profile-view-avatar', profile.customAvatar || profile.avatarSeed || (profile.uid || ''), profile.uid || '');
 
 
         }
@@ -2061,7 +2062,7 @@
         function regenerateAvatar() {
             myProfile.avatarSeed = Math.floor(Math.random() * 100000);
             myProfile.customAvatar = null; // Clear custom avatar if regenerating
-            drawAvatar('my-avatar', myProfile.avatarSeed);
+            drawAvatar('my-avatar', myProfile.avatarSeed, currentUser.uid);
         }
 
         let selectedInterests = new Set();
@@ -2207,13 +2208,13 @@
         function saveCustomAvatar() {
             myProfile.customAvatar = [...tempPixelData];
             closeAvatarModal();
-            drawAvatar('my-avatar', myProfile.customAvatar || myProfile.avatarSeed); // Redraw preview
+            drawAvatar('my-avatar', myProfile.customAvatar || myProfile.avatarSeed, currentUser.uid); // Redraw preview
             // Note: will be permanently saved when they hit "Save Profile"
         }
 
         function clearCustomAvatar() {
             myProfile.customAvatar = null;
-            drawAvatar('my-avatar', myProfile.avatarSeed);
+            drawAvatar('my-avatar', myProfile.avatarSeed, currentUser.uid);
         }
 
         // --- PIXEL ART AVATAR PICKER ---
@@ -2385,7 +2386,7 @@
 
             myProfile.customAvatar = avatar;
             myProfile.avatarSeed = null;
-            drawAvatar('my-avatar', myProfile.customAvatar);
+            drawAvatar('my-avatar', myProfile.customAvatar, currentUser.uid);
             closePixelArtPicker();
         }
 
@@ -2586,7 +2587,7 @@
         function renderProfileInModal(user) {
             // Avatar
             const avatarSeed = user.customAvatar || user.avatarSeed || user.uid;
-            drawAvatar('popup-view-avatar', avatarSeed);
+            drawAvatar('popup-view-avatar', avatarSeed, user.uid);
 
             // Basic Info
             const kName = getKindleName(user);
@@ -2726,7 +2727,7 @@
         }
 
         // --- DRAW AVATAR ---
-        function drawAvatar(canvasId, seed) {
+        function drawAvatar(canvasId, seed, fallbackSeed) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
@@ -2736,27 +2737,54 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#000';
 
+            // Missing/deleted profile: stay blank white. Callers must not pass
+            // a uid fallback when the user-card lookup returned nothing.
+            if (seed === null || seed === undefined || seed === '') return;
+
+            // Firebase returns a sparse array as an object.
+            if (seed && typeof seed === 'object' && !Array.isArray(seed)) {
+                const numeric = [];
+                let numericOk = true;
+                for (const nk in seed) {
+                    if (!seed.hasOwnProperty(nk)) continue;
+                    const idx = parseInt(nk, 10);
+                    if (isNaN(idx) || idx < 0) { numericOk = false; break; }
+                    numeric[idx] = seed[nk];
+                }
+                if (numericOk && (numeric.length === 64 || numeric.length === 256)) {
+                    for (let miss = 0; miss < numeric.length; miss++) {
+                        if (numeric[miss] === undefined) numeric[miss] = 0;
+                    }
+                    seed = numeric;
+                }
+            }
+
             // Check if seed is a custom array
             if (Array.isArray(seed)) {
                 // Determine grid size based on array length
                 // 64 = 8x8, 256 = 16x16
                 const gridSize = Math.sqrt(seed.length);
-                const pixelSize = canvas.width / gridSize;
+                if (gridSize === 8 || gridSize === 16) {
+                    const pixelSize = canvas.width / gridSize;
+                    let visiblePixels = 0;
 
-                for (let i = 0; i < seed.length; i++) {
-                    const v = seed[i];
-                    if (v > 0) {
-                        const x = i % gridSize;
-                        const y = Math.floor(i / gridSize);
-                        if (v < 1) {
-                            const s = Math.round((1 - v) * 255);
-                            ctx.fillStyle = 'rgb(' + s + ',' + s + ',' + s + ')';
+                    for (let i = 0; i < seed.length; i++) {
+                        const v = seed[i];
+                        if (v > 0) {
+                            visiblePixels++;
+                            const x = i % gridSize;
+                            const y = Math.floor(i / gridSize);
+                            if (v < 1) {
+                                const s = Math.round((1 - v) * 255);
+                                ctx.fillStyle = 'rgb(' + s + ',' + s + ',' + s + ')';
+                            }
+                            ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                            if (v < 1) ctx.fillStyle = '#000';
                         }
-                        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
-                        if (v < 1) ctx.fillStyle = '#000';
                     }
+                    if (visiblePixels > 0) return;
+                    seed = fallbackSeed || 'default';
                 }
-                return;
             }
 
             // Procedural Logic (16x16 symmetric with fun patterns)
@@ -3295,7 +3323,7 @@
                     toggleBtnHtml = `<div style="margin-top: 5px;"><span id="toggle-${escapeHtml(post.id)}" onclick="toggleTranslation('${escapeHtml(post.id)}')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer;">${lateLabel}</span></div>`;
                     translateBtnHtml = '';
                 }
-                const username = (card && card.username) ? card.username : (post.uid ? post.uid.substring(0, 8) : 'Unknown');
+                const username = (card && card.username && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? card.username : (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
                 const isDev = (username === 'ukiyo');
                 const isPro = supporterUsers[username] || false;
 
@@ -3374,9 +3402,12 @@
 
                 renderEmojis(div);
 
-                // Draw Avatar
-                const seed = (card && (card.customAvatar || card.avatarSeed)) ? (card.customAvatar || card.avatarSeed) : post.uid;
-                drawAvatar(avatarId, seed);
+                // Draw Avatar: a missing card means the profile is gone, so
+                // leave the canvas blank white instead of drawing the uid.
+                const seed = (!card || (window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card)))
+                    ? null
+                    : ((card.customAvatar || card.avatarSeed) ? (card.customAvatar || card.avatarSeed) : post.uid);
+                drawAvatar(avatarId, seed, post.uid);
                 const cvs = document.getElementById(avatarId);
                 if (cvs) cvs.onclick = () => openUserProfile(post.uid);
 
@@ -3536,7 +3567,7 @@
                     commentToggleHtml = '<span id="cmt-toggle-' + escapeHtml(comment.id) + '" onclick="toggleCommentTranslation(\'' + escapeJsString(postId) + '\', \'' + escapeJsString(comment.id) + '\')" style="font-size:0.7rem; color:#666; text-decoration:underline; cursor:pointer; margin-left:5px;">' + lateCmtLabel + '</span>';
                     commentTranslateHtml = '';
                 }
-                const username = (card && card.username) ? card.username : (comment.uid ? comment.uid.substring(0, 8) : 'Unknown');
+                const username = (card && card.username && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? card.username : (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
                 const isDev = (username === 'ukiyo');
                 if (!isDev && currentUser && comment.uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink') isDev = true;
                 const isPro = supporterUsers[username] || false;

@@ -358,6 +358,12 @@
         let isDrawing = false;
         let points = [];
         let hasResult = false;
+        // Cached canvas rect and draw state. Calling getBoundingClientRect()
+        // and stroke() on every touchmove is what made drawing feel laggy on a
+        // Kindle (suggestions report 2026-10-31: "its realllllly laggy").
+        let canvasRect = null;
+        let lastDrawnIndex = -1;
+        let drawFrame = 0;
 
         // --- INIT ---
         window.addEventListener('pageshow', function () {
@@ -395,6 +401,8 @@
             canvas.addEventListener('mousedown', onPointerDown);
             canvas.addEventListener('mousemove', onPointerMove);
             window.addEventListener('mouseup', onPointerUp);
+            window.addEventListener('resize', updateCanvasRect);
+            window.addEventListener('orientationchange', updateCanvasRect);
 
             // Touch events
             canvas.addEventListener('touchstart', function (e) {
@@ -423,6 +431,11 @@
             points = [];
             isDrawing = false;
             hasResult = false;
+            lastDrawnIndex = -1;
+            if (drawFrame && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(drawFrame);
+                drawFrame = 0;
+            }
             document.getElementById('result-modal').style.display = 'none';
             document.getElementById('retry-btn').style.display = 'none';
             document.getElementById('score').innerText = '--';
@@ -445,8 +458,15 @@
             ctx.stroke();
         }
 
+        function updateCanvasRect() {
+            canvasRect = canvas ? canvas.getBoundingClientRect() : null;
+        }
+
         function getCanvasPos(evt) {
-            const rect = canvas.getBoundingClientRect();
+            // A CSS zoom / scroll can change the layout, but not between the
+            // initial touch and the pointerup of one drawing.
+            if (!canvasRect) updateCanvasRect();
+            const rect = canvasRect;
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
             return {
@@ -459,29 +479,58 @@
             if (hasResult) return;
             isDrawing = true;
             points = [];
+            updateCanvasRect();
             const pos = getCanvasPos(evt);
             points.push(pos);
+            lastDrawnIndex = 0;
             drawBlank();
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+        }
+
+        function flushDrawing() {
+            if (!ctx || lastDrawnIndex < 0 || points.length - 1 <= lastDrawnIndex) return;
+            ctx.beginPath();
+            ctx.moveTo(points[lastDrawnIndex].x, points[lastDrawnIndex].y);
+            for (let i = lastDrawnIndex + 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.stroke();
+            lastDrawnIndex = points.length - 1;
         }
 
         function onPointerMove(evt) {
             if (!isDrawing || hasResult) return;
             const pos = getCanvasPos(evt);
             const last = points[points.length - 1];
-            const dist = Math.sqrt(Math.pow(pos.x - last.x, 2) + Math.pow(pos.y - last.y, 2));
-            if (dist < 1) return; // Skip very close points
+            const dx = pos.x - last.x;
+            const dy = pos.y - last.y;
+            if ((dx * dx + dy * dy) < 1) return; // Skip very close points
             points.push(pos);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
+            // Batch several touchmoves into one stroke per frame.
+            if (drawFrame) return;
+            if (typeof requestAnimationFrame === 'function') {
+                drawFrame = requestAnimationFrame(function () {
+                    drawFrame = 0;
+                    flushDrawing();
+                });
+            } else {
+                flushDrawing();
+            }
         }
 
         function onPointerUp() {
             if (!isDrawing || hasResult) return;
             isDrawing = false;
+            if (drawFrame && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(drawFrame);
+                drawFrame = 0;
+            }
+            flushDrawing();
             evaluateCircle();
         }
 

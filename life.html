@@ -469,7 +469,11 @@
 
             const bday = parseDate(dateStr);
             if (!bday) {
-                errorEl.innerText = "Invalid format. Use DD/MM/YYYY";
+                errorEl.innerText = "Invalid date. Use DD/MM/YYYY (or YYYY-MM-DD).";
+                return;
+            }
+            if (bday.getTime() > Date.now()) {
+                errorEl.innerText = "Birthday cannot be in the future.";
                 return;
             }
 
@@ -492,27 +496,55 @@
             });
         }
 
+        // Accept the formats people actually type on a Kindle, not just the
+        // DD/MM/YYYY placeholder: 10/11/2010, 10-11-2010, 10.11.2010,
+        // 2010-11-10, 2010/11/10 and an ISO timestamp (take its date part).
+        // Construct in local time and verify the components, so 31/02/2010 is
+        // rejected instead of silently rolling over to 3 March.
         function parseDate(dateStr) {
-            const parts = dateStr.split('/');
+            if (!dateStr) return null;
+            const raw = String(dateStr).trim();
+            if (!raw) return null;
+
+            let s = raw.replace(/\s+/g, '');
+            const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/);
+            if (isoMatch) s = isoMatch[1] + '-' + isoMatch[2] + '-' + isoMatch[3];
+
+            let d, m, y;
+            let parts = s.split('/');
+            if (parts.length !== 3) parts = s.split('-');
+            if (parts.length !== 3) parts = s.split('.');
+
             if (parts.length === 3) {
-                let d = parseInt(parts[0], 10);
-                let m = parseInt(parts[1], 10);
-                let y = parseInt(parts[2], 10);
-                if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
-                if (m < 1 || m > 12) return null;
-                if (d < 1 || d > 31) return null;
-                if (y < 1900 || y > 2100) return null;
-                return new Date(y, m - 1, d);
+                if (/^\d{4}$/.test(parts[0])) {
+                    y = parseInt(parts[0], 10);
+                    m = parseInt(parts[1], 10);
+                    d = parseInt(parts[2], 10);
+                } else {
+                    d = parseInt(parts[0], 10);
+                    m = parseInt(parts[1], 10);
+                    y = parseInt(parts[2], 10);
+                }
+            } else {
+                return null;
             }
-            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                return new Date(dateStr);
+
+            if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+            if (m < 1 || m > 12) return null;
+            if (d < 1 || d > 31) return null;
+            if (y < 1900 || y > 2100) return null;
+
+            const date = new Date(y, m - 1, d);
+            if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+                return null;
             }
-            return null;
+            return date;
         }
 
         function renderLife(dateStr) {
             const birthDate = parseDate(dateStr);
             if (!birthDate) return false;
+            if (birthDate.getTime() > Date.now()) return false;
 
             const today = new Date();
             const oneWeek = 1000 * 60 * 60 * 24 * 7;
