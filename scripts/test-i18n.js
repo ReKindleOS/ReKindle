@@ -91,6 +91,10 @@ for (const file of htmlFiles) {
 
     const scriptRe = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
     while ((m = scriptRe.exec(html))) {
+        // Skip non-JS data scripts: the JSON-LD block in every page's SEO head
+        // is JSON, not JavaScript, and parsing it as JS fails.
+        const openTag = m[0].slice(0, m[0].indexOf('>') + 1);
+        if (/\btype="(?!text\/javascript|application\/javascript|module)/i.test(openTag)) continue;
         if (m[1].trim()) checkTCalls(m[1], file);
     }
 }

@@ -180,7 +180,8 @@ function boot(opts) {
     ctx.self = ctx;
 
     const html = fs.readFileSync(PAGE, 'utf8');
-    const inline = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i)[1]
+    // Skip the JSON-LD block in the SEO head: it is data, not the app script.
+    const inline = html.match(/<script(?![^>]*\bsrc=)(?![^>]*application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/i)[1]
         .replace(/<\/script>/g, '') + '\n;globalThis.__app = app;';
 
     vm.createContext(ctx);

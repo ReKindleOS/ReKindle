@@ -15,7 +15,8 @@ const HTML = process.env.OT_FILE
     ? path.resolve(process.env.OT_FILE)
     : path.join(__dirname, '..', 'oregontrail.html');
 const html = fs.readFileSync(HTML, 'utf8');
-const inline = /<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/.exec(html);
+// Skip the JSON-LD block in the SEO head: it is data, not the game script.
+const inline = /<script(?![^>]*src=)(?![^>]*application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/.exec(html);
 if (!inline) throw new Error('no inline script found');
 const code = inline[1];
 

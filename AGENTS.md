@@ -44,6 +44,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [payments.md](docs/agent/payments.md) | Stripe worker, Pro grants/revokes, reconciliation |
 | [kindle-fullscreen.md](docs/agent/kindle-fullscreen.md) | `kindle/` launcher, cover, KPM |
 | [link-blocking.md](docs/agent/link-blocking.md) | URL/link ban: `js/link-guard.js`, `containsUrl()`, evasion forms, parity test |
+| [seo.md](docs/agent/seo.md) | `<head>` markup, canonicals, `sitemap.xml`/`robots.txt`, Search Console, 404s |
 
 ## 🚫 Restrictions (Target: Chromium 75)
 
@@ -90,16 +91,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 **Constraint:** `window.alert()`, `confirm()`, and `prompt()` are unsupported.
 **Solution:** Use **Custom Modals** (HTML/CSS overlays).
 
-**Example (Correct):**
-```html
-<!-- Use a custom div overlay -->
-<div id="custom-alert" class="modal-overlay">
-  <div class="modal-box">
-    <p>Operation failed.</p>
-    <button onclick="closeModal()">OK</button>
-  </div>
-</div>
-```
+Build the custom modal with the standard `.modal-overlay` / `.modal-box` structure (see [Best Practices](#-best-practices) and `weather.html`), not a one-off overlay.
 
 ## 🎨 Standard UI Patterns (System 7)
 
@@ -337,8 +329,7 @@ functions/api/foo/[[path]].js   → handles /api/foo and /api/foo/*
 *   **Rule:** Avoid heavy computation, crypto, or massive data parsing on the main thread.
 
 ### 2. Localization
-*   **Method:** Use `data-i18n` attributes for all text content.
-*   **Library:** `js/i18n.js` handles replacement automatically.
+Use `data-i18n` attributes for all text content; `js/i18n.js` replaces them automatically (see the Localization section above).
 
 ### 3. Viewport & Rendering
 *   **Meta Tag:** `user-scalable=no`.
@@ -534,7 +525,7 @@ The button no longer carries a `return` param, so a user who signs in from a pag
 Enforced client-side and in `workers/rekindle-moderate/worker.js` for every social app (KindleChat, Neighbourhood, Topics). Reporting UI and the `/reports` data model are in [moderation-reports.md](docs/agent/moderation-reports.md).
 
 ### 0. KindleChat Direct Messages (2026-10-20)
-DMs live **only** in the social RTDB (`rekindle-socials`): `kindlechat/dm_threads`, `dm_messages`, `dm_user_threads`, `dm_prefs`, `dm_blocks`. Only ReKindle+ members may start a conversation; every first contact requires recipient acceptance; all content is written by the moderation worker (clients may write only `lastReadAt` and `allowRequests`). Messages are text-only, capped at 1,000 chars, moderated, and block/report are always available; a block is reversible only by the person who set it (`dm_unblock`). Never re-enable the legacy Firestore `rooms` collection and never grant moderators a blanket read on `dm_messages` — reports carry a scoped context instead. Kill switch: `kindlechat/config/dm_enabled` / `dm_beta_enabled`. Full design: [kindlechat.md](docs/agent/kindlechat.md#kindlechat-direct-messages-2026-10-20).
+DMs live **only** in the social RTDB (`kindlechat/dm_*`): ReKindle+ only, recipient acceptance on every first contact, all content written by the moderation worker (clients may write only `lastReadAt`/`allowRequests`), 1,000-char text only, block/report always available. Never re-enable the legacy Firestore `rooms` collection and never grant moderators a blanket read on `dm_messages` (reports carry a scoped context). Kill switch: `kindlechat/config/dm_enabled` / `dm_beta_enabled`. Full design: [kindlechat.md](docs/agent/kindlechat.md#kindlechat-direct-messages-2026-10-20).
 
 ### 1. URL / Link Blocking in Social Apps
 All social apps (KindleChat, Neighbourhood, Topics) block users from posting URLs and links. This is enforced **both client-side and server-side** (moderation worker).
@@ -640,15 +631,15 @@ Any page that reads/writes data owned by the **social** project (e.g. `users_pub
 
 ### 5. Repeated-Message Flood Guard (KindleChat, 2026-10-20)
 
-`evaluateChatRepetition()` in `workers/rekindle-moderate/worker.js` plus the client mirror `js/spam-guard.js` reject a user's 3rd near-identical message inside 10 minutes (and an exact duplicate inside 5) **without adding any Firebase operations**: the state rides in the existing `kindlechat/server_rate_limits/{uid}/kindlechat` bucket as a `rep` string. Never add a separate read/write for spam state, and keep the client mirror in sync with the worker. `node scripts/test-chat-spam.js` replays the real 2026-10-19 flood. Full design: [kindlechat.md](docs/agent/kindlechat.md).
+`evaluateChatRepetition()` (worker) + `js/spam-guard.js` (client mirror) reject a 3rd near-identical message inside 10 minutes (exact duplicate inside 5) **without adding any Firebase operations** — the state rides in the existing `server_rate_limits/{uid}/kindlechat` bucket as a `rep` string. Never add a separate read/write for spam state, and keep the mirror in sync. `node scripts/test-chat-spam.js` replays the real 2026-10-19 flood. Full design: [kindlechat.md](docs/agent/kindlechat.md).
 
 ### 6. Reporting Requires a Comment
 
-Every social report must carry a comment containing at least one real word (2+ letters, any script). Enforced server-side in the `report` handler (`reportCommentError()` in `workers/rekindle-moderate/worker.js`, checked before the rate limiter) and mirrored in `js/reports.js` so the modal shows the message inline. `scripts/test-reports.js` asserts both gates agree, so change them together.
+Every social report needs a comment with at least one real word (2+ letters, any script): enforced in the `report` handler (`reportCommentError()`, before the rate limiter) and mirrored in `js/reports.js`; `scripts/test-reports.js` asserts both gates agree, so change them together.
 
 ### 7. The Moderation Console Is Owner-Only and Automod-First
 
-Social moderation is automated end to end: the Worker moderates every write and `/reports` auto-deletes when moderation confirms the report (chat, DMs, comments — since 2026-10-26 one reporter cannot delete alone) or on 2 independent reports (everything else). `moderation.html` is therefore an **owner-only** console — no moderator grants, mod-mode, timeouts or manual action log. Its tabs are Automod Log, Reports, Banned IPs, Users and Content Review. Automod rejections live in the **social** RTDB (`/automod_log`, written by `logAutomodRejection()`, pruned after 30 days); the `automod_log`/`automod_strikes`/`automod_last_action` rules in `rtdb-rules.json` were dead and have been removed. See [moderation-reports.md](docs/agent/moderation-reports.md).
+Moderation is automated end to end: the Worker moderates every write and `/reports` auto-deletes on a confirmed report (one reporter cannot delete alone since 2026-10-26) or on 2 independent reports. `moderation.html` is therefore **owner-only** — no moderator grants, mod-mode, timeouts or manual action log; tabs are Automod Log, Reports, Banned IPs, Users and Content Review. Automod rejections live in the **social** RTDB `/automod_log` (pruned at 30 days); the dead `automod_*` rules in `rtdb-rules.json` are gone. See [moderation-reports.md](docs/agent/moderation-reports.md).
 
 ## 🔐 Server Boundary Rules (2026-10-20 audit)
 
@@ -688,6 +679,10 @@ Example pattern: `functions/api/reddit.js`.
 **Worker quota + preflight (2026-10-25):** Workers Free is 100k requests/day shared with Pages Functions; over it every worker returns the CORS-less `error code: 1027` page (KindleChat showed "Load failed"). Cross-origin JSON POSTs cost 2 requests (OPTIONS + POST) unless the worker sends `Access-Control-Max-Age` + `Vary: Origin` — never remove them ([usage-limits.md](docs/agent/usage-limits.md), `scripts/test-worker-cors.js`). Socials: separate **ReKindle Social** account, URLs in `js/social-endpoints.js`.
 
 **Some hosts block Cloudflare egress outright — a proxy cannot fix it.** `standardebooks.org` answers every request from AS132892 (the Workers/Pages network, e.g. `2a06:98c0:3600::103`) with an Apache 403, whatever the User-Agent or headers, so `/api/proxy` and `/api/*` are dead ends for it. Relay through a Firebase function (Google Cloud egress) instead — see `firebase-functions/standardebooks.js` and [integrations.md](docs/agent/integrations.md#standard-ebooks-403s-every-cloudflare-egress-ip-2026-10-20). Same workaround family as the Akinator relay (`akinator-service/`).
+
+## 🔎 SEO / Search Console (2026-11-10)
+
+Pages returns **`index.html` with HTTP 200 for any unknown URL unless a top-level `404.html` exists** — one missing file produced 209 "duplicate" and 11 "soft 404" rows. `404.html` must stay script-free and noindex. Every page's canonical, description, OG, JSON-LD and `<h1>` comes from `scripts/seo-pages.js` via `scripts/seo-inject.js`; `scripts/test-seo.js` (in `npm test`) fails on drift. **New page → add a table entry → re-run the injector**; never hand-edit a `<!-- seo:begin -->` block. [seo.md](docs/agent/seo.md).
 
 ## ⚠️ Deploying to Cloudflare Pages (do not deploy the repo root)
 

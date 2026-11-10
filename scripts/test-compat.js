@@ -100,7 +100,9 @@ for (const file of files) {
 
     // Every app page carries theme.js (dark mode + scale + wallpaper). The
     // browser probe is a raw diagnostic and deliberately stays unthemed.
-    if (file !== 'probe.html' && !/theme\.js\?v=\d+/.test(html)) {
+    // 404.html is deliberately dependency-free so it still renders on a stock
+    // Kindle with no service worker and no network.
+    if (file !== 'probe.html' && file !== '404.html' && !/theme\.js\?v=\d+/.test(html)) {
         problems.push(`${file}: missing versioned theme.js (dark mode)`);
     }
 
