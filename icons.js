@@ -114,7 +114,7 @@ const APPS = [
         name: 'Files',
         plus: true,
         cat: 'tools',
-        desc: 'Cloud storage for your documents.',
+        desc: 'Files on this device and in the cloud.',
         // Folder Icon
         icon: '<path d="M4 6 h8 l2 2 h14 v16 h-24 z" fill="white" stroke="black" stroke-width="2"/><line x1="4" y1="11" x2="28" y2="11" stroke="black" stroke-width="2"/>'
     },
@@ -123,7 +123,7 @@ const APPS = [
         name: 'Docs',
         plus: true,
         cat: 'tools',
-        desc: 'Write and edit Word documents.',
+        desc: 'Write and export documents.',
         icon: '<path d="M6 4 h14 l6 6 v18 h-20 z" fill="white" stroke="black" stroke-width="2"/><polyline points="20 4 20 10 26 10" fill="none" stroke="black" stroke-width="2"/><line x1="10" y1="14" x2="22" y2="14" stroke="black" stroke-width="2"/><line x1="10" y1="18" x2="22" y2="18" stroke="black" stroke-width="2"/><line x1="10" y1="22" x2="18" y2="22" stroke="black" stroke-width="2"/>'
     },
     {
@@ -182,7 +182,7 @@ const APPS = [
         es6: true,
         cat: 'tools',
         plus: true,
-        desc: 'Handwritten, sync-able todos!',
+        desc: 'Handwritten to-dos, read as text.',
         icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M9 10l3 3 7-7" fill="none" stroke="black" stroke-width="2"/><line x1="9" y1="18" x2="23" y2="18" stroke="black" stroke-width="2"/><line x1="9" y1="24" x2="18" y2="24" stroke="black" stroke-width="2"/><path d="M28 8h2 M28 16h3 M27 24h3" stroke="black" stroke-width="2" stroke-linecap="round"/>'
     },
     /*{
@@ -190,7 +190,7 @@ const APPS = [
         name: 'Quick Notes',
         cat: 'tools',
         plus: true,
-        desc: 'Handwritten notes',
+        desc: 'Handwritten notes, read as text.',
         icon: '<rect x="6" y="4" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M10 10 H22 M10 16 H22 M10 22 H18" stroke="black" stroke-width="2" stroke-linecap="round"/><path d="M28 8h2 M28 16h3 M27 24h3" stroke="black" stroke-width="2" stroke-linecap="round"/>'
     },*/
     {
@@ -222,7 +222,7 @@ const APPS = [
         name: 'AirType',
         cat: 'tools',
         plus: true,
-        desc: 'Phone-based typewriter',
+        desc: 'Use your phone as the keyboard.',
         icon: '<path d="M4 24 L 28 12 L 4 4 L 10 14 L 4 24 Z M 10 14 L 28 12" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/>',
     },
 
@@ -232,7 +232,7 @@ const APPS = [
         name: 'Bluesky',
         cat: 'lifestyle',
         plus: true,
-        desc: 'Social social.',
+        desc: 'Read and post on Bluesky.',
         icon: '<path d="M16 8 C16 8 20 4 26 6 C28 8 26 14 24 16 C28 18 30 24 26 28 C20 30 16 26 16 26 C16 26 12 30 6 28 C2 24 4 18 8 16 C6 14 4 8 6 6 C12 4 16 8 16 8 Z" fill="white" stroke="black" stroke-width="2"/><path d="M16 8 L16 26" stroke="black" stroke-width="2"/>'
     },
     {
@@ -267,7 +267,7 @@ const APPS = [
         cat: 'lifestyle',
         plus: true,
         filled: true,
-        desc: 'Decentralized social.',
+        desc: 'Your Mastodon timeline.',
         icon: '<path d="M21.3,4.5c-2.2-1.1-4.7-1.1-6.9-0.2c-0.6-0.3-1.3-0.4-1.9-0.4c-0.7,0-1.4,0.1-2,0.4C8.2,3.4,5.7,3.5,3.5,4.5C1.3,5.6,0,8.5,0,8.5v11c0,3,2.2,5.5,5,5.5h3v-7c0-1.1,0.9-2,2-2s2,0.9,2,2v6h1v-6c0-1.1,0.9-2,2-2s2,0.9,2,2v7h3c2.8,0,5-2.5,5-5.5v-11C25,8.5,23.6,5.6,21.3,4.5z" fill="black"/>'
     },
     /*     {
@@ -400,7 +400,7 @@ const APPS = [
         featured: true,
         filled: true,
         featuredOrder: 2,
-        desc: 'Stacks on, Stacks off',
+        desc: 'Read your Substack subscriptions.',
         icon: '<rect x="6" y="5" width="20" height="4" fill="black"/><rect x="6" y="11" width="20" height="4" fill="black"/><path d="M6 17 h20 v11 l-10 -6 l-10 6 z" fill="black"/>'
     },
     {
@@ -473,7 +473,7 @@ const APPS = [
         name: 'Photo Frame',
         cat: 'lifestyle',
         plus: true,
-        desc: 'Digital photo slideshow.',
+        desc: 'A photo slideshow for your desk.',
         icon: '<rect x="4" y="6" width="24" height="20" fill="none" stroke="black" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="black"/><path d="M4 26 l8 -8 l4 4 l6 -6 l6 6" fill="none" stroke="black" stroke-width="2"/>'
     },
     {
