@@ -350,13 +350,7 @@ Use `data-i18n` attributes for all text content; `js/i18n.js` replaces them auto
     *   Avoid relying on `Intl.DateTimeFormat` for timezone shifting.
     *   Use a **Manual Offset** strategy: Store a numeric offset (e.g., `+11`) and mathematically shift the timestamp before displaying.
     *   Use the `time.js` helper `rekindleGetZonedDate()` which handles this shim.
-*   **Timezone Setting Modal (`time.js`):**
-    *   `time.js` injects a lazy System 7 modal (`checkTimezoneOffset()`) when the user has not saved a timezone offset.
-    *   It triggers **only** when local-time helpers are actually called (`rekindleGetZonedDate()`, `rekindleFormatTime()`, `getDateInZone()` without an explicit zone) — it does **not** run automatically on every page load.
-    *   The modal searches the Open-Meteo geocoding API, fetches the UTC offset, saves it to `localStorage` (`rekindle_location_manual` + `rekindle_timezone_offset`), and **reloads the page** on success.
-    *   It has **no dismiss button** — the user must set their timezone or leave the popup open.
-    *   Its "Sign in instead" button goes to `index?login=true` (the canonical index login popup); the prompt is suppressed on that URL so it cannot cover the modal, and signing in restores the account's saved timezone. See section 12.
-    *   Because this modal is injected into arbitrary host pages, it is subject to the class-name leakage warning in section 6 above.
+*   **Timezone / language prompt (`time.js`):** one lazy System 7 modal (`checkTimezoneOffset()`), injected only when local-time helpers run (`rekindleGetZonedDate()`, `rekindleFormatTime()`, `getDateInZone()` without a zone). No timezone → **Sign In first** (ReKindle mark + cloud-sync/data/ReKindle+/community benefits; `index?login=true`; skipped when `rekindle_uid`/Firebase shows a user), **Continue as guest** (`rekindle_tz_guest`) opens the city search + language picker (region default, **Back** returns to sign-in). Timezone saved but `rekindle_language` absent/`auto` → language picker once per device (`rekindle_language_prompt_v1`). Writes `rekindle_location_manual` + `rekindle_timezone_offset` + `rekindle_language`, mirrors the language to `privateSettings/preferences.language`, reloads. No autofocus (Kindle keyboard) and no class leakage (scoped `#tz-warning-overlay`). Details: [i18n.md](docs/agent/i18n.md#timezone--language-prompt-2026-11-11).
 
 ### 6. Canvas / Touch Coordinate Bug with CSS `zoom`
 
@@ -512,9 +506,9 @@ Cleanup/heal writes are idempotent and guarded by per-session attempted-sets (`m
 
 **`login.html` is a diagnostics page, not a login page.** It exists for troubleshooting: auth state, network state, `Run Diagnostics`, the raw log, Logout. It still renders working Login/Register buttons (and its own `restoreTimezone()` for direct visits with a `return`), which makes it look canonical, but users should not be sent there to sign in — and it must not be the destination of a generic auth redirect. Nothing in the app links to it any more.
 
-**Timezone popup routing (changed 2026-10-20):** the timezone prompt's "Sign in instead" button (`#tz-signin-btn` in `time.js`) used to send users to `login?return=…`. It now sets `window.location.href = 'index?login=true'`. Three pieces keep that flow working — do not break them independently:
+**Timezone popup routing (changed 2026-10-20, two-step since 2026-11-11):** the prompt's first step is Sign In (`#tz-login-btn` in `time.js`; `Continue as guest` reaches the timezone step). It sets `window.location.href = 'index?login=true'` (it used to send users to `login?return=…`). Three pieces keep that flow working — do not break them independently:
 
-1. `checkTimezoneOffset()` in `time.js` returns early when the URL has `login=true` (in addition to the existing `/login…` guard). The prompt overlay is `z-index: 99999` and the index login modal is `z-index: 10000`, so without this the prompt would cover the login modal.
+1. `checkTimezoneOffset()` in `time.js` returns early when the URL has `login=true` (in addition to the existing `/login…` guard). The prompt overlay is `z-index: 9000` and the index login modal is `z-index: 10000`, so without this the prompt would cover the login modal.
 2. `doLogin()` in `index.html` calls `window.rekindleRestoreTimezoneFromProfile(auth.currentUser)` after the IP-ban check passes. That helper lives in `time.js` (exported at the bottom): it reads `users/{uid}/settings/general`, copies `manualLocation` / `timezoneOffset` into `rekindle_location_manual` / `rekindle_timezone_offset`, and removes an open prompt. It is what makes the popup's "Your saved timezone will be restored" hint true, and it also works for users whose localStorage was wiped by the Kindle cache cleanup.
 3. `login.html` keeps its own `restoreTimezone()` (same Firestore read) for the `return` flow on direct troubleshooting visits. Keep the two implementations in sync if the `settings/general` schema changes.
 
@@ -686,12 +680,12 @@ Pages returns **`index.html` with HTTP 200 for any unknown URL unless a top-leve
 
 ## ⚠️ Deploying to Cloudflare Pages (do not deploy the repo root)
 
-`npx wrangler pages deploy .` uploads **everything in the directory, including `.gitignore`d files**. `service-account.json`, `service-account-social.json` and `firebase-functions/.env` (which also holds `OPENAI_API_KEY`) were publicly downloadable from both `rekindle.ink` and `beta.rekindle.ink` until 2026-10-20 because the deploy scripts pointed at `.` and `build-automation.js`'s `ignoreList` did not exclude them.
+`npx wrangler pages deploy .` uploads **everything, including `.gitignore`d files**. `service-account.json`, `service-account-social.json` and `firebase-functions/.env` (`OPENAI_API_KEY`) were public on `rekindle.ink` and `beta.rekindle.ink` until 2026-10-20 because the scripts deployed `.` and `ignoreList` omitted them.
 
 **Rules:**
 *   Deploy the build output, never the source tree: `npm run build && npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main` (prod) or `--branch=beta` (beta). `npm run deploy:prod` / `deploy:beta` run the guard.
 *   `_deploy/main` must contain `functions/` — Cloudflare Pages needs it at the deploy root, and `build-automation.js` copies it in.
-*   `build-automation.js` has `FORBIDDEN_IN_DEPLOY` + `assertNoSecretsInDeploy()`: the build aborts if any credential file survives the copy. Keep that list in sync with `ignoreList` when adding new secret files.
+*   Two gates share one scanner, `scripts/lib/deploy-secrets.js`: recursive filename check, **file contents** (PEM blocks, service-account JSON, `sk_live_`/`ghp_`/…), and symlinks. `assertNoSecretsInDeploy()` aborts the build if any reach `_deploy/*`; `scripts/deploy-guard.js` re-scans before wrangler and refuses targets outside `_deploy/`. Add new secret types there, never to a local list. `scripts/test-deploy-guard.js` (in `npm test`) pins the npm-script order.
 *   Pages caches non-HTML assets on the edge (`s-maxage=604800`). A file removed from a deployment can still be served from the custom-domain cache for up to 7 days — purge the cache (or rotate the credential) after any accidental publish.
 
 ### 🧊 Cache busting a changed shared asset (required)
@@ -716,7 +710,7 @@ Do **not** rely on the service worker's stale-while-revalidate branch to roll a 
 
 Shared-asset URL bumps still require `_deploy/` to be rebuilt (`npm run build`) before deploying — the deploy copies `_deploy/main`, so a stale build publishes old files even when the source is current.
 
-**2026-10-20 incident:** `theme.js` changed in `c5631c5` but every page still loaded `theme.js?v=18` (the v18 bump predated the change). Edge/SW caches kept serving the old theme.js to up to 7 days of traffic. Fixed by bumping all 137 pages to `?v=19`, `js/gamerules.js` to `?v=2` (its Oregon Trail rules text changed in `8ab5b20`), `icons.js` v2 → v3 on the three pages still on v2, and `sw.js` `CACHE_NAME` to `rekindle-cache-v25` (2026-10 re-audit also versioned the previously unversioned shared scripts).
+**2026-10-20 incident:** `theme.js` changed in `c5631c5` but pages still loaded `?v=18`, so edge/SW caches served the old file for up to 7 days. Fixed by bumping 137 pages to `?v=19`, `js/gamerules.js` to `?v=2`, `icons.js` to v3, and `sw.js` `CACHE_NAME` to `rekindle-cache-v25`.
 
 ## Local Testing Gotcha: Service Worker Forces Extensionless URLs
 

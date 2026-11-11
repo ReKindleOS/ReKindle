@@ -108,6 +108,15 @@ function main() {
         assert.ok(files.indexOf(code + '.json') !== -1, 'SHIPPED language is missing locales/' + code + '.json');
     }
 
+    // POPULAR_LANGUAGE is the timezone/language prompt suggestion. Every
+    // target must be a shipped language, otherwise the prompt would preselect
+    // a language with no locale file.
+    for (const cc of Object.keys(registry.popular || {})) {
+        const lang = registry.popular[cc];
+        assert.ok(seen[lang], 'popular language for ' + cc + ' is unknown: ' + lang);
+        assert.ok(shipped.indexOf(lang) !== -1, 'popular language for ' + cc + ' is not shipped: ' + lang);
+    }
+
     // Every locale file must be shipped; otherwise a translator can add a file
     // that no user can select and no test would notice.
     for (const file of files) {

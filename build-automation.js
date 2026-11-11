@@ -43,16 +43,12 @@ const ignoreList = [
     'akinator-service'
 ];
 
-// Files/dirs that must never appear in a deploy directory. The build fails
-// loudly if any of them survive the copy step, so a future ignoreList edit
-// cannot silently republish credentials.
-const FORBIDDEN_IN_DEPLOY = [
-    'service-account.json', 'service-account-social.json', '.env',
-    'firebase-functions', 'firebase-social.json', 'firebase.json',
-    'rtdb-rules.json', 'firestore.rules', 'firestore-social.rules',
-    'rtdb-social-rules.json', 'storage.rules', 'workers', 'scripts', 'admin',
-    'akinator-service', '.wrangler'
-];
+// Credential scanning is shared with scripts/deploy-guard.js (which npm run
+// deploy:beta/prod and CI run before wrangler) so the build and the publish
+// step cannot drift apart. scanDeployDir walks the WHOLE tree, checks names,
+// inspects text-file contents for key formats, and flags symlinks — the old
+// top-level name list here missed nested .env files and renamed keys.
+const { scanDeployDir, forbiddenNameReason } = require('./scripts/lib/deploy-secrets');
 
 // DOM APIs used by the app that WebKit ~534 (Kobo / pre-Chromium Kindle)
 // does not provide. Core-js only polyfills language built-ins, so these must
@@ -357,10 +353,8 @@ async function assertLocalLibs() {
 async function assertNoSecretsInDeploy() {
     const problems = [];
     for (const dir of [MAIN_DIR, LITE_DIR, LEGACY_DIR]) {
-        for (const name of FORBIDDEN_IN_DEPLOY) {
-            const p = path.join(dir, name);
-            if (await fs.pathExists(p)) problems.push(p);
-            // Nested .env (e.g. firebase-functions/.env) is covered by the dir check
+        for (const p of scanDeployDir(dir)) {
+            problems.push(path.join(dir, p.path) + '  [' + p.reason + ']');
         }
     }
     if (problems.length) {
@@ -2118,7 +2112,10 @@ async function run() {
         /^\.dropbox/i.test(name);
 
     for (const item of allFiles) {
-        if (ignoreList.includes(item) || isBuildArtifactEntry(item)) continue;
+        // forbiddenNameReason() is the same check deploy-guard.js runs before
+        // wrangler: credentials never even reach the deploy tree, so the final
+        // scan is a second net rather than the only one.
+        if (ignoreList.includes(item) || isBuildArtifactEntry(item) || forbiddenNameReason(item)) continue;
 
         const srcPath = path.join(SOURCE_DIR, item);
         const destMain = path.join(MAIN_DIR, item);
@@ -2343,7 +2340,7 @@ async function run() {
         throw err;
     }
 
-    // 10. Refuse to publish credentials (see FORBIDDEN_IN_DEPLOY above)
+    // 10. Refuse to publish credentials (shared scanner: scripts/lib/deploy-secrets.js)
     await assertNoSecretsInDeploy();
 
     // 11. Old builds must not silently fall back to CDN libraries.

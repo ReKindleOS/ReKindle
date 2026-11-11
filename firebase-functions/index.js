@@ -2085,6 +2085,152 @@ exports.adminSetPro = onCall(callOptions, async (request) => {
 });
 
 /**
+ * Public membership numbers for the membership page. Cheap aggregation,
+ * cached for an hour per instance; failures are non-fatal and return 0.
+ */
+let publicStatsCache = { members: 0, at: 0 };
+exports.getPublicStats = onCall({ cors: allowedOrigins, maxInstances: 10, timeoutSeconds: 30 }, async () => {
+    const now = Date.now();
+    if (publicStatsCache.at && now - publicStatsCache.at < 60 * 60 * 1000) {
+        return { members: publicStatsCache.members };
+    }
+    try {
+        const snapshot = await admin.firestore()
+            .collection('users')
+            .where('proExpiresAt', '>', admin.firestore.Timestamp.now())
+            .count()
+            .get();
+        publicStatsCache = { members: snapshot.data().count || 0, at: now };
+    } catch (e) {
+        logger.warn('getPublicStats count failed', e);
+        publicStatsCache = { members: 0, at: now };
+    }
+    return { members: publicStatsCache.members };
+});
+
+/**
+ * Return the gift code created for a completed Stripe Checkout Session. The
+ * webhook writes gift_purchases/{sessionId} (Admin only); this callable checks
+ * the buyer's uid before returning it. Pending means Stripe has not delivered
+ * checkout.session.completed yet.
+ */
+exports.getLatestGiftPurchase = onCall(callOptions, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+    const db = admin.firestore();
+    const snap = await db.collection('users').doc(request.auth.uid).collection('gift_last').doc('latest').get();
+    if (!snap.exists) return { pending: true };
+    const data = snap.data();
+    return { code: data.code || null, plan: data.plan || null };
+});
+
+exports.redeemGiftCode = onCall(callOptions, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to redeem a gift code.');
+    const raw = typeof request.data.code === 'string' ? request.data.code : '';
+    const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 6 || code.length > 16) {
+        throw new HttpsError('invalid-argument', 'That gift code is not valid.');
+    }
+
+    const db = admin.firestore();
+    const nowMs = Date.now();
+
+    // Brute-force guard: ten attempts per account per hour. A failed code still
+    // counts, so guessing is not free.
+    const limitRef = db.collection('gift_redeem_limits').doc(request.auth.uid);
+    const limitSnap = await limitRef.get();
+    let attempts = 0;
+    let windowStart = nowMs;
+    if (limitSnap.exists) {
+        const d = limitSnap.data();
+        const start = d.windowStart && d.windowStart.toMillis ? d.windowStart.toMillis() : 0;
+        if (start && nowMs - start < 60 * 60 * 1000) {
+            windowStart = start;
+            attempts = Number(d.attempts) || 0;
+        }
+    }
+    if (attempts >= 10) {
+        throw new HttpsError('resource-exhausted', 'Too many gift-code attempts. Try again in an hour.');
+    }
+    await limitRef.set({
+        windowStart: admin.firestore.Timestamp.fromMillis(windowStart),
+        attempts: attempts + 1
+    }, { merge: true });
+
+    const result = await db.runTransaction(async (tx) => {
+        const codeRef = db.collection('gift_codes').doc(code);
+        const codeSnap = await tx.get(codeRef);
+        if (!codeSnap.exists) {
+            throw new HttpsError('not-found', 'That gift code is not valid.');
+        }
+        const gift = codeSnap.data();
+        if (gift.redeemed) {
+            throw new HttpsError('failed-precondition', 'That gift code has already been used.');
+        }
+
+        const userRef = db.collection('users').doc(request.auth.uid);
+        const userSnap = await tx.get(userRef);
+        let currentExpiry = 0;
+        if (userSnap.exists && userSnap.data().proExpiresAt) {
+            const rawExpiry = userSnap.data().proExpiresAt;
+            currentExpiry = rawExpiry.toMillis ? rawExpiry.toMillis() : new Date(rawExpiry).getTime();
+        }
+
+        let expiresAt;
+        let subscriptionType;
+        if (gift.plan === 'lifetime') {
+            expiresAt = new Date(Date.UTC(2100, 0, 1));
+            subscriptionType = 'lifetime';
+        } else {
+            expiresAt = new Date(Math.max(nowMs, currentExpiry) + 365 * 24 * 60 * 60 * 1000);
+            subscriptionType = 'gift_year';
+        }
+
+        tx.set(userRef, {
+            isPro: true,
+            proExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+            subscriptionType: subscriptionType
+        }, { merge: true });
+
+        tx.update(codeRef, {
+            redeemed: true,
+            redeemedBy: request.auth.uid,
+            redeemedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { expiresAt, subscriptionType, plan: gift.plan };
+    });
+
+    // Merge claims: setCustomUserClaims replaces the whole object, so copying
+    // the existing claims keeps ageVerified/moderator intact.
+    try {
+        const userRecord = await admin.auth().getUser(request.auth.uid);
+        const mergedClaims = Object.assign({}, userRecord.customClaims || {}, { pro: true });
+        await admin.auth().setCustomUserClaims(request.auth.uid, mergedClaims);
+        if (userRecord.email) {
+            const entry = {};
+            entry[userRecord.email] = {
+                expiresAt: admin.firestore.Timestamp.fromDate(result.expiresAt),
+                isLifetime: result.subscriptionType === 'lifetime'
+            };
+            await db.collection('config').doc('supporters').set(entry, { merge: true });
+        }
+    } catch (e) {
+        // The entitlement is already written; a claim failure repairs on the
+        // next token refresh or getSocialToken, so do not fail the redemption.
+        logger.warn('redeemGiftCode claim/supporters sync failed', e);
+    }
+
+    return {
+        ok: true,
+        plan: result.plan,
+        expiresAt: result.expiresAt.toISOString(),
+        message: result.plan === 'lifetime'
+            ? 'Gift code redeemed: ReKindle+ lifetime.'
+            : 'Gift code redeemed: one year of ReKindle+.'
+    };
+});
+
+/**
  * Game leaderboards — server-authoritative score submission.
  *
  * The browser can no longer write `leaderboard_*` documents (firestore.rules

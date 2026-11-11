@@ -417,6 +417,85 @@ treatment.
   (`/v2/core/approval_requests`), approved in the dashboard within the 24 h
   window.
 
+## 2026-11-11: free tiers, membership page, previews and gift codes
+
+This change moved ReKindle+ promotion earlier in the product instead of adding
+more paywalls. The pieces that matter operationally:
+
+### Freemium gate (`pro-gate.js`)
+
+- A page can load `pro-gate.js?v=8` with `data-freemium="true"` (or set
+  `window.RK_PRO_FREEMIUM = true`). In that mode the gate still resolves Pro but
+  never auto-blocks; the page gates individual actions with
+  `rekindleProGate.showPaywall()` and the overlay gains a **Not now** button.
+- Hard-gated pages keep the blocking overlay and the anti-tamper interval.
+- **Never reuse the id `paywall-overlay` for a page's own notice.** `hidePaywall()`
+  hides that id, so a page overlay with the same id is silently hidden when the
+  freemium gate resolves. `chat.html` uses `chat-notice-overlay` for its own
+  sign-in/quota card because of this exact collision (it left the AI page looking
+  like it had no gate at all).
+
+### Free tiers
+
+| Surface | Free | ReKindle+ |
+|---|---|---|
+| AI Assistant | 1 hosted message/day (`FREE_DAILY_LIMIT` in `workers/rekindle-oracle/worker.js`); a user's own API key is never metered | 10/day (`PRO_DAILY_LIMIT`) |
+| Docs | Local drafts + `.txt` export | Cloud save to Files, `.docx` import/export, recent documents |
+| Files | 5 MB in IndexedDB on the device (`rekindle_files_device`) | 100 MB Firebase Storage, shared with Photo Frame |
+
+The AI worker must be redeployed for the free tier to take effect; until then it
+returns 403 for non-Pro users. The client keeps the quota display optimistic and
+treats `code: "quota_exhausted"` as the authority.
+
+### Funnel and promotion surfaces
+
+- `pay.html` shows the three plans to guests; only checkout needs an account.
+  Login/register links carry `return=pay.html?plan=…`, handled by
+  `finishLoginRedirect()` in `index.html` (relative paths only).
+- `membership.html` is the canonical "what is free / what is included / what if
+  I cancel" page. It is linked from the paywall, Settings and Help.
+- Locked dashboard tiles open `preview.html?app=<id>` instead of a paywall
+  modal. A lapsed member (`rekindle_was_pro`) sees a **Rejoin** CTA.
+- The dashboard ribbon is shown once per account (`rekindle_plus_nudge_v1_<uid>`)
+  and rotates a different Plus app weekly.
+- `help.html#pro` renders the free-vs-Plus summary; the old guide article moved
+  to `#pro-guide`.
+
+### Gift codes
+
+Gifting is **dormant until configured**. To enable it:
+
+1. Create two one-time Stripe prices (a year and lifetime). They must be
+   `mode=payment` prices, not subscription prices.
+2. Set the Worker secrets on `rekindle-stripe`:
+   `STRIPE_GIFT_YEAR_PRICE_ID`, `STRIPE_GIFT_LIFETIME_PRICE_ID`.
+3. Deploy the Worker, then the Cloud Functions, then `firestore.rules`.
+
+Flow: `pay.html?gift=year|lifetime` → `POST /create-checkout` with
+`gift` → one-time Checkout → `checkout.session.completed` webhook issues a code
+(`gift_codes/{CODE}`) and writes `gift_purchases/{sessionId}` plus
+`users/{uid}/gift_last/latest` → the buyer reads it on `pay.html?gift=success`
+through `getLatestGiftPurchase` → the recipient redeems it with
+`redeemGiftCode`.
+
+- Codes are single-use, `RK` + 8 characters from an unambiguous alphabet, and
+  the redemption is a Firestore transaction (mark code + extend membership).
+- `gift_codes`, `gift_purchases` and `gift_redeem_limits` are Admin-only in
+  `firestore.rules`.
+- 10 redemption attempts per account per hour; a wrong code still counts.
+- A year extends from `max(now, current expiry)`; lifetime sets 2100-01-01 and
+  `subscriptionType: "lifetime"`.
+- Claims are merged (`setCustomUserClaims` replaces the whole object) and
+  `config/supporters` is updated so rules that authorize on it agree.
+- `GET /gift-availability` returns `{ enabled }`; `membership.html` only shows
+  the buy links when both prices exist, so the UI never dead-ends.
+
+### Member count
+
+`getPublicStats` (public callable) counts `users` with `proExpiresAt > now`,
+caches the number for an hour per instance, and returns `{ members }`.
+`membership.html` hides the line if the callable fails, so no fake social proof.
+
 ## Open items
 
 - No durable `stripe_events/{eventId}` log/dedupe yet. The reconciler and the

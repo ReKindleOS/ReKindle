@@ -33,7 +33,8 @@ function json(body, status, headers) {
 }
 
 const PROJECT_ID = "rekindle-dd1fa";
-const DAILY_LIMIT = 10;
+const PRO_DAILY_LIMIT = 10;
+const FREE_DAILY_LIMIT = 1;
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
 let jwksCache = { keys: null, expires: 0 };
@@ -207,10 +208,10 @@ export default {
       if (!user) {
         return json({ error: { message: "Please sign in to use the AI Assistant." } }, 401, cors);
       }
+      // Free tier: one hosted message a day. A user's own API key is never
+      // metered, so free users can keep chatting at their own cost.
       const pro = await readProStatus(user);
-      if (!pro) {
-        return json({ error: { message: "ReKindle+ is required for the AI Assistant." } }, 403, cors);
-      }
+      const dailyLimit = pro ? PRO_DAILY_LIMIT : FREE_DAILY_LIMIT;
 
       const messages = cleanMessages(body.messages, prompt);
       if (messages.length === 0 && action !== "list_models") {
@@ -221,10 +222,15 @@ export default {
       // is their cost, so it is not metered here.
       if (!apiKey && action !== "list_models") {
         const used = await readQuota(user);
-        if (used >= DAILY_LIMIT) {
+        if (used >= dailyLimit) {
           return json({
             error: {
-              message: "You have reached today's " + DAILY_LIMIT + "-message limit. Try again tomorrow or use your own API key."
+              code: "quota_exhausted",
+              plan: pro ? "pro" : "free",
+              limit: dailyLimit,
+              message: pro
+                ? "You have reached today's " + dailyLimit + "-message limit. Try again tomorrow or use your own API key."
+                : "Today's free message is used. ReKindle+ gives you " + PRO_DAILY_LIMIT + " a day, or add your own API key in Settings."
             }
           }, 429, cors);
         }
@@ -234,6 +240,12 @@ export default {
       // --- ACTION: LIST MODELS ---
       if (action === "list_models") {
         let models = [];
+
+        // Free users get the default model list from the client; enumerating
+        // upstream models needs a Pro membership or their own key.
+        if (!pro && !apiKey) {
+          return json({ models: [] }, 200, cors);
+        }
 
         if (provider === "openai") {
           if (!apiKey) throw new Error("OpenAI API Key required.");
@@ -310,7 +322,7 @@ export default {
         }
       }
 
-      return json({ text: responseText }, 200, cors);
+      return json({ text: responseText, plan: pro ? "pro" : "free", limit: dailyLimit }, 200, cors);
     } catch (error) {
       return json({ error: { message: error.message } }, 500, cors);
     }

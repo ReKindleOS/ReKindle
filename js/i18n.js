@@ -133,6 +133,35 @@
         ET: 'am'
     };
 
+    // Country -> the language most people there use, restricted to shipped
+    // locales. This feeds ONLY the language suggestion in the timezone /
+    // language prompt (time.js), so it must not change Auto: COUNTRY_LANGUAGE
+    // above is still what resolveAuto() uses, and ambiguous countries there
+    // stay browser-driven. English-majority countries are listed explicitly so
+    // the prompt defaults to English instead of guessing from the browser.
+    // Countries that are absent (e.g. FI, IS) return '' so the prompt prefers
+    // the device language rather than claiming a wrong "most spoken" default.
+    var POPULAR_LANGUAGE = {
+        // English-majority countries with no COUNTRY_LANGUAGE entry.
+        US: 'en', GB: 'en', AU: 'en', NZ: 'en', IE: 'en', ZA: 'en', NG: 'en',
+        GH: 'en', ZW: 'en', ZM: 'en', MW: 'en', BW: 'en', NA: 'en', LS: 'en',
+        SZ: 'en', PG: 'en', FJ: 'en', MT: 'en', JM: 'en', TT: 'en', BS: 'en',
+        BB: 'en', GY: 'en', SL: 'en', LR: 'en', GM: 'en', SS: 'en',
+
+        // Multi-language countries Auto deliberately leaves to the browser.
+        IN: 'hi', PK: 'ur', PH: 'tl', MY: 'ms', KE: 'sw', TZ: 'sw', UG: 'sw',
+        BN: 'ms', MO: 'zh-Hant', KP: 'ko',
+
+        // Portuguese / Spanish / French-speaking countries outside the table.
+        GQ: 'es', BZ: 'es', AO: 'pt', MZ: 'pt', CV: 'pt', GW: 'pt', ST: 'pt',
+        TL: 'pt', CI: 'fr', CM: 'fr', BF: 'fr', ML: 'fr', NE: 'fr', TG: 'fr',
+        BJ: 'fr', GA: 'fr', CG: 'fr', CD: 'fr', MG: 'fr', HT: 'fr',
+
+        // Balkans, Caucasus and Middle East neighbours.
+        ME: 'sr', CY: 'el', SO: 'ar', DJ: 'ar', KM: 'ar', MR: 'ar',
+        SD: 'ar', TD: 'ar', TJ: 'ru', SR: 'nl', AW: 'nl', CW: 'nl'
+    };
+
     // Languages with a shipped locale file. Order is irrelevant; settings sorts
     // by native name. Add a code here only after BOTH locale files exist.
     var SHIPPED = [
@@ -181,6 +210,17 @@
         return COUNTRY_LANGUAGE[String(countryCode).toUpperCase()] || '';
     }
 
+    // Most-spoken SHIPPED language for a country, for the timezone/language
+    // prompt's default selection. Never returns an unshipped code.
+    function popularLanguage(countryCode) {
+        if (!countryCode) return '';
+        var cc = String(countryCode).toUpperCase();
+        var pick = POPULAR_LANGUAGE[cc] || COUNTRY_LANGUAGE[cc] || '';
+        if (!pick) return '';
+        var code = normalizeLang(pick);
+        return isShipped(code) ? code : '';
+    }
+
     function readStoredLocation() {
         try {
             var raw = localStorage.getItem('rekindle_location_manual');
@@ -217,12 +257,14 @@
         list: LANGUAGES,
         languages: LANGUAGE_BY_CODE,
         countries: COUNTRY_LANGUAGE,
+        popular: POPULAR_LANGUAGE,
         shipped: SHIPPED.slice(),
         normalize: normalizeLang,
         get: getLanguage,
         isShipped: isShipped,
         shippedLanguages: shippedLanguages,
         countryLanguage: countryLanguage,
+        popularLanguage: popularLanguage,
         resolveAuto: resolveAuto,
         current: currentLanguage,
         direction: function (code) {

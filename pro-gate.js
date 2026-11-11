@@ -10,6 +10,13 @@
  */
 
 (function () {
+    // Freemium mode: resolve Pro status but never auto-block the page. Used by
+    // pages with a real free tier (AI Assistant 1 msg/day, Docs local drafts,
+    // Files 5 MB device storage) where the page gates individual actions and
+    // calls rekindleProGate.showPaywall() itself.
+    const FREEMIUM = !!(window.RK_PRO_FREEMIUM === true ||
+        (document.currentScript && document.currentScript.getAttribute('data-freemium') === 'true'));
+
     const CACHE_KEY = 'rekindle_pro_expiry';
     const CACHE_DURATION = 1000 * 60 * 60; // 1 hour max cache
 
@@ -133,10 +140,13 @@
             '<p class="rk-paywall-price">' + paywallText('paywall.price', '$2/month \u00b7 $15/year \u00b7 $30 lifetime') + '</p>' +
             '<button type="button" class="rk-paywall-primary" onclick="window.location.href=\'pay.html\'">' +
             cta + '</button>' +
-            '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'help.html#pro\'">' +
-            paywallText('paywall.see', "See what's included") + '</button>' +
-            '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'index\'">' +
-            paywallText('common.back', 'Back') + '</button>' +
+            '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'membership.html\'">' +
+            paywallText('paywall.plans', 'See plans and what is included') + '</button>' +
+            (FREEMIUM
+                ? '<button type="button" class="rk-paywall-secondary" onclick="window.rekindleProGate.hidePaywall()">' +
+                  paywallText('paywall.not_now', 'Not now') + '</button>'
+                : '<button type="button" class="rk-paywall-secondary" onclick="window.location.href=\'index\'">' +
+                  paywallText('common.back', 'Back') + '</button>') +
             '<p class="rk-paywall-status" id="paywall-status">' + lastPaywallStatus + '</p>' +
             '</div></div>';
 
@@ -158,6 +168,13 @@
         if (overlay) overlay.style.display = 'none';
     }
 
+    // Hard gate (normal pages) blocks; freemium pages resolve status silently
+    // and decide what to gate themselves.
+    function gateOrHide(message) {
+        if (FREEMIUM) hidePaywall();
+        else showPaywall(message);
+    }
+
     function updateStatus(message) {
         const status = document.getElementById('paywall-status');
         if (status) status.innerText = message;
@@ -166,7 +183,7 @@
     async function checkProStatus(user) {
         if (!user) {
             isPro = false;
-            showPaywall('Please log in to access this app.');
+            gateOrHide('Please log in to access this app.');
             return false;
         }
 
@@ -203,18 +220,18 @@
                 } else {
                     localStorage.removeItem(CACHE_KEY);
                     isPro = false;
-                    showPaywall(expires > 0 ? 'Subscription expired.' : 'Subscription required.');
+                    gateOrHide(expires > 0 ? 'Subscription expired.' : 'Subscription required.');
                     return false;
                 }
             } else {
                 isPro = false;
-                showPaywall('Subscription required.');
+                gateOrHide('Subscription required.');
                 return false;
             }
         } catch (e) {
             console.error('Pro gate check failed:', e);
             isPro = false;
-            showPaywall('Error verifying subscription.');
+            gateOrHide('Error verifying subscription.');
             return false;
         }
     }
@@ -237,7 +254,7 @@
             // own init inside the callback and many call firebase.auth()/
             // firestore() synchronously.
             if (!initFirebase()) {
-                showPaywall('Error: Firebase not loaded.');
+                gateOrHide('Error: Firebase not loaded.');
                 resolve(false);
                 return;
             }
@@ -268,8 +285,9 @@
     ];
 
     setInterval(() => {
-        // 1. Overlay integrity check
-        if (checkComplete && !isPro) {
+        // 1. Overlay integrity check (hard gate only; freemium upsells are
+        // dismissible and must stay closed after "Not now")
+        if (!FREEMIUM && checkComplete && !isPro) {
             const overlay = document.getElementById('paywall-overlay');
             if (!overlay || 
                 overlay.style.display === 'none' || 
@@ -288,7 +306,7 @@
                 if (pattern.test(text)) {
                     console.warn('[ReKindle Anti-Tamper] Removing malicious style injection.');
                     style.remove();
-                    if (checkComplete && !isPro) showPaywall('Subscription required.');
+                    if (!FREEMIUM && checkComplete && !isPro) showPaywall('Subscription required.');
                 }
             }
         });
@@ -303,9 +321,10 @@
                 isPro: () => isPro,
                 getUser: () => currentUser,
                 showPaywall: showPaywall,
-                hidePaywall: hidePaywall
+                hidePaywall: hidePaywall,
+                isFreemium: () => FREEMIUM
             };
-            if (checkComplete && !isPro) showPaywall('Subscription required.');
+            if (!FREEMIUM && checkComplete && !isPro) showPaywall('Subscription required.');
         }
 
         // 4. Detect global isPro locking (userscript pattern)
@@ -313,7 +332,7 @@
         if (isProDesc && (isProDesc.get || isProDesc.set) && !isProDesc.configurable) {
             console.warn('[ReKindle Anti-Tamper] Global isPro has been locked by external script.');
             // We can't unlock it, but we can force the paywall back
-            if (checkComplete && !isPro) showPaywall('Subscription required.');
+            if (!FREEMIUM && checkComplete && !isPro) showPaywall('Subscription required.');
         }
     }, 500);
 
@@ -323,7 +342,8 @@
         isPro: () => isPro,
         getUser: () => currentUser,
         showPaywall: showPaywall,
-        hidePaywall: hidePaywall
+        hidePaywall: hidePaywall,
+        isFreemium: () => FREEMIUM
     };
 
     // AUTO-RUN after window fully loads (gives apps time to init Firebase first)

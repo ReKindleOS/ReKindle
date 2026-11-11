@@ -126,9 +126,10 @@ A full pass checked every article against the page source. Rules for future edit
   viewer, and a "Sync Google Calendar" button that is a first-run Use Google /
   Log In pair.
 - **Counts and units drift.** Keep ranges, quotas and units in the article
-  matching the code: 10 AI messages/day, 3 stock ranges, 4 timer tabs, 2 RSS
-  tabs, 100 MB shared Files quota, flashcards' 1d/6d/ease schedule, calculator
-  trig in degrees.
+  matching the code: 10 AI messages/day for ReKindle+ (1/day free), 3 stock
+  ranges, 4 timer tabs, 2 RSS tabs, 100 MB shared Files quota for ReKindle+
+  (5 MB device-only free), flashcards' 1d/6d/ease schedule, calculator trig in
+  degrees.
 - **Dates and statuses drift fastest.** Dark mode, Outlook/Hotmail Mail,
   Delete Account, the password reset and the Changelog page all changed in the
   last week of October 2026. When a feature ships, update the app article, the
@@ -137,3 +138,20 @@ A full pass checked every article against the page source. Rules for future edit
 - **Search for stale absolutes** before shipping: `temporarily disabled`,
   `not supported`, `coming soon`, `no self-service`, `not written to`,
   `all times`, `four ranges`.
+
+## 2026-11-11: ReKindle+ summary section and Plus chips
+
+- `help.html#pro` is now the free-vs-ReKindle+ comparison section on the Help
+  home, not the old guide article. The full article is still reachable at
+  `#pro-guide`; `articleHref()` rewrites the old `pro` article to `#pro-guide`
+  so search, Popular and related links keep working. Back from `#pro` returns
+  to Help home.
+- Guides marked `plus: true` in `help-data.js` render a small `PLUS` chip in
+  search rows, category lists, the A-Z index and the opened article. There are
+  13 visible Plus guides; Quick Notes has no guide object (legacy, unlisted).
+- The comparison table and cancellation paragraph are deliberately plain
+  English (no new `data-i18n` keys). Keep the cancellation copy honest:
+  Storage rules deny lapsed members' cloud reads, so do not claim read-only
+  cloud access; say cloud features pause and device/export copies keep working.
+- The section is rendered by `proSectionHtml()`; do not hand-edit the generated
+  HTML strings if you can update that function instead.

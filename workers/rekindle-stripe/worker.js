@@ -69,6 +69,16 @@ export default {
             });
         }
 
+        // --- GIFT AVAILABILITY ---
+        // The membership page only offers gifting once both one-time gift
+        // prices exist in the Worker secrets, so it never shows a dead end.
+        if (request.method === 'GET' && url.pathname.endsWith('/gift-availability')) {
+            const enabled = !!(env.STRIPE_GIFT_YEAR_PRICE_ID && env.STRIPE_GIFT_LIFETIME_PRICE_ID);
+            return new Response(JSON.stringify({ enabled }), {
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+            });
+        }
+
         // --- NEW: API Endpoint for Admin ---
         if (request.method === 'GET' && url.pathname.endsWith('/subscribers')) {
             const authHeader = request.headers.get('Authorization');
@@ -179,31 +189,40 @@ export default {
             const corsHeaders = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
             try {
                 const body = await request.json();
-                const { idToken, plan, success_url, cancel_url } = body;
+                const { idToken, plan, success_url, cancel_url, gift } = body;
 
-                if (!idToken || !plan) {
-                    return new Response(JSON.stringify({ error: 'Missing idToken or plan' }), { status: 400, headers: corsHeaders });
+                if (!idToken) {
+                    return new Response(JSON.stringify({ error: 'Missing idToken' }), { status: 400, headers: corsHeaders });
                 }
 
-                const priceIds = {
+                // A gift is a one-time payment that issues a code; it never
+                // grants Pro to the buyer.
+                const giftPlan = gift ? (gift === 'lifetime' ? 'lifetime' : 'year') : null;
+                const effectivePlan = giftPlan || plan;
+
+                const priceIds = giftPlan ? {
+                    year: env.STRIPE_GIFT_YEAR_PRICE_ID,
+                    lifetime: env.STRIPE_GIFT_LIFETIME_PRICE_ID
+                } : {
                     monthly:  env.STRIPE_PRICE_MONTHLY,
                     yearly:   env.STRIPE_PRICE_YEARLY,
                     lifetime: env.STRIPE_PRICE_LIFETIME
                 };
-                const priceId = priceIds[plan];
+                const priceId = priceIds[effectivePlan];
                 if (!priceId) {
-                    return new Response(JSON.stringify({ error: 'Invalid plan' }), { status: 400, headers: corsHeaders });
+                    return new Response(JSON.stringify({
+                        error: giftPlan ? 'Gifting is not available yet.' : 'Invalid plan'
+                    }), { status: 400, headers: corsHeaders });
                 }
 
                 const uid = await verifyFirebaseIdToken(env, idToken);
 
                 const params = new URLSearchParams({
                     'client_reference_id': uid,
-                    'mode': plan === 'lifetime' ? 'payment' : 'subscription',
+                    'mode': (effectivePlan === 'lifetime' || giftPlan) ? 'payment' : 'subscription',
                     'line_items[0][price]': priceId,
                     'line_items[0][quantity]': '1',
                     'allow_promotion_codes': 'true',
-                    'success_url': success_url || 'https://rekindle.ink/pay?success=true',
                     'cancel_url': cancel_url || 'https://rekindle.ink/pay',
                 });
                 // Carry the uid on the Customer/Subscription too. A renewal
@@ -211,7 +230,12 @@ export default {
                 // checkout.session.completed was ever lost, the uid in
                 // metadata is the fallback that lets us still grant Pro.
                 params.set('metadata[uid]', uid);
-                if (plan === 'lifetime') {
+                if (giftPlan) {
+                    params.set('metadata[gift]', giftPlan);
+                    params.set('payment_intent_data[metadata][uid]', uid);
+                    params.set('payment_intent_data[metadata][gift]', giftPlan);
+                    params.set('customer_creation', 'always');
+                } else if (effectivePlan === 'lifetime') {
                     params.set('payment_intent_data[metadata][uid]', uid);
                     // Payment mode creates no Stripe Customer by default, which
                     // is why lifetime buyers had no cus_... to show in the
@@ -221,13 +245,24 @@ export default {
                     params.set('subscription_data[metadata][uid]', uid);
                 }
 
+                let bodyStr = params.toString();
+                if (giftPlan) {
+                    // The buyer lands on pay.html and the page reads the code
+                    // from users/{uid}/gift_last once the webhook has written
+                    // it, so no session id needs to survive the redirect.
+                    const base = success_url || 'https://rekindle.ink/pay';
+                    bodyStr += '&success_url=' + encodeURIComponent(base + (base.indexOf('?') === -1 ? '?' : '&') + 'gift=success');
+                } else {
+                    bodyStr += '&success_url=' + encodeURIComponent(success_url || 'https://rekindle.ink/pay?success=true');
+                }
+
                 const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${env.STRIPE_KEY}`,
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
-                    body: params.toString()
+                    body: bodyStr
                 });
 
                 if (!stripeRes.ok) {
@@ -278,6 +313,14 @@ export default {
                     // would otherwise be lost forever (Stripe stops retrying).
                     console.error('checkout.session.completed without client_reference_id:', event.id);
                     return new Response('Error: checkout session has no client_reference_id', { status: 500 });
+                }
+
+                // A gift buys a code, not Pro for the buyer.
+                if (session.metadata && session.metadata.gift) {
+                    const giftPlan = session.metadata.gift === 'lifetime' ? 'lifetime' : 'year';
+                    const code = await createGiftCode(env, { uid, sessionId: session.id, plan: giftPlan });
+                    console.log('Gift code issued:', code, 'for', uid, giftPlan);
+                    return new Response('Success: gift code issued', { status: 200 });
                 }
 
                 // Check Mode: 'payment' = Lifetime, 'subscription' = Recurring
@@ -565,6 +608,106 @@ async function recordStripeState(env, token, uid, opts) {
     }
     await putStripeState(env, token, uid, next);
     return next;
+}
+
+// --- GIFT CODES ---
+// Codes are issued by the webhook after a one-time gift payment and redeemed
+// by the redeemGiftCode Cloud Function. The buyer never receives Pro directly.
+function generateGiftCode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    let out = 'RK';
+    for (let i = 0; i < 8; i++) out += alphabet[bytes[i] % alphabet.length];
+    return out;
+}
+
+async function createGiftCode(env, { uid, sessionId, plan }) {
+    const token = await getGoogleAccessToken(env);
+    const projectId = env.FIREBASE_PROJECT_ID;
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+    const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    let code = null;
+    let giftPlan = plan;
+
+    // Idempotency: Stripe retries checkout.session.completed. If this session
+    // already produced a code, reuse it and only repair the buyer-facing copy.
+    const existingRes = await fetch(`${baseUrl}/gift_purchases/${sessionId}`, { headers: authHeaders });
+    if (existingRes.ok) {
+        const existing = await existingRes.json();
+        const fields = existing.fields || {};
+        if (fields.code && fields.code.stringValue) code = fields.code.stringValue;
+        if (fields.plan && fields.plan.stringValue) giftPlan = fields.plan.stringValue;
+    }
+
+    const createdAt = new Date().toISOString();
+
+    if (!code) {
+        const days = giftPlan === 'lifetime' ? 36500 : 365;
+        for (let attempt = 0; attempt < 4 && !code; attempt++) {
+            const candidate = generateGiftCode();
+            const res = await fetch(`${baseUrl}/gift_codes?documentId=${candidate}`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    fields: {
+                        plan: { stringValue: giftPlan },
+                        days: { integerValue: String(days) },
+                        createdBy: { stringValue: uid },
+                        sessionId: { stringValue: sessionId },
+                        createdAt: { timestampValue: createdAt },
+                        redeemed: { booleanValue: false }
+                    }
+                })
+            });
+            if (res.ok) {
+                code = candidate;
+            } else if (res.status !== 409) {
+                const text = await res.text();
+                throw new Error(`Gift code create failed ${res.status}: ${text}`);
+            }
+        }
+        if (!code) throw new Error('Could not allocate a gift code');
+
+        const purchaseRes = await fetch(`${baseUrl}/gift_purchases?documentId=${sessionId}`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+                fields: {
+                    code: { stringValue: code },
+                    uid: { stringValue: uid },
+                    plan: { stringValue: giftPlan },
+                    createdAt: { timestampValue: createdAt }
+                }
+            })
+        });
+        if (!purchaseRes.ok) {
+            const text = await purchaseRes.text();
+            throw new Error(`Gift purchase record failed ${purchaseRes.status}: ${text}`);
+        }
+    }
+
+    // Latest code for the buyer, read by getLatestGiftPurchase. Always written
+    // (including on a retry), because a 200 without it would leave the buyer
+    // on "Checking payment..." forever. Only the Admin SDK writes this path.
+    const lastRes = await fetch(`${baseUrl}/users/${uid}/gift_last/latest`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({
+            fields: {
+                code: { stringValue: code },
+                plan: { stringValue: giftPlan },
+                createdAt: { timestampValue: createdAt }
+            }
+        })
+    });
+    if (!lastRes.ok) {
+        const text = await lastRes.text();
+        throw new Error(`gift_last write failed ${lastRes.status}: ${text}`);
+    }
+
+    return code;
 }
 
 // --- FIRESTORE UPDATE ---

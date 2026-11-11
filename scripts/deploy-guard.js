@@ -2,20 +2,33 @@
 /**
  * Deploy guard — refuses to publish a directory that contains repo credentials.
  *
- * Why this exists (2026-10-19 incident): `npx wrangler pages deploy .` uploaded
- * firebase-functions/.env, service-account.json and service-account-social.json
- * from the repo root. build-automation.js only protects `npm run build`; this
- * protects the wrangler step, including a hand-typed deploy of the wrong folder.
+ * Why this exists (2026-10-19/20 incident): `npx wrangler pages deploy .`
+ * uploaded firebase-functions/.env, service-account.json and
+ * service-account-social.json from the repo root. build-automation.js only
+ * protects `npm run build`; this protects the wrangler step, including a
+ * hand-typed deploy of the wrong folder.
  *
  * Usage:
  *   node scripts/deploy-guard.js _deploy/main
  *   npm run deploy:prod   (runs this before wrangler)
- *   (then) npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main
+ *   npm run deploy:beta   (same guard, then --branch=beta)
  *
- * Only directories under _deploy/ may be published.
+ * Only directories under _deploy/ may be published. The scan itself lives in
+ * scripts/lib/deploy-secrets.js and is shared with build-automation.js so the
+ * build and the publish step cannot disagree about what a secret is.
+ *
+ * Scanned on every run (2026-11-11 hardening):
+ *   - every nested file/dir, no depth limit (the old 5-level cap missed a
+ *     nested .env, proved by planting one)
+ *   - filenames: service-account*, *adminsdk*, .env*, *.pem/.key/.p8/.p12,
+ *     credentials*.json, .npmrc, SSH keys, ...
+ *   - CONTENTS of text files: PEM blocks, Google service-account JSON,
+ *     OpenAI/Stripe/GitHub/Slack/AWS key formats
+ *   - symlinks (wrangler can follow one out of the deploy tree)
  */
 const fs = require('fs');
 const path = require('path');
+const { scanDeployDir, formatProblems } = require('./lib/deploy-secrets');
 
 const ROOT = path.resolve(__dirname, '..');
 const target = process.argv[2];
@@ -45,38 +58,10 @@ if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
     fail(`Deploy target does not exist: ${rel}`);
 }
 
-const FORBIDDEN_DIRS = new Set([
-    '.git', '.github', '.wrangler', 'node_modules', 'pocketbase', 'Sync',
-    'firebase-functions', 'admin', 'workers', 'scripts', 'akinator-service',
-    '_deploy'
-]);
-const FORBIDDEN_FILES = new Set([
-    '.env', '.gitignore', 'firebase.json', 'firebase-social.json',
-    'rtdb-rules.json', 'rtdb-social-rules.json', 'firestore.rules',
-    'firestore-social.rules', 'storage.rules', 'wrangler.toml'
-]);
-const SECRET_FILE = /^(\.env(\..+)?|service-account.*\.json|.*\.pem|.*\.p12|id_rsa.*)$/i;
-
-const problems = [];
-function walk(dir, depth) {
-    if (depth > 5) return;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fp = path.join(dir, entry.name);
-        const relp = path.relative(abs, fp).replace(/\\/g, '/');
-        if (entry.isDirectory()) {
-            if (FORBIDDEN_DIRS.has(entry.name)) problems.push(relp + '/');
-            else walk(fp, depth + 1);
-        } else if (FORBIDDEN_FILES.has(entry.name) || SECRET_FILE.test(entry.name)) {
-            problems.push(relp);
-        }
-    }
-}
-walk(abs, 0);
+const problems = scanDeployDir(abs);
 
 if (problems.length) {
-    fail('Credential or backend files found in the deploy directory:\n  ' +
-         problems.slice(0, 40).join('\n  ') +
-         (problems.length > 40 ? `\n  ...and ${problems.length - 40} more` : ''));
+    fail('Credential or backend files found in the deploy directory:\n  ' + formatProblems(problems));
 }
 
 console.log(`Deploy guard OK: ${rel} contains no credential or backend files.`);
