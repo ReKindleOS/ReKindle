@@ -490,12 +490,6 @@ through `getLatestGiftPurchase` → the recipient redeems it with
 - `GET /gift-availability` returns `{ enabled }`; `membership.html` only shows
   the buy links when both prices exist, so the UI never dead-ends.
 
-### Member count
-
-`getPublicStats` (public callable) counts `users` with `proExpiresAt > now`,
-caches the number for an hour per instance, and returns `{ members }`.
-`membership.html` hides the line if the callable fails, so no fake social proof.
-
 ## Open items
 
 - No durable `stripe_events/{eventId}` log/dedupe yet. The reconciler and the

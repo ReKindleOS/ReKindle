@@ -2085,30 +2085,6 @@ exports.adminSetPro = onCall(callOptions, async (request) => {
 });
 
 /**
- * Public membership numbers for the membership page. Cheap aggregation,
- * cached for an hour per instance; failures are non-fatal and return 0.
- */
-let publicStatsCache = { members: 0, at: 0 };
-exports.getPublicStats = onCall({ cors: allowedOrigins, maxInstances: 10, timeoutSeconds: 30 }, async () => {
-    const now = Date.now();
-    if (publicStatsCache.at && now - publicStatsCache.at < 60 * 60 * 1000) {
-        return { members: publicStatsCache.members };
-    }
-    try {
-        const snapshot = await admin.firestore()
-            .collection('users')
-            .where('proExpiresAt', '>', admin.firestore.Timestamp.now())
-            .count()
-            .get();
-        publicStatsCache = { members: snapshot.data().count || 0, at: now };
-    } catch (e) {
-        logger.warn('getPublicStats count failed', e);
-        publicStatsCache = { members: 0, at: now };
-    }
-    return { members: publicStatsCache.members };
-});
-
-/**
  * Return the gift code created for a completed Stripe Checkout Session. The
  * webhook writes gift_purchases/{sessionId} (Admin only); this callable checks
  * the buyer's uid before returning it. Pending means Stripe has not delivered
