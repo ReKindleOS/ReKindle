@@ -480,6 +480,12 @@ through `getLatestGiftPurchase` → the recipient redeems it with
 
 - Codes are single-use, `RK` + 8 characters from an unambiguous alphabet, and
   the redemption is a Firestore transaction (mark code + extend membership).
+- An account with active ReKindle+ (`proExpiresAt > now`) cannot redeem a code:
+  the transaction refuses and leaves the code unused, and `membership.html`
+  disables the Redeem button with an explanation. Stacking a gift on a recurring
+  plan would double-charge, and a lifetime grant (2100) cannot be extended, so
+  the code should be given to someone else or redeemed after the membership
+  ends. Do not remove this guard without deciding how renewals are handled.
 - `gift_codes`, `gift_purchases` and `gift_redeem_limits` are Admin-only in
   `firestore.rules`.
 - 10 redemption attempts per account per hour; a wrong code still counts.
@@ -489,6 +495,11 @@ through `getLatestGiftPurchase` → the recipient redeems it with
   `config/supporters` is updated so rules that authorize on it agree.
 - `GET /gift-availability` returns `{ enabled }`; `membership.html` only shows
   the buy links when both prices exist, so the UI never dead-ends.
+- Buyers see their purchases at `membership.html#gifts` (and the Settings
+  "My gifts" action). `getMyGiftCodes` indexes `gift_purchases` by uid, then
+  reads each `gift_codes/{CODE}` so the list shows **Unredeemed**, **Redeemed**
+  or **Redeemed by you** with the redemption date. The endpoint returns only
+  the caller's purchases and never exposes the redeemer's uid.
 
 ## Open items
 

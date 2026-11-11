@@ -2099,6 +2099,58 @@ exports.getLatestGiftPurchase = onCall(callOptions, async (request) => {
     return { code: data.code || null, plan: data.plan || null };
 });
 
+/**
+ * Gift codes a buyer has purchased, newest first, with redemption status.
+ * Buyers identify codes by uid; the redemption side is Admin-only.
+ */
+exports.getMyGiftCodes = onCall(callOptions, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+    const db = admin.firestore();
+
+    // No orderBy: that would need a composite index (uid + createdAt). A buyer
+    // has a handful of purchases, so fetch a bounded set and sort in memory.
+    const purchasesSnap = await db.collection('gift_purchases')
+        .where('uid', '==', request.auth.uid)
+        .limit(100)
+        .get();
+    if (purchasesSnap.empty) return { codes: [] };
+
+    const purchases = [];
+    purchasesSnap.forEach(function (doc) {
+        const d = doc.data() || {};
+        if (!d.code) return;
+        purchases.push({
+            code: d.code,
+            plan: d.plan || 'year',
+            createdAt: d.createdAt && d.createdAt.toMillis ? d.createdAt.toMillis() : 0
+        });
+    });
+    purchases.sort(function (a, b) { return b.createdAt - a.createdAt; });
+
+    const refs = purchases.map(function (p) {
+        return db.collection('gift_codes').doc(p.code);
+    });
+    const codeSnaps = refs.length ? await db.getAll(...refs) : [];
+    const byCode = {};
+    codeSnaps.forEach(function (snap) {
+        if (snap.exists) byCode[snap.id] = snap.data();
+    });
+
+    return {
+        codes: purchases.map(function (p) {
+            const c = byCode[p.code] || {};
+            return {
+                code: p.code,
+                plan: p.plan,
+                createdAt: p.createdAt || null,
+                redeemed: !!c.redeemed,
+                redeemedAt: c.redeemedAt && c.redeemedAt.toMillis ? c.redeemedAt.toMillis() : null,
+                redeemedByMe: !!c.redeemedBy && c.redeemedBy === request.auth.uid
+            };
+        })
+    };
+});
+
 exports.redeemGiftCode = onCall(callOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to redeem a gift code.');
     const raw = typeof request.data.code === 'string' ? request.data.code : '';
@@ -2149,6 +2201,16 @@ exports.redeemGiftCode = onCall(callOptions, async (request) => {
         if (userSnap.exists && userSnap.data().proExpiresAt) {
             const rawExpiry = userSnap.data().proExpiresAt;
             currentExpiry = rawExpiry.toMillis ? rawExpiry.toMillis() : new Date(rawExpiry).getTime();
+        }
+
+        // A gift is for someone who is not already a member. Stacking a year on
+        // a recurring plan (or on a lifetime grant, which never expires) creates
+        // a double-paying account, so refuse and leave the code unused.
+        if (currentExpiry > nowMs) {
+            throw new HttpsError(
+                'failed-precondition',
+                'ReKindle+ is already active on this account. Give this code to someone else; it can be redeemed here after your current membership ends.'
+            );
         }
 
         let expiresAt;

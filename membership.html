@@ -289,6 +289,49 @@
             align-items: center;
         }
 
+        .gift-item {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            border: 2px solid black;
+            background: white;
+            padding: 8px 10px;
+            margin: 0 0 8px;
+        }
+
+        .gift-item-code {
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            letter-spacing: 0.08em;
+            font-size: 0.95rem;
+            margin-right: 10px;
+        }
+
+        .gift-item-meta {
+            flex: 1 1 160px;
+            font-size: 0.75rem;
+            color: #444;
+            line-height: 1.4;
+            margin-right: 10px;
+        }
+
+        .gift-item-status {
+            font-weight: bold;
+            color: black;
+        }
+
+        .gift-item-status.redeemed {
+            color: #555;
+        }
+
+        .gift-item .sys-btn {
+            min-height: 48px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            margin: 0;
+        }
+
         .gift-input {
             border: 2px solid black;
             border-radius: 0;
@@ -472,17 +515,29 @@
                 every month, and a membership is what keeps them running without putting ads or tracking on the
                 dashboard. The free half of the app is not a trial.</p>
 
-            <h2 id="gift">Gift ReKindle+</h2>
-            <p>Someone can buy a gift code for a year or lifetime. Redeem it here and it is added to your account.</p>
-            <div class="gift-row">
-                <input id="gift-code" class="gift-input" type="text" autocomplete="off" autocapitalize="characters"
-                    spellcheck="false" placeholder="Gift code" aria-label="Gift code" maxlength="16">
-                <button class="sys-btn" onclick="redeemGift()">Redeem</button>
-                <a id="gift-buy" class="sys-btn" href="pay.html?gift=year" style="display:none;">Gift a year</a>
-                <a id="gift-buy-lifetime" class="sys-btn" href="pay.html?gift=lifetime"
-                    style="display:none;">Gift lifetime</a>
+            <div id="gifts">
+                <h2 id="gift">Gift ReKindle+</h2>
+                <p>Someone can buy a gift code for a year or lifetime. Redeem it here and it is added to your account.</p>
+                <div class="gift-row">
+                    <input id="gift-code" class="gift-input" type="text" autocomplete="off"
+                        autocapitalize="characters" spellcheck="false" placeholder="Gift code" aria-label="Gift code"
+                        maxlength="16">
+                    <button id="gift-redeem-btn" class="sys-btn" onclick="redeemGift()">Redeem</button>
+                    <a id="gift-buy" class="sys-btn" href="pay.html?gift=year" style="display:none;">Gift a year</a>
+                    <a id="gift-buy-lifetime" class="sys-btn" href="pay.html?gift=lifetime"
+                        style="display:none;">Gift lifetime</a>
+                </div>
+                <p id="gift-msg" class="inline-msg"></p>
+                <p id="gift-active-note" class="inline-msg" style="display:none;">ReKindle+ is already active on this
+                    account. Give this code to someone else; it can be redeemed here after your current membership
+                    ends.</p>
+
+                <div id="my-gifts" style="display:none; margin-top:16px;">
+                    <h3 style="font-size:1rem;margin:0 0 8px;border-top:1px dashed #999;padding-top:12px;">Your gift
+                        codes</h3>
+                    <div id="my-gifts-list"></div>
+                </div>
             </div>
-            <p id="gift-msg" class="inline-msg"></p>
 
             <h2>What is included</h2>
             <ul class="app-list">
@@ -558,7 +613,19 @@
             box.style.display = 'block';
         }
 
+        function setGiftRedeemEnabled(enabled) {
+            var btn = document.getElementById('gift-redeem-btn');
+            var note = document.getElementById('gift-active-note');
+            if (btn) {
+                btn.disabled = !enabled;
+                btn.style.opacity = enabled ? '1' : '0.45';
+                btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+            }
+            if (note) note.style.display = enabled ? 'none' : 'block';
+        }
+
         function updateStatus(user, proUntil, subType) {
+            setGiftRedeemEnabled(!(user && proUntil > Date.now()));
             if (!user) {
                 renderStatus('free', '<strong>You are browsing as a guest.</strong>' +
                     'You can see the plans without an account. Checkout needs a free ReKindle account so the ' +
@@ -585,6 +652,81 @@
                 renderStatus('free', '<strong>You are on the free plan.</strong>' +
                     'Everything that was free is still free. The plans above add the server-side apps.');
             }
+        }
+
+        function loadMyGiftCodes() {
+            if (!currentUser || !firebase.functions) return;
+            var fn = firebase.functions().httpsCallable('getMyGiftCodes');
+            fn({}).then(function (res) {
+                renderMyGiftCodes((res.data && res.data.codes) || []);
+            }).catch(function (e) {
+                console.warn('Could not load gift codes', e);
+            });
+        }
+
+        function renderMyGiftCodes(codes) {
+            var section = document.getElementById('my-gifts');
+            var list = document.getElementById('my-gifts-list');
+            if (!section || !list) return;
+            if (!codes || !codes.length) {
+                list.innerHTML = '';
+                section.style.display = 'none';
+                return;
+            }
+            list.innerHTML = '';
+            codes.forEach(function (g) {
+                var row = document.createElement('div');
+                row.className = 'gift-item';
+
+                var code = document.createElement('span');
+                code.className = 'gift-item-code';
+                code.textContent = g.code;
+
+                var meta = document.createElement('span');
+                meta.className = 'gift-item-meta';
+                meta.appendChild(document.createTextNode((g.plan === 'lifetime' ? 'Lifetime' : '1 year') + ' \u00b7 '));
+                var status = document.createElement('span');
+                status.className = 'gift-item-status' + (g.redeemed ? ' redeemed' : '');
+                if (g.redeemed) {
+                    status.textContent = g.redeemedByMe ? 'Redeemed by you' : 'Redeemed';
+                    if (g.redeemedAt) status.textContent += ' \u00b7 ' + fmtDate(g.redeemedAt);
+                } else {
+                    status.textContent = 'Unredeemed';
+                }
+                meta.appendChild(status);
+                if (g.createdAt) {
+                    var bought = document.createElement('span');
+                    bought.style.display = 'block';
+                    bought.textContent = 'Bought ' + fmtDate(g.createdAt);
+                    meta.appendChild(bought);
+                }
+
+                var copy = document.createElement('button');
+                copy.type = 'button';
+                copy.className = 'sys-btn';
+                copy.textContent = 'Copy';
+                copy.onclick = function () { copyGiftValue(g.code); };
+
+                row.appendChild(code);
+                row.appendChild(meta);
+                row.appendChild(copy);
+                list.appendChild(row);
+            });
+            section.style.display = 'block';
+        }
+
+        function copyGiftValue(code) {
+            var msg = document.getElementById('gift-msg');
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code);
+                    if (msg) { msg.className = 'inline-msg'; msg.innerText = 'Gift code copied.'; }
+                    return;
+                }
+            } catch (e) { }
+            var input = document.getElementById('gift-code');
+            if (input) { input.value = code; input.focus(); input.select(); }
+            if (msg) { msg.className = 'inline-msg'; msg.innerText = 'Code selected in the box above.'; }
         }
 
         function loadGiftAvailability() {
@@ -628,6 +770,7 @@
                 var data = result && result.data ? result.data : {};
                 msg.innerText = data.message || 'Gift code redeemed. Thank you.';
                 input.value = '';
+                loadMyGiftCodes();
                 if (auth && auth.currentUser) {
                     setTimeout(function () { window.location.reload(); }, 1200);
                 }
@@ -656,8 +799,11 @@
                 currentUser = user;
                 if (!user) {
                     updateStatus(null, 0, '');
+                    var gifts = document.getElementById('my-gifts');
+                    if (gifts) gifts.style.display = 'none';
                     return;
                 }
+                loadMyGiftCodes();
                 db.collection('users').doc(user.uid).get().then(function (doc) {
                     var data = doc.exists ? doc.data() : {};
                     var until = 0;
