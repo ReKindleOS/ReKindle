@@ -699,15 +699,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'scores',
         cat: 'essentials',
         title: 'Scores',
-        summary: 'Live and recent scores for major leagues, with Favourites for your teams in one feed.',
-        tags: 'scores sports nfl nba mlb nhl nrl soccer epl mls ncaa espn favourites favorites',
+        summary: 'Live and recent scores for 100+ leagues across 12 sports, with Favourites for your teams in one feed.',
+        tags: 'scores sports nfl nba mlb nhl nrl football basketball baseball hockey soccer softball rugby afl lacrosse volleyball water polo field hockey epl mls ncaa espn favourites favorites',
         appHref: 'scores',
         appName: 'Scores',
         related: ['news', 'watchlist'],
         body: `
             <p>Scores shows scoreboards for major sports, with a <b>Favourites</b> tab that combines your teams into one list.</p>
             <h2>Leagues</h2>
-            <p>NFL, NBA, MLB, NHL, NRL, English Premier League, MLS, NCAA Football and NCAA Basketball. Data comes from ESPN's public scoreboard API; NRL is handled by a dedicated ReKindle endpoint because ESPN's API does not expose it directly.</p>
+            <p>Football, basketball, baseball, softball, ice hockey, soccer, rugby, Australian rules, lacrosse, volleyball, field hockey and water polo, with more than 100 leagues and competitions. Data comes from ESPN's public scoreboard API, fetched directly by your browser; NRL is served by a dedicated ReKindle endpoint.</p>
             <h2>Following teams</h2>
             <ol>
                 <li>Open a league to see its games.</li>
@@ -716,7 +716,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap the star again to remove it.</li>
             </ol>
             <h2>Game states</h2>
-            <p>Games show scheduled start times, live scores and progress, or final results. Times are shown as ESPN supplies them (usually US Eastern); ReKindle does not convert them to your timezone.</p>
+            <p>Games show scheduled start times, live scores and progress, or final results. Times are shown as ESPN supplies them (usually US Eastern); ReKindle does not convert them to your timezone. Only games within about two months of today are shown, so an out-of-season league shows an empty board instead of a years-old final.</p>
             <div class="note"><b>Empty board?</b> Out of season, a league may have no games. If every league is empty, the upstream API is probably rate-limiting; wait and refresh. NRL parsing depends on ESPN's page structure and can lag after a site change.</div>
         `
     },

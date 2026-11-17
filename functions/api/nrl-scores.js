@@ -162,6 +162,7 @@ function parseGameCell(cellHtml, dateLabel, state, idx) {
 
     return {
         id: 'nrl-' + idx,
+        date: dateLabel || undefined,
         competitions: [{ competitors }],
         status: {
             type: {

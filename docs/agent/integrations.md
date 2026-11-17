@@ -1,15 +1,32 @@
 # Third-Party Integrations
 
-Akinator, NRL scores and the Internet Archive comic reader. Read before touching those pages or their backing Pages Functions.
+Akinator, sports scores and the Internet Archive comic reader. Read before touching those pages or their backing Pages Functions.
 
-## 🏉 NRL Scores (scores.html)
+## 🏉 Sports Scores (scores.html)
 
-ESPN's JSON scoreboard API (`site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard`) supports NFL/NBA/MLB/NHL/soccer/AFL but **does not expose NRL**. To add NRL, `scores.html` uses a dedicated Cloudflare Pages Function at `functions/api/nrl-scores.js` that scrapes `https://www.espn.com/nrl/scoreboard` and returns ESPN-compatible JSON.
+ESPN's JSON scoreboard API (`site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard`) covers the team sports below. NRL is served by a dedicated Cloudflare Pages Function at `functions/api/nrl-scores.js` that scrapes `https://www.espn.com/nrl/scoreboard` and returns ESPN-compatible JSON.
 
-*   The scraper is regex-based and relies on ESPN's current server-rendered HTML structure. If ESPN changes their markup, the parser will return empty events.
+### ESPN leagues are fetched directly (2026-11-17)
+**Never route `site.api.espn.com` through `/api/proxy`.** ESPN's CDN answers Cloudflare Pages egress IPs with `403 Access Denied` (Akamai), so every proxied league failed with "Error loading data." while NRL kept working. ESPN's scoreboard API sends `access-control-allow-origin: *`, so the browser can call it directly — this also avoids spending a Pages Function invocation per league.
+
+*   `fetchFromAPI()` uses the direct `https://site.api.espn.com/...` URL for every league without `source: "nrl-scores"`; only NRL goes to `/api/nrl-scores`.
+*   Direct fetch is free and cached by the browser (`cache-control: max-age=5` on the upstream).
+*   Favorites are keyed `leagueSlug:teamId` (`favoriteKey()`), not by team id alone: ESPN reuses ids across sports (NFL id 2 = BUF, NBA id 2 = BOS), so the old id-only key starred unrelated teams. `loadFavorites()` migrates existing id-keyed `rekindle_scores_favs` entries.
+*   Do not "fix" a future ESPN failure by adding a proxy/worker for it; verify direct CORS first.
+
+### League catalog and two-level menu (2026-11-17)
+`LEAGUES` now has ~137 entries across 12 `group`s (Football, Basketball, Baseball, Softball, Hockey, Soccer, Rugby, Australian Football, Lacrosse, Volleyball, Field Hockey, Water Polo). The menu is two levels: tapping a sport (`openGroup()`) lists that group's leagues; the title-bar back arrow (`goBack()`) returns to the sport list, then to the dashboard.
+
+*   Add a league by appending `{ name, slug, group }` to `LEAGUES`; verify `https://site.api.espn.com/apis/site/v2/sports/{slug}/scoreboard?limit=1` returns 200 with exactly two competitors that have `homeAway` and a `team`.
+*   Only team-vs-team scoreboards work with the current renderer. **Do not add golf, tennis, racing, MMA or boxing** (individual/multi-competitor payloads) and **do not add cricket** (innings scores are not two numeric team scores).
+*   `isCurrentEvent()` drops events more than 60 days in the past or future, so an out-of-season league shows "No games scheduled" instead of a years-old final (CFL's default board, for example, still points at 2022).
+*   `scripts/test-sports-scores.js` pins the direct-ESPN transport, the NRL function, the league key format and the 60-day window.
+
+*   The NRL scraper is regex-based and relies on ESPN's current server-rendered HTML structure. If ESPN changes their markup, the parser will return empty events.
 *   Only games where both teams are in the known NRL team list are returned (filters out State of Origin / Tests).
-*   The response is cached for 2 minutes via `caches.default`, but only when games are successfully parsed.
-*   In `scores.html`, NRL is added to `LEAGUES` with `source: "nrl-scores"`, and `fetchFromAPI()` routes it to `/api/nrl-scores` instead of the ESPN proxy.
+*   NRL events carry the page's `date` label so `isCurrentEvent()` can age them out like every other league.
+*   The NRL response is cached for 2 minutes via `caches.default`, but only when games are successfully parsed.
+*   In `scores.html`, NRL is added to `LEAGUES` with `source: "nrl-scores"`, and `fetchFromAPI()` routes it to `/api/nrl-scores`.
 
 ## 📚 Comic Reader (comics.html) — Internet Archive, not MangaDex/Manga Plus
 

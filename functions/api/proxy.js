@@ -13,6 +13,10 @@
  *   - 10s timeout and 10 MB response ceiling
  *   - no wildcard CORS headers (all callers are same-origin Pages projects)
  *
+ * Some upstreams block Cloudflare egress outright, so this proxy cannot help
+ * them: `site.api.espn.com` returns 403 "Access Denied" to Pages IPs (but sends
+ * `access-control-allow-origin: *`, so `scores.html` fetches it directly).
+ *
  * The guard helpers are exported so `scripts/test-proxy-guard.js` can exercise
  * them without a Workers runtime.
  */

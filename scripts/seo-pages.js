@@ -170,7 +170,7 @@ const PAGES = {
     readwise: { name: 'Readwise', tag: 'Your highlights and daily review', type: 'reading', summary: 'Connect a Readwise account to read saved articles, highlights and the daily review.' },
     reddit: { name: 'Reddit', tag: 'Text-first Reddit reader', type: 'social', summary: 'A text-first Reddit browser for saved subreddits, with automatic retry when rate-limited.' },
     rssreader: { name: 'RSS Reader', tag: 'Follow feeds, track unread', type: 'reading', summary: 'Follow feeds in a clean reader, with preset sources and unread tracking.' },
-    scores: { name: 'Scores', tag: 'Live sports results', type: 'info', summary: 'Live and recent scores for major leagues, with Favourites for your teams in one feed.' },
+    scores: { name: 'Scores', tag: 'Live sports results', type: 'info', summary: 'Live scores for 100+ leagues across 12 sports, with Favourites for your teams in one feed.' },
     settings: { name: 'Settings', tag: 'Display, language and account', type: 'system', desc: 'Display scale, language, integrations and account settings for ReKindle.', noindex: true },
     sheetmusic: { name: 'Sheet Music', tag: 'MusicXML and MIDI scores', type: 'media', summary: 'Browse and render MusicXML or MIDI scores, and build a personal library.' },
     snake: { name: 'Snake', tag: 'Eat, grow, avoid your tail', type: 'game', summary: 'Eat, grow longer and avoid your own tail in the arcade classic.' },
