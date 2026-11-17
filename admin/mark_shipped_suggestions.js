@@ -203,6 +203,48 @@ const SHIPPED = [
         id: '-P60c5re1InQwr4qoCyk',
         title: 'Account Deletion Wont Work',
         why: 'Policy change 2026-11-10: deleteAccount no longer sweeps the social project, so social Firestore quota or missing indexes cannot block deletion. It removes the main-project account/private data, Storage files, Auth record and the social profile nodes (username/avatar), so social apps show a blank avatar and "Deleted User"; social history is retained and aged by cleanupSocial. Deployed.'
+    },
+    // Sweep 6 - 2026-11-12. Open rows whose request is already satisfied by the
+    // current build; status only, no comment on the board.
+    {
+        id: '-OxXU5HtYSZ4QTXkGzZo',
+        title: 'BACK BUTTON on kindlechat pixelart',
+        why: 'Pixel art opened from KindleChat is a modal over the chat (showPixelArtModal): the X calls hideModal(), so closing art no longer leaves the conversation.'
+    },
+    {
+        id: '-OyM3dslFGjPpHO3AW28',
+        title: 'Have all multiplayer games have an option to play solo',
+        why: 'Every 2-player game has a solo build with a bot opponent (chess, checkers, connect4, dots and boxes, tic-tac-toe, battleship) and live Uno takes bots; the earlier identical request "Add playing with a bot on every multi-player game" is already done.'
+    },
+    {
+        id: '-OyOzstLTSc73_YF7CUF',
+        title: 'edge://surf',
+        why: 'Surfer (2026-07-23) is the same three-lane endless runner with obstacles to dodge; the earlier "Add Something like subway surfers" row is already done.'
+    },
+    {
+        id: '-Oywd0vfmqZzGHLGXhta',
+        title: 'announcements app',
+        why: 'Changelog (changelog.html, 2026-10-22) lists every ReKindle change and is linked from the home footer and the Suggestions triage strip; the earlier "Update log" row is already done.'
+    },
+    {
+        id: '-OzcThW32SinAbgxsAAt',
+        title: 'scripture',
+        why: 'Scriptures (bible.html) already carries the Bible, Quran, Dhammapada and Tao Te Ching with adjustable text and multiple translations.'
+    },
+    {
+        id: '-P--8TX9dkh1HsMWuh90',
+        title: 'make so you can download  rekindle.ink on kindle',
+        why: 'ReKindle Fullscreen (kindle/, 2026-10-22) is a downloadable KPM launcher package for jailbroken Kindles on firmware 5.16.4+; Help describes the install and recovery steps.'
+    },
+    {
+        id: '-P5Y2DdVVrHMyWQ_Ngmx',
+        title: 'Book Tracker',
+        why: 'Books (books.html) searches a book by title and stores a star rating, reading log and want-to-read list, synced to the account.'
+    },
+    {
+        id: '-P5_3CzWW-03izSSGf4q',
+        title: 'add a dark mode and colorsoft for the device.',
+        why: 'Dark mode shipped and was re-enabled 2026-10-26 (theme.js, Settings - Theme, light/dark/auto); the earlier "Dark Mode" row is already done.'
     }
 ];
 
