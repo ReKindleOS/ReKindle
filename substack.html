@@ -544,7 +544,7 @@
     </style>
     <script src="theme.js?v=35"></script>
     <script src="time.js?v=9"></script>
-    <script src="pro-gate.js?v=8"></script>
+    <script src="pro-gate.js?v=9"></script>
     <script src="js/i18n.js?v=6"></script>
     <script src="js/emoji-render.js?v=1"></script>
     <script src="js/safe-html.js?v=1"></script>
@@ -688,8 +688,9 @@
                 <!-- Populated by JS -->
             </div>
 
-            <input type="password" id="sid-input" class="modal-input" placeholder="Paste substack.sid here..."
-                data-i18n-placeholder="substack.label.sid">
+            <input type="password" id="sid-input" class="modal-input"
+                placeholder="Paste connect.sid (or substack.sid) here..." autocomplete="off"
+                spellcheck="false">
 
 
             <p style="font-size:0.85rem; color:#666; margin-top:5px; margin-bottom:15px;">
@@ -914,6 +915,9 @@
                 if (res.status === 401 && payload && payload.error === 'unauthorized') {
                     throw new Error("Please log in to ReKindle again.");
                 }
+                if (res.status === 400 && payload && payload.error === 'invalid_sid') {
+                    throw new Error("Your saved Substack cookie is malformed. Open Settings and paste connect.sid again.");
+                }
                 if (res.status === 403 && payload && payload.error === 'target_not_allowed') {
                     throw new Error("This publication's feed address is not supported.");
                 }
@@ -951,28 +955,29 @@
                     "Right-click anywhere -> <b>Inspect</b>.",
                     "Go to the <b>Application</b> tab (you may need to click '>>').",
                     "Expand <b>Cookies</b> -> substack.com.",
-                    "Find <code>substack.sid</code>, copy the Value."
+                    "Find <code>connect.sid</code> (newer accounts) or <code>substack.sid</code> (older accounts).",
+                    "Copy the Value, or right-click the request in Network -> Copy -> Copy as cURL and paste the whole cookie here."
                 ],
                 safari: [
                     "Open <b>substack.com</b> and log in.",
                     "Right-click -> <b>Inspect Element</b> (Enable 'Show Develop menu' in settings if missing).",
                     "Go to <b>Storage</b> tab.",
                     "Expand <b>Cookies</b>.",
-                    "Find <code>substack.sid</code>, copy value."
+                    "Find <code>connect.sid</code> (newer) or <code>substack.sid</code> (older), copy the value."
                 ],
                 firefox: [
                     "Open <b>substack.com</b> and log in.",
                     "Right-click -> <b>Inspect</b>.",
                     "Go to <b>Storage</b> tab.",
                     "Expand <b>Cookies</b>.",
-                    "Find <code>substack.sid</code>, copy value."
+                    "Find <code>connect.sid</code> (newer) or <code>substack.sid</code> (older), copy the value."
                 ],
                 edge: [
                     "Open <b>substack.com</b> and log in.",
                     "Right-click -> <b>Inspect</b>.",
                     "Go to <b>Application</b> tab.",
                     "Expand <b>Cookies</b>.",
-                    "Find <code>substack.sid</code>, copy Value."
+                    "Find <code>connect.sid</code> (newer) or <code>substack.sid</code> (older), copy the Value."
                 ]
             };
 
@@ -999,10 +1004,30 @@
             document.getElementById(id).style.display = 'none';
         }
 
-        async function saveSettings() {
-            const sid = document.getElementById('sid-input').value.trim();
+        // Substack uses `connect.sid` for newer accounts and `substack.sid`
+        // for older ones. Accept either name, or a whole cookie header pasted
+        // from DevTools, and store only the value (the relay sends it under
+        // both names). 2026-11-24: accounts with only `connect.sid` looked
+        // signed out because the app asked for the wrong cookie.
+        function normalizeSidInput(raw) {
+            let sid = String(raw == null ? '' : raw).trim();
+            if (!sid) return '';
+            if (sid.indexOf(';') !== -1 || /^(?:connect|substack)\.sid\s*=/i.test(sid)) {
+                const match = /(?:^|;\s*)(?:connect|substack)\.sid\s*=\s*([^;]*)/i.exec(sid);
+                sid = match ? match[1].trim() : '';
+            }
+            if (!sid || sid.length > 4096) return '';
+            if (/[\s;]/.test(sid)) return '';
+            return sid;
+        }
 
-            if (!sid) { showAlertModal("Please enter a valid SID"); return; }
+        async function saveSettings() {
+            const sid = normalizeSidInput(document.getElementById('sid-input').value);
+
+            if (!sid) {
+                showAlertModal("That does not look like a Substack session cookie. Copy the Value of connect.sid (or substack.sid) and try again.");
+                return;
+            }
 
             // Must save to Pro-only subcollection first - will fail for non-Pro users
             if (state.user && db) {

@@ -395,7 +395,8 @@ https://us-central1-rekindle-dd1fa.cloudfunctions.net/substack?path=/api/v1/...&
   as a public hostname (no IP literals, ports, `.local`/`.internal`/metadata,
   wildcard-DNS rebinding suffixes). Publication custom domains work, which is why
   the host is not limited to `*.substack.com`. Redirect targets are re-checked.
-* `X-Substack-SID` is forwarded only as the `substack.sid` cookie; it is never
+* `X-Substack-SID` is forwarded as the `substack.sid` **and** `connect.sid`
+  cookies (Substack renamed it; see the 2026-11-24 note below); it is never
   logged or stored. 2 attempts on 429/5xx; no response caching (per-user data).
 * No warm instance: a cold start adds 10-30s to the first feed load of a
   session. `minInstances: 1` would remove that, but it is an always-on cost
@@ -426,6 +427,31 @@ repo, but the page no longer calls it. Deploy the function with
 **Not yet live:** the `substack.html` change still needs a Pages deploy. The
 working tree has unrelated uncommitted work, so do not run `npm run deploy:prod`
 until that is ready to ship.
+
+### Substack cookie name: connect.sid (2026-11-24)
+
+**Symptom:** users reported Substack "not working" even with a fresh cookie.
+
+Substack renamed the session cookie: newer accounts only set **`connect.sid`**, older accounts
+still use **`substack.sid`**. The relay forwarded only `substack.sid`, so a `connect.sid` value
+arrived at Substack under the wrong name and every reader call returned `401 Please sign in`.
+The app then showed "Access Denied. Check your SID" (or an empty feed after a silently failed
+subscriptions call).
+
+* `firebase-functions/substack.js` now normalises the input (`normalizeSubstackSid`) and sends
+  the same value under **both** names (`buildCookieHeader`):
+  `Cookie: connect.sid=<value>; substack.sid=<value>`.
+  It accepts a bare value, `connect.sid=<value>`, or a whole cookie header pasted from DevTools;
+  it rejects whitespace/semicolons (header injection) and values over 4 KB.
+* `substack.html` does the same normalisation before encrypting/storing the cookie, and the
+  Connect Account instructions now name `connect.sid` first (with `substack.sid` as the older
+  name). The input also accepts a pasted `Cookie` header.
+* `workers/rekindle-substack/worker.js` carries the same double-cookie header for rollback.
+* Tests: `node scripts/test-substack.js` covers normalisation, header injection, both cookie
+  names and the 4 KB cap.
+
+Deploy the function (`npx firebase deploy --only functions:substack`) **and** Pages. Do not
+revert to a single cookie name: it breaks whichever half of the user base has the other one.
 
 ### Pro gate init order (2026-10-24)
 

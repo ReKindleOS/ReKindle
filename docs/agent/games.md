@@ -567,3 +567,29 @@ pages (`livechess`, `livedotsandboxes`, `livetictactoe`, `liveyahtzee`, `liveuno
   still joined normally.
 
 When adding a live game, copy this block rather than the old instant-alert version.
+
+
+## Reported fixes 2026-11-24
+
+### Solitaire RNG (`solitaire.html`)
+
+Board report `-P6xQJ1D5Q1-zb_TK2qo`: "Solitaire not so random?" Adjacent same-rank cards and
+runs of aces are normal in a random 52-card deal, and the Fisher-Yates shuffle was already
+unbiased. To rule out a weak Kindle seed, `randomIntBelow()` now uses
+`crypto.getRandomValues()` with rejection sampling (falling back to `Math.random`), and the
+shuffle uses it. The deal distribution is unchanged; do not "fix" pairs by forbidding them.
+
+### Pictionary: a player leaving no longer freezes the game (`livepictionary.html`)
+
+Board report `-P-95tXvHmFxe70cIvU-` (20 votes). `drawOrder` is fixed when the match starts, so
+after someone left, `advanceTurn()` handed the turn to their uid. Nobody could pick a word and
+`chooseEndsAt` was only watched by the (missing) drawer's client, so the game waited forever.
+
+* `advanceTurn()` walks forward from `drawerIdx` to the next uid still present in `players`,
+  rebuilds `drawOrder` from the survivors, and writes that healed list back. If nobody is left
+  it ends the match.
+* `tickTimer()` is now a host watchdog for `status: 'choosing'`: if the current drawer is missing
+  the host calls `advanceTurn(true)` immediately; if the drawer is present but the 15 s timer
+  expires, the host calls `pickWord(0)` (the drawer's own modal still does this first).
+* `lastChooseHostAction` (`round:drawerIdx`) prevents repeated writes while the RTDB update
+  propagates and is reset on lobby/start/back-to-lobby.

@@ -15,3 +15,20 @@ How `customAvatar` float arrays render and where the gradient gate lives. Read b
 ---
 
 New findings for this area go here, not in `AGENTS.md` (65,536-byte budget).
+
+
+## Deliberately blank avatars (2026-11-24)
+
+Board report `-P62sF8F9YAtFOe7MLlz`: a user with a blank profile picture could not keep it —
+`drawAvatar()` treats an all-zero `customAvatar` as malformed and falls back to a generated
+uid pattern, so "blank" was unrepresentable.
+
+* The sentinel is the string **`'blank'`** stored in `customAvatar` (RTDB `user_cards` and
+  social `users_public`). Every `drawAvatar()` copy returns after painting the white canvas,
+  before the array/hash branches (`neighbourhood.html`, `kindlechat.html`, `topics.html`,
+  `index.html`, and the eight live-game pages).
+* `neighbourhood.html` profile editor has a **Blank** button (`useBlankAvatar()`); saving an
+  empty 16x16 canvas from the Draw Icon editor stores `'blank'` too (`hasInk` check).
+  Regenerate/Clear still restore the generated avatar (they set `customAvatar = null`).
+* All-zero **arrays** keep the old fallback behaviour: they are still treated as broken data
+  (the 2026-11-06 blank-avatar report), so only the explicit sentinel renders blank.

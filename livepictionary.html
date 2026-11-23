@@ -826,6 +826,7 @@ function listenToMatch() {
 
         // Lobby
         if (data.status === 'lobby') {
+            lastChooseHostAction = null;
             showScreen('lobby');
             updateLobbyUI();
             return;
@@ -906,6 +907,7 @@ function updateLobbyUI() {
 
 async function startMatch() {
     if (!isHost) return;
+    lastChooseHostAction = null;
     const players = Object.keys(gameState.players || {});
     if (players.length < 2) { showAlert(tfmt('pictionary.alert.toofew_title', 'Too Few'), tfmt('pictionary.alert.toofew_msg', 'Need at least 2 players.')); return; }
 
@@ -1120,18 +1122,44 @@ function buildScoreTable(players, highlightWinner) {
     '</table>';
 }
 
-async function advanceTurn() {
+async function advanceTurn(fromChoosing) {
     if (!isHost) return;
-    if (!gameState || gameState.status !== 'roundend') return;
-
-    const order = gameState.drawOrder || [];
-    let nextIdx = gameState.drawerIdx + 1;
-    let nextRound = gameState.round;
-
-    if (nextIdx >= order.length) {
-        nextIdx = 0;
-        nextRound += 1;
+    if (!gameState) return;
+    if (fromChoosing) {
+        if (gameState.status !== 'choosing') return;
+    } else if (gameState.status !== 'roundend') {
+        return;
     }
+
+    const original = gameState.drawOrder || [];
+    const players = gameState.players || {};
+    const currentIdx = gameState.drawerIdx || 0;
+
+    // A player who left keeps their slot in drawOrder. The old code handed
+    // the turn to that greyed-out uid, nobody could pick a word, and the
+    // round never advanced (report 2026-08-16: players "wait and wait").
+    // Walk forward to the next uid that is still in `players`.
+    let nextUid = null;
+    let wrapped = false;
+    for (let step = 1; step <= original.length; step++) {
+        const rawIdx = currentIdx + step;
+        if (rawIdx >= original.length) wrapped = true;
+        const candidate = original[rawIdx % original.length];
+        if (candidate && players[candidate]) {
+            nextUid = candidate;
+            break;
+        }
+    }
+
+    const order = original.filter(function (uid) { return players[uid]; });
+    if (!order.length || !nextUid) {
+        await matchRef.update({ status: 'gameover' });
+        return;
+    }
+
+    let nextIdx = order.indexOf(nextUid);
+    if (nextIdx < 0) nextIdx = 0;
+    let nextRound = gameState.round + (wrapped ? 1 : 0);
 
     if (nextRound > (gameState.rounds || 3)) {
         await matchRef.update({ status: 'gameover' });
@@ -1148,6 +1176,7 @@ async function advanceTurn() {
     await matchRef.update(Object.assign({
         status: 'choosing',
         round: nextRound,
+        drawOrder: order,
         drawerIdx: nextIdx,
         drawerUid: order[nextIdx],
         chooseEndsAt: serverTime() + 15000,
@@ -1163,6 +1192,7 @@ async function advanceTurn() {
 
 async function backToLobby() {
     if (!isHost) return;
+    lastChooseHostAction = null;
     const pUpdates = {};
     Object.keys(gameState.players || {}).forEach(uid => {
         pUpdates['players/' + uid + '/score'] = 0;
@@ -1192,6 +1222,7 @@ function startLocalTimer() {
     tickTimer();
 }
 
+let lastChooseHostAction = null;
 function tickTimer() {
     if (!gameState) return;
     const tEl = document.getElementById('timer');
@@ -1206,6 +1237,25 @@ function tickTimer() {
         const left = Math.max(0, Math.ceil(((gameState.chooseEndsAt || 0) - serverTime()) / 1000));
         tEl.innerText = left + 's';
         tEl.classList.remove('low');
+
+        // The drawer's client owns the "pick a word" countdown. If that player
+        // left (or disconnected), nobody runs it and the round freezes on
+        // "Picking word...". The host takes over: skip a missing drawer
+        // immediately, and auto-pick for a present-but-slow one at 0s.
+        const drawerUid = currentDrawerUid();
+        const drawerPresent = !!(drawerUid && gameState.players && gameState.players[drawerUid]);
+        const chooseKey = gameState.round + ':' + gameState.drawerIdx;
+        if (isHost && !drawerPresent) {
+            if (lastChooseHostAction !== chooseKey) {
+                lastChooseHostAction = chooseKey;
+                advanceTurn(true);
+            }
+        } else if (isHost && left <= 0) {
+            if (lastChooseHostAction !== chooseKey) {
+                lastChooseHostAction = chooseKey;
+                pickWord(0);
+            }
+        }
     } else {
         tEl.innerText = '--';
         tEl.classList.remove('low');
@@ -1578,6 +1628,7 @@ function drawAvatar(canvasId, seed) {
     cx.fillStyle = '#fff';
     cx.fillRect(0, 0, c.width, c.height);
     cx.fillStyle = '#000';
+    if (seed === 'blank') return; // deliberately empty avatar
     if (Array.isArray(seed)) {
         const grid = Math.sqrt(seed.length);
         const ps = c.width / grid;

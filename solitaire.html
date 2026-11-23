@@ -611,6 +611,27 @@
             newGame();
         }
 
+        // Prefer the platform CSPRNG. Kindle's JIT-less V8 uses the same
+        // Math.random generator as everything else, but a crypto-backed
+        // shuffle removes any doubt about a weak seed (report 2026-11-21:
+        // "Solitaire not so random?"). It does not change the deck
+        // distribution: two cards of the same rank next to each other are a
+        // normal feature of a random 52-card deal.
+        function randomIntBelow(max) {
+            if (!max || max <= 0) return 0;
+            if (window.crypto && window.crypto.getRandomValues) {
+                const buf = new Uint32Array(1);
+                const limit = Math.floor(0xFFFFFFFF / max) * max;
+                let value = 0;
+                do {
+                    window.crypto.getRandomValues(buf);
+                    value = buf[0];
+                } while (value >= limit);
+                return value % max;
+            }
+            return Math.floor(Math.random() * max);
+        }
+
         function newGame() {
             document.getElementById('msg-overlay').style.display = 'none';
             document.getElementById('auto-btn').style.display = 'none';
@@ -628,7 +649,7 @@
 
             // Shuffle
             for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
+                const j = randomIntBelow(i + 1);
                 [deck[i], deck[j]] = [deck[j], deck[i]];
             }
 

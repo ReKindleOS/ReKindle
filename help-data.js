@@ -1810,7 +1810,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Substack does not offer a public login API, so ReKindle asks for your Substack session cookie:</p>
             <ol>
                 <li>Sign in to substack.com in a desktop browser.</li>
-                <li>Open the developer tools, find the site cookies, and copy the session cookie value.</li>
+                <li>Open the developer tools, then <b>Application</b> -&gt; <b>Cookies</b> -&gt; substack.com.</li>
+                <li>Copy the value of <code>connect.sid</code> (newer accounts) or <code>substack.sid</code> (older accounts). You can also paste the whole <code>Cookie</code> header from a Network request.</li>
                 <li>Paste it into ReKindle and tap <b>Save &amp; Connect</b>.</li>
             </ol>
             <div class="note"><b>Treat the cookie like a password.</b> It grants access to your Substack account. While ReKindle+ is active and you are signed in, the cookie syncs to your other devices through your ReKindle account automatically; only do that on accounts you trust. There is no disconnect control yet; deleting your ReKindle account removes the saved cookie.</div>

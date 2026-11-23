@@ -50,9 +50,10 @@ export default {
                 const newHeaders = new Headers(request.headers);
                 newHeaders.set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-                // CRITICAL: Inject the cookie
+                // CRITICAL: Inject the cookie. Newer Substack accounts only
+                // carry `connect.sid`, older ones `substack.sid`; send both.
                 if (sid) {
-                    newHeaders.set("Cookie", `substack.sid=${sid}`);
+                    newHeaders.set("Cookie", `connect.sid=${sid}; substack.sid=${sid}`);
                 }
 
                 // Remove headers that might cause issues

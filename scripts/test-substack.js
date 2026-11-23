@@ -12,6 +12,8 @@ const assert = require("assert");
 const {
     parseUpstreamPath,
     isForbiddenHost,
+    normalizeSubstackSid,
+    buildCookieHeader,
     allowRequest,
     ALLOWED_ORIGINS,
     RATE_CAPACITY
@@ -75,6 +77,26 @@ assert.strictEqual(isForbiddenHost("platformer.substack.com"), false);
 ["https://rekindle.ink", "https://beta.rekindle.ink", "https://lite.rekindle.ink"].forEach(function (origin) {
     assert.ok(ALLOWED_ORIGINS.indexOf(origin) !== -1, "missing origin " + origin);
 });
+
+// --- session cookie normalisation -----------------------------------------
+// Newer Substack accounts only carry connect.sid, older ones substack.sid.
+// The relay must send the value under both names, and accept a whole cookie
+// header pasted from DevTools.
+assert.strictEqual(normalizeSubstackSid("  s%3Aabc.def  "), "s%3Aabc.def");
+assert.strictEqual(normalizeSubstackSid("connect.sid=s%3Aabc.def"), "s%3Aabc.def");
+assert.strictEqual(normalizeSubstackSid("substack.sid=s%3Aabc.def; path=/"), "s%3Aabc.def");
+assert.strictEqual(normalizeSubstackSid("connect.sid=s%3Aabc; substack.sid=s%3Aabc"), "s%3Aabc");
+assert.strictEqual(normalizeSubstackSid("s%3Aabc;def"), "");        // bare semicolons
+assert.strictEqual(normalizeSubstackSid("two words"), "");          // whitespace
+assert.strictEqual(normalizeSubstackSid("line\nbreak"), "");        // header injection
+assert.strictEqual(normalizeSubstackSid("x".repeat(4097)), "");     // oversized
+assert.strictEqual(normalizeSubstackSid(""), "");
+assert.strictEqual(
+    buildCookieHeader("s%3Aabc"),
+    "connect.sid=s%3Aabc; substack.sid=s%3Aabc"
+);
+assert.strictEqual(buildCookieHeader(""), "");
+assert.strictEqual(buildCookieHeader("two words"), "");
 
 // Per-uid bucket: a full burst is allowed, the next request is not.
 const uid = "test-user-" + Date.now();

@@ -855,6 +855,43 @@
         let currentGalleryTab = 'my'; // 'my' or 'other'
         let isReadOnly = false;
 
+        // Deleted gallery ids. saveManifest() unions the local list with the
+        // cloud copy to survive a Kindle cache wipe; without a tombstone that
+        // union re-added every deleted drawing (report 2026-11-19: "i cant
+        // delete any pictures"). Timestamped so the list can be pruned.
+        const DELETED_MANIFEST_KEY = 'pixel_deleted_ids';
+        let deletedDrawingIds = {};
+        try {
+            const storedDeleted = JSON.parse(localStorage.getItem(DELETED_MANIFEST_KEY) || '{}');
+            if (storedDeleted && typeof storedDeleted === 'object') deletedDrawingIds = storedDeleted;
+        } catch (e) { deletedDrawingIds = {}; }
+
+        function pruneDeletedDrawingIds() {
+            const ids = Object.keys(deletedDrawingIds);
+            const cutoff = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            const kept = {};
+            ids.sort(function (a, b) { return (deletedDrawingIds[b] || 0) - (deletedDrawingIds[a] || 0); });
+            for (let i = 0; i < ids.length; i++) {
+                if (i >= 500) break;
+                if ((deletedDrawingIds[ids[i]] || 0) >= cutoff) kept[ids[i]] = deletedDrawingIds[ids[i]];
+            }
+            deletedDrawingIds = kept;
+        }
+
+        function markDrawingDeleted(id) {
+            if (!id) return;
+            deletedDrawingIds[id] = Date.now();
+            pruneDeletedDrawingIds();
+            try { localStorage.setItem(DELETED_MANIFEST_KEY, JSON.stringify(deletedDrawingIds)); } catch (e) { }
+        }
+
+        function withoutDeletedDrawings(items) {
+            if (!Array.isArray(items)) return [];
+            return items.filter(function (item) {
+                return item && item.id && !deletedDrawingIds[item.id];
+            });
+        }
+
         // Firebase variables
         let db, auth, socialAuth, currentUser = null;
 
@@ -1117,14 +1154,14 @@
                 try {
                     const doc = await db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest').get();
                     if (doc.exists) {
-                        manifest = doc.data().items || [];
+                        manifest = withoutDeletedDrawings(doc.data().items || []);
                         localStorage.setItem(key, JSON.stringify(manifest));
                     }
                 } catch (e) { console.error("Cloud manifest load failed", e); }
             }
             if (!manifest.length) {
                 const local = localStorage.getItem(key);
-                if (local) { try { manifest = JSON.parse(local); } catch (e) { manifest = []; } }
+                if (local) { try { manifest = withoutDeletedDrawings(JSON.parse(local)); } catch (e) { manifest = []; } }
             }
 
             // Load Others Manifest (Local + Cloud Merge)
@@ -1135,7 +1172,7 @@
                 if (localStr) localOther = JSON.parse(localStr);
             } catch (e) { localOther = []; }
 
-            manifestOthers = localOther;
+            manifestOthers = withoutDeletedDrawings(localOther);
 
             if (currentUser) {
                 try {
@@ -1151,7 +1188,7 @@
                                 merged.push(localItem);
                             }
                         });
-                        manifestOthers = merged;
+                        manifestOthers = withoutDeletedDrawings(merged);
                         localStorage.setItem(otherKey, JSON.stringify(manifestOthers));
                     }
                 } catch (e) {
@@ -1187,45 +1224,46 @@
 
         async function saveManifest() {
             const key = 'pixel_manifest';
+            manifest = withoutDeletedDrawings(manifest);
             localStorage.setItem(key, JSON.stringify(manifest)); // Always save local
 
             if (!currentUser) return;
             const docRef = db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest');
             try {
                 const doc = await docRef.get();
-                const cloudItems = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+                const cloudItems = withoutDeletedDrawings(
+                    (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : []
+                );
                 if (manifest.length === 0 && cloudItems.length > 0) {
                     // Nothing local to contribute: adopt the cloud list rather
-                    // than overwriting it with an empty one.
+                    // than overwriting it with an empty one. Tombstoned ids are
+                    // already removed, so a deleted drawing stays deleted.
                     manifest = cloudItems.slice();
                     localStorage.setItem(key, JSON.stringify(manifest));
                     return;
                 }
-                const merged = mergeManifests(manifest, cloudItems);
-                if (merged.length !== manifest.length) {
-                    manifest = merged;
-                    localStorage.setItem(key, JSON.stringify(manifest));
-                }
+                manifest = withoutDeletedDrawings(mergeManifests(manifest, cloudItems));
+                localStorage.setItem(key, JSON.stringify(manifest));
                 await docRef.set({ items: manifest });
             } catch (e) { console.error("Cloud manifest save failed", e); }
         }
 
         function saveManifestOthers() {
+            manifestOthers = withoutDeletedDrawings(manifestOthers);
             localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers));
             if (!currentUser) return;
             const docRef = db.collection('users').doc(currentUser.uid).collection('settings').doc('pixel_manifest_others');
             docRef.get().then(function (doc) {
-                const cloudItems = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+                const cloudItems = withoutDeletedDrawings(
+                    (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : []
+                );
                 if (manifestOthers.length === 0 && cloudItems.length > 0) {
                     manifestOthers = cloudItems.slice();
                     try { localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers)); } catch (e) { }
                     return null;
                 }
-                const merged = mergeManifests(manifestOthers, cloudItems);
-                if (merged.length !== manifestOthers.length) {
-                    manifestOthers = merged;
-                    try { localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers)); } catch (e) { }
-                }
+                manifestOthers = withoutDeletedDrawings(mergeManifests(manifestOthers, cloudItems));
+                try { localStorage.setItem('pixel_manifest_others', JSON.stringify(manifestOthers)); } catch (e) { }
                 return docRef.set({ items: manifestOthers });
             }).catch(function (e) { console.error("Cloud save others failed", e); });
         }
@@ -1415,12 +1453,17 @@
         }
 
         function performDelete(id) {
+            // Record the tombstone before saving: saveManifest() unions with the
+            // cloud manifest, and without this the union put the deleted row
+            // straight back (report 2026-11-19).
+            markDrawingDeleted(id);
             if (currentGalleryTab === 'my') {
                 manifest = manifest.filter(m => m.id !== id);
                 saveManifest();
                 localStorage.removeItem(`pixel_drawing_${id}`);
                 if (currentUser) {
-                    db.collection('users').doc(currentUser.uid).collection('pixel_drawings').doc(id).delete();
+                    db.collection('users').doc(currentUser.uid).collection('pixel_drawings').doc(id).delete()
+                        .catch(function (e) { console.error('Cloud drawing delete failed', e); });
                 }
             } else {
                 manifestOthers = manifestOthers.filter(m => m.id !== id);

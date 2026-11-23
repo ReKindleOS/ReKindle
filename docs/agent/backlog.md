@@ -600,3 +600,23 @@ and login; `defer` on every analytics tag and the Google API loader; `scripts/te
 7. **Measure on a device.** Everything above was verified with the WebKit harness and static budgets.
    A real Kindle (and a Kobo) number for first paint and repeat navigation would tell us whether to
    keep going down this list at all.
+
+## 2026-11-24 · Suggestions problem sweep
+
+Open **Problem** rows on the board after the 2026-11-10 triage. Each fix is documented in its
+topic doc; this table is the index.
+
+| Report | Symptom | Fix / file |
+| :--- | :--- | :--- |
+| `-P6xQJ1D5Q1-zb_TK2qo` (2026-11-21) | Solitaire deals feel non-random | Crypto-backed `randomIntBelow()` in the Fisher-Yates shuffle; distribution unchanged (same-rank neighbours are normal). [games.md](games.md#solitaire-rng-solitairehtml) |
+| `-P6wHLWYG3rfFEE3iH0M` (2026-11-21) | Circle drawing is only straight lines/corners | `flushDrawing()` joins sampled points with quadratic curves through their midpoints. `circle.html` |
+| `-P6nTeSTToU9NhtnGD3j` (2026-11-19) | Deleted pixel art comes back | `saveManifest()`'s cloud union re-added deleted rows. Timestamped tombstones (`pixel_deleted_ids`) filter load, merge and cloud writes. `pixel.html` |
+| `-P66XPQkUE30JgrU7xuo` (2026-11-10) | Long DM threads hide the composer | `.window` is `height: 90vh; min-height: 0`; `#chat-history` is `flex: 1 1 0`. [performance.md](performance.md#long-dm-threads-fixed-window-height-2026-11-24) |
+| `-P62sF8F9YAtFOe7MLlz` (2026-11-10) | Cannot keep a blank profile picture | Explicit `customAvatar: 'blank'` sentinel honoured by every `drawAvatar()`; Blank button in the profile editor. [avatars.md](avatars.md#deliberately-blank-avatars-2026-11-24) |
+| `-P-95tXvHmFxe70cIvU-` (2026-08-16) | Pictionary freezes after a player leaves | `advanceTurn()` skips missing uids and heals `drawOrder`; host watchdog auto-picks/skips in `tickTimer()`. [games.md](games.md#pictionary-a-player-leaving-no-longer-freezes-the-game-livepictionaryhtml) |
+| `-P59t4IcmOED_Bd9sTV7` (2026-10-30) | Mario/Surfer/Dino feel laggy on a 10th-gen Kindle | Still device-limited: these are 1-bit canvas loops, and the surfer renderer is already the strictest variant. Needs a real-device profile, not a blind rewrite. |
+| `-Ox5SFMdu2l_hJKeJuks` (2026-07-09) | More Languages | Not a regression: 40 locales ship; new languages are a translation-content task. |
+| (reported off-board) | Substack "not working" | Substack renamed its cookie to `connect.sid`; relay now sends both names and accepts a pasted Cookie header. [integrations.md](integrations.md#substack-cookie-name-connectsid-2026-11-24) |
+
+Not yet live: Pages (`npm run deploy:prod` after review) and the Substack function
+(`npx firebase deploy --only functions:substack`). `help-data.js` was bumped to `?v=18`.

@@ -255,3 +255,20 @@ themselves with `100vh`, which does **not** shrink when the on-screen keyboard o
 
 Use the same pattern for any future full-height page with a bottom composer; do not set
 `body { overflow: hidden }` without it.
+
+
+## Long DM threads: fixed window height (2026-11-24)
+
+Board report `-P66XPQkUE30JgrU7xuo`: "whenever i have a convo in dms and we type a lot ... it
+wont let me scroll down to the chat box". `#chat-history` already had `min-height: 0` (the
+2026-10-27 fix), but `.window` used `min-height: 90vh` with no definite height. A long thread
+grew the window towards `theme.js`'s `max-height: 95vh !important`; on a short Kindle viewport
+that put the composer under the fixed body's clipped edge, where nothing can scroll.
+
+* `kindlechat.html` `.window` is now `height: 90vh; min-height: 0` (fullscreen still overrides
+  height), and `#chat-history` is `flex: 1 1 0` instead of `flex-grow: 1`. The history box takes
+  the remaining space and scrolls; the composer stays inside the window.
+* Verified with the WebKit harness at 800x1000 with 120 injected messages: window 48-952,
+  history 124-858, composer 858-950, `scrollHeight 10940 > clientHeight 734`.
+* Keep the inline `visualViewport` keyboard handler: it still overrides the height while the
+  on-screen keyboard is open.

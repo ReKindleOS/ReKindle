@@ -117,7 +117,11 @@
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
 
-        const pageTitle = String(document.title || '').replace(/\s*[\u2014-]\s*ReKindle.*$/i, '').trim();
+        // Page titles are "<App> – <tagline> | ReKindle". Split on the
+        // tagline separators so the paywall says "Unlock Substack", not
+        // "Unlock Substack – Read your inbox and posts | ReKindle".
+        const titleParts = String(document.title || '').split(/\s*[|\u2014\u2013]\s*/);
+        const pageTitle = String(titleParts[0] || '').replace(/\s*-\s*ReKindle.*$/i, '').trim();
         const appName = pageTitle && pageTitle.toLowerCase() !== 'rekindle' ? pageTitle : '';
         const headline = appName
             ? (window.tFormat ? window.tFormat('paywall.unlock_app', { app: appName }, 'Unlock ${app} with ReKindle+') : 'Unlock ' + appName + ' with ReKindle+')

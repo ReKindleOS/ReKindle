@@ -937,6 +937,9 @@
                                 <button class="sys-btn" onclick="clearCustomAvatar()"
                                     data-i18n="neighbourhood.btn.clear_avatar"
                                     style="font-size:0.75rem; padding:6px 12px;; margin-top: 8px">Clear</button>
+                                <button class="sys-btn" onclick="useBlankAvatar()"
+                                    data-i18n="neighbourhood.btn.blank_avatar"
+                                    style="font-size:0.75rem; padding:6px 12px; margin-top: 8px">Blank</button>
                                 <button class="sys-btn" id="btn-toggle-privacy" onclick="toggleProfilePrivacy()"
                                     style="font-size:0.75rem; padding:6px 12px; margin-top:5px;; margin-top: 8px">Public</button>
                             </div>
@@ -2205,7 +2208,10 @@
         }
 
         function saveCustomAvatar() {
-            myProfile.customAvatar = [...tempPixelData];
+            // An empty canvas is the explicit blank avatar, not a request for a
+            // generated one. `'blank'` is honoured by every drawAvatar() copy.
+            const hasInk = tempPixelData.some(function (v) { return v > 0; });
+            myProfile.customAvatar = hasInk ? [...tempPixelData] : 'blank';
             closeAvatarModal();
             drawAvatar('my-avatar', myProfile.customAvatar || myProfile.avatarSeed, currentUser.uid); // Redraw preview
             // Note: will be permanently saved when they hit "Save Profile"
@@ -2214,6 +2220,14 @@
         function clearCustomAvatar() {
             myProfile.customAvatar = null;
             drawAvatar('my-avatar', myProfile.avatarSeed, currentUser.uid);
+        }
+
+        // Deliberately empty avatar (report 2026-11-10: "it wouldn't let me
+        // have a blank pfp"). The sentinel survives the customAvatar ||
+        // avatarSeed fallback and every renderer leaves the canvas white.
+        function useBlankAvatar() {
+            myProfile.customAvatar = 'blank';
+            drawAvatar('my-avatar', 'blank', currentUser.uid);
         }
 
         // --- PIXEL ART AVATAR PICKER ---
@@ -2739,6 +2753,7 @@
             // Missing/deleted profile: stay blank white. Callers must not pass
             // a uid fallback when the user-card lookup returned nothing.
             if (seed === null || seed === undefined || seed === '') return;
+            if (seed === 'blank') return; // deliberately empty avatar (report 2026-11-10)
 
             // Firebase returns a sparse array as an object.
             if (seed && typeof seed === 'object' && !Array.isArray(seed)) {

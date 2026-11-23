@@ -24,8 +24,9 @@
  *     prefix, which keeps the metadata/RFC1918 SSRF surface closed.
  *   - `host` defaults to substack.com (the reader API). Publication feeds pass
  *     the publication subdomain or custom domain.
- *   - `X-Substack-SID` is forwarded as the `substack.sid` cookie. It is never
- *     logged or stored.
+ *   - `X-Substack-SID` is forwarded as both `connect.sid` and `substack.sid`
+ *     (Substack renamed the cookie; new accounts only carry connect.sid). It is
+ *     never logged or stored.
  *   - 2 attempts on 429/5xx with backoff; no response caching (per-user data).
  */
 
@@ -221,6 +222,34 @@ function retryDelayMs(res, attempt) {
     return 500 * Math.pow(2, attempt);
 }
 
+/**
+ * Substack has used two session-cookie names. Newer accounts get
+ * `connect.sid`; older ones still get `substack.sid`. Some servers accept
+ * either, but many accounts only carry `connect.sid`, so forwarding just
+ * `substack.sid` made those accounts look signed out (the "Substack does not
+ * work" report, 2026-11-24). Send the same value under both names.
+ *
+ * Accept a bare value or a pasted `connect.sid=...; substack.sid=...` header
+ * from DevTools; store/forward only the value.
+ */
+function normalizeSubstackSid(raw) {
+    let sid = String(raw == null ? "" : raw).trim();
+    if (!sid) return "";
+    if (sid.indexOf(";") !== -1 || /^(?:connect|substack)\.sid\s*=/i.test(sid)) {
+        const match = /(?:^|;\s*)(?:connect|substack)\.sid\s*=\s*([^;]*)/i.exec(sid);
+        sid = match ? match[1].trim() : "";
+    }
+    if (!sid || sid.length > 4096) return "";
+    if (/[\s;]/.test(sid)) return "";
+    return sid;
+}
+
+function buildCookieHeader(rawSid) {
+    const sid = normalizeSubstackSid(rawSid);
+    if (!sid) return "";
+    return "connect.sid=" + sid + "; substack.sid=" + sid;
+}
+
 async function fetchUpstream(url, sid) {
     let lastError = null;
     const attempts = 2;
@@ -234,7 +263,8 @@ async function fetchUpstream(url, sid) {
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://substack.com/"
         };
-        if (sid) headers["Cookie"] = "substack.sid=" + sid;
+        const cookie = buildCookieHeader(sid);
+        if (cookie) headers["Cookie"] = cookie;
 
         try {
             const upstream = await fetch(url.toString(), {
@@ -292,15 +322,15 @@ async function substackHandler(req, res) {
         return;
     }
 
-    const sid = req.headers["x-substack-sid"] || "";
-    if (sid && String(sid).length > 4096) {
-        sendError(res, 400, "invalid_sid", "SID is too long");
+    const sid = normalizeSubstackSid(req.headers["x-substack-sid"] || "");
+    if (req.headers["x-substack-sid"] && !sid) {
+        sendError(res, 400, "invalid_sid", "SID is missing or malformed");
         return;
     }
 
     let upstream;
     try {
-        upstream = await fetchUpstream(target, sid ? String(sid) : "");
+        upstream = await fetchUpstream(target, sid);
     } catch (e) {
         sendError(res, 502, "upstream_unreachable", "Could not reach Substack");
         return;
@@ -341,6 +371,8 @@ module.exports = {
     substackHandler,
     parseUpstreamPath,
     isForbiddenHost,
+    normalizeSubstackSid,
+    buildCookieHeader,
     allowRequest,
     ALLOWED_ORIGINS,
     RATE_CAPACITY
