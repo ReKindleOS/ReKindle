@@ -32,9 +32,21 @@ games, and cross-device sync.
 
 ## Fixes shipped in this pass
 
-All fixes are source changes only (nothing pushed). Shared-asset versions were bumped as
+All fixes are committed as `f4a0f02` and pushed to `main`; the Pages production
+deployment is live on branch `main` at that commit. Shared-asset versions were bumped as
 required by AGENTS.md: `theme.js?v=36` (143 pages + `sw.js`), `pro-gate.js?v=12`
 (14 pages), `js/custom-select.js?v=3` (27 pages).
+
+**Worker deploy status (2026-11-24):** the moderation Worker lives in the separate
+"ReKindle Social" Cloudflare account (`8d69e380e0c4e0580c47f21d9757c71c`). The local
+wrangler OAuth token only has the main ReKindle account, so `wrangler deploy` updated the
+main-account copy and the live social Worker is still the old version. A deploy with that
+account's token is required before the forged-report fix protects production:
+
+```bash
+cd workers/rekindle-moderate
+CLOUDFLARE_ACCOUNT_ID=8d69e380e0c4e0580c47f21d9757c71c CLOUDFLARE_API_TOKEN=<ReKindle Social token> npx wrangler deploy
+```
 
 | Area | Fix | Files |
 | :--- | :--- | :--- |
