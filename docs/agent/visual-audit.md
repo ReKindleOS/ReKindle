@@ -274,7 +274,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=7`, `js/home.js?v=13` and the generated
+- **Assets** — `css/home.css?v=10`, `js/home.js?v=13` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.
@@ -350,3 +350,21 @@ Verified with `favorites=["notes","calendar","kindlechat"]` and
 `recent=["calculator","notes"]`: All shows Notes, Calendar, KindleChat and
 Calculator, including the featured KindleChat favorite; clicking Favorites and
 Recent survives a reload with the same tab and apps active.
+
+## 2026-11-24 dashboard title bars removed
+
+The 8px solid black `border-left` on `.dashboard-widget-title` (Local Time,
+Weather and the calendar month) made every dashboard heading look like a tab
+marker. Removed it and dropped the 10px left padding so the titles align with
+the widget edge. The 2px bottom rule stays. The same 8px marker on
+`.view-header > span:first-child` (All Applications, Live Games and category
+headings) was removed with its 10px padding; section headings now align to the
+same left edge as their content.
+
+## 2026-11-24 tab focus ring removed
+
+The global `[tabindex]:focus` dotted outline showed around a home tab after a
+tap/click, making the active tab look double-selected. `.folder-tab:focus` and
+`.foryou-tab:focus` now set `outline: none`; the global focus ring stays for
+other controls. The 8px left `border-left` on dashboard widget titles was also
+removed (the 2px bottom rule remains).

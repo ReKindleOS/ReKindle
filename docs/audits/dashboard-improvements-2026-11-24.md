@@ -29,7 +29,7 @@ cached assets, and no animations.
 | Area | What shipped |
 | :--- | :--- |
 | Boot | `js/firebase-loader.js` + `js/home.js`: shell/grid first; Firebase only for a stored session or login intent. A guest loads **0 Firebase bytes**; a returning user loads app+auth in idle, then Firestore+RTDB after auth. `counter.dev` is `async`. |
-| Code split | Inline CSS → `css/home.css?v=7`, inline logic → `js/home.js?v=13`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
+| Code split | Inline CSS → `css/home.css?v=10`, inline logic → `js/home.js?v=13`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
 | Presence | Removed `window.rekindlePresence = true`; the dashboard no longer opens a presence listener/write. |
 | Weather | 15-minute `localStorage` snapshot (stale-while-revalidate), 8 s abort, feels-like/rain/wind/sunrise/sunset, updated-age label. |
 | Agenda | In-memory month cache, one Google/CalDAV fetch per month (2-day edge margin), bounded Firestore range query instead of the whole collection; loading/empty/session-expired states. |
