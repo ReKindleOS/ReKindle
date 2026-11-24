@@ -526,7 +526,7 @@
                 if (uid === 'anon') return;
                 if (localStorage.getItem('rekindle_uid') !== uid) return;
                 ['chat_use_byo_key', 'chat_ai_preset', 'chat_ai_model', 'chat_ai_provider',
-                    'chat_custom_endpoint', 'chat_custom_models', 'chat_api_key'].forEach(function (name) {
+                    'chat_custom_endpoint', 'chat_custom_models'].forEach(function (name) {
                     const legacy = localStorage.getItem(name);
                     const scoped = chatKey(name);
                     if (legacy && !localStorage.getItem(scoped)) localStorage.setItem(scoped, legacy);
@@ -544,6 +544,10 @@
                 customModels = JSON.parse(localStorage.getItem(chatKey('chat_custom_models')) || '{}');
             } catch (e) { customModels = {}; }
         }
+        // The key is a secret, so it never goes through the plain-text pref
+        // migration above: it must be written with setSecureItem because the
+        // read path is getSecureItem (chat.html:667). A plain-text write here
+        // also tripped code scanning alert 227.
         function migrateLegacyApiKey() {
             try {
                 const uid = chatStorageUid();
@@ -551,7 +555,7 @@
                 if (owner !== uid) return;
                 const legacy = localStorage.getItem('chat_api_key');
                 const scoped = chatKey('chat_api_key');
-                if (legacy && !localStorage.getItem(scoped)) localStorage.setItem(scoped, legacy);
+                if (legacy && !localStorage.getItem(scoped)) setSecureItem(scoped, legacy);
                 localStorage.removeItem('chat_api_key');
             } catch (e) { }
         }
@@ -662,6 +666,7 @@
         }
 
         function openSettings() {
+            migrateLegacyApiKey();
             migrateLegacyChatPrefs();
             loadChatPrefs();
             apiKey = getSecureItem(chatKey('chat_api_key')) || '';
@@ -855,6 +860,9 @@
 
         async function loadSettingsFromFirebase() {
             if (!currentUserId) return;
+            // The key is migrated separately (setSecureItem); on a cold load
+            // the auth uid is not ready yet, so retry here once it is.
+            migrateLegacyApiKey();
             migrateLegacyChatPrefs();
             try {
                 const db = firebase.firestore();

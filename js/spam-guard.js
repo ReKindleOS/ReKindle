@@ -26,6 +26,16 @@
     var MAX_ENTRIES = 4;
     var MAX_TOKENS = 16;
 
+    // Long-message duplicate ring (2026-11-24). The four shape slots above
+    // cannot catch a flood that puts four different lines between each copy
+    // of the same long paste - every copy evicts the one before it. Keep a
+    // larger fingerprint ring for substantial messages only, so ordinary
+    // short chat ("lol", "hi") is completely unaffected.
+    var LONG_STORE_KEY = 'rekindle_chat_recent_long';
+    var LONG_WINDOW_MS = 10 * 60 * 1000;
+    var LONG_MAX_ENTRIES = 24;
+    var LONG_MIN_CHARS = 40;
+
     var MSG_DUPLICATE = 'You just sent that message. Say something different - repeated messages are blocked to keep chat readable.';
     var MSG_REPEAT = 'You have sent the same message a few times. Please say something new - repeated messages are blocked to keep chat readable.';
 
@@ -153,6 +163,35 @@
         return fresh;
     }
 
+    function readLongStore() {
+        try {
+            var raw = window.localStorage.getItem(LONG_STORE_KEY);
+            var list = raw ? JSON.parse(raw) : [];
+            return Object.prototype.toString.call(list) === '[object Array]' ? list : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function writeLongStore(list) {
+        try {
+            window.localStorage.setItem(LONG_STORE_KEY, JSON.stringify(list));
+        } catch (e) {
+            // localStorage may be unavailable or full - the worker still enforces.
+        }
+    }
+
+    function recentLongEntries(now) {
+        var list = readLongStore();
+        var fresh = [];
+        for (var i = 0; i < list.length; i++) {
+            var entry = list[i];
+            if (!entry || typeof entry.t !== 'number' || !entry.h) continue;
+            if (now - entry.t < LONG_WINDOW_MS && now - entry.t >= 0) fresh.push(entry);
+        }
+        return fresh;
+    }
+
     /**
      * Check a message before sending it.
      * @returns {{blocked: boolean, message?: string, retryAfter?: number}}
@@ -162,7 +201,29 @@
         var now = Date.now();
         var entries = recentEntries(now);
         var normalized = normalizeForDedupe(text);
+        var shape = chatTextShapes(text);
         var i;
+
+        // Substantial-message duplicate ring: exact text or the same token set
+        // (stretched/reordered repeats) within ten minutes. This is what stops
+        // a long paste being repeated with other lines in between - the four
+        // short shape slots would have evicted it by then.
+        if (normalized.length >= LONG_MIN_CHARS) {
+            var longHash = hashText(normalized);
+            var longKey = hashText(shape.toks.join(','));
+            var longEntries = recentLongEntries(now);
+            for (i = 0; i < longEntries.length; i++) {
+                var longEntry = longEntries[i];
+                if (longEntry.h === longHash || (longEntry.k && longEntry.k === longKey)) {
+                    var longAge = now - longEntry.t;
+                    return {
+                        blocked: true,
+                        retryAfter: Math.ceil((LONG_WINDOW_MS - longAge) / 1000),
+                        message: translate('kindlechat.spam.duplicate', MSG_DUPLICATE)
+                    };
+                }
+            }
+        }
 
         for (i = 0; i < entries.length; i++) {
             var dupAge = now - entries[i].t;
@@ -175,7 +236,6 @@
             }
         }
 
-        var shape = chatTextShapes(text);
         if (shape.toks.length) {
             var ages = [];
             for (i = 0; i < entries.length; i++) {
@@ -202,14 +262,25 @@
     window.rekindleRecordChatMessage = function (text) {
         if (!text) return;
         var now = Date.now();
+        var normalized = normalizeForDedupe(text);
         var shape = chatTextShapes(text);
         var entry = {
             t: now,
-            h: hashText(normalizeForDedupe(text)),
+            h: hashText(normalized),
             d: shape.dom,
             k: shape.toks.join(' ')
         };
         var list = [entry].concat(recentEntries(now)).slice(0, MAX_ENTRIES);
         writeStore(list);
+
+        if (normalized.length >= LONG_MIN_CHARS) {
+            var longEntry = {
+                t: now,
+                h: hashText(normalized),
+                k: hashText(shape.toks.join(','))
+            };
+            var longList = [longEntry].concat(recentLongEntries(now)).slice(0, LONG_MAX_ENTRIES);
+            writeLongStore(longList);
+        }
     };
 })();

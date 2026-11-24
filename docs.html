@@ -1307,6 +1307,21 @@
         let pendingSaveResolve = null;
         let pendingSaveReject = null;
 
+        // Plain text for the .txt export. Block boundaries become newlines and
+        // then DOMParser strips the markup: the parsed document is inert (no
+        // scripts run, no images load) and textContent decodes entities exactly
+        // once. The old regex chain could leave a partial "<script" behind and
+        // decoded &amp; before &lt;/&gt;, so "&amp;lt;" turned into "<"
+        // (code scanning alerts 215-216).
+        function htmlToPlainText(html) {
+            var marked = String(html)
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|pre)>/gi, '\n');
+            var doc = new DOMParser().parseFromString(marked, 'text/html');
+            var text = (doc && doc.body) ? (doc.body.textContent || '') : '';
+            return text.replace(/\u00a0/g, ' ');
+        }
+
         // Free users save a plain-text copy. ReKindle+ saves .docx into Files.
         async function downloadTxt() {
             if (!editorInstance) {
@@ -1316,14 +1331,7 @@
             try {
                 await ensureFileSaver();
                 var html = editorInstance.getData() || '';
-                var text = html.replace(/<br\s*\/?>/gi, '\n')
-                    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
-                    .replace(/<[^>]+>/g, '')
-                    .replace(/&nbsp;/g, ' ')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&quot;/g, '"')
+                var text = htmlToPlainText(html)
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
                 var name = (document.getElementById('doc-title').innerText || 'document').trim();

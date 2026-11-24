@@ -204,6 +204,20 @@ Blocked attempts are still recorded (the evaluation runs before the POST is reje
 
 **Deploy:** the guard is worker-side, so it is not live until the worker is redeployed (`cd workers/rekindle-moderate && npx wrangler deploy`). The client mirror ships with the Pages build.
 
+### Interleaved long-paste flood (2026-11-24)
+
+A second flood exposed a gap the four-slot design could not cover. On 2026-11-24 01:44–01:54 UTC one account (`jesseandkyle@rekindle.ink`) posted the 819-character Russian national anthem **five times**, with four different Soviet lines (`SOVIET UNION`, `USSR`, `NUKES`, `COMMUNISM!!!!`, `USSRRRR…`, a pasted Wikipedia paragraph) between each pair. The existing guard blocked nothing: every copy was pushed out of the four-entry `rep` ring by the four intervening lines before the next copy arrived, so the exact-duplicate check never saw a match. The per-message 429s also did not deter the account — it simply switched to another Soviet phrase after each block. (Over 24 h the only exact duplicate pairs of 40+ character messages were this account and one self-described "spam" account; ordinary chat produced none.)
+
+**Fix — a separate long-message ring + escalating mute, still zero extra Firebase ops:**
+
+1. **`bucket.dups`** (same rate-limit bucket, same PUT): up to 24 fingerprints of `<ts>:<textHash>:<shapeKey>` for messages whose normalised text is **≥ 40 characters**, kept for 10 minutes. `shapeKey` hashes the de-duplicated token set, so stretched (`USSRRR…` vs `USSRRRRR…`) or reordered repeats of the same paragraph match even when the exact text differs. Short chat (`lol`, `hi`, `ok`) is never recorded here, so ordinary repetition is unaffected.
+2. **Strike mute:** three spam blocks inside 10 minutes set `bucket.muteUntil = now + 10 min`. While active every chat write is rejected before a token is spent (the mute is not extended, so it actually ends). The response says how many minutes remain. The current `rep`/`dups` windows are unchanged for detection; the mute is what stops a rotating-vocabulary flood.
+3. **Client mirror:** `js/spam-guard.js` keeps the same long ring in `localStorage` (`rekindle_chat_recent_long`) so the second copy of a long paste is rejected without a round trip. Strikes/mute are server-authoritative only; a client cannot fake them, and clearing localStorage does not clear the bucket.
+
+**Measured on the real 24 h transcript (7,107 messages):** the flood is cut on the 2nd anthem, muted on the 4th, and the 9 later attempts rejected. No respectful user was muted or blocked by the long ring; the only other blocks were pre-existing short-message duplicate/near-repeat blocks (single messages) and a second account repeatedly pasting "I want potato chips" / "Join boys vs girls", which the ring blocked twice. `scripts/test-chat-spam.js` replays the interleaved transcript, the stretched-variant case and the mute escalation.
+
+**Files:** `workers/rekindle-moderate/worker.js` (`evaluateChatLongDuplicate`, `evaluateChatSpam`, `activeChatMute`, `consumeRateLimitToken`), `js/spam-guard.js` (`?v=2` in `kindlechat.html`), `scripts/test-chat-spam.js`.
+
 **`kindlechat/user_recent` is retired (2026-10-20).** Nothing reads or writes it any more: the chat guard uses the rate-limit bucket, and the old per-type duplicate checks for topics / topic comments / neighbourhood posts & comments were deleted along with `checkUserRecentContent()`, `recordUserRecentContent()`, `cleanupUserRecentContent()` and `rtdbSocialPutSimple()` — they spent one RTDB read per post and could never match (nothing had recorded since 2026-09-21). Do not bring the pattern back unless the writer is awaited (`ctx.waitUntil()` when it runs after the response); a fire-and-forget writer is exactly what killed it. The stale RTDB node (111 users, ~175 entries) and its `rtdb-social-rules.json` block are still there and harmless; delete the node if you want the storage back.
 
 ## KindleChat Direct Messages (2026-10-20)

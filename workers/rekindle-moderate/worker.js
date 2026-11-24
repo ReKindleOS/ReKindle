@@ -1489,6 +1489,21 @@ async function consumeRateLimitToken(uid, contentType, accessToken, spamOpts) {
             bucket = { tokens: config.capacity, lastRefill: now };
         }
 
+        // Strike mute is checked before a token is spent. While it is active
+        // every attempt is rejected and the mute is not extended (so the
+        // cooldown actually ends); no PUT is needed on these requests.
+        if (contentType === "kindlechat" && spamOpts && typeof spamOpts.text === "string" && spamOpts.text.length) {
+            const muted = activeChatMute(bucket, now);
+            if (muted) {
+                return {
+                    allowed: false,
+                    spamBlocked: true,
+                    retryAfter: muted.retryAfter,
+                    message: muted.message
+                };
+            }
+        }
+
         // Refill tokens based on elapsed time
         const elapsed = now - bucket.lastRefill;
         const refills = Math.floor(elapsed / config.refillMs);
@@ -1504,13 +1519,26 @@ async function consumeRateLimitToken(uid, contentType, accessToken, spamOpts) {
         bucket.tokens -= 1;
         bucket.updatedAt = now;
 
-        // Repetition guard: evaluated on the bucket we already read above and
-        // persisted in the same PUT, so it costs no extra Firebase operations.
+        // Repetition + long-duplicate + strike guard: evaluated on the bucket
+        // we already read above and persisted in the same PUT, so it costs no
+        // extra Firebase operations.
         let spamBlock = null;
         if (spamOpts && typeof spamOpts.text === "string" && spamOpts.text.length) {
-            const evaluation = evaluateChatRepetition(bucket.rep, spamOpts.text, now, spamOpts.isArt === true);
-            bucket.rep = evaluation.rep;
-            spamBlock = evaluation.blocked;
+            if (contentType === "kindlechat") {
+                const evaluation = evaluateChatSpam(bucket, spamOpts.text, now, spamOpts.isArt === true);
+                bucket.rep = evaluation.rep;
+                bucket.dups = evaluation.dups;
+                bucket.strikes = evaluation.strikes;
+                bucket.muteUntil = evaluation.muteUntil;
+                spamBlock = evaluation.blocked;
+            } else {
+                // DMs keep the original repetition-only behaviour. The long
+                // paste ring and chat mute are KindleChat-specific so this
+                // change cannot mute a private conversation.
+                const evaluation = evaluateChatRepetition(bucket.rep, spamOpts.text, now, spamOpts.isArt === true);
+                bucket.rep = evaluation.rep;
+                spamBlock = evaluation.blocked;
+            }
         }
 
         const putResult = await rtdbSocialPut(path, bucket, etag, accessToken);
@@ -1825,6 +1853,35 @@ const CHAT_REP_LIMIT = 2;                            // 3rd near-identical messa
 const CHAT_REP_MAX_ENTRIES = 4;
 const CHAT_REP_MAX_TOKENS = 16;
 
+// Long-message duplicate ring (2026-11-24). Four shape slots are enough to
+// catch a "hello hello hello" burst, but they are NOT enough for a flood that
+// interleaves a handful of different lines between identical pastes: the
+// 2026-11-24 spammer posted the same 819-char anthem five times, with four
+// other lines in between each pair, so every copy evicted the one before it
+// and the exact-duplicate check never fired. Keeping a separate, larger ring
+// of fingerprints for substantial messages catches that without touching
+// ordinary short chat ("lol", "hi", "ok") - which is why the ring only records
+// messages of CHAT_LONG_DUP_MIN_CHARS+ characters.
+//
+// Stored alongside the shapes in the same rate-limit bucket (no extra ops):
+//   bucket.dups = "<ts>:<textHash>:<shapeKey>|..."
+// shapeKey hashes the de-duplicated token set, so stretched variants
+// ("USSRRR..." vs "USSRRRRR...") and reordered repeats of the same paragraph
+// share a key while a genuinely new long message does not.
+const CHAT_LONG_DUP_WINDOW_MS = 10 * 60 * 1000;
+const CHAT_LONG_DUP_MAX_ENTRIES = 24;
+const CHAT_LONG_DUP_MIN_CHARS = 40;
+
+// Repeated rejected spam attempts escalate to a real cooldown. Individual
+// 429s did not deter the 2026-11-24 flood: the account simply switched to
+// another Soviet phrase after each block. Three blocks inside ten minutes
+// now mute chat for ten minutes. Respectful users never reach three blocks,
+// so this cannot catch them; a spammer cannot outlast the window by rotating
+// vocabulary because the long-duplicate ring keeps matching.
+const CHAT_SPAM_STRIKE_WINDOW_MS = 10 * 60 * 1000;
+const CHAT_SPAM_STRIKE_LIMIT = 3;
+const CHAT_SPAM_MUTE_MS = 10 * 60 * 1000;
+
 // Collapses character runs ("hello", "hellllo", "hhhhh...") and drops
 // @mentions (conversation context, not content), so stretched spam and
 // plain greetings compare equal. Character dominance is measured on the
@@ -1968,6 +2025,104 @@ function evaluateChatRepetition(rep, text, now, isArt) {
         .concat(entries)
         .slice(0, CHAT_REP_MAX_ENTRIES);
     return { blocked: blocked, rep: encodeChatRep(next) };
+}
+
+function decodeChatDups(dups) {
+    if (!dups || typeof dups !== "string") return [];
+    const out = [];
+    for (const part of dups.split("|")) {
+        const bits = part.split(":");
+        if (bits.length < 2) continue;
+        const t = Number(bits[0]);
+        if (!t) continue;
+        out.push({ t: t, h: bits[1] || "", k: bits[2] || "" });
+    }
+    return out;
+}
+
+function encodeChatDups(entries) {
+    return entries.map(e => e.t + ":" + e.h + ":" + (e.k || "")).join("|");
+}
+
+// Fingerprints only substantial messages. Returns the ring even when the
+// message is too short, so callers can persist it unchanged.
+function evaluateChatLongDuplicate(dups, text, now, shape) {
+    const entries = decodeChatDups(dups)
+        .filter(e => now - e.t >= 0 && now - e.t < CHAT_LONG_DUP_WINDOW_MS);
+    const normalized = normalizeForDedupe(text);
+    let blocked = null;
+
+    if (normalized.length >= CHAT_LONG_DUP_MIN_CHARS) {
+        const textHash = hashDedupeKey(normalized);
+        const shapeKey = hashDedupeKey(shape.toks.join(","));
+        for (const e of entries) {
+            if (e.h === textHash || (e.k && e.k === shapeKey)) {
+                const age = now - e.t;
+                blocked = {
+                    retryAfter: Math.ceil((CHAT_LONG_DUP_WINDOW_MS - age) / 1000),
+                    message: "You just sent that message. Say something different - repeated messages are blocked to keep chat readable."
+                };
+                break;
+            }
+        }
+        entries.unshift({ t: now, h: textHash, k: shapeKey });
+    }
+
+    return {
+        blocked: blocked,
+        dups: encodeChatDups(entries.slice(0, CHAT_LONG_DUP_MAX_ENTRIES))
+    };
+}
+
+function chatMuteBlock(muteUntil, now) {
+    const retryAfter = Math.max(1, Math.ceil((muteUntil - now) / 1000));
+    return {
+        retryAfter: retryAfter,
+        message: "You are temporarily blocked from chatting for repeated spam. Please wait " +
+            Math.ceil(retryAfter / 60) + " minute(s)."
+    };
+}
+
+function activeChatMute(bucket, now) {
+    if (bucket && typeof bucket.muteUntil === "number" && bucket.muteUntil > now) {
+        return chatMuteBlock(bucket.muteUntil, now);
+    }
+    return null;
+}
+
+// Combined repetition + long-duplicate + strike evaluation. Pure: the caller
+// persists the returned bucket in the same PUT it already performs for the
+// token bucket, so this adds no Firebase operations.
+function evaluateChatSpam(bucket, text, now, isArt) {
+    // Pixel-art grid data is not chat text: skip the (large) string shaping.
+    const shape = isArt ? { toks: [], dom: "" } : chatTextShapes(text);
+    const repEval = evaluateChatRepetition(bucket.rep, text, now, isArt);
+    let blocked = repEval.blocked;
+    let dups = bucket.dups;
+
+    if (!isArt) {
+        const longEval = evaluateChatLongDuplicate(bucket.dups, text, now, shape);
+        dups = longEval.dups;
+        if (!blocked) blocked = longEval.blocked;
+    }
+
+    let strikes = Array.isArray(bucket.strikes)
+        ? bucket.strikes.filter(t => typeof t === "number" && now - t >= 0 && now - t < CHAT_SPAM_STRIKE_WINDOW_MS)
+        : [];
+    let muteUntil = (typeof bucket.muteUntil === "number" && bucket.muteUntil > now) ? bucket.muteUntil : 0;
+
+    if (blocked) {
+        strikes.push(now);
+        if (strikes.length >= CHAT_SPAM_STRIKE_LIMIT) {
+            muteUntil = now + CHAT_SPAM_MUTE_MS;
+            strikes = [];
+            // The attempt that trips the limit sees the mute too, so the
+            // response explains why every following message is rejected.
+            blocked = chatMuteBlock(muteUntil, now);
+        }
+    }
+
+    return { blocked: blocked, rep: repEval.rep, dups: dups, strikes: strikes, muteUntil: muteUntil };
 }
 
 /* ------------------------------------------------------------------ */
@@ -3131,6 +3286,9 @@ export {
     chatTextShapes,
     chatTokenOverlap,
     evaluateChatRepetition,
+    evaluateChatLongDuplicate,
+    evaluateChatSpam,
+    activeChatMute,
     dmThreadId,
     parseDmMessagePath,
     dmFlagKeyForOrigin,

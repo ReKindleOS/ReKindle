@@ -22,7 +22,7 @@ const vm = require('vm');
 const html = fs.readFileSync(path.join(__dirname, '..', 'scores.html'), 'utf8');
 
 assert.ok(
-    html.indexOf('https://site.api.espn.com/apis/site/v2/sports/') !== -1,
+    /https:\/\/site\.api\.espn\.com\/apis\/site\/v2\/sports\//.test(html),
     'scores.html must build the ESPN scoreboard URL directly'
 );
 assert.ok(
@@ -35,7 +35,9 @@ assert.ok(
 );
 
 /* ---- favourites key, executed from the page's own inline script ---- */
-const inline = html.match(/<script>([\s\S]*?)<\/script>/);
+// Case-insensitive: a hand-edited <SCRIPT> must not silently break the test
+// (code scanning alert 225, js/bad-tag-filter).
+const inline = html.match(/<script>([\s\S]*?)<\/script>/i);
 assert.ok(inline, 'scores.html must keep its inline app script');
 
 const store = new Map();

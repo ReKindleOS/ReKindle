@@ -588,7 +588,7 @@ The moderation worker enforces **global, per-user token-bucket rate limits** usi
 
 #### Rate-limit data model
 *   **Bucket path:** `kindlechat/server_rate_limits/{uid}/{contentType}`
-*   **Bucket shape:** `{ tokens: number, lastRefill: number, updatedAt: number }`, plus `rep: string` on the `kindlechat` bucket (the repetition-guard state — see §5; it rides on this bucket, so it costs no extra operations).
+*   **Bucket shape:** `{ tokens: number, lastRefill: number, updatedAt: number }`, plus `rep: string`, `dups: string`, `strikes: number[]` and `muteUntil: number` on the `kindlechat` bucket (the spam-guard state — see §5; it rides on this bucket, so it costs no extra operations).
 *   **Concurrency:** RTDB REST `ETag` / `If-Match` optimistic locking with retry on `412` conflicts.
 
 #### Configured limits
@@ -625,7 +625,7 @@ Any page that reads/writes data owned by the **social** project (e.g. `users_pub
 
 ### 5. Repeated-Message Flood Guard (KindleChat, 2026-10-20)
 
-`evaluateChatRepetition()` (worker) + `js/spam-guard.js` (client mirror) reject a 3rd near-identical message inside 10 minutes (exact duplicate inside 5) **without adding any Firebase operations** — the state rides in the existing `server_rate_limits/{uid}/kindlechat` bucket as a `rep` string. Never add a separate read/write for spam state, and keep the mirror in sync. `node scripts/test-chat-spam.js` replays the real 2026-10-19 flood. Full design: [kindlechat.md](docs/agent/kindlechat.md).
+`evaluateChatRepetition()` (worker) + `js/spam-guard.js` (client mirror) reject near-identical repeats **without extra Firebase ops** — state rides in `server_rate_limits/{uid}/kindlechat` (`rep`). Since 2026-11-24 a `dups` ring keeps 24 fingerprints of ≥40-char messages for 10 min (interleaved long-paste floods), and 3 blocks in 10 min set `muteUntil` for 10 min. Never add a separate spam read/write or put short messages in `dups`; keep the mirror in sync. `scripts/test-chat-spam.js` replays both; design: [kindlechat.md](docs/agent/kindlechat.md).
 
 ### 6. Reporting Requires a Comment
 

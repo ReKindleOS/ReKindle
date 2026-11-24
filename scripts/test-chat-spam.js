@@ -17,7 +17,11 @@ const MIN = 60 * 1000;
 const T0 = Date.parse('2026-10-19T14:58:00Z');
 
 (async () => {
-    const { evaluateChatRepetition } = await import('../workers/rekindle-moderate/worker.js');
+    const {
+        evaluateChatRepetition,
+        evaluateChatSpam,
+        activeChatMute
+    } = await import('../workers/rekindle-moderate/worker.js');
 
     // state -> { rep, blocked, at }
     function send(state, text, at, isArt) {
@@ -128,7 +132,90 @@ const T0 = Date.parse('2026-10-19T14:58:00Z');
     assert(state.rep.indexOf('hello') === -1, 'repetition state must not contain message text');
 
     /* ---------------------------------------------------------------- */
-    /* 5. Client mirror (js/spam-guard.js) agrees with the worker       */
+    /* 5. Interleaved long-paste flood (the real 2026-11-24 transcript)  */
+    /* ---------------------------------------------------------------- */
+    // The account posted this same 300+ character anthem five times, with
+    // four different Soviet lines between each pair. The old four-slot guard
+    // evicted the anthem before the next copy arrived, so every copy passed.
+    const anthem = [
+        'Союз нерушимый республик свободных',
+        'Сплотила навеки Великая Русь',
+        'Да здравствует созданный волей народов',
+        'Единый, могучий Советский Союз!',
+        'Славься, Отечество наше свободное',
+        'Дружбы народов надёжный оплот!',
+        'Партия Ленина - сила народная',
+        'Нас к торжеству коммунизма ведёт!'
+    ].join('\n');
+    const interleaved = [
+        [0, anthem],
+        [1, 'SOVIET UNION'],
+        [2, 'USSR'],
+        [3, 'NUKES'],
+        [4, 'COMMUNISM!!!!'],
+        [5, anthem],
+        [6, 'RUSSIA'],
+        [7, 'CCCP'],
+        [8, '1922-1991'],
+        [9, 'RED ARMY'],
+        [10, anthem],
+        [11, 'BYE'],
+        [12, 'COMRADE'],
+        [13, 'VODKA'],
+        [14, 'NYET'],
+        [15, anthem]
+    ];
+    let bucket = { rep: '', dups: '', strikes: [], muteUntil: 0 };
+    const longBlocks = [];
+    for (const [sec, text] of interleaved) {
+        const at = T0 + sec * 1000;
+        const out = evaluateChatSpam(bucket, text, at, false);
+        bucket = {
+            rep: out.rep,
+            dups: out.dups,
+            strikes: out.strikes,
+            muteUntil: out.muteUntil
+        };
+        if (out.blocked) longBlocks.push({ text, blocked: out.blocked, at });
+    }
+
+    // First copy passes; copies 2-4 are blocked, and the third block mutes.
+    assert(!longBlocks.some(b => b.text === anthem && b.at === T0), 'the first long paste must pass');
+    assert(longBlocks.some(b => b.text === anthem && b.at === T0 + 5000),
+        'the second long paste must be blocked even with four different lines between copies');
+    assert(longBlocks.length >= 3, 'expected at least 3 blocks in the interleaved flood, got ' + longBlocks.length);
+    assert(/temporarily blocked|minute/i.test(longBlocks[longBlocks.length - 1].blocked.message),
+        'the third rejected attempt should escalate to a temporary mute');
+    const mute = activeChatMute(bucket, T0 + 16 * 1000);
+    assert(mute && mute.retryAfter > 0, 'an active mute must reject the next attempt');
+
+    // A genuinely different long message is untouched.
+    const different = evaluateChatSpam(
+        { rep: '', dups: '', strikes: [], muteUntil: 0 },
+        'The quick brown fox jumps over the lazy dog while the kettle boils and the radio plays a song about rain.',
+        T0 + 5000,
+        false
+    );
+    assert(!different.blocked, 'a different long message must not be blocked');
+
+    // Stretched variants share a token-set fingerprint: USSRRR... vs USSRRRRR...
+    const stretchedA = evaluateChatSpam({ rep: '', dups: '', strikes: [], muteUntil: 0 }, 'USSR' + 'R'.repeat(120), T0, false);
+    const stretchedB = evaluateChatSpam(
+        { rep: stretchedA.rep, dups: stretchedA.dups, strikes: stretchedA.strikes, muteUntil: stretchedA.muteUntil },
+        'USSR' + 'R'.repeat(200),
+        T0 + 2000,
+        false
+    );
+    assert(!stretchedA.blocked, 'first stretched variant must pass');
+    assert(stretchedB.blocked, 'a stretched repeat of the same word must be blocked');
+
+    // Hashes only: no message text, and the ring stays compact.
+    assert(bucket.dups.indexOf('Союз') === -1 && bucket.dups.indexOf('USSR') === -1,
+        'long-duplicate state must not contain message text');
+    assert(bucket.dups.length < 1200, 'long-duplicate ring must stay compact, got ' + bucket.dups.length + ' chars');
+
+    /* ---------------------------------------------------------------- */
+    /* 6. Client mirror (js/spam-guard.js) agrees with the worker       */
     /* ---------------------------------------------------------------- */
     const vm = require('vm');
     const readFileSync = require('fs').readFileSync;
@@ -165,6 +252,23 @@ const T0 = Date.parse('2026-10-19T14:58:00Z');
     }
     assert(clientBlocked >= 8, 'client mirror should block most of the flood, blocked ' + clientBlocked);
     assert(clientQueued.length >= 3, 'client mirror must let normal messages through');
+
+    // The client mirror must also catch the interleaved long paste.
+    clock = T0;
+    let clientLongBlocked = 0;
+    for (const [sec, text] of interleaved) {
+        clock = T0 + sec * 1000;
+        const out = client.rekindleChatSpamCheck(text);
+        if (out.blocked) {
+            clientLongBlocked++;
+        } else {
+            client.rekindleRecordChatMessage(text);
+        }
+    }
+    assert(clientLongBlocked >= 3, 'client mirror should block the repeated long paste, blocked ' + clientLongBlocked);
+    assert(!client.rekindleChatSpamCheck(
+        'A totally different long message about books, weather, trains and the price of tea in the shops today.'
+    ).blocked, 'client mirror must not block a different long message');
 
     // The client mirror must not block a fresh device's first messages.
     const fresh = vm.createContext({

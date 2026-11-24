@@ -1651,15 +1651,37 @@
                 }
             }
 
+            // Allowlist of page links, built only from the static app list.
+            // pageFor() looks the value up here instead of concatenating it, so
+            // a crafted ?app= value can never smuggle "javascript:", "//host"
+            // or a path into primary.href / window.location (code scanning
+            // alerts 221-224). Object.create(null) keeps "__proto__" and
+            // friends from resolving to inherited members.
+            var PREVIEW_PAGES = Object.create(null);
+            function registerPreviewPage(candidate) {
+                if (!candidate || typeof candidate.id !== 'string') return;
+                if (!/^[a-z0-9][a-z0-9-]*$/.test(candidate.id)) return;
+                PREVIEW_PAGES[candidate.id] = candidate.id + '.html';
+            }
+
             function pageFor(id) {
-                var target = APP_PAGE_ALIAS[id] || id;
-                return target + '.html';
+                var alias = APP_PAGE_ALIAS[id];
+                var target = (typeof alias === 'string') ? alias : id;
+                var page = PREVIEW_PAGES[target];
+                return (typeof page === 'string') ? page : 'index.html';
             }
 
             var requestedId = readAppId();
             var previewId = requestedId;
             var apps = getAppList();
             var app = null;
+
+            for (var ai = 0; ai < apps.length; ai++) registerPreviewPage(apps[ai]);
+            for (var fallbackId in FALLBACK_APPS) {
+                if (Object.prototype.hasOwnProperty.call(FALLBACK_APPS, fallbackId)) {
+                    registerPreviewPage(FALLBACK_APPS[fallbackId]);
+                }
+            }
 
             if (previewId) {
                 app = findApp(apps, previewId);

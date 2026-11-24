@@ -151,6 +151,38 @@ same-origin `localStorage`, with no credentials or cross-user data. `time.js`, `
 base64-XOR storage broke them — so obfuscating it is not an option. Do not "fix" this by
 re-encrypting the value without updating every reader.
 
+### 2026-11-24 sweep — all 9 open code-scanning alerts + 2 Dependabot alerts
+
+Fixed in code, uncommitted at the time of writing; alerts only re-evaluate on the next push
+(CodeQL) / dependency-graph refresh (Dependabot), so re-check the Security tab afterwards.
+
+* `js/xss` + `js/client-side-unvalidated-url-redirection` ×4, `preview.html:1752/1769` — `pageFor()`
+  now returns from `PREVIEW_PAGES`, an allowlist built at startup from the static `APPS` /
+  `FALLBACK_APPS` ids (`Object.create(null)`, slug-shaped ids only), instead of concatenating the
+  `?app=` value. Unknown/crafted ids resolve to `index.html`. **Keep it a lookup** — never restore
+  `id + '.html'` from the query string.
+* `js/double-escaping` + `js/incomplete-multi-character-sanitization`, `docs.html` — the `.txt`
+  export's regex tag-strip/entity-decode chain is replaced by `htmlToPlainText()`: block end tags
+  become newlines, then `DOMParser` (inert document) + `body.textContent` strips markup and decodes
+  entities exactly once. Side effect: `&amp;lt;` now exports as `&lt;` instead of `<` (it used to
+  decode `&amp;` before `&lt;`).
+* `js/clear-text-storage-of-sensitive-data`, `chat.html` — `migrateLegacyApiKey()` writes the BYO
+  key with `setSecureItem` (matching the `getSecureItem` read path) and `chat_api_key` is no longer
+  in the plain-text pref list. It is retried in `openSettings()` / `loadSettingsFromFirebase()`
+  because the uid is usually not resolved yet when `initSettings()` runs.
+* `js/bad-tag-filter` + `js/incomplete-url-substring-sanitization`,
+  `scripts/test-sports-scores.js` — inline-script matcher is case-insensitive, and the ESPN host
+  assertion is an escaped regex instead of `indexOf('https://…')`.
+* **Dependabot GHSA-474x-hrwr-fgx4** (`fast-xml-parser` ≤5.11.2, quadratic CPU): plain
+  `npm audit fix` in the root and `firebase-functions/` — 5.8.0 → 5.12.1 plus its new transitive
+  deps (`@nodable/entities@3`, `fast-xml-builder@1.3`, `strnum@2.5`, `anynum`, `is-unsafe`). Both
+  manifests now report `npm audit` 0. No manifest/override change; the package is declared but
+  nothing in the repo `require`s it.
+
+Not fixed here: `AGENTS.md` is already 60.3 KB, over its own 60,000-byte ceiling, so this section
+was written here instead of in the cross-cutting guide. Trim/move a section out of `AGENTS.md`
+before adding anything else to it.
+
 ---
 
 ## P1 — correctness / user-visible
