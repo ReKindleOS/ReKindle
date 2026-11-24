@@ -245,6 +245,42 @@ const SHIPPED = [
         id: '-P5_3CzWW-03izSSGf4q',
         title: 'add a dark mode and colorsoft for the device.',
         why: 'Dark mode shipped and was re-enabled 2026-10-26 (theme.js, Settings - Theme, light/dark/auto); the earlier "Dark Mode" row is already done.'
+    },
+    // Sweep 7 - 2026-11-24. The remaining open Problem rows; deployed in 30fa234.
+    {
+        id: '-P6xQJ1D5Q1-zb_TK2qo',
+        title: 'Solitaire not so random?',
+        why: 'Solitaire now uses a crypto-backed randomIntBelow() for the Fisher-Yates shuffle instead of Math.random; the deal distribution is unchanged (same-rank neighbours are normal).'
+    },
+    {
+        id: '-P6wHLWYG3rfFEE3iH0M',
+        title: 'fix draw a perfect circle its so glitchy',
+        why: 'Perfect Circle joins touch samples with quadratic curves through their midpoints; plain lineTo produced the visible corners on Kindle touchmove sampling.'
+    },
+    {
+        id: '-P6nTeSTToU9NhtnGD3j',
+        title: 'Oixel art has Glitched',
+        why: 'Pixel gallery deletes now leave a timestamped tombstone, so saveManifest()/saveManifestOthers() can no longer re-add a deleted drawing from the cloud union.'
+    },
+    {
+        id: '-P66XPQkUE30JgrU7xuo',
+        title: 'still a problem with dms',
+        why: 'KindleChat .window now has a definite 90vh height and #chat-history uses flex:1 1 0, so a long DM thread scrolls instead of pushing the composer outside the window.'
+    },
+    {
+        id: '-P62sF8F9YAtFOe7MLlz',
+        title: 'Fix it please',
+        why: 'Blank avatars are now representable: customAvatar "blank" is honoured by every drawAvatar() copy and the profile editor has a Blank action.'
+    },
+    {
+        id: '-P59t4IcmOED_Bd9sTV7',
+        title: 'Mario, Surfer, Dino Rush/Jump, etc.',
+        why: 'Mario and Dino cap full-canvas redraws at 30 Hz (Surfer was already 10 Hz), reducing the 10th-gen Kindle stutter; the panels remain device-limited.'
+    },
+    {
+        id: '-P-95tXvHmFxe70cIvU-',
+        title: 'Make It So That When Someone Leaves Pictionary The Game Isnt Over',
+        why: 'Pictionary advanceTurn() skips uids no longer in players and heals drawOrder, and the host watchdog auto-picks/skips a missing drawer in tickTimer(), so a leaver can no longer freeze the match.'
     }
 ];
 
