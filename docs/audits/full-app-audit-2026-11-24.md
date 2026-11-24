@@ -37,16 +37,12 @@ deployment is live on branch `main` at that commit. Shared-asset versions were b
 required by AGENTS.md: `theme.js?v=36` (143 pages + `sw.js`), `pro-gate.js?v=12`
 (14 pages), `js/custom-select.js?v=3` (27 pages).
 
-**Worker deploy status (2026-11-24):** the moderation Worker lives in the separate
-"ReKindle Social" Cloudflare account (`8d69e380e0c4e0580c47f21d9757c71c`). The local
-wrangler OAuth token only has the main ReKindle account, so `wrangler deploy` updated the
-main-account copy and the live social Worker is still the old version. A deploy with that
-account's token is required before the forged-report fix protects production:
-
-```bash
-cd workers/rekindle-moderate
-CLOUDFLARE_ACCOUNT_ID=8d69e380e0c4e0580c47f21d9757c71c CLOUDFLARE_API_TOKEN=<ReKindle Social token> npx wrangler deploy
-```
+**Worker deploy status (2026-11-24):** deployed to the separate "ReKindle Social"
+Cloudflare account (`8d69e380e0c4e0580c47f21d9757c71c`) with the token documented in
+`docs/agent/usage-limits.md`. Live deployment `cc9d0656-a974-4100-8b81-1d383c9b298d`
+(2026-11-24T04:57Z) at `https://rekindle-moderate.rekindle-social.workers.dev`;
+`/health` returns `ok:true`, `openaiKeySet:true`, and the CORS preflight returns 204 with
+`Access-Control-Max-Age: 86400`.
 
 | Area | Fix | Files |
 | :--- | :--- | :--- |
