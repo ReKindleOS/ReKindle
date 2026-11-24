@@ -1065,7 +1065,7 @@
             renderAppGrid(category);
             persistHomeView(category);
             if (appView) {
-                const targetScroll = homeScrollPositions[category] || 0;
+                const targetScroll = category === 'dashboard' ? 0 : (homeScrollPositions[category] || 0);
                 setTimeout(function () { appView.scrollTop = targetScroll; }, 0);
             }
         }
@@ -2908,6 +2908,7 @@
                     '</div>';
             });
             listEl.innerHTML = html;
+            scheduleDashboardFit();
         }
 
         async function fetchDashboardAgenda(force) {
@@ -3065,6 +3066,62 @@
         let dashboardLoaded = false;
         let dashboardClockInterval = null;
         let dashboardVisibilityBound = false;
+        let dashboardFitTimer = null;
+
+        function dashboardFits(section) {
+            return section.scrollHeight <= section.clientHeight + 3;
+        }
+
+        // The dashboard is a single-screen glance. Rather than letting the
+        // app view scroll on short/narrow screens, hide secondary readouts in
+        // tiers until the section fits its flex height.
+        function fitDashboard() {
+            const section = document.getElementById('dashboard-section');
+            if (!section || currentFilter !== 'dashboard') return;
+            // A display:flex switch can be measured before the browser has
+            // given the section a height; escalating on that 0px reading used
+            // to jump straight to the ultra tier. Wait for the next scheduled
+            // pass instead.
+            if (!section.clientHeight) return;
+            const levels = ['dash-compact', 'dash-minimal', 'dash-tiny', 'dash-ultra'];
+            section.classList.remove('dash-compact', 'dash-minimal', 'dash-tiny', 'dash-ultra');
+            void section.offsetHeight;
+            if (dashboardFits(section)) {
+                section.setAttribute('data-density', 'full');
+                return;
+            }
+            for (let i = 0; i < levels.length; i++) {
+                section.classList.add(levels[i]);
+                void section.offsetHeight;
+                if (dashboardFits(section)) {
+                    section.setAttribute('data-density', levels[i].replace('dash-', ''));
+                    const appView = document.querySelector('.app-view');
+                    if (appView && appView.scrollTop) appView.scrollTop = 0;
+                    return;
+                }
+            }
+            section.setAttribute('data-density', 'ultra');
+            const appView = document.querySelector('.app-view');
+            if (appView && appView.scrollTop) appView.scrollTop = 0;
+        }
+
+        function scheduleDashboardFit() {
+            if (dashboardFitTimer) clearTimeout(dashboardFitTimer);
+            dashboardFitTimer = setTimeout(fitDashboard, 120);
+        }
+
+        // A cheap first guess avoids painting a full dashboard (and a
+        // scrollbar) for the 120 ms before fitDashboard runs. The measured
+        // pass still makes the final decision.
+        function primeDashboardDensity() {
+            const section = document.getElementById('dashboard-section');
+            if (!section || currentFilter !== 'dashboard') return;
+            const h = section.clientHeight;
+            if (!h) return;
+            section.classList.remove('dash-compact', 'dash-minimal', 'dash-tiny', 'dash-ultra');
+            if (h < 500) section.classList.add('dash-minimal');
+            else if (h < 620) section.classList.add('dash-compact');
+        }
 
         function startDashboardClock() {
             if (!dashboardClockInterval) {
@@ -3096,10 +3153,20 @@
             }
             if (!document.hidden) startDashboardClock();
             updateDashboardTime();
-            fetchDashboardWeather();
             renderDashboardCalendar();
-            fetchDashboardAgenda();
+            primeDashboardDensity();
+            scheduleDashboardFit();
+            fetchDashboardWeather().then(fitDashboard).catch(function () { fitDashboard(); });
+            fetchDashboardAgenda().then(fitDashboard).catch(function () { fitDashboard(); });
+            setTimeout(fitDashboard, 300);
         }
+
+        window.addEventListener('resize', function () {
+            if (currentFilter === 'dashboard') scheduleDashboardFit();
+        });
+        window.addEventListener('orientationchange', function () {
+            if (currentFilter === 'dashboard') scheduleDashboardFit();
+        });
 
         // Expose functions needed by inline HTML handlers
         window.filterApps = filterApps;
@@ -3125,6 +3192,7 @@
         window.selectDashboardCalendarDay = selectDashboardCalendarDay;
         window.selectDashboardCalendarToday = selectDashboardCalendarToday;
         window.addDashboardEvent = addDashboardEvent;
+        window.fitDashboard = fitDashboard;
         window.openDashboardCalendar = openDashboardCalendar;
         window.onAppSearchInput = onAppSearchInput;
         window.toggleAppSearch = toggleAppSearch;

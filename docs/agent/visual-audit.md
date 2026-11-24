@@ -274,7 +274,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=4`, `js/home.js?v=8` and the generated
+- **Assets** — `css/home.css?v=6`, `js/home.js?v=11` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.
@@ -287,3 +287,33 @@ Verification: 800×1000 light/dark, 600×800, en/fr, guest with `firebase === un
 login modal, guest Live Games gate, For You tabs, edit mode, calendar deep link, and a
 seeded weather/agenda cache. `test-i18n`, `test-locales`, `test-compat`,
 `test-load-budget`, `test-home-bundle`, `test-seo` and `test-kindle` pass.
+
+## 2026-11-24 dashboard density + header hit-area fix
+
+Two follow-up fixes after the first dashboard pass:
+
+- **For You tabs were unreachable.** The compact-button hit area added to
+  `#app-search-toggle::after` had `position: absolute` but the button itself was
+  `position: static`, so the pseudo-element resolved against the initial
+  containing block and became a full-screen transparent overlay owned by the
+  search button. Taps on Featured/Recent/Favorites hit that overlay, so the tabs
+  did nothing and the magnifier appeared pressed. `#app-search-toggle` now has
+  `position: relative`; `elementFromPoint()` at each tab centre returns that tab.
+  All other `::after` hit areas already had positioned parents.
+- **The dashboard now fits the viewport without page scroll.** `fitDashboard()`
+  in `js/home.js` measures `#dashboard-section` after render and after the
+  weather/agenda promises settle, then applies `dash-compact`, `dash-minimal`,
+  `dash-tiny` or `dash-ultra` until `scrollHeight <= clientHeight`. Compact hides
+  world clocks, the hourly strip, weather extras and the updated label; minimal
+  drops the month grid and quick actions; tiny hides weather details/date; ultra
+  hides the calendar. `primeDashboardDensity()` applies a first guess to avoid a
+  one-frame scrollbar, and a 0px section height is ignored so the first paint
+  cannot jump straight to ultra.
+- Measured: 800×1000 full, 600×800 full, 800×600 compact, 400×700 compact,
+  320×568 minimal, 1024×600 compact — `app-view.scrollHeight <= clientHeight`
+  in every case.
+- The large weather glyph is no longer boxed: `#db-weather-icon` is just a flex
+  item; the border, padding and background were removed.
+
+Verified by hit-testing every shelf tab, clicking Favorites, switching to
+Recent/Featured, the search button, and screenshots at the sizes above.
