@@ -18,6 +18,7 @@
         (document.currentScript && document.currentScript.getAttribute('data-freemium') === 'true'));
 
     const CACHE_KEY = 'rekindle_pro_expiry';
+    const CACHE_UID_KEY = 'rekindle_pro_expiry_uid';
     const CACHE_DURATION = 1000 * 60 * 60; // 1 hour max cache
 
     const firebaseConfig = {
@@ -126,8 +127,11 @@
         const headline = appName
             ? (window.tFormat ? window.tFormat('paywall.unlock_app', { app: appName }, 'Unlock ${app} with ReKindle+') : 'Unlock ' + appName + ' with ReKindle+')
             : paywallText('paywall.unlock', 'Unlock ReKindle+');
+        const expired = /expired/i.test(lastPaywallStatus || '');
         const cta = currentUser
-            ? paywallText('paywall.subscribe', 'Subscribe \u2014 from $2/month')
+            ? (expired
+                ? paywallText('paywall.renew', 'Renew ReKindle+')
+                : paywallText('paywall.subscribe', 'Subscribe \u2014 from $2/month'))
             : paywallText('paywall.login_subscribe', 'Log in to subscribe');
 
         overlay.innerHTML = '<div class="rk-paywall-card">' +
@@ -211,6 +215,7 @@
                     // User is Pro!
                     const wasPro = localStorage.getItem(CACHE_KEY);
                     localStorage.setItem(CACHE_KEY, expires.toString());
+                    localStorage.setItem(CACHE_UID_KEY, user.uid);
                     isPro = true;
                     hidePaywall();
 
@@ -223,17 +228,34 @@
                     return true;
                 } else {
                     localStorage.removeItem(CACHE_KEY);
+                    localStorage.removeItem(CACHE_UID_KEY);
                     isPro = false;
                     gateOrHide(expires > 0 ? 'Subscription expired.' : 'Subscription required.');
                     return false;
                 }
             } else {
+                localStorage.removeItem(CACHE_KEY);
+                localStorage.removeItem(CACHE_UID_KEY);
                 isPro = false;
                 gateOrHide('Subscription required.');
                 return false;
             }
         } catch (e) {
             console.error('Pro gate check failed:', e);
+            // Offline / flaky Kindle connection: a still-valid cached expiry
+            // is better than blocking a paying user. The cache stores the real
+            // pro expiry, so this cannot extend access past it (2026-11-24).
+            let cachedExpiry = 0;
+            let cachedUid = '';
+            try {
+                cachedExpiry = parseInt(localStorage.getItem(CACHE_KEY) || '0', 10);
+                cachedUid = localStorage.getItem(CACHE_UID_KEY) || '';
+            } catch (err) { }
+            if (cachedExpiry > Date.now() && user && cachedUid === user.uid) {
+                isPro = true;
+                hidePaywall();
+                return true;
+            }
             isPro = false;
             gateOrHide('Error verifying subscription.');
             return false;

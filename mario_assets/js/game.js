@@ -138,12 +138,18 @@ window.toggleAutoRun = function () {
 };
 
 //set up the game loop
+// 30 fps is the e-ink ceiling that matters: the panel refreshes at ~7-15 Hz,
+// and a 60 Hz full-canvas redraw is what makes the 10th-gen Kindle stutter
+// (Suggestions report 2026-10-30). Both update() and render() are delta-timed,
+// so skipping alternate frames slows neither physics nor the level timer.
+var MIN_FRAME_MS = 1000 / 30;
 function main() {
-  if (gamePaused) {
-    requestAnimFrame(main);
-    return;
-  }
+  requestAnimFrame(main);
+  if (gamePaused) return;
+
   var now = Date.now();
+  if (now - lastTime < MIN_FRAME_MS) return;
+
   var dt = (now - lastTime) / 1000.0;
   if (dt > 0.1) dt = 0.1; // Cap dt to 10 FPS to prevent large physics jumps
 
@@ -151,7 +157,6 @@ function main() {
   render();
 
   lastTime = now;
-  requestAnimFrame(main);
 }
 
 function update(dt) {

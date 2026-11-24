@@ -200,7 +200,7 @@ function boot(opts) {
 
         assert.strictEqual(t.app.token, 'CLOUD_TOKEN', 'must adopt the account token');
         assert.strictEqual(t.app.refreshToken, 'CLOUD_REFRESH', 'must adopt the account refresh token');
-        assert.strictEqual(t.localStorage.getItem('pinterest_access_token'), 'CLOUD_TOKEN', 'must mirror into local storage');
+        assert.strictEqual(t.localStorage.getItem('pinterest_access_token:U1'), 'CLOUD_TOKEN', 'must mirror into the uid-scoped local storage');
         assert.strictEqual(t.els['login-view'].style.display, 'none', 'must open the connected app');
         assert(!t.fetches.some(f => f.url.indexOf('/oauth') >= 0), 'must not start another OAuth round-trip');
         console.log('  ok - Kindle restores the account connection without re-authorising');
@@ -254,16 +254,18 @@ function boot(opts) {
         assert(doc && doc.accessToken === 'NEW_TOKEN', 'exchange must write the account copy');
         assert(doc.refreshToken === 'NEW_REFRESH', 'account copy must keep the refresh token');
         assert(typeof doc.expiry === 'number' && doc.expiry > Date.now(), 'account copy must record expiry');
-        assert(!!t.localStorage.getItem('pinterest_cloud_stamp'), 'backfill marker must be written');
+        assert(!!t.localStorage.getItem('pinterest_cloud_stamp:U1'), 'uid-scoped backfill marker must be written');
         console.log('  ok - connecting on a PC mirrors the token to pro_data/pinterest');
     }
 
     /* 6. Connections made before this change are migrated exactly once. */
     {
+        const expiry = String(Date.now() + 86400000);
         const local = {
+            rekindle_uid: 'U1',
             pinterest_access_token: 'LOCAL',
             pinterest_refresh_token: 'LRT',
-            pinterest_token_expiry: String(Date.now() + 86400000)
+            pinterest_token_expiry: expiry
         };
 
         const first = boot({ uid: 'U1', local: Object.assign({}, local) });
@@ -271,8 +273,17 @@ function boot(opts) {
         await sleep(80);
         assert(first.store[DOC] && first.store[DOC].accessToken === 'LOCAL', 'existing connection must be backfilled');
 
-        const stamp = first.localStorage.getItem('pinterest_cloud_stamp');
-        const second = boot({ uid: 'U1', local: Object.assign({}, local, { pinterest_cloud_stamp: stamp }) });
+        const stamp = first.localStorage.getItem('pinterest_cloud_stamp:U1');
+        const second = boot({
+            uid: 'U1',
+            local: {
+                rekindle_uid: 'U1',
+                'pinterest_access_token:U1': 'LOCAL',
+                'pinterest_refresh_token:U1': 'LRT',
+                'pinterest_token_expiry:U1': expiry,
+                'pinterest_cloud_stamp:U1': stamp
+            }
+        });
         second.window.onload();
         await sleep(80);
         assert.strictEqual(second.writes.length, 0, 'must not write again while the marker matches');
@@ -284,6 +295,7 @@ function boot(opts) {
         const t = boot({
             uid: 'U1',
             local: {
+                rekindle_uid: 'U1',
                 pinterest_access_token: 'LOCAL',
                 pinterest_refresh_token: 'LRT',
                 pinterest_token_expiry: String(Date.now() + 86400000)
@@ -295,10 +307,11 @@ function boot(opts) {
         t.app.logout();
         await sleep(40);
 
-        assert.strictEqual(t.localStorage.getItem('pinterest_access_token'), null, 'disconnect must clear the device');
+        assert.strictEqual(t.localStorage.getItem('pinterest_access_token:U1'), null, 'disconnect must clear the device');
+        assert.strictEqual(t.localStorage.getItem('pinterest_access_token'), null, 'disconnect must clear the legacy key');
         assert(t.deleted.indexOf(DOC) >= 0, 'disconnect must delete the account copy');
         assert(!t.store[DOC], 'account copy must be gone');
-        assert.strictEqual(t.localStorage.getItem('pinterest_cloud_stamp'), null, 'marker must be cleared');
+        assert.strictEqual(t.localStorage.getItem('pinterest_cloud_stamp:U1'), null, 'marker must be cleared');
         console.log('  ok - Disconnect means everywhere');
     }
 
@@ -325,6 +338,25 @@ function boot(opts) {
         assert.strictEqual(t.els['login-view'].style.display, 'flex', 'must still reach the login view');
         assert.strictEqual(t.writes.length, 0, 'must not attempt cloud writes without auth');
         console.log('  ok - no auth degrades to the login view without writing');
+    }
+
+    /* 10. A token cached by U1 is never loaded for U2 on the same device. */
+    {
+        const t = boot({
+            uid: 'U2',
+            local: {
+                'pinterest_access_token:U1': 'A_TOKEN',
+                'pinterest_refresh_token:U1': 'A_REFRESH',
+                'pinterest_token_expiry:U1': String(Date.now() + 86400000)
+            }
+        });
+        t.window.onload();
+        await sleep(60);
+
+        assert.strictEqual(t.app.token, null, 'must not adopt another user\'s cached token');
+        assert.strictEqual(t.els['login-view'].style.display, 'flex', 'must show the login view');
+        assert.strictEqual(t.writes.length, 0, 'must not write another user\'s token to the account');
+        console.log('  ok - cached tokens are isolated by ReKindle uid');
     }
 
     console.log('PASS - Pinterest cross-device connection');

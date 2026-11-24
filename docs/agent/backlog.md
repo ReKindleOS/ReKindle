@@ -89,7 +89,7 @@ Fixes for the free-text problem reports that were open on the Suggestions board
 | `-P60c…` (2026-11-09) | Account deletion will not complete | Root cause was the cross-project social sweep: missing `comments.authorId` collection-group indexes made it query every topic, and the exhausted social Firestore quota then failed the run. **Policy changed 2026-11-10:** `deleteAccount` now deletes main-project account data plus the social profile records (`users_public`/`user_cards`/`users_private`), so social apps show a blank avatar and "Deleted User"; social history is retained and aged by `cleanupSocial` exactly like an active account. The obsolete social indexes remain for admin tooling. See [account-deletion.md](account-deletion.md) and [social-cleanup.md](social-cleanup.md#deleted-accounts). |
 | `-P5D89…` (2026-10-30) | "chat is currently unavailable" for days | Investigated, no code fault found: the moderation Worker `/health` is `ok:true` with `openaiKeySet:true`, and the worker answers CORS preflights. The message is the client's 429/5xx outage cooldown (see [usage-limits.md](usage-limits.md)); if it recurs, check the Cloudflare daily quota first. |
 | `-P5GtMs…` (2026-10-31) | Akinator cannot guess famous people | Relay `/` answers correctly; no client parsing bug found in the 22 relay tests. This is upstream Akinator behaviour, not a ReKindle regression. |
-| `-P59t4…` (2026-10-30) | Moving games (Mario/Surfer/Dino) feel laggy on a Kindle 10th gen | Not addressed in this pass: it needs a device profile (these are canvas game loops, not the social link/avatar paths above). Keep as a performance investigation. |
+| `-P59t4…` (2026-10-30) | Moving games (Mario/Surfer/Dino) feel laggy on a Kindle 10th gen | Not addressed in that pass; the 2026-11-24 sweep caps Mario/Dino redraws at 30 Hz (Surfer was already 10 Hz). Keep the device-profile follow-up. |
 
 Verification for this pass: `npm test` (includes the link-guard parity test) and
 `npm run build`. The Pages and moderation-Worker deploys are separate; the
@@ -614,9 +614,27 @@ topic doc; this table is the index.
 | `-P66XPQkUE30JgrU7xuo` (2026-11-10) | Long DM threads hide the composer | `.window` is `height: 90vh; min-height: 0`; `#chat-history` is `flex: 1 1 0`. [performance.md](performance.md#long-dm-threads-fixed-window-height-2026-11-24) |
 | `-P62sF8F9YAtFOe7MLlz` (2026-11-10) | Cannot keep a blank profile picture | Explicit `customAvatar: 'blank'` sentinel honoured by every `drawAvatar()`; Blank button in the profile editor. [avatars.md](avatars.md#deliberately-blank-avatars-2026-11-24) |
 | `-P-95tXvHmFxe70cIvU-` (2026-08-16) | Pictionary freezes after a player leaves | `advanceTurn()` skips missing uids and heals `drawOrder`; host watchdog auto-picks/skips in `tickTimer()`. [games.md](games.md#pictionary-a-player-leaving-no-longer-freezes-the-game-livepictionaryhtml) |
-| `-P59t4IcmOED_Bd9sTV7` (2026-10-30) | Mario/Surfer/Dino feel laggy on a 10th-gen Kindle | Still device-limited: these are 1-bit canvas loops, and the surfer renderer is already the strictest variant. Needs a real-device profile, not a blind rewrite. |
+| `-P59t4IcmOED_Bd9sTV7` (2026-10-30) | Mario/Surfer/Dino feel laggy on a 10th-gen Kindle | Mario and Dino now cap full-canvas redraws at 30 Hz (Surfer was already 10 Hz); physics unchanged. Still device-limited, but no longer redrawing at 60 Hz. [games.md](games.md#moving-game-redraw-cap-mario_assetsjsgamejs-dino_assetsrunnerjs) |
 | `-Ox5SFMdu2l_hJKeJuks` (2026-07-09) | More Languages | Not a regression: 40 locales ship; new languages are a translation-content task. |
 | (reported off-board) | Substack "not working" | Substack renamed its cookie to `connect.sid`; relay now sends both names and accepts a pasted Cookie header. [integrations.md](integrations.md#substack-cookie-name-connectsid-2026-11-24) |
 
 Not yet live: Pages (`npm run deploy:prod` after review) and the Substack function
 (`npx firebase deploy --only functions:substack`). `help-data.js` was bumped to `?v=18`.
+
+## 2026-11-24 · Paid-app audit fixes
+
+| Finding | Fix / file |
+| :--- | :--- |
+| Bluesky reused the previous account's device-global session; logout left the app password behind | `bsky_session:<uid>`, scoped credential keys, explicit logout clears both; legacy values migrate only when `rekindle_uid` matches |
+| Bluesky feed died after ~2 h (`ExpiredToken`) | `refreshSession()` + one retry, serialized across concurrent 401s |
+| Dropbox paid user saw "Connect" because the cached-Pro branch initialized before auth | Removed the cache early return; `initDropboxApp(user)` binds the resolved user before loading `pro_data/dropbox` |
+| Pinterest deleted the account token on any refresh hiccup; device-global tokens leaked across accounts | Tokens scoped by uid; `doRefresh()` only logs out on `invalid_grant`; transport/5xx keeps tokens |
+| Mail showed the previous user's mailboxes and merged them into the new account | `rekindle_mail_accounts:<uid>` + active key; legacy migration only for the matching `rekindle_uid` |
+| Mail's combined inbox silently dropped a dead mailbox | Per-account failure list + warning strip with **Open Settings** |
+| Mastodon DM/profile fields were injected as HTML (stored XSS) | DOM text nodes + `rekindleSetSafeHtml`; safe `http(s)` avatar URLs |
+| Photo Frame showed "No photos" and deleted `_ORDER.json` on a partial load | Failure count + Retry; skip `saveOrderFile()` unless every URL and the order file loaded |
+| Docs restored the previous user's draft and `users/{A}` path | `rekindle_docs_draft:<uid>`; restored path must start `users/{uid}/` |
+| AI Assistant BYO key was device-global | `chat_api_key:<uid>` + guarded legacy migration |
+| Flipbook `expires` was block-scoped, causing `ReferenceError` for doc-less users | Hoisted `expires`/`now` before `if (doc.exists)` |
+| Quick ToDo showed a task that the next Google refresh erased | `createTask()` returns success; OCR path restores the original text and shows an inline error |
+| Files hid device files after an upgrade and had no migration path | **This device / Cloud** tabs, per-store usage, uploads to the selected store, and **Move to cloud / Move all to cloud** actions ([payments.md](payments.md#paid-app-account-isolation--resilience-2026-11-24)) |

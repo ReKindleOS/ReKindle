@@ -627,7 +627,7 @@
     <script src="time.js?v=9"></script>
     <script src="theme.js?v=35"></script>
     <script src="js/safe-html.js?v=1"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
     
     <script src="js/i18n.js?v=6"></script>
     <script src="js/custom-select.js?v=2"></script>
@@ -831,6 +831,7 @@
                     <input type="text" id="search-input" placeholder="Search emails..."
                         data-i18n-placeholder="mail.ph.search" onkeyup="filterEmails()" onkeydown="if(event.key==='Enter'){event.preventDefault();searchEmailsServer();}" enterkeyhint="search" title="Press Enter to search this folder">
                 </div>
+                <div id="mail-account-warning"></div>
                 <div id="list-container"></div>
             </div>
             <div class="details-pane" id="details-pane">
@@ -1053,6 +1054,8 @@
             <h3 style="margin-top:0;" data-i18n="mail.pro.title">Pro Required</h3>
             <p data-i18n="mail.pro.desc">A ReKindle+ subscription is required to use this app.</p>
             <button class="toolbar-btn primary" onclick="location.reload()">OK</button>
+            <a class="toolbar-btn" href="membership.html"
+                style="display:inline-block;margin-top:10px;text-decoration:none;">See ReKindle+ plans</a>
         </div>
     </div>
 
@@ -1071,6 +1074,34 @@
         const ACCOUNTS_KEY = 'rekindle_mail_accounts';
         const ACTIVE_ACCOUNT_KEY = 'rekindle_mail_active';
         const THREADING_KEY = 'rekindle_mail_threading';
+
+        // Mailboxes are per ReKindle account. The old unscoped keys were
+        // device-global, so a second user saw the first user's addresses and
+        // their "Could not unlock the saved password" errors (audit 2026-11-24).
+        function mailStorageUid() {
+            try {
+                const user = firebase.auth && firebase.auth().currentUser;
+                return user ? user.uid : 'anon';
+            } catch (e) { return 'anon'; }
+        }
+        function mailAccountsKey() { return ACCOUNTS_KEY + ':' + mailStorageUid(); }
+        function mailActiveKey() { return ACTIVE_ACCOUNT_KEY + ':' + mailStorageUid(); }
+
+        function migrateLegacyMailStorage() {
+            try {
+                const legacy = localStorage.getItem(ACCOUNTS_KEY);
+                if (!legacy) return;
+                const owner = localStorage.getItem('rekindle_uid');
+                const scoped = mailAccountsKey();
+                if (owner === mailStorageUid() && !localStorage.getItem(scoped)) {
+                    localStorage.setItem(scoped, legacy);
+                    const legacyActive = localStorage.getItem(ACTIVE_ACCOUNT_KEY);
+                    if (legacyActive) localStorage.setItem(mailActiveKey(), legacyActive);
+                }
+                localStorage.removeItem(ACCOUNTS_KEY);
+                localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
+            } catch (e) { }
+        }
 
         let accounts = [];
         let activeAccountId = null;
@@ -1113,9 +1144,12 @@
                 // mailbox id. The CodeQL query sees the account object as
                 // sensitive, so this is a reviewed false positive.
                 // codeql[js/clear-text-storage-of-sensitive-data]
-                localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.map(serializeAccount)));
-                if (activeAccountId) localStorage.setItem(ACTIVE_ACCOUNT_KEY, activeAccountId);
-                else localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
+                localStorage.setItem(mailAccountsKey(), JSON.stringify(accounts.map(serializeAccount)));
+                if (activeAccountId) localStorage.setItem(mailActiveKey(), activeAccountId);
+                else localStorage.removeItem(mailActiveKey());
+                // Drop the insecure device-global copies after the first scoped save.
+                localStorage.removeItem(ACCOUNTS_KEY);
+                localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
                 localStorage.setItem(THREADING_KEY, threadingEnabled ? 'on' : 'off');
             } catch (e) {
                 console.warn('Could not save mail accounts locally', e);
@@ -1124,7 +1158,8 @@
 
         function loadAccountsLocal() {
             try {
-                const raw = localStorage.getItem(ACCOUNTS_KEY);
+                migrateLegacyMailStorage();
+                const raw = localStorage.getItem(mailAccountsKey());
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (Array.isArray(parsed)) {
@@ -1140,7 +1175,7 @@
                         }));
                     }
                 }
-                activeAccountId = localStorage.getItem(ACTIVE_ACCOUNT_KEY) || null;
+                activeAccountId = localStorage.getItem(mailActiveKey()) || null;
                 threadingEnabled = localStorage.getItem(THREADING_KEY) !== 'off';
                 unifiedMode = localStorage.getItem(UNIFIED_KEY) === '1';
             } catch (e) {
@@ -1531,7 +1566,10 @@
             // 1. CACHE CHECK (Instant)
             try {
                 const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
-                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                const cacheUid = localStorage.getItem('rekindle_pro_expiry_uid');
+                const activeUid = firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid;
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now() &&
+                    activeUid && cacheUid === activeUid) {
                     isPro = true;
                     if (btnLogin) btnLogin.disabled = false;
                     // Optimistically hide overlay / unlock features
@@ -1575,8 +1613,10 @@
                                     // UPDATE CACHE
                                     if (expires > now) {
                                         localStorage.setItem('rekindle_pro_expiry', expires.toString());
+                                        localStorage.setItem('rekindle_pro_expiry_uid', user.uid);
                                     } else {
                                         localStorage.removeItem('rekindle_pro_expiry');
+                                        localStorage.removeItem('rekindle_pro_expiry_uid');
                                     }
 
                                     if (expires > now) {
@@ -1593,6 +1633,8 @@
                                         overlay.style.display = 'flex';
                                     }
                                 } else {
+                                    localStorage.removeItem('rekindle_pro_expiry');
+                                    localStorage.removeItem('rekindle_pro_expiry_uid');
                                     status.innerText = "Subscription required.";
                                     overlay.style.display = 'flex';
                                 }
@@ -1610,6 +1652,7 @@
                         status.innerText = "Please log in.";
                         overlay.style.display = 'flex';
                         localStorage.removeItem('rekindle_pro_expiry');
+                        localStorage.removeItem('rekindle_pro_expiry_uid');
                     }
                 });
             } else {
@@ -2312,7 +2355,9 @@
 
         // One INBOX page per account, tagged with the account it came from so
         // opening/archiving acts on the right mailbox.
+        let unifiedAccountErrors = [];
         async function fetchUnifiedEmails(reset) {
+            unifiedAccountErrors = [];
             const pages = await Promise.all(accounts.map(async account => {
                 try {
                     // Paging: an account with no cursor left contributes nothing
@@ -2335,6 +2380,7 @@
                     });
                 } catch (e) {
                     console.warn('Could not read the inbox for ' + account.email, e);
+                    unifiedAccountErrors.push(account.email);
                     unifiedCursors[account.id] = null;
                     return [];
                 }
@@ -2342,7 +2388,30 @@
             return [].concat.apply([], pages);
         }
 
+        function renderUnifiedAccountWarning() {
+            const wrap = document.getElementById('mail-account-warning');
+            if (!wrap) return;
+            wrap.innerHTML = '';
+            if (!unifiedAccountErrors.length) return;
+            wrap.style.cssText = 'margin:0 0 8px; padding:8px; border:2px solid black; background:#fffbe5; font-size:0.82rem;';
+            const text = document.createElement('div');
+            text.textContent = 'Could not load: ' + unifiedAccountErrors.join(', ') + '. Reconnect that mailbox in Settings.';
+            text.style.marginBottom = '6px';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'toolbar-btn';
+            btn.style.minHeight = '40px';
+            btn.textContent = 'Open Settings';
+            btn.onclick = function () { openSettings(); };
+            wrap.appendChild(text);
+            wrap.appendChild(btn);
+        }
+
         async function loadEmails(reset = true) {
+            if (!unifiedMode) {
+                const warning = document.getElementById('mail-account-warning');
+                if (warning) warning.innerHTML = '';
+            }
             if (reset) {
                 currentCursor = null; // Reset cursor
                 emails = []; // Clear list
@@ -2362,8 +2431,10 @@
                     isLoadingMore = false;
                     currentCursor = Object.keys(unifiedCursors).some(id => unifiedCursors[id]) ? 'unified' : null;
                     renderEmailList();
+                    renderUnifiedAccountWarning();
                     document.getElementById('status-bar').innerText =
-                        'All inboxes: ' + emails.length + ' emails from ' + accounts.length + ' accounts.';
+                        'All inboxes: ' + emails.length + ' emails from ' + accounts.length + ' accounts.' +
+                        (unifiedAccountErrors.length ? ' (' + unifiedAccountErrors.length + ' could not load)' : '');
                 } catch (e) {
                     console.error('Unified load error', e);
                     document.getElementById('status-bar').innerText = 'Error loading the combined inbox.';
@@ -3154,9 +3225,24 @@
 
         const COMPOSE_DRAFT_KEY = 'rekindle_mail_compose_draft';
 
+        // A compose draft is per ReKindle account; the old device-global key
+        // showed the previous user's recipient/body on a shared Kindle.
+        function mailComposeDraftKey() { return COMPOSE_DRAFT_KEY + ':' + mailStorageUid(); }
+        function migrateMailComposeDraft() {
+            try {
+                if (localStorage.getItem('rekindle_uid') !== mailStorageUid()) return;
+                const legacy = localStorage.getItem(COMPOSE_DRAFT_KEY);
+                if (legacy && !localStorage.getItem(mailComposeDraftKey())) {
+                    localStorage.setItem(mailComposeDraftKey(), legacy);
+                }
+                if (legacy) localStorage.removeItem(COMPOSE_DRAFT_KEY);
+            } catch (e) { }
+        }
+
         function getComposeDraft() {
             try {
-                const draft = JSON.parse(localStorage.getItem(COMPOSE_DRAFT_KEY) || 'null');
+                migrateMailComposeDraft();
+                const draft = JSON.parse(localStorage.getItem(mailComposeDraftKey()) || 'null');
                 return draft && (draft.to || draft.subject || draft.body) ? draft : null;
             } catch (e) { return null; }
         }
@@ -3170,15 +3256,19 @@
             };
             try {
                 if (draft.to || draft.subject || draft.body) {
-                    localStorage.setItem(COMPOSE_DRAFT_KEY, JSON.stringify(draft));
+                    localStorage.setItem(mailComposeDraftKey(), JSON.stringify(draft));
                 } else {
+                    localStorage.removeItem(mailComposeDraftKey());
                     localStorage.removeItem(COMPOSE_DRAFT_KEY);
                 }
             } catch (e) { }
         }
 
         function clearComposeDraft() {
-            try { localStorage.removeItem(COMPOSE_DRAFT_KEY); } catch (e) { }
+            try {
+                localStorage.removeItem(mailComposeDraftKey());
+                localStorage.removeItem(COMPOSE_DRAFT_KEY);
+            } catch (e) { }
             const btn = document.getElementById('compose-restore-btn');
             if (btn) btn.style.display = 'none';
         }

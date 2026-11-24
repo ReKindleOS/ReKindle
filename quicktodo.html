@@ -469,7 +469,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://apis.google.com/js/api.js" defer></script>
     <script src="theme.js?v=35"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
     <script src="js/i18n.js?v=6"></script>
     <link rel="stylesheet" href="css/custom-select.css?v=1">
     <script src="js/custom-select.js?v=2"></script>
@@ -590,6 +590,8 @@
             <h3 style="margin-top:0;" data-i18n="quicktodo.pro.title">Pro Required</h3>
             <p data-i18n="quicktodo.pro.desc">A ReKindle+ subscription is required to use this app.</p>
             <button class="sys-btn" onclick="location.reload()" data-i18n="quicktodo.pro.btn">OK</button>
+            <a class="sys-btn" href="membership.html"
+                style="display:inline-block;margin-top:10px;text-decoration:none;color:black;padding:6px 12px;">See ReKindle+ plans</a>
         </div>
     </div>
 
@@ -646,6 +648,28 @@
 
         let isPro = false;
         let currentUser = null;
+
+        // Offline/local tasks are per ReKindle account on a shared Kindle.
+        function quickTodoStorageUid() {
+            if (currentUser && currentUser.uid) return currentUser.uid;
+            try {
+                const user = firebase.auth && firebase.auth().currentUser;
+                return user ? user.uid : 'anon';
+            } catch (e) { return 'anon'; }
+        }
+        function quickTodoTasksKey() { return 'rekindle_tasks_local:' + quickTodoStorageUid(); }
+        function migrateQuickTodoTasks() {
+            try {
+                const uid = quickTodoStorageUid();
+                if (uid === 'anon') return;
+                if (localStorage.getItem('rekindle_uid') !== uid) return;
+                const legacy = localStorage.getItem('rekindle_tasks_local');
+                if (legacy && !localStorage.getItem(quickTodoTasksKey())) {
+                    localStorage.setItem(quickTodoTasksKey(), legacy);
+                }
+                if (legacy) localStorage.removeItem('rekindle_tasks_local');
+            } catch (e) { }
+        }
         let googleTaskListId = null;
         let googleEnabled = false;
 
@@ -768,6 +792,7 @@
         }
 
         function initFirebase() {
+            migrateQuickTodoTasks();
             const db = firebase.firestore();
             if (currentUser) {
                 db.collection('users').doc(currentUser.uid).collection('tasks').limit(NUM_ROWS).get().then(snap => {
@@ -783,7 +808,7 @@
                     setSyncStatus('Synced', '#1a6b1a');
                 });
             } else {
-                const localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
+                const localTasks = JSON.parse(localStorage.getItem(quickTodoTasksKey())) || [];
                 for (let i = 0; i < localTasks.length && i < NUM_ROWS; i++) {
                     listData[i] = localTasks[i].title;
                     listIds[i] = localTasks[i].id;
@@ -1073,9 +1098,9 @@
                     setTimeout(initFirebase, 200);
                 }
                 else {
-                    let localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
+                    let localTasks = JSON.parse(localStorage.getItem(quickTodoTasksKey())) || [];
                     localTasks = localTasks.filter(t => t.id !== id);
-                    localStorage.setItem('rekindle_tasks_local', JSON.stringify(localTasks));
+                    localStorage.setItem(quickTodoTasksKey(), JSON.stringify(localTasks));
                     // Reload local
                     setTimeout(initFirebase, 200);
                 }
@@ -1270,7 +1295,19 @@
                 if (data.text) {
                     let cleanText = data.text.trim().replace(/^[\.\-\*]\s*/, '');
                     listData[rowIndex] = cleanText;
-                    await createTask(cleanText, rowIndex);
+                    const saved = await createTask(cleanText, rowIndex);
+                    if (!saved) {
+                        // Never leave a task on screen that the next 60 s Google
+                        // refresh will silently erase (audit 2026-11-24).
+                        listData[rowIndex] = originalText;
+                        setTimeout(function () {
+                            const rowEl = document.getElementById('text-' + rowIndex);
+                            if (rowEl) {
+                                rowEl.innerText = window.t ? window.t('quicktodo.status.save_error', "Couldn't save that. Try again.") : "Couldn't save that. Try again.";
+                                rowEl.style.color = '#a00000';
+                            }
+                        }, 0);
+                    }
                 } else {
                     listData[rowIndex] = originalText;
                 }
@@ -1292,28 +1329,32 @@
         }
 
         async function createTask(text, rowIndex) {
-            if (googleEnabled && googleTaskListId) {
-                try {
+            try {
+                if (googleEnabled && googleTaskListId) {
                     const res = await gapi.client.tasks.tasks.insert({
                         tasklist: googleTaskListId,
                         resource: { title: text }
                     });
                     listIds[rowIndex] = res.result.id;
-                } catch (e) { console.error("Google Save Error", e); }
-            }
-            else if (currentUser) {
-                const ref = await firebase.firestore().collection('users').doc(currentUser.uid).collection('tasks').add({
-                    title: text,
-                    created: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                listIds[rowIndex] = ref.id;
-            }
-            else {
-                const id = Date.now().toString();
-                let localTasks = JSON.parse(localStorage.getItem('rekindle_tasks_local')) || [];
-                localTasks.push({ id: id, title: text });
-                localStorage.setItem('rekindle_tasks_local', JSON.stringify(localTasks));
-                listIds[rowIndex] = id;
+                }
+                else if (currentUser) {
+                    const ref = await firebase.firestore().collection('users').doc(currentUser.uid).collection('tasks').add({
+                        title: text,
+                        created: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    listIds[rowIndex] = ref.id;
+                }
+                else {
+                    const id = Date.now().toString();
+                    let localTasks = JSON.parse(localStorage.getItem(quickTodoTasksKey())) || [];
+                    localTasks.push({ id: id, title: text });
+                    localStorage.setItem(quickTodoTasksKey(), JSON.stringify(localTasks));
+                    listIds[rowIndex] = id;
+                }
+                return true;
+            } catch (e) {
+                console.error("Task save error", e);
+                return false;
             }
         }
 

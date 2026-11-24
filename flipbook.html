@@ -790,7 +790,7 @@
     <script src="js/social-token-cache.js?v=1"></script>
     <script src="js/social-endpoints.js?v=1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js" integrity="sha384-4RMW82CWFobXY+HRHXe5go/V5acBhiIVGCT+2k7TEoxi7AiWKw8WoWb9qMU+FAFu" crossorigin="anonymous"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
 
     <script>
         // --- CONSTANTS ---
@@ -832,6 +832,40 @@
         };
 
         let isManifestLoaded = false;
+
+        // Flipbook drafts are per ReKindle account. The old device-global keys
+        // let the next user on a shared Kindle see/delete the previous user's
+        // animations (audit 2026-11-24).
+        function flipbookStorageUid() {
+            if (currentUser && currentUser.uid) return currentUser.uid;
+            try {
+                const user = firebase.auth && firebase.auth().currentUser;
+                return user ? user.uid : 'anon';
+            } catch (e) { return 'anon'; }
+        }
+        function flipbookKey(name) { return name + ':' + flipbookStorageUid(); }
+        function migrateLegacyFlipbook() {
+            try {
+                const uid = flipbookStorageUid();
+                if (!uid) return;
+                if (localStorage.getItem('rekindle_uid') !== uid) return;
+                const legacyManifest = localStorage.getItem('flipnote_manifest');
+                if (legacyManifest && !localStorage.getItem(flipbookKey('flipnote_manifest'))) {
+                    localStorage.setItem(flipbookKey('flipnote_manifest'), legacyManifest);
+                }
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.indexOf('flipnote_anim_') === 0 && k.indexOf(':') === -1) keys.push(k);
+                }
+                keys.forEach(function (k) {
+                    const scoped = flipbookKey(k);
+                    if (!localStorage.getItem(scoped)) localStorage.setItem(scoped, localStorage.getItem(k));
+                    localStorage.removeItem(k);
+                });
+                if (legacyManifest) localStorage.removeItem('flipnote_manifest');
+            } catch (e) { }
+        }
 
         // --- DOM Elements ---
         const canvas = document.getElementById('drawing-board');
@@ -924,7 +958,8 @@
 
         // --- MANIFEST LOGIC ---
         async function loadManifest() {
-            const key = 'flipnote_manifest';
+            migrateLegacyFlipbook();
+            const key = flipbookKey('flipnote_manifest');
             if (currentUser) {
                 try {
                     const doc = await db.collection('users').doc(currentUser.uid).collection('settings').doc('flipnote_manifest').get();
@@ -946,7 +981,7 @@
         }
 
         async function saveManifest() {
-            const key = 'flipnote_manifest';
+            const key = flipbookKey('flipnote_manifest');
             localStorage.setItem(key, JSON.stringify(manifest));
             if (currentUser) {
                 try {
@@ -1093,7 +1128,7 @@
 
             // Load frames
             let data = null;
-            const key = `flipnote_anim_${id}`;
+            const key = flipbookKey(`flipnote_anim_${id}`);
 
             const local = localStorage.getItem(key);
             if (local) {
@@ -1207,7 +1242,7 @@
             };
 
             // Save Data
-            const key = `flipnote_anim_${animId}`;
+            const key = flipbookKey(`flipnote_anim_${animId}`);
             try { localStorage.setItem(key, JSON.stringify(data)); }
             catch (e) {
                 console.warn("Local save failed (storage full?)", e);
@@ -1877,7 +1912,7 @@
             deleteId = id;
             document.getElementById('confirm-delete-btn').onclick = () => {
                 manifest = manifest.filter(m => m.id !== id);
-                localStorage.removeItem(`flipnote_anim_${id}`);
+                localStorage.removeItem(flipbookKey(`flipnote_anim_${id}`));
                 if (currentUser) db.collection('users').doc(currentUser.uid).collection('flipnote_animations').doc(id).delete();
                 saveManifest();
                 renderGallery();
@@ -1918,7 +1953,9 @@
             // 1. CACHE CHECK (Instant)
             try {
                 const cachedExpiry = localStorage.getItem('rekindle_pro_expiry');
-                if (cachedExpiry && parseInt(cachedExpiry) > Date.now()) {
+                const cacheUid = localStorage.getItem('rekindle_pro_expiry_uid');
+                if (cachedExpiry && parseInt(cachedExpiry) > Date.now() &&
+                    user && cacheUid === user.uid) {
                     isPro = true;
                     if (overlay) overlay.style.display = 'none';
                     // We don't return early here because we might want to refresh the cache in background
@@ -1940,10 +1977,10 @@
                     .then(doc => {
                         clearTimeout(timeoutId);
                         subChecked = true;
+                        const now = Date.now();
+                        let expires = 0;
                         if (doc.exists) {
                             const data = doc.data();
-                            const now = Date.now();
-                            let expires = 0;
                             if (data.proExpiresAt) {
                                 expires = typeof data.proExpiresAt.toMillis === 'function'
                                     ? data.proExpiresAt.toMillis()
@@ -1953,8 +1990,10 @@
                             // UPDATE CACHE
                             if (expires > now) {
                                 localStorage.setItem('rekindle_pro_expiry', expires.toString());
+                                localStorage.setItem('rekindle_pro_expiry_uid', user.uid);
                             } else {
                                 localStorage.removeItem('rekindle_pro_expiry');
+                                localStorage.removeItem('rekindle_pro_expiry_uid');
                             }
 
                             if (expires > now) {
@@ -1964,6 +2003,8 @@
                                 isPro = false;
                             }
                         } else {
+                            localStorage.removeItem('rekindle_pro_expiry');
+                            localStorage.removeItem('rekindle_pro_expiry_uid');
                             isPro = false;
                         }
                         // We don't force overlay here, we let actions trigger it or checks elsewhere

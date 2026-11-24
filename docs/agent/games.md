@@ -593,3 +593,24 @@ after someone left, `advanceTurn()` handed the turn to their uid. Nobody could p
   expires, the host calls `pickWord(0)` (the drawer's own modal still does this first).
 * `lastChooseHostAction` (`round:drawerIdx`) prevents repeated writes while the RTDB update
   propagates and is reset on lobby/start/back-to-lobby.
+
+
+### Moving-game redraw cap (`mario_assets/js/game.js`, `dino_assets/runner.js`)
+
+Board report `-P59t4IcmOED_Bd9sTV7` (18 votes): Mario, Surfer and Dino feel
+glitchy/laggy on a 10th-gen Kindle. Surfer already redraws on a 100 ms tick
+(10 Hz); Mario and Dino were redrawing their full canvas at the browser's
+60 Hz refresh.
+
+* Mario's `main()` now schedules the next frame first and returns unless
+  `1000 / 30` ms have passed. `update(dt)`/`render()` are delta-timed, so
+  physics and the level timer are unchanged.
+* Dino's `Runner.update()` skips a frame when `activated` and the delta is
+  under `1000 / 30`, calling `raq()` to keep the loop alive. `this.time` is
+  only advanced on a processed frame, so `deltaTime` accumulates across the
+  skipped frame and distance/speed stay correct.
+* `mario.html` references `mario_assets/js/game.js?v=1`; `dino.html` bumped
+  `runner.js` to `?v=8`.
+* This is a CPU/refresh-pressure cut, not a full fix: a 10th-gen Kindle still
+  has a slow JIT-less CPU. Keep new moving games on integer 1-bit drawing and
+  a <=30 Hz redraw budget.

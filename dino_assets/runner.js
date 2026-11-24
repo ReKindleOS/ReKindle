@@ -435,6 +435,16 @@
             this.drawPending = false;
             var now = performance.now();
             var deltaTime = now - (this.time || now);
+
+            // Cap the render rate at 30 fps. The panel only refreshes at
+            // ~7-15 Hz, and redrawing this full canvas 60 times a second is
+            // what made the 10th-gen Kindle stutter (Suggestions report
+            // 2026-10-30). deltaTime is accumulated across skipped frames, so
+            // speed and distance are unchanged.
+            if (this.activated && deltaTime < 1000 / 30) {
+                this.raq();
+                return;
+            }
             this.time = now;
 
             // Clamp deltaTime to prevent large jumps on laggy e-ink screens

@@ -453,6 +453,22 @@ subscriptions call).
 Deploy the function (`npx firebase deploy --only functions:substack`) **and** Pages. Do not
 revert to a single cookie name: it breaks whichever half of the user base has the other one.
 
+**Connection controls (2026-11-24):** the settings modal now has a live
+Connected/Not connected line and a two-tap **Disconnect** that deletes
+`users/{uid}/pro_data/substack` and clears the in-memory feed. A 401/403 now
+leaves a **Connection settings** button in the error state. Saving a different
+cookie, a different cloud cookie, or signing in as another ReKindle user resets
+`subs/inbox/fullInbox` so one account's publications can never render for
+another. This replaces the old "there is no disconnect control" help note.
+A partially failed aggregated feed now shows a warning listing the publications
+that could not load, with Retry, instead of silently rendering fewer posts.
+**Save & Connect** verifies the pasted cookie with `/user/profile/self` first:
+a 401/403 is rejected before the encrypted cookie is stored, while a
+network/relay failure still saves it so a flaky Kindle can retry later.
+Subscriptions are cached for 6 hours under `substack_subs:<uid>` so the feed can
+start without the `subscriptions/page_v2` round trip; **Refresh** forces a
+re-fetch, and a failed re-fetch keeps serving the cached list.
+
 ### Pro gate init order (2026-10-24)
 
 `pro-gate.js` `check()` used to invoke the page callback from the

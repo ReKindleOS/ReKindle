@@ -14,7 +14,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-    <script src="pro-gate.js?v=9" data-freemium="true"></script>
+    <script src="pro-gate.js?v=11" data-freemium="true"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -547,9 +547,25 @@
             <div id="files-plus-hint"
                 style="display:none;font-size:0.78rem;line-height:1.4;padding:6px 10px;border-bottom:1px solid #ccc;color:#444;">
                 5 MB on this device. <a href="membership.html" style="color:black;">ReKindle+ adds 100 MB of cloud
-                    storage</a> shared with Photo Frame.
+                    storage</a> shared with Photo Frame. Cloud files stay stored while ReKindle+ is inactive and
+                return when you rejoin.
             </div>
 
+            <div id="files-store-tabs" role="tablist" aria-label="Storage location"
+                style="display:flex;border-bottom:2px solid black;background:#eee;">
+                <button id="store-tab-device" type="button" role="tab" onclick="setFileStore('device')"
+                    data-i18n="files.store.device"
+                    style="flex:1;min-height:48px;border:0;border-right:2px solid black;background:white;font-family:inherit;font-weight:bold;font-size:0.85rem;cursor:pointer;">This device</button>
+                <button id="store-tab-cloud" type="button" role="tab" onclick="setFileStore('cloud')"
+                    data-i18n="files.store.cloud"
+                    style="flex:1;min-height:48px;border:0;background:white;font-family:inherit;font-weight:bold;font-size:0.85rem;cursor:pointer;">Cloud <span
+                        id="store-cloud-plus"
+                        style="font-size:0.6rem;border:1px solid black;padding:1px 3px;vertical-align:text-top;">PLUS</span></button>
+            </div>
+
+            <div id="files-device-actions" style="display:none;padding:8px 10px;border-bottom:1px solid #ccc;">
+                <button class="btn" type="button" onclick="moveAllToCloud()">Move all to cloud</button>
+            </div>
             <div class="file-list" id="file-list">
                 <!-- Files will be injected here -->
                 <div class="empty-state" data-i18n="files.empty.no_files">No files found.</div>
@@ -670,14 +686,47 @@
         const LOCAL_MAX_BYTES = 5 * 1024 * 1024;     // 5MB, free device storage
 
         let currentUser = null;
-        let currentFiles = [];
-        let totalUsage = 0;
+        let currentFiles = []; // cloud list when Pro, device list when free
+        let deviceFiles = [];
+        let totalUsage = 0;    // cloud usage when Pro, device usage when free
+        let deviceUsage = 0;
+        let fileStore = localStorage.getItem('files_store') === 'device' ? 'device' : 'cloud';
+        // Free users always see the device store; keeping their saved "cloud"
+        // preference means a Pro member gets it back after auth resolves.
+        function effectiveFileStore() { return filesPro ? fileStore : 'device'; }
         let selectedFile = null;
         let filesPro = false;
         let localBlobs = {};
 
         function maxStorageBytes() {
-            return filesPro ? MAX_STORAGE_BYTES : LOCAL_MAX_BYTES;
+            return effectiveFileStore() === 'device' ? LOCAL_MAX_BYTES : MAX_STORAGE_BYTES;
+        }
+
+        function updateStoreTabs() {
+            const dev = document.getElementById('store-tab-device');
+            const cloud = document.getElementById('store-tab-cloud');
+            const plus = document.getElementById('store-cloud-plus');
+            const active = 'background:black;color:white;';
+            const idle = 'background:white;color:black;';
+            const store = effectiveFileStore();
+            if (dev) dev.style.cssText = 'flex:1;min-height:48px;border:0;border-right:2px solid black;font-family:inherit;font-weight:bold;font-size:0.85rem;cursor:pointer;' + (store === 'device' ? active : idle);
+            if (cloud) cloud.style.cssText = 'flex:1;min-height:48px;border:0;font-family:inherit;font-weight:bold;font-size:0.85rem;cursor:pointer;' + (store === 'cloud' ? active : idle);
+            if (plus) plus.style.display = filesPro ? 'none' : 'inline-block';
+            const actions = document.getElementById('files-device-actions');
+            if (actions) actions.style.display = (filesPro && store === 'device' && deviceFiles.length) ? 'block' : 'none';
+        }
+
+        function setFileStore(store) {
+            if (store === 'cloud' && !filesPro) {
+                showAlert('Cloud storage is part of ReKindle+. Your cloud files stay stored and return when you rejoin.');
+                return;
+            }
+            fileStore = store === 'device' ? 'device' : 'cloud';
+            try { localStorage.setItem('files_store', fileStore); } catch (e) { }
+            updateStoreTabs();
+            updatePlanUI();
+            updateStorageUI();
+            renderFiles();
         }
 
         // --- Device storage (free tier) ---------------------------------
@@ -686,10 +735,22 @@
         const LOCAL_DB = 'rekindle_files_device';
         const LOCAL_STORE = 'files';
 
-        function localDbOpen() {
+        function filesStorageUid() {
+            if (currentUser && currentUser.uid) return currentUser.uid;
+            try {
+                const user = firebase.auth && firebase.auth().currentUser;
+                return user ? user.uid : 'anon';
+            } catch (e) { return 'anon'; }
+        }
+
+        function localDbName() {
+            return LOCAL_DB + '-' + filesStorageUid();
+        }
+
+        function openNamedDb(name) {
             return new Promise(function (resolve, reject) {
                 if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
-                var req = indexedDB.open(LOCAL_DB, 1);
+                var req = indexedDB.open(name, 1);
                 req.onupgradeneeded = function (e) {
                     var db = e.target.result;
                     if (!db.objectStoreNames.contains(LOCAL_STORE)) {
@@ -699,6 +760,44 @@
                 req.onsuccess = function () { resolve(req.result); };
                 req.onerror = function () { reject(req.error || new Error('IndexedDB error')); };
             });
+        }
+
+        function localDbOpen() { return openNamedDb(localDbName()); }
+
+        // One-time move from the old device-global database to the uid-scoped
+        // one, only for the account that owns the legacy data (rekindle_uid).
+        async function migrateLegacyDeviceDb() {
+            var uid = filesStorageUid();
+            if (!uid || uid === 'anon' || !window.indexedDB) return;
+            var flag = 'rekindle_files_migrated:' + uid;
+            try {
+                if (localStorage.getItem(flag) === '1') return;
+                if (localStorage.getItem('rekindle_uid') !== uid) return;
+            } catch (e) { return; }
+            try {
+                var legacy = await openNamedDb(LOCAL_DB);
+                var recs = await new Promise(function (resolve, reject) {
+                    var tx = legacy.transaction(LOCAL_STORE, 'readonly');
+                    var req = tx.objectStore(LOCAL_STORE).getAll();
+                    req.onsuccess = function () { resolve(req.result || []); };
+                    req.onerror = function () { reject(req.error); };
+                });
+                if (recs.length) {
+                    var db = await localDbOpen();
+                    await new Promise(function (resolve, reject) {
+                        var tx = db.transaction(LOCAL_STORE, 'readwrite');
+                        var store = tx.objectStore(LOCAL_STORE);
+                        recs.forEach(function (r) { store.put(r); });
+                        tx.oncomplete = function () { resolve(); };
+                        tx.onerror = function () { reject(tx.error); };
+                    });
+                }
+                try { legacy.close(); } catch (e) { }
+                try { indexedDB.deleteDatabase(LOCAL_DB); } catch (e) { }
+                try { localStorage.setItem(flag, '1'); } catch (e) { }
+            } catch (e) {
+                console.warn('Device file migration skipped', e);
+            }
         }
 
         function localRun(mode, fn) {
@@ -726,11 +825,15 @@
             });
         }
 
-        async function loadLocalFiles() {
+        // asDevice=true keeps the 5 MB device store separate from the cloud
+        // list, so a ReKindle+ member can still see/download/delete device
+        // files after upgrading (audit 2026-11-24).
+        async function loadLocalFiles(asDevice) {
             try {
+                await migrateLegacyDeviceDb();
                 const recs = await localAll();
                 recs.sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
-                currentFiles = recs.map(function (r) {
+                const mapped = recs.map(function (r) {
                     return {
                         id: r.id,
                         name: r.name,
@@ -740,18 +843,30 @@
                         local: true
                     };
                 });
+                const usage = recs.reduce(function (sum, r) { return sum + (r.size || 0); }, 0);
                 localBlobs = {};
                 recs.forEach(function (r) { localBlobs[r.id] = r.blob; });
-                totalUsage = recs.reduce(function (sum, r) { return sum + (r.size || 0); }, 0);
+                deviceFiles = mapped;
+                deviceUsage = usage;
+                if (!filesPro) {
+                    currentFiles = mapped;
+                    totalUsage = usage;
+                }
                 updateStorageUI();
                 renderFiles();
             } catch (e) {
                 console.warn('Device storage unavailable', e);
-                currentFiles = [];
-                totalUsage = 0;
-                updateStorageUI();
-                document.getElementById('file-list').innerHTML =
-                    '<div class="empty-state">Device storage is not available in this browser. ReKindle+ stores files in the cloud instead.</div>';
+                deviceFiles = [];
+                deviceUsage = 0;
+                if (!filesPro) {
+                    currentFiles = [];
+                    totalUsage = 0;
+                    updateStorageUI();
+                    document.getElementById('file-list').innerHTML =
+                        '<div class="empty-state">Device storage is not available in this browser. ReKindle+ stores files in the cloud instead.</div>';
+                } else {
+                    renderFiles();
+                }
             }
         }
 
@@ -823,7 +938,15 @@
 
         async function loadFiles(isRetry = false) {
             if (!currentUser) return;
-            if (!filesPro) return loadLocalFiles();
+            if (!filesPro) {
+                updateStoreTabs();
+                return loadLocalFiles(false);
+            }
+            updateStoreTabs();
+
+            // Load the free device store too: it must not disappear when a user
+            // upgrades to ReKindle+ (or when Pro lapses, see the notice above).
+            await loadLocalFiles(true);
 
             const listRef = firebase.storage().ref(`users/${currentUser.uid}/files`);
             const photosRef = firebase.storage().ref(`users/${currentUser.uid}/photos`);
@@ -882,21 +1005,24 @@
 
         function updatePlanUI() {
             const quota = document.getElementById('quota-label');
-            if (quota) quota.textContent = filesPro ? 'Max 100MB' : '5 MB on this device';
+            const store = effectiveFileStore();
+            if (quota) quota.textContent = store === 'device' ? '5 MB on this device' : 'Max 100MB';
             const hint = document.getElementById('files-plus-hint');
             if (hint) hint.style.display = filesPro ? 'none' : 'block';
             const body = document.getElementById('upload-body');
             if (body) {
-                body.textContent = filesPro
-                    ? 'Choose one or more files from this device. The 100 MB limit is shared with Photo Frame.'
-                    : 'Choose files to keep on this device (5 MB total). Cloud storage shared with Photo Frame is part of ReKindle+.';
+                body.textContent = store === 'device'
+                    ? 'Choose files to keep on this device (5 MB total).'
+                    : 'Choose one or more files from this device. The 100 MB limit is shared with Photo Frame.';
             }
+            updateStoreTabs();
         }
 
         function updateStorageUI() {
-            const percentage = Math.min(100, (totalUsage / maxStorageBytes()) * 100);
+            const usage = effectiveFileStore() === 'device' ? deviceUsage : totalUsage;
+            const percentage = Math.min(100, (usage / maxStorageBytes()) * 100);
             document.getElementById('storage-bar').style.width = `${percentage}%`;
-            document.getElementById('storage-text').textContent = `${formatSize(totalUsage)} used`;
+            document.getElementById('storage-text').textContent = formatSize(usage) + ' used';
 
             if (percentage > 90) {
                 document.getElementById('storage-bar').style.backgroundColor = 'red';
@@ -909,23 +1035,26 @@
             const listEl = document.getElementById('file-list');
             listEl.innerHTML = '';
 
-            if (currentFiles.length === 0) {
+            const list = effectiveFileStore() === 'device' ? deviceFiles : currentFiles;
+
+            if (list.length === 0) {
                 listEl.innerHTML = window.rekindleEmptyState
                     ? window.rekindleEmptyState(
                         window.t ? window.t('files.empty.no_files', 'No files yet.') : 'No files yet.',
                         {
                             icon: 'list',
-                            hint: filesPro
-                                ? (window.t ? window.t('files.empty.hint', 'Upload documents, images, PDFs or ebooks. 100 MB shared with Photo Frame.') : 'Upload documents, images, PDFs or ebooks.')
-                                : 'Upload files to this device (5 MB). ReKindle+ adds 100 MB of cloud storage shared with Photo Frame.',
+                            hint: effectiveFileStore() === 'device'
+                                ? 'Upload files to this device (5 MB).'
+                                : (window.t ? window.t('files.empty.hint', 'Upload documents, images, PDFs or ebooks. 100 MB shared with Photo Frame.') : 'Upload documents, images, PDFs or ebooks.'),
                             action: '<button class="rk-empty-btn" onclick="showUploadModal()">' +
                                 (window.t ? window.t('files.btn.upload', 'Upload') : 'Upload') + '</button>'
                         })
                     : '<div class="empty-state">No files. Upload something!</div>';
+                updateStoreTabs();
                 return;
             }
 
-            currentFiles.forEach(file => {
+            list.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'file-item';
                 // Single click to open (moved from dblclick)
@@ -960,6 +1089,7 @@
                         </div>
                         <div class="menu-dropdown" id="menu-${escapeHtml(file.fullPath)}">
                             <div class="menu-item" onclick="downloadFile(event, '${safePath}')">Download</div>
+                            ${filesPro && file.local ? '<div class="menu-item" onclick="moveLocalToCloud(event, \'' + safePath + '\', \'' + safeName + '\')">Move to cloud</div>' : ''}
                             <div class="menu-item" onclick="deleteFile(event, '${safePath}', '${safeName}')">Delete</div>
                         </div>
                     </div>
@@ -974,6 +1104,7 @@
 
                 listEl.appendChild(item);
             });
+            updateStoreTabs();
         }
 
         function toggleMenu(e, path) {
@@ -1030,6 +1161,96 @@
             selectedFile = { fullPath: path, name: name }; // Mock file obj for compat with existing delete logic
             document.getElementById('delete-filename').textContent = name;
             document.getElementById('delete-modal').classList.add('active');
+        }
+
+        async function moveLocalToCloud(e, path, name) {
+            e.stopPropagation();
+            closeAllMenus();
+            if (!filesPro) {
+                showAlert('ReKindle+ is required to move files to cloud storage.');
+                return;
+            }
+            if (!currentUser) {
+                showAlert('Sign in to move files to the cloud.');
+                return;
+            }
+            var id = String(path).indexOf('local:') === 0 ? String(path).slice(6) : '';
+            var blob = id ? localBlobs[id] : null;
+            if (!blob) {
+                showAlert('That device file is no longer available.');
+                return;
+            }
+            if (totalUsage + blob.size > MAX_STORAGE_BYTES) {
+                showAlert('Not enough cloud space. ' + formatSize(MAX_STORAGE_BYTES - totalUsage) + ' remaining.');
+                return;
+            }
+
+            // Pick a cloud path that does not clobber an existing file.
+            var baseName = name || blob.name || ('file-' + Date.now());
+            var cloudPath = `users/${currentUser.uid}/files/${baseName}`;
+            var suffix = 1;
+            while (currentFiles.some(function (f) { return f.fullPath === cloudPath; }) && suffix < 100) {
+                var dot = baseName.lastIndexOf('.');
+                var base = dot > 0 ? baseName.slice(0, dot) : baseName;
+                var ext = dot > 0 ? baseName.slice(dot) : '';
+                cloudPath = `users/${currentUser.uid}/files/${base} (${suffix})${ext}`;
+                suffix++;
+            }
+
+            try {
+                await firebase.storage().ref(cloudPath).put(blob);
+                await localRemove(id);
+                fileStore = 'cloud';
+                try { localStorage.setItem('files_store', 'cloud'); } catch (e) { }
+                updateStoreTabs();
+                await loadFiles();
+                showAlert('Moved to ReKindle+ cloud storage.');
+            } catch (err) {
+                console.error('Move to cloud failed', err);
+                showAlert('Move failed: ' + err.message);
+            }
+        }
+
+        async function moveAllToCloud() {
+            if (!filesPro || !currentUser || !deviceFiles.length) return;
+            if (totalUsage + deviceUsage > MAX_STORAGE_BYTES) {
+                showAlert('Not enough cloud space for all device files. ' + formatSize(MAX_STORAGE_BYTES - totalUsage) + ' remaining.');
+                return;
+            }
+            const files = deviceFiles.slice();
+            const reserved = currentFiles.map(function (f) { return f.fullPath; });
+            let moved = 0;
+            let failed = 0;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const blob = localBlobs[file.id];
+                if (!blob) { failed++; continue; }
+                let baseName = file.name || ('file-' + Date.now());
+                let cloudPath = `users/${currentUser.uid}/files/${baseName}`;
+                let suffix = 1;
+                while (reserved.indexOf(cloudPath) !== -1 && suffix < 100) {
+                    const dot = baseName.lastIndexOf('.');
+                    const base = dot > 0 ? baseName.slice(0, dot) : baseName;
+                    const ext = dot > 0 ? baseName.slice(dot) : '';
+                    cloudPath = `users/${currentUser.uid}/files/${base} (${suffix})${ext}`;
+                    suffix++;
+                }
+                try {
+                    await firebase.storage().ref(cloudPath).put(blob);
+                    await localRemove(file.id);
+                    reserved.push(cloudPath);
+                    moved++;
+                } catch (err) {
+                    console.error('Move all failed for ' + file.name, err);
+                    failed++;
+                }
+            }
+            fileStore = 'cloud';
+            try { localStorage.setItem('files_store', 'cloud'); } catch (e) { }
+            updateStoreTabs();
+            await loadFiles();
+            if (failed) showAlert(moved + ' file(s) moved to the cloud; ' + failed + ' failed.');
+            else showAlert(moved + ' file(s) moved to ReKindle+ cloud storage.');
         }
 
         function closePreviewModal() {
@@ -1217,7 +1438,7 @@
             const statusEl = document.getElementById('storage-text');
             let uploaded = 0;
             let failed = 0;
-            let used = totalUsage;
+            let used = deviceUsage;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -1233,7 +1454,7 @@
 
                 let name = file.name || ('file-' + Date.now());
                 let suffix = 1;
-                while (currentFiles.some(function (f) { return f.name === name; }) && suffix < 100) {
+                while (deviceFiles.some(function (f) { return f.name === name; }) && suffix < 100) {
                     const dot = name.lastIndexOf('.');
                     const base = dot > 0 ? name.slice(0, dot) : name;
                     const ext = dot > 0 ? name.slice(dot) : '';
@@ -1260,7 +1481,12 @@
             }
 
             input.value = '';
-            await loadLocalFiles();
+            if (filesPro) {
+                await loadLocalFiles(true);
+            } else {
+                await loadLocalFiles(false);
+            }
+            updateStoreTabs();
             if (failed) {
                 showAlert(failed + ' file(s) could not be saved to this device.');
             } else if (uploaded && statusEl) {
@@ -1277,7 +1503,8 @@
                 return;
             }
 
-            if (!filesPro) return handleLocalUpload(files, input);
+            // Device uploads work for free and Pro; cloud uploads need Pro.
+            if (effectiveFileStore() === 'device' || !filesPro) return handleLocalUpload(files, input);
 
             const uploadBtn = document.querySelector('.toolbar button');
             const originalHtml = uploadBtn ? uploadBtn.innerHTML : '';

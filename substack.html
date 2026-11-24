@@ -544,7 +544,7 @@
     </style>
     <script src="theme.js?v=35"></script>
     <script src="time.js?v=9"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
     <script src="js/i18n.js?v=6"></script>
     <script src="js/emoji-render.js?v=1"></script>
     <script src="js/safe-html.js?v=1"></script>
@@ -641,9 +641,10 @@
             <div class="main-content" id="main-content">
                 <div class="feed-header" id="feed-header" style="display:none;">
                     <div class="feed-title" id="feed-title" data-i18n="substack.header.inbox">Inbox</div>
-                    <button class="sys-btn" onclick="state.offset=0; refreshData();"
+                    <button class="sys-btn" onclick="state.offset=0; refreshData(true);"
                         data-i18n="substack.btn.refresh">Refresh</button>
                 </div>
+                <div id="feed-warning" style="display:none; margin:10px 15px 0;"></div>
                 <div id="post-list" class="post-list">
                     <!-- Posts injected here -->
                     <div class="empty-state" style="padding:40px; text-align:center;">
@@ -693,9 +694,11 @@
                 spellcheck="false">
 
 
-            <p style="font-size:0.85rem; color:#666; margin-top:5px; margin-bottom:15px;">
+            <p style="font-size:0.85rem; color:#666; margin-top:5px; margin-bottom:8px;">
                 This cookie allows the app to fetch your paid subscriptions securely.
             </p>
+            <p id="substack-connection-status" data-i18n="substack.status.not_connected"
+                style="font-size:0.85rem; font-weight:bold; margin:0 0 15px;">Not connected.</p>
 
             <div style="margin:15px 0; border-top:1px solid #ccc; padding-top:10px;">
                 <h3>ReKindle Sync</h3>
@@ -705,9 +708,12 @@
                     ReKindle</button>
             </div>
 
-            <div style="display: flex; justify-content: center; margin-top: 20px">
+            <div style="display: flex; justify-content: center; flex-wrap: wrap; margin-top: 20px">
                 <button class="sys-btn" onclick="saveSettings()" data-i18n="substack.btn.save">Save &amp;
                     Connect</button>
+                <button class="sys-btn" id="substack-disconnect-btn" onclick="disconnectSubstack()"
+                    data-i18n="substack.btn.disconnect"
+                    style="margin-left: 10px; display:none;">Disconnect</button>
                 <button class="sys-btn" onclick="closeModal('settings-modal')" data-i18n="reddit.btn.cancel"
                     style="margin-left: 10px">Cancel</button>
             </div>
@@ -735,6 +741,8 @@
             <h2 style="margin-top:0;" data-i18n="settings.pro_required">Pro Required</h2>
             <p>A ReKindle+ subscription is required to use this app.</p>
             <button class="sys-btn" onclick="location.reload()">OK</button>
+            <a class="sys-btn" href="membership.html"
+                style="display:inline-block;margin-top:10px;text-decoration:none;color:black;padding:6px 12px;">See ReKindle+ plans</a>
         </div>
     </div>
 
@@ -828,6 +836,9 @@
             fullInbox: null, // For aggregated feed
             subOffset: 0, // Per-subscription offset for progressive loading
             maxCache: 300, // Maximum posts to keep in memory for aggregated feed
+            partialFeedErrors: [], // Publication names that failed on the last aggregate
+            sidRejected: false, // last Substack call said the saved cookie is invalid
+            subsFetchedAt: 0, // when state.subs was last fetched
             maxDomItems: 100 // Maximum items to render at once
         };
 
@@ -856,7 +867,15 @@
                 db = firebase.firestore();
 
                 auth.onAuthStateChanged(u => {
+                    const previousUid = state.user && state.user.uid;
                     state.user = u;
+                    if (previousUid && (!u || u.uid !== previousUid)) {
+                        state.sid = '';
+                        state.sidRejected = false;
+                        resetSubstackFeed(previousUid);
+                        const postList = document.getElementById('post-list');
+                        if (postList) postList.innerHTML = '';
+                    }
                     if (u) RekindleIpBan.enforceOnAuthStateChanged(u);
                     updateUI();
 
@@ -906,6 +925,10 @@
                 });
 
                 if (res.ok) {
+                    if (state.sidRejected) {
+                        state.sidRejected = false;
+                        updateSubstackConnectionUi();
+                    }
                     return await res.json();
                 }
 
@@ -922,6 +945,8 @@
                     throw new Error("This publication's feed address is not supported.");
                 }
                 if (res.status === 401 || res.status === 403) {
+                    state.sidRejected = true;
+                    updateSubstackConnectionUi();
                     throw new Error(`Access Denied (${res.status}). Check your SID.`);
                 }
                 if (res.status === 429) {
@@ -939,8 +964,114 @@
         }
 
         // --- ACTIONS ---
+        // Drop everything tied to the current Substack session. Used when the
+        // cookie changes, the user disconnects, or a different ReKindle user
+        // signs in, so one account's feed can never render for another.
+        function resetSubstackFeed(uidForCache) {
+            state.subs = [];
+            state.inbox = [];
+            state.fullInbox = null;
+            state.subOffset = 0;
+            state.offset = 0;
+            state.subsFetchedAt = 0;
+            clearSubsCache(uidForCache);
+            const subsList = document.getElementById('sub-list');
+            if (subsList) subsList.innerHTML = '';
+        }
+
+        // Subscriptions change rarely; a short cache avoids one relay round
+        // trip (and a cold start) on every visit. It is scoped to the signed-in
+        // ReKindle user and cleared on disconnect/account switch.
+        function subsCacheKey() {
+            const uid = state.user && state.user.uid;
+            return 'substack_subs:' + (uid || 'anon');
+        }
+        function loadSubsCache() {
+            try {
+                const raw = localStorage.getItem(subsCacheKey());
+                if (!raw) return null;
+                const cached = JSON.parse(raw);
+                if (!cached || !Array.isArray(cached.subs) || !cached.at) return null;
+                if (Date.now() - cached.at > 6 * 60 * 60 * 1000) return null;
+                return cached;
+            } catch (e) { return null; }
+        }
+        function saveSubsCache() {
+            if (!state.subs.length) return;
+            try {
+                localStorage.setItem(subsCacheKey(), JSON.stringify({ at: Date.now(), subs: state.subs }));
+            } catch (e) { }
+        }
+        function clearSubsCache(uidForCache) {
+            try {
+                const uid = uidForCache || (state.user && state.user.uid);
+                localStorage.removeItem('substack_subs:' + (uid || 'anon'));
+            } catch (e) { }
+        }
+
+        function updateSubstackConnectionUi() {
+            const status = document.getElementById('substack-connection-status');
+            const btn = document.getElementById('substack-disconnect-btn');
+            const connected = !!state.sid;
+            if (status) {
+                if (connected && state.sidRejected) {
+                    status.innerText = window.t
+                        ? window.t('substack.status.rejected', 'Saved cookie was rejected. Reconnect below.')
+                        : 'Saved cookie was rejected. Reconnect below.';
+                    status.style.color = '#a00000';
+                } else {
+                    status.innerText = connected
+                        ? (window.t ? window.t('substack.status.connected', 'Connected. This cookie is saved to your ReKindle account.') : 'Connected. This cookie is saved to your ReKindle account.')
+                        : (window.t ? window.t('substack.status.not_connected', 'Not connected.') : 'Not connected.');
+                    status.style.color = connected ? '#000' : '#666';
+                }
+            }
+            if (btn) {
+                btn.style.display = connected ? 'inline-block' : 'none';
+                btn.disabled = false;
+                btn.innerText = window.t ? window.t('substack.btn.disconnect', 'Disconnect') : 'Disconnect';
+            }
+        }
+
+        // Two-tap confirmation: a native confirm()/prompt() is unavailable on
+        // Kindle, and a full modal is overkill for one irreversible action.
+        let disconnectConfirmUntil = 0;
+        async function disconnectSubstack() {
+            if (!state.user || !db) { showAlertModal("Please log in first."); return; }
+            const btn = document.getElementById('substack-disconnect-btn');
+            if (Date.now() > disconnectConfirmUntil) {
+                disconnectConfirmUntil = Date.now() + 5000;
+                if (btn) btn.innerText = window.t ? window.t('substack.btn.confirm_disconnect', 'Tap again to disconnect') : 'Tap again to disconnect';
+                setTimeout(function () {
+                    if (Date.now() >= disconnectConfirmUntil && btn) {
+                        btn.innerText = window.t ? window.t('substack.btn.disconnect', 'Disconnect') : 'Disconnect';
+                    }
+                }, 5100);
+                return;
+            }
+            disconnectConfirmUntil = 0;
+            if (btn) { btn.disabled = true; btn.innerText = window.t ? window.t('substack.btn.disconnecting', 'Disconnecting...') : 'Disconnecting...'; }
+            try {
+                await db.collection('users').doc(state.user.uid)
+                    .collection('pro_data').doc('substack').delete();
+                state.sid = '';
+                state.sidRejected = false;
+                resetSubstackFeed();
+                document.getElementById('post-list').innerHTML =
+                    '<div class="empty-state" style="padding:32px 20px;">Not connected. Open Settings and paste your Substack cookie to read your feed.</div>';
+                updateSubstackConnectionUi();
+                closeModal('settings-modal');
+                showAlertModal("Substack disconnected. The saved cookie was removed from your ReKindle account.");
+            } catch (e) {
+                console.error("Failed to disconnect Substack:", e);
+                updateSubstackConnectionUi();
+                showAlertModal("Could not remove the saved cookie. Please try again.");
+            }
+        }
+
         function openSettings() {
             document.getElementById('sid-input').value = state.sid;
+            updateSubstackConnectionUi();
             document.getElementById('settings-modal').style.display = 'flex';
             showBrowserInstructions('chrome'); // Default
         }
@@ -1031,6 +1162,31 @@
 
             // Must save to Pro-only subcollection first - will fail for non-Pro users
             if (state.user && db) {
+                const previousSid = state.sid;
+                const statusEl = document.getElementById('substack-connection-status');
+                if (statusEl) {
+                    statusEl.innerText = window.t ? window.t('substack.status.checking', 'Checking cookie...') : 'Checking cookie...';
+                    statusEl.style.color = '#666';
+                }
+                // Verify the cookie before storing it. A rejected cookie is
+                // better caught here than after a 10-30s cold-start feed load.
+                state.sid = sid;
+                state.sidRejected = false;
+                try {
+                    await apiCall('/user/profile/self');
+                } catch (verifyError) {
+                    const rejected = /Access Denied \(401\)|Access Denied \(403\)|Check your SID/i.test(verifyError.message || '');
+                    if (rejected) {
+                        state.sid = previousSid;
+                        state.sidRejected = false;
+                        updateSubstackConnectionUi();
+                        showAlertModal('Substack rejected that cookie. Copy connect.sid (or substack.sid) again and retry.');
+                        return;
+                    }
+                    // Network/relay failure: save anyway, the feed will retry.
+                    console.warn('Could not verify Substack cookie; saving anyway', verifyError);
+                    state.sid = previousSid;
+                }
                 try {
                     // Encrypt SID before saving
                     const encryptedSid = await encryptSID(sid, state.user.uid);
@@ -1043,8 +1199,13 @@
                         .collection('pro_data').doc('substack')
                         .set({ sid: encryptedSid, encrypted: true }, { merge: true });
 
-                    // Only set SID and proceed if save succeeded
+                    // Only set SID and proceed if save succeeded. A different
+                    // cookie means a different Substack account, so drop the
+                    // previous account's subscriptions and feed cache.
+                    if (state.sid && state.sid !== sid) resetSubstackFeed();
                     state.sid = sid;
+                    state.sidRejected = false;
+                    updateSubstackConnectionUi();
                     closeModal('settings-modal');
                     refreshData();
                 } catch (e) {
@@ -1077,7 +1238,9 @@
                     }
 
                     if (cloudSid && cloudSid !== state.sid) {
+                        if (state.sid) resetSubstackFeed();
                         state.sid = cloudSid;
+                        state.sidRejected = false;
                         // Initial load if we just got the SID
                         if (state.activeFeed === 'following' && state.inbox.length === 0) {
                             switchView('following');
@@ -1089,23 +1252,36 @@
                         switchView('following');
                     }
                 }
+                updateSubstackConnectionUi();
             } catch (e) {
                 // Expected for non-Pro users - suppress console clutter
                 // console.log("Could not sync SID (Pro required):", e.code);
             }
         }
 
-        async function refreshData() {
+        async function refreshData(forceSubs) {
             if (!state.sid) return;
+            if (forceSubs) state.subsFetchedAt = 0;
             const list = document.getElementById('post-list');
             if (state.offset === 0) {
+                state.partialFeedErrors = [];
                 list.innerHTML = '<div style="padding:40px; text-align:center;">Loading...</div>';
             }
 
 
-            // 1. Fetch Subscriptions (ensure loaded)
-            let subsError = null;
+            // 1. Fetch Subscriptions (ensure loaded). Use the local cache first
+            // so the feed can start before the subscriptions round trip.
             if (state.subs.length === 0) {
+                const cached = loadSubsCache();
+                if (cached) {
+                    state.subs = cached.subs;
+                    state.subsFetchedAt = cached.at;
+                    renderSubs();
+                }
+            }
+            let subsError = null;
+            const subsStale = state.subsFetchedAt && (Date.now() - state.subsFetchedAt > 6 * 60 * 60 * 1000);
+            if (state.subs.length === 0 || subsStale || forceSubs) {
                 try {
                     // `/subscriptions` is the legacy endpoint: it now requires
                     // `tvOnly` and returns an empty list for real accounts.
@@ -1123,6 +1299,8 @@
                         }
                         return sub;
                     }).filter(s => s.publication);
+                    state.subsFetchedAt = Date.now();
+                    saveSubsCache();
                     renderSubs(); // Sidebar update
                 } catch (e) { subsError = e; console.warn("Subs failed", e); }
             }
@@ -1131,7 +1309,7 @@
 
             // 3. Refresh Content based on activeFeed
             if (state.activeFeed === 'subscriptions') {
-                if (subsError) { renderLoadError(subsError.message); return; }
+                if (subsError && state.subs.length === 0) { renderLoadError(subsError.message); return; }
                 renderLibrary();
                 return;
             }
@@ -1139,7 +1317,7 @@
             // Without subscriptions there is no feed to aggregate. Show the
             // real failure instead of a misleading "No posts found." — Substack
             // rate-limits the proxy worker, so this is the common failure mode.
-            if (subsError) { renderLoadError(subsError.message); return; }
+            if (subsError && state.subs.length === 0) { renderLoadError(subsError.message); return; }
 
             // Post Logic:
             try {
@@ -1214,6 +1392,7 @@
                     const batchSize = 2;
                     const subLimit = AGG_PAGE_SIZE;
                     let lastError = null;
+                    const failedPublications = [];
 
 
                     for (let i = 0; i < state.subs.length; i += batchSize) {
@@ -1241,15 +1420,26 @@
                         });
                         const results = await Promise.all(wrappedPromises);
 
-                        results.forEach(res => {
-                            if (res.status === 'fulfilled') allPosts.push.apply(allPosts, res.value);
-                            else lastError = res.reason;
+                        results.forEach((res, idx) => {
+                            if (res.status === 'fulfilled') {
+                                allPosts.push.apply(allPosts, res.value);
+                            } else {
+                                lastError = res.reason;
+                                const failedSub = batch[idx];
+                                if (failedSub && failedSub.publication) {
+                                    failedPublications.push(failedSub.publication.name || failedSub.publication.subdomain || 'Publication');
+                                }
+                            }
                         });
 
                         // Small cooling period between batches
                         await new Promise(r => setTimeout(r, 100));
                     }
 
+                    // Remember partial failures so the feed can say "3
+                    // publications couldn't load" instead of silently showing
+                    // fewer posts (audit 2026-11-24).
+                    state.partialFeedErrors = failedPublications;
                     // If every publication failed, surface the reason instead of
                     // rendering an empty feed (the 429 block is silent otherwise).
                     if (allPosts.length === 0 && lastError) throw lastError;
@@ -1319,6 +1509,7 @@
                 '<div style="font-weight:bold; margin-bottom:8px;">Could not load Substack</div>' +
                 '<div style="font-size:0.85rem; color:#444; max-width:320px; margin:0 auto 16px;">' + safe + '</div>' +
                 '<button class="sys-btn" style="min-height:48px; padding:0 20px;" onclick="refreshData()">Retry</button>' +
+                '<button class="sys-btn" style="min-height:48px; padding:0 20px; margin-left:10px;" onclick="openSettings()">Connection settings</button>' +
                 '</div>';
         }
 
@@ -1365,6 +1556,7 @@
                     loginBtn.onclick = doRekindleLogin;
                 }
             }
+            updateSubstackConnectionUi();
         }
 
         function renderSubs() {
@@ -1386,7 +1578,36 @@
             });
         }
 
+        function renderFeedWarning() {
+            const wrap = document.getElementById('feed-warning');
+            if (!wrap) return;
+            const names = state.partialFeedErrors || [];
+            if (!names.length) {
+                wrap.style.display = 'none';
+                wrap.innerHTML = '';
+                return;
+            }
+            wrap.style.display = 'block';
+            wrap.innerHTML = '';
+            const box = document.createElement('div');
+            box.style.cssText = 'border:2px solid black; background:#fffbe5; padding:8px; font-size:0.82rem;';
+            const text = document.createElement('div');
+            text.style.marginBottom = '6px';
+            text.textContent = 'Could not load ' + names.length + ' publication' + (names.length === 1 ? '' : 's') +
+                ': ' + names.join(', ') + '.';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'sys-btn';
+            btn.style.cssText = 'font-size:0.78rem; padding:4px 10px;';
+            btn.textContent = 'Retry';
+            btn.onclick = function () { state.offset = 0; refreshData(); };
+            box.appendChild(text);
+            box.appendChild(btn);
+            wrap.appendChild(box);
+        }
+
         function renderInbox(posts = state.inbox, append = false) {
+            renderFeedWarning();
             const list = document.getElementById('post-list');
             if (!append) list.innerHTML = '';
 
@@ -1581,7 +1802,10 @@
         }
 
         function openOriginal() {
-            if (state.currentArticle) window.open(state.currentArticle.canonical_url, '_blank');
+            if (!state.currentArticle) return;
+            const url = String(state.currentArticle.canonical_url || '');
+            if (!/^https?:\/\//i.test(url)) return;
+            window.open(url, '_blank');
         }
 
         // --- REKINDLE AUTH ---
@@ -1640,6 +1864,7 @@
             state.activeFeed = view;
             state.offset = 0;
             state.hasMore = true;
+            state.partialFeedErrors = [];
 
             // UI Updates
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -1675,6 +1900,7 @@
 
             state.offset = 0;
             state.hasMore = true;
+            state.partialFeedErrors = [];
 
             const header = document.getElementById('feed-header');
             header.style.display = 'flex';

@@ -14,7 +14,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -651,6 +651,8 @@
 
                 let tempPhotos = [];
                 let orderedNames = [];
+                let urlFailures = 0;
+                let orderFetchFailed = false;
 
                 for (let i = 0; i < res.items.length; i++) {
                     const itemRef = res.items[i];
@@ -659,7 +661,10 @@
                             const url = await itemRef.getDownloadURL();
                             const orderRes = await fetch(url);
                             orderedNames = await orderRes.json();
-                        } catch (e) { console.warn("Order list fetch failed"); }
+                        } catch (e) {
+                            console.warn("Order list fetch failed");
+                            orderFetchFailed = true;
+                        }
                         continue;
                     }
                     try {
@@ -667,6 +672,7 @@
                         tempPhotos.push({ name: itemRef.name, url: url, size: photoMetaList[i].size });
                     } catch (e) {
                         console.error("Failed to get URL for", itemRef.name);
+                        urlFailures++;
                     }
                 }
 
@@ -692,12 +698,31 @@
 
                 if (photoData.length > 0) {
                     if (startBtn) startBtn.disabled = false;
-                } else {
+                }
+
+                if (urlFailures > 0) {
+                    // A flaky Kindle connection must not look like an empty
+                    // album, and must not overwrite/delete the saved order with
+                    // only the photos that happened to load (audit 2026-11-24).
+                    statusEl.innerHTML = '';
+                    statusEl.appendChild(document.createTextNode(
+                        urlFailures + ' photo' + (urlFailures === 1 ? '' : 's') + ' could not load. '
+                    ));
+                    const retryBtn = document.createElement('button');
+                    retryBtn.type = 'button';
+                    retryBtn.className = 'sys-btn';
+                    retryBtn.style.cssText = 'font-size:0.78rem; padding:4px 10px;';
+                    retryBtn.textContent = 'Retry';
+                    retryBtn.onclick = function () { loadPhotos(); };
+                    statusEl.appendChild(retryBtn);
+                } else if (photoData.length === 0) {
                     statusEl.innerText = window.t('photoframe.msg.empty', "No photos found. Upload some to begin.");
+                } else {
+                    statusEl.innerText = "";
                 }
 
                 renderPreviews();
-                saveOrderFile();
+                if (urlFailures === 0 && !orderFetchFailed) saveOrderFile();
 
             } catch (error) {
                 console.error("Error loading photos:", error);
@@ -832,7 +857,18 @@
                         }
                     } catch (e) { }
                 }
-            } catch (e) { console.log(e); }
+            } catch (e) {
+                // A network/5xx failure must not pretend the photo is gone: it
+                // would reappear on reload while its order entry was dropped.
+                const missing = e && (e.code === 'storage/object-not-found' || /not found/i.test(e.message || ''));
+                if (!missing) {
+                    console.error('Photo delete failed', e);
+                    const deleteStatus = document.getElementById('upload-status');
+                    deleteStatus.innerText = 'Could not delete that photo. Check the connection and try again.';
+                    setTimeout(function () { deleteStatus.innerText = ''; }, 4000);
+                    return;
+                }
+            }
 
             photoData.splice(index, 1);
             saveOrderFile();
@@ -914,6 +950,8 @@
             if (!files || files.length === 0 || !currentUser) return;
 
             const statusEl = document.getElementById('upload-status');
+            let uploaded = 0;
+            let failed = 0;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -930,17 +968,25 @@
 
                     photoData.push({ name: uniqueName, url: regUrl, size: regBlob.size });
                     totalUsage += regBlob.size;
+                    uploaded++;
                 } catch (err) {
+                    failed++;
                     console.error("Upload failed for file:", file.name, err);
                 }
             }
 
-            statusEl.innerText = "Upload complete!";
-            setTimeout(() => { statusEl.innerText = ""; }, 3000);
+            if (failed && !uploaded) {
+                statusEl.innerText = window.t ? window.t('photoframe.status.upload_failed', 'Upload failed. Check the connection and try again.') : 'Upload failed. Check the connection and try again.';
+            } else if (failed) {
+                statusEl.innerText = uploaded + ' uploaded, ' + failed + ' failed.';
+            } else {
+                statusEl.innerText = "Upload complete!";
+            }
+            setTimeout(() => { statusEl.innerText = ""; }, 4000);
 
             updateStorageUI();
             renderPreviews();
-            saveOrderFile();
+            if (uploaded) saveOrderFile();
 
             const countEl = document.getElementById('photo-count');
             if (countEl) countEl.innerText = photoData.length;

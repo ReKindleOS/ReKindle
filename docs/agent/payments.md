@@ -520,3 +520,84 @@ through `getLatestGiftPurchase` → the recipient redeems it with
   should fall back to it for supporters-only users, do that server-side first.
 - The legacy `isPro` boolean is not maintained when an expiry lapses; nothing
   authorizes on it, but it is shown in moderation UI and the privacy page.
+
+## Paid-app account isolation & resilience (2026-11-24)
+
+* **Pro gate offline fallback** (`pro-gate.js`): if the Firestore verification
+  throws (Kindle offline/flaky), a still-valid `rekindle_pro_expiry` cache is
+  accepted instead of showing “Error verifying subscription.” The cache also
+  records `rekindle_pro_expiry_uid`, and the fallback only uses it when that
+  uid matches the signed-in user, so a shared Kindle cannot inherit the
+  previous account's paid access. The cache stores the real expiry, so it
+  cannot extend access beyond it. The paywall CTA also says **Renew ReKindle+**
+  when the status is “Subscription expired”.
+
+A read-only audit of the ReKindle+ apps found several cross-account leaks and
+failure paths that made paid apps look broken. All fixes are client-side; no
+rules or functions changed.
+
+* **Bluesky** (`bluesky.html`): the Reply button no longer serializes the whole
+  remote post into an inline JS handler (stored-XSS route), and avatars accept
+  only http(s) URLs. Sessions/credentials are scoped
+  `bsky_session:<uid>` (same for `rekindle_bsky_user/pass`) and the legacy
+  device-global values are migrated only when `rekindle_uid` matches the
+  signed-in uid. Explicit Logout clears the session **and** the encrypted app
+  password; a network/refresh failure only shows the login view so the saved
+  password survives. `request()` now refreshes the access JWT with the stored
+  `refreshJwt` once (serialized through one promise) instead of leaving the
+  feed dead after ~2 hours.
+* **Dropbox** (`dropbox.html`): removed the cached-`rekindle_pro_expiry` early
+  return that skipped `users/{uid}` verification and initialized before auth.
+  `initDropboxApp(user)` now receives the resolved user, so the saved
+  `pro_data/dropbox` token loads and a fresh OAuth token is saved. Switching
+  ReKindle users on the same page resets the Dropbox view.
+* **Pinterest** (`pinterest.html`): tokens are scoped
+  `pinterest_access_token:<uid>` (refresh/expiry/stamp too), with legacy
+  migration only for the matching `rekindle_uid`. `doRefresh()` no longer calls
+  the destructive `logout()` on 5xx/429/network errors. Only a real
+  `invalid_grant` clears the local and cloud token; transient failures keep the
+  connection for retry.
+* **Mail** (`mail.html`): the account cache is scoped
+  `rekindle_mail_accounts:<uid>` / `rekindle_mail_active:<uid>`, and compose
+  drafts are `rekindle_mail_compose_draft:<uid>`; the old device-global values
+  are migrated only when `rekindle_uid` matches. A mailbox that fails in the
+  combined inbox now gets a warning strip with an **Open Settings** action
+  instead of silently contributing zero emails.
+* **Mastodon** (`mastodon.html`): conversations and profile fields are built
+  with `textContent` / `rekindleSetSafeHtml`; remote `display_name`, `acct` and
+  `note` are no longer interpolated into `innerHTML` (stored XSS from a DM).
+* **Photo Frame** (`photoframe.html`): failed download URLs show
+  "N photos could not load" with Retry and do **not** call `saveOrderFile()`;
+  the previous `_ORDER.json` is never deleted/rewritten from a partial read.
+  A failed delete keeps the photo (and its order entry) on screen instead of
+  pretending it was removed, and uploads report `uploaded / failed` rather than
+  always saying "Upload complete!".
+* **Docs** (`docs.html`): drafts are keyed `rekindle_docs_draft:<uid>` and a
+  restored draft path is adopted only when it starts with
+  `users/{uid}/`; a cross-account draft is treated as a new local document.
+  A `?path=` document from another account is refused before download and is
+  never written back by Save.
+* **AI Assistant** (`chat.html`): the BYO API key is stored as
+  `chat_api_key:<uid>` and the provider/model/custom-endpoint preferences as
+  `chat_*:<uid>`; legacy keys migrate only when `rekindle_uid` matches, so one
+  account's endpoint URL or model choice never appears for another.
+* **Flipbook** (`flipbook.html`): `expires` is declared outside the
+  `if (doc.exists)` block, so a missing user doc shows the paywall instead of a
+  `ReferenceError` ("Error verifying. Try again.").
+* **Quick Notes** (`quicknotes.html`): the local note fallback and its cache
+  are keyed `rekindle_quicknotes_local:<uid>` / `rekindle_quicknotes_cache:<uid>`
+  so the scratchpad and its instant-paint cache are never shared between
+  ReKindle accounts.
+* **Quick ToDo** (`quicktodo.html`): `createTask()` returns success/failure and
+  the OCR path restores the original text with an inline error when the Google
+  or Firestore write fails, instead of showing a task the 60 s refresh erases.
+  Offline/local tasks are keyed `rekindle_tasks_local:<uid>` with a guarded
+  legacy migration.
+* **Files** (`files.html`): added a **This device / Cloud** tab bar
+  (48 px targets). Free users are locked to the 5 MB device tab; ReKindle+
+  members can switch between the 5 MB device store and the 100 MB cloud store.
+  Uploads go to the selected store (device uploads work for both plans), usage
+  is shown per store, and device files have **Move to cloud** plus a
+  **Move all to cloud** action with quota/name-collision handling. The device
+  IndexedDB is named `rekindle_files_device-<uid>`; the old unscoped database
+  is copied only for the matching `rekindle_uid` and then deleted.

@@ -601,11 +601,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Folders include Inbox, Sent, Drafts, Starred, All Mail/Archive, Spam, Trash and Important, plus any custom folders your provider exposes.</li>
                 <li>Tap a message to read it. Links open in a new tab where possible; images and remote content may be limited for privacy.</li>
                 <li>Use the toolbar to reply, forward, flag, mark read/unread, archive or move to trash. <b>Refresh</b> re-fetches the current folder.</li>
-                <li><b>Compose</b> opens a blank message. Enter recipients, subject and body, then Send.</li>
+                <li><b>Compose</b> opens a blank message. Enter recipients, subject and body, attach up to 3 files (4 MB total), then Send. Unsent text is kept as a draft you can restore.</li>
             </ul>
             <h2>Limitations</h2>
             <ul>
-                <li>Attachments are not supported in the current client; use your provider's own app for heavy attachments.</li>
+                <li>Compose attachments are capped at 3 files / 4 MB total; use your provider's own app for heavy attachments.</li>
                 <li>Mail needs ReKindle+ and a working network. It will not work offline.</li>
                 <li>Very large mailboxes load one folder at a time, which keeps e-ink rendering manageable.</li>
             </ul>
@@ -1110,7 +1110,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'files',
         cat: 'productivity',
         title: 'Files',
-        summary: 'ReKindle+ cloud storage for documents, images, PDFs and ebooks, shared with Docs and Photo Frame.',
+        summary: 'Device and ReKindle+ cloud storage for documents, images, PDFs and ebooks, shared with Docs and Photo Frame.',
         tags: 'files storage upload image pdf ebook docx word cloud 100mb pro download delete docs',
         badges: ['REKINDLE+'],
         plus: true,
@@ -1118,18 +1118,18 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Files',
         related: ['docs', 'storage'],
         body: `
-            <p>Files stores documents, images, PDFs and ebooks in your ReKindle account. Word documents can be opened in the <a href="#docs">Docs</a> editor; images and PDFs get an inline preview.</p>
+            <p>Files has two stores: <b>This device</b> (5 MB, free) and <b>Cloud</b> (100 MB with ReKindle+). Word documents can be opened in the <a href="#docs">Docs</a> editor; images and PDFs get an inline preview.</p>
             <h2>Uploading</h2>
             <ol>
-                <li>Tap <b>Upload</b> and choose one or more files.</li>
-                <li>Wait for the upload to finish. The files appear in the grid or list.</li>
+                <li>Choose the <b>This device</b> or <b>Cloud</b> tab.</li>
+                <li>Tap <b>Upload</b> and choose one or more files. They go to the selected store.</li>
                 <li>Tap a Word document to open it in <a href="#docs">Docs</a>. When Docs asks you to open a file, its picker uses this same list.</li>
             </ol>
-            <p>Uploading from a PC is often easier because e-reader file pickers can be awkward; sign in to the same account on the computer and upload there.</p>
+            <p>ReKindle+ members can move device files to the cloud with the (...) menu's <b>Move to cloud</b>, or use <b>Move all to cloud</b>. Uploading from a PC is often easier because e-reader file pickers can be awkward.</p>
             <h2>Limits</h2>
             <ul>
                 <li>Images, PDFs, text, EPUB, ZIP and Word documents are accepted. Legacy <code>.doc</code> files must be saved as <code>.docx</code> before Docs can open them.</li>
-                <li>The shared quota is <b>100 MB per account</b>, and Docs saves and Mindmap exports count against it. The page shows how much is used; a save fails when the quota is full.</li>
+                <li>Device storage is <b>5 MB</b>; cloud storage is <b>100 MB per account</b>, and Docs saves and Mindmap exports count against it. Each tab shows its own usage.</li>
                 <li>Deleting a file is permanent. Download anything you want to keep first.</li>
             </ul>
             <h2>Viewing and deleting</h2>
@@ -1814,7 +1814,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Copy the value of <code>connect.sid</code> (newer accounts) or <code>substack.sid</code> (older accounts). You can also paste the whole <code>Cookie</code> header from a Network request.</li>
                 <li>Paste it into ReKindle and tap <b>Save &amp; Connect</b>.</li>
             </ol>
-            <div class="note"><b>Treat the cookie like a password.</b> It grants access to your Substack account. While ReKindle+ is active and you are signed in, the cookie syncs to your other devices through your ReKindle account automatically; only do that on accounts you trust. There is no disconnect control yet; deleting your ReKindle account removes the saved cookie.</div>
+            <div class="note"><b>Treat the cookie like a password.</b> It grants access to your Substack account. While ReKindle+ is active and you are signed in, the cookie syncs to your other devices through your ReKindle account automatically; only do that on accounts you trust. <b>Disconnect</b> in the app's Settings removes the saved cookie from your ReKindle account; deleting your account removes it too.</div>
             <h2>Reading</h2>
             <ul>
                 <li><b>Following</b> - recent posts from the publications you follow.</li>

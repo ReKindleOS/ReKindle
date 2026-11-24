@@ -14,7 +14,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js" integrity="sha384-+OubPIxtsLCp2uUuSsvWDuBB9oSIEDIYt2qQfYki+vDmSxc6GQsBbBPH6Z6x5wrq" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js" integrity="sha384-6A4YFdmYPT5gmyRp8KegTqUol1Ff3navFf6eyVLErDtdSrikTwa1MQpVhFtubVlq" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js" integrity="sha384-63rjsUQCvpwWyMY+++LxOlJ5jD2kdESy688srqnIXC8g/pmRuDZA69o9jIxjWA0c" crossorigin="anonymous"></script>
-    <script src="pro-gate.js?v=9" data-freemium="true"></script>
+    <script src="pro-gate.js?v=11" data-freemium="true"></script>
 
     <script src="js/i18n.js?v=6"></script>
     <script src="theme.js?v=35"></script>
@@ -572,10 +572,24 @@
             firebase.initializeApp(firebaseConfig);
         }
 
+        function docsOwnsPath(path) {
+            const uid = currentUser && currentUser.uid;
+            const value = String(path || '');
+            return !!(uid && value.indexOf('users/' + uid + '/') === 0 && value.indexOf('..') === -1);
+        }
+
         // Auth Listener
         firebase.auth().onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
+                if (currentPath && !docsOwnsPath(currentPath)) {
+                    // A ?path= link from another account must never be opened or
+                    // written back. Treat it as a new local document.
+                    showAlert('That document belongs to a different account. It was not opened.');
+                    currentPath = null;
+                    hideLoading();
+                    return;
+                }
                 // If we have a pending path and haven't loaded yet, load it now
                 if (currentPath && !currentFileArrayBuffer) {
                     loadFromPath(currentPath);
@@ -632,6 +646,8 @@
                 window.rekindleProGate.check(function (pro) {
                     docsPro = !!pro;
                     applyDocsPlan();
+                    // Auth has resolved by now; the draft key is uid-scoped.
+                    showDraftRestoreButton();
                 });
             }
             if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();
@@ -702,6 +718,14 @@
         function ensureFileSaver() { return loadDocScript('filesaver'); }
 
         const DOC_DRAFT_KEY = 'rekindle_docs_draft';
+
+        // Drafts are per ReKindle account. The old device-global key let the
+        // next user restore the previous user's text and, worse, its
+        // users/{A}/files/... path (audit 2026-11-24).
+        function docsDraftKey() {
+            const uid = currentUser && currentUser.uid;
+            return DOC_DRAFT_KEY + ':' + (uid || 'anon');
+        }
         let draftTimer = null;
 
         function scheduleDraftSave() {
@@ -718,20 +742,26 @@
                     updated: Date.now()
                 };
                 if (draft.html && draft.html.length > 900000) return;
-                localStorage.setItem(DOC_DRAFT_KEY, JSON.stringify(draft));
+                localStorage.setItem(docsDraftKey(), JSON.stringify(draft));
             } catch (e) { }
         }
 
         function clearDraft() {
-            try { localStorage.removeItem(DOC_DRAFT_KEY); } catch (e) { }
+            try {
+                localStorage.removeItem(docsDraftKey());
+                localStorage.removeItem(DOC_DRAFT_KEY); // old unscoped draft
+            } catch (e) { }
         }
 
         function restoreDraft() {
             try {
-                const draft = JSON.parse(localStorage.getItem(DOC_DRAFT_KEY) || 'null');
+                const draft = JSON.parse(localStorage.getItem(docsDraftKey()) || 'null');
                 if (!draft || !draft.html) return;
                 document.getElementById('startup-modal').classList.remove('active');
-                currentPath = draft.path || null;
+                const uid = currentUser && currentUser.uid;
+                const path = draft.path || null;
+                // Only adopt a path that belongs to this account.
+                currentPath = (path && uid && path.indexOf('users/' + uid + '/') === 0) ? path : null;
                 initEditor(draft.html);
             } catch (e) {
                 showAlert('Could not restore the draft.');
@@ -740,7 +770,7 @@
 
         function showDraftRestoreButton() {
             try {
-                const draft = JSON.parse(localStorage.getItem(DOC_DRAFT_KEY) || 'null');
+                const draft = JSON.parse(localStorage.getItem(docsDraftKey()) || 'null');
                 const btn = document.getElementById('restore-draft-btn');
                 if (btn && draft && draft.html) btn.style.display = 'block';
             } catch (e) { }
@@ -822,6 +852,12 @@
 
         // --- FILE LOADING ---
         async function loadFromPath(path) {
+            if (!docsOwnsPath(path)) {
+                showAlert('That document belongs to a different account. It was not opened.');
+                hideLoading();
+                currentPath = null;
+                return;
+            }
             if (!docsRequirePro('Opening documents from Files is part of ReKindle+.')) return;
             if (/\.doc$/i.test(path)) {
                 showAlert('Legacy .doc files are not supported. Open it in Word and save as .docx first.');
@@ -1309,6 +1345,9 @@
             return generateDocxBlob().then(async blob => {
                 let filename = "document.docx";
 
+                if (currentPath && currentUser && !docsOwnsPath(currentPath)) {
+                    currentPath = null;
+                }
                 if (currentPath && currentUser) {
                     return saveToFirebase(blob, currentPath);
                 } else if (currentUser) {

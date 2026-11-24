@@ -309,7 +309,7 @@
     <link rel="stylesheet" href="css/custom-select.css?v=1">
     <script src="time.js?v=9"></script>
     <script src="theme.js?v=35"></script>
-    <script src="pro-gate.js?v=9" data-freemium="true"></script>
+    <script src="pro-gate.js?v=11" data-freemium="true"></script>
     <script src="js/i18n.js?v=6"></script>
     <script src="js/safe-html.js?v=1"></script>
     <script src="js/custom-select.js?v=2"></script>
@@ -508,6 +508,53 @@
         }
         function setSecureItem(key, value) { localStorage.setItem(key, obfuscate(value)); }
         function getSecureItem(key) { return deobfuscate(localStorage.getItem(key)); }
+
+        // API keys are per ReKindle account. A device-global key let the next
+        // user on a shared Kindle spend the previous user's credits (audit
+        // 2026-11-24).
+        function chatStorageUid() {
+            if (currentUserId) return currentUserId;
+            try {
+                const user = firebase.auth && firebase.auth().currentUser;
+                return user ? user.uid : 'anon';
+            } catch (e) { return 'anon'; }
+        }
+        function chatKey(name) { return name + ':' + chatStorageUid(); }
+        function migrateLegacyChatPrefs() {
+            try {
+                const uid = chatStorageUid();
+                if (uid === 'anon') return;
+                if (localStorage.getItem('rekindle_uid') !== uid) return;
+                ['chat_use_byo_key', 'chat_ai_preset', 'chat_ai_model', 'chat_ai_provider',
+                    'chat_custom_endpoint', 'chat_custom_models', 'chat_api_key'].forEach(function (name) {
+                    const legacy = localStorage.getItem(name);
+                    const scoped = chatKey(name);
+                    if (legacy && !localStorage.getItem(scoped)) localStorage.setItem(scoped, legacy);
+                    if (legacy) localStorage.removeItem(name);
+                });
+            } catch (e) { }
+        }
+        function loadChatPrefs() {
+            useByoKey = localStorage.getItem(chatKey('chat_use_byo_key')) === 'true';
+            aiPreset = localStorage.getItem(chatKey('chat_ai_preset')) || 'openai';
+            aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || localStorage.getItem(chatKey('chat_ai_provider')) || 'openai';
+            aiModel = localStorage.getItem(chatKey('chat_ai_model')) || '';
+            customEndpoint = localStorage.getItem(chatKey('chat_custom_endpoint')) || '';
+            try {
+                customModels = JSON.parse(localStorage.getItem(chatKey('chat_custom_models')) || '{}');
+            } catch (e) { customModels = {}; }
+        }
+        function migrateLegacyApiKey() {
+            try {
+                const uid = chatStorageUid();
+                const owner = localStorage.getItem('rekindle_uid');
+                if (owner !== uid) return;
+                const legacy = localStorage.getItem('chat_api_key');
+                const scoped = chatKey('chat_api_key');
+                if (legacy && !localStorage.getItem(scoped)) localStorage.setItem(scoped, legacy);
+                localStorage.removeItem('chat_api_key');
+            } catch (e) { }
+        }
         // --- CONFIGURATION ---
         // TODO: Replace with your Cloudflare Worker URL
         const WORKER_URL = "https://rekindle-oracle.timjarnott.workers.dev";
@@ -615,15 +662,9 @@
         }
 
         function openSettings() {
-            useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
-            aiPreset = localStorage.getItem('chat_ai_preset') || 'openai';
-            aiModel = localStorage.getItem('chat_ai_model') || '';
-            apiKey = getSecureItem('chat_api_key') || '';
-            customEndpoint = localStorage.getItem('chat_custom_endpoint') || '';
-
-            try {
-                customModels = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
-            } catch (e) { customModels = {}; }
+            migrateLegacyChatPrefs();
+            loadChatPrefs();
+            apiKey = getSecureItem(chatKey('chat_api_key')) || '';
 
             document.getElementById('byo-toggle').checked = useByoKey;
             document.getElementById('ai-preset-select').value = aiPreset;
@@ -673,7 +714,7 @@
         function quickUpdateModel() {
             const val = document.getElementById('quick-model-select').value;
             aiModel = val;
-            localStorage.setItem('chat_ai_model', aiModel);
+            localStorage.setItem(chatKey('chat_ai_model'), aiModel);
             if (currentUserId) {
                 const db = firebase.firestore();
                 db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').set({
@@ -731,7 +772,7 @@
 
                 if (data.models && data.models.length > 0) {
                     customModels[presetId] = data.models;
-                    localStorage.setItem('chat_custom_models', JSON.stringify(customModels));
+                    localStorage.setItem(chatKey('chat_custom_models'), JSON.stringify(customModels));
                     const modelSelect = document.getElementById('ai-model-select');
                     if (modelSelect && modelSelect.offsetParent !== null) {
                         updateModelDropdown(presetId, modelSelect.value);
@@ -768,12 +809,12 @@
             apiKey = key;
             customEndpoint = endpoint;
 
-            localStorage.setItem('chat_use_byo_key', useByoKey);
-            localStorage.setItem('chat_ai_preset', aiPreset);
-            localStorage.setItem('chat_ai_provider', aiProvider);
-            localStorage.setItem('chat_ai_model', aiModel);
-            setSecureItem('chat_api_key', apiKey);
-            localStorage.setItem('chat_custom_endpoint', customEndpoint);
+            localStorage.setItem(chatKey('chat_use_byo_key'), useByoKey);
+            localStorage.setItem(chatKey('chat_ai_preset'), aiPreset);
+            localStorage.setItem(chatKey('chat_ai_provider'), aiProvider);
+            localStorage.setItem(chatKey('chat_ai_model'), aiModel);
+            setSecureItem(chatKey('chat_api_key'), apiKey);
+            localStorage.setItem(chatKey('chat_custom_endpoint'), customEndpoint);
 
             updateQuickModelBar();
             updateMessageCounter();
@@ -814,6 +855,7 @@
 
         async function loadSettingsFromFirebase() {
             if (!currentUserId) return;
+            migrateLegacyChatPrefs();
             try {
                 const db = firebase.firestore();
                 const doc = await db.collection('users').doc(currentUserId).collection('privateSettings').doc('ai').get();
@@ -824,7 +866,7 @@
                     aiPreset = data.aiPreset || data.provider || 'openai';
                     aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || data.provider || 'openai';
                     aiModel = data.model || '';
-                    apiKey = getSecureItem('chat_api_key') || '';
+                    apiKey = getSecureItem(chatKey('chat_api_key')) || '';
                     customEndpoint = data.customEndpoint || '';
 
                     // Legacy versions saved the API key in Firestore. Move it
@@ -832,7 +874,7 @@
                     if (data.apiKey) {
                         if (!apiKey) {
                             apiKey = data.apiKey;
-                            setSecureItem('chat_api_key', apiKey);
+                            setSecureItem(chatKey('chat_api_key'), apiKey);
                         }
                         db.collection('users').doc(currentUserId)
                             .collection('privateSettings').doc('ai')
@@ -847,8 +889,8 @@
                         fetchModels(false, aiPreset, apiKey);
                     }
                 } else {
-                    useByoKey = false;
-                    apiKey = getSecureItem('chat_api_key') || '';
+                    loadChatPrefs();
+                    apiKey = getSecureItem(chatKey('chat_api_key')) || '';
                     updateQuickModelBar();
                     updateMessageCounter();
                 }
@@ -1050,8 +1092,10 @@
 
                         if (isPro) {
                             localStorage.setItem('rekindle_pro_expiry', expires.toString());
+                            localStorage.setItem('rekindle_pro_expiry_uid', user.uid);
                         } else {
                             localStorage.removeItem('rekindle_pro_expiry');
+                            localStorage.removeItem('rekindle_pro_expiry_uid');
                         }
 
                         hideChatOverlay();
@@ -1088,16 +1132,10 @@
 
         // Initialize settings on load
         function initSettings() {
-            useByoKey = localStorage.getItem('chat_use_byo_key') === 'true';
-            aiPreset = localStorage.getItem('chat_ai_preset') || 'openai';
-            aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || localStorage.getItem('chat_ai_provider') || 'openai';
-            aiModel = localStorage.getItem('chat_ai_model') || '';
-            apiKey = getSecureItem('chat_api_key') || '';
-            customEndpoint = localStorage.getItem('chat_custom_endpoint') || '';
-
-            try {
-                customModels = JSON.parse(localStorage.getItem('chat_custom_models') || '{}');
-            } catch (e) { customModels = {}; }
+            migrateLegacyApiKey();
+            migrateLegacyChatPrefs();
+            loadChatPrefs();
+            apiKey = getSecureItem(chatKey('chat_api_key')) || '';
 
             const byoToggle = document.getElementById('byo-toggle');
             if (byoToggle) byoToggle.checked = useByoKey;
@@ -1219,7 +1257,12 @@
         }
 
         function copyToNote(text) {
-            localStorage.setItem('rekindle_new_note_content', text);
+            try {
+                sessionStorage.setItem('rekindle_new_note_content', text);
+                localStorage.removeItem('rekindle_new_note_content');
+            } catch (e) {
+                localStorage.setItem('rekindle_new_note_content', text);
+            }
             window.location.href = 'notes.html?action=new_note';
         }
 

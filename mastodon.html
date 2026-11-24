@@ -579,7 +579,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="time.js?v=9"></script>
     <script src="theme.js?v=35"></script>
-    <script src="pro-gate.js?v=9"></script>
+    <script src="pro-gate.js?v=11"></script>
     <script src="js/i18n.js?v=6"></script>
     <script src="js/custom-select.js?v=2"></script>
     <script src="js/safe-html.js?v=1"></script>
@@ -1049,12 +1049,22 @@
                 convos.forEach(c => {
                     const el = document.createElement('div');
                     el.className = 'conversation';
-                    const lastMsg = c.last_status ? c.last_status.content : 'Message';
-                    const account = c.accounts[0];
-                    el.innerHTML = `
-                        <div style="font-weight:bold;">${account.display_name} (@${account.acct})</div>
-                        <div style="font-size:0.9rem; color:#555;">${lastMsg}</div>
-                    `;
+                    const account = (c.accounts && c.accounts[0]) || {};
+                    const head = document.createElement('div');
+                    head.style.fontWeight = 'bold';
+                    head.textContent = (account.display_name || account.acct || '') + ' (@' + (account.acct || '') + ')';
+                    const body = document.createElement('div');
+                    body.style.cssText = 'font-size:0.9rem; color:#555;';
+                    // Mastodon returns status.content as HTML. Never interpolate
+                    // it into innerHTML (stored XSS from any DM sender).
+                    if (c.last_status && c.last_status.content) {
+                        if (window.rekindleSetSafeHtml) window.rekindleSetSafeHtml(body, c.last_status.content);
+                        else body.textContent = c.last_status.content;
+                    } else {
+                        body.textContent = 'Message';
+                    }
+                    el.appendChild(head);
+                    el.appendChild(body);
                     list.appendChild(el);
                 });
             } catch (e) {
@@ -1070,17 +1080,49 @@
 
             try {
                 const acc = await apiCall(`/api/v1/accounts/${accountId}`);
-                header.innerHTML = `
-                   <img src="${acc.avatar}" class="profile-avatar">
-                   <div class="profile-name">${acc.display_name}</div>
-                   <div class="profile-handle">@${acc.acct}</div>
-                   <div>${acc.note}</div>
-                   <div class="profile-stats">
-                       <div class="stat-item"><span class="stat-val">${acc.statuses_count}</span> <span class="stat-label">Posts</span></div>
-                       <div class="stat-item"><span class="stat-val">${acc.following_count}</span> <span class="stat-label">Following</span></div>
-                       <div class="stat-item"><span class="stat-val">${acc.followers_count}</span> <span class="stat-label">Followers</span></div>
-                   </div>
-                `;
+                header.innerHTML = '';
+
+                const avatar = document.createElement('img');
+                avatar.className = 'profile-avatar';
+                const avatarUrl = safeImageUrl(acc.avatar);
+                if (avatarUrl) avatar.src = avatarUrl; else avatar.style.display = 'none';
+                header.appendChild(avatar);
+
+                const name = document.createElement('div');
+                name.className = 'profile-name';
+                name.textContent = acc.display_name || acc.acct || '';
+                header.appendChild(name);
+
+                const handle = document.createElement('div');
+                handle.className = 'profile-handle';
+                handle.textContent = '@' + (acc.acct || '');
+                header.appendChild(handle);
+
+                const note = document.createElement('div');
+                if (window.rekindleSetSafeHtml) window.rekindleSetSafeHtml(note, acc.note || '');
+                else note.textContent = acc.note || '';
+                header.appendChild(note);
+
+                const stats = document.createElement('div');
+                stats.className = 'profile-stats';
+                [
+                    [acc.statuses_count, 'Posts'],
+                    [acc.following_count, 'Following'],
+                    [acc.followers_count, 'Followers']
+                ].forEach(function (pair) {
+                    const item = document.createElement('div');
+                    item.className = 'stat-item';
+                    const val = document.createElement('span');
+                    val.className = 'stat-val';
+                    val.textContent = String(Number(pair[0]) || 0);
+                    const label = document.createElement('span');
+                    label.className = 'stat-label';
+                    label.textContent = pair[1];
+                    item.appendChild(val);
+                    item.appendChild(label);
+                    stats.appendChild(item);
+                });
+                header.appendChild(stats);
                 loadProfileContent();
             } catch (e) {
                 header.innerHTML = 'Error loading profile.';
@@ -1126,7 +1168,7 @@
                 const el = document.createElement('div');
                 el.className = 'account-row';
                 el.innerHTML = `
-                    <img src="${escapeHtml(acc.avatar || '')}" alt="">
+                    <img src="${escapeHtml(safeImageUrl(acc.avatar))}" alt="">
                     <div>
                         <div style="font-weight:bold;">${escapeHtml(acc.display_name || acc.acct || '')}</div>
                         <div style="font-size:0.8rem;">@${escapeHtml(acc.acct || '')}</div>
@@ -1134,6 +1176,13 @@
                 `;
                 container.appendChild(el);
             });
+        }
+
+        function safeImageUrl(value) {
+            try {
+                const parsed = new URL(String(value || ''), window.location.href);
+                return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+            } catch (e) { return ''; }
         }
 
         function escapeHtml(text) {
@@ -1150,7 +1199,7 @@
             const account = displayToot.account || {};
             const displayName = escapeHtml(account.display_name || account.acct || '');
             const acct = escapeHtml(account.acct || '');
-            const avatar = escapeHtml(account.avatar_static || '');
+            const avatar = escapeHtml(safeImageUrl(account.avatar_static || account.avatar || ''));
             const reblogName = escapeHtml((toot.account && toot.account.display_name) || (toot.account && toot.account.acct) || '');
             const reblogPrefix = toot.reblog
                 ? '<div style="font-size:0.75rem; color:#666; margin-bottom:5px; margin-left:52px;">RT ' + reblogName + ' boosted</div>'
@@ -1166,7 +1215,7 @@
                 mediaHtml = '<div class="media-grid">';
                 displayToot.media_attachments.forEach(function (m) {
                     if (m.type === 'image') {
-                        mediaHtml += '<img src="' + escapeHtml(m.preview_url || '') + '" class="media-item" alt="">';
+                        mediaHtml += '<img src="' + escapeHtml(safeImageUrl(m.preview_url || '')) + '" class="media-item" alt="">';
                     }
                 });
                 mediaHtml += '</div>';
@@ -1194,8 +1243,15 @@
                 (isFaved ? '★' : '☆') + ' <span>' + Number(displayToot.favourites_count || 0) + '</span></button>' +
                 '<button class="action-btn ' + (isBoosted ? 'boosted' : '') + '" onclick="toggleAction(\'' + escapeHtml(displayToot.id) + '\', \'reblog\', this)">' +
                 (isBoosted ? 'RT' : '⇄') + ' <span>' + Number(displayToot.reblogs_count || 0) + '</span></button>' +
-                '<button class="action-btn" onclick="replyTo(\'' + escapeHtml(displayToot.id) + '\', \'' + acct + '\')"><span>Reply</span></button>' +
+                '<button class="action-btn reply-action"><span>Reply</span></button>' +
                 '</div>';
+
+            const replyBtn = el.querySelector('.reply-action');
+            if (replyBtn) {
+                replyBtn.addEventListener('click', function () {
+                    replyTo(displayToot.id, (displayToot.account && displayToot.account.acct) || '');
+                });
+            }
 
             const contentEl = el.querySelector('.toot-content');
             if (contentEl) {
