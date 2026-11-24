@@ -485,6 +485,7 @@
     </div>
 
     <script>
+        // ---- chat key storage helpers (scripts/test-chat-key-migration.js) ----
         function obfuscate(str) {
             if (!str) return str;
             var key = 'rek';
@@ -520,6 +521,62 @@
             } catch (e) { return 'anon'; }
         }
         function chatKey(name) { return name + ':' + chatStorageUid(); }
+
+        // A real key is printable text. deobfuscate() returns its input
+        // unchanged when it cannot decode, so this also recognises the plain
+        // values written by the pre-2026-05-14 builds.
+        function looksLikeChatKey(value) {
+            if (typeof value !== 'string' || value.length < 8) return false;
+            for (var i = 0; i < value.length; i++) {
+                var code = value.charCodeAt(i);
+                if (code < 32 || code > 126) return false;
+            }
+            return true;
+        }
+        function isBase64String(value) {
+            return typeof value === 'string' && value.length >= 8 && value.length % 4 === 0 &&
+                /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+        }
+
+        // The key is stored obfuscated: always read it through deobfuscate().
+        // A build that shipped for about an hour on 2026-11-24 stored the
+        // migrated key double-encoded (obfuscate(obfuscate(key))), so recover
+        // that once. A genuine key is not base64 whose decoded bytes are also
+        // printable, so this cannot corrupt a healthy value.
+        function readStoredApiKey() {
+            var stored = localStorage.getItem(chatKey('chat_api_key'));
+            var value = deobfuscate(stored);
+            if (stored && isBase64String(stored) && isBase64String(value)) {
+                var recovered = deobfuscate(value);
+                if (looksLikeChatKey(recovered) && recovered !== value) {
+                    setSecureItem(chatKey('chat_api_key'), recovered);
+                    return recovered;
+                }
+            }
+            return value;
+        }
+
+        // The legacy global key was written with setSecureItem (2026-05-14), so
+        // copy it through the accessors - copying the raw string preserved the
+        // encoding, and re-obfuscating the raw string double-encodes it. Plain
+        // values from the 2026-04 era are detected and wrapped once.
+        // Code scanning alert 227 flagged the raw copy; this keeps the sink
+        // behind obfuscate() instead.
+        function migrateLegacyApiKey() {
+            try {
+                const uid = chatStorageUid();
+                if (localStorage.getItem('rekindle_uid') !== uid) return;
+                const scoped = chatKey('chat_api_key');
+                const legacy = localStorage.getItem('chat_api_key');
+                if (legacy && !localStorage.getItem(scoped)) {
+                    var candidate = deobfuscate(legacy);
+                    setSecureItem(scoped, looksLikeChatKey(candidate) ? candidate : legacy);
+                }
+                localStorage.removeItem('chat_api_key');
+            } catch (e) { }
+        }
+        // ---- end chat key storage helpers ----
+
         function migrateLegacyChatPrefs() {
             try {
                 const uid = chatStorageUid();
@@ -543,21 +600,6 @@
             try {
                 customModels = JSON.parse(localStorage.getItem(chatKey('chat_custom_models')) || '{}');
             } catch (e) { customModels = {}; }
-        }
-        // The key is a secret, so it never goes through the plain-text pref
-        // migration above: it must be written with setSecureItem because the
-        // read path is getSecureItem (chat.html:667). A plain-text write here
-        // also tripped code scanning alert 227.
-        function migrateLegacyApiKey() {
-            try {
-                const uid = chatStorageUid();
-                const owner = localStorage.getItem('rekindle_uid');
-                if (owner !== uid) return;
-                const legacy = localStorage.getItem('chat_api_key');
-                const scoped = chatKey('chat_api_key');
-                if (legacy && !localStorage.getItem(scoped)) setSecureItem(scoped, legacy);
-                localStorage.removeItem('chat_api_key');
-            } catch (e) { }
         }
         // --- CONFIGURATION ---
         // TODO: Replace with your Cloudflare Worker URL
@@ -669,7 +711,7 @@
             migrateLegacyApiKey();
             migrateLegacyChatPrefs();
             loadChatPrefs();
-            apiKey = getSecureItem(chatKey('chat_api_key')) || '';
+            apiKey = readStoredApiKey() || '';
 
             document.getElementById('byo-toggle').checked = useByoKey;
             document.getElementById('ai-preset-select').value = aiPreset;
@@ -874,7 +916,7 @@
                     aiPreset = data.aiPreset || data.provider || 'openai';
                     aiProvider = (PROVIDER_PRESETS[aiPreset] || {}).type || data.provider || 'openai';
                     aiModel = data.model || '';
-                    apiKey = getSecureItem(chatKey('chat_api_key')) || '';
+                    apiKey = readStoredApiKey() || '';
                     customEndpoint = data.customEndpoint || '';
 
                     // Legacy versions saved the API key in Firestore. Move it
@@ -898,7 +940,7 @@
                     }
                 } else {
                     loadChatPrefs();
-                    apiKey = getSecureItem(chatKey('chat_api_key')) || '';
+                    apiKey = readStoredApiKey() || '';
                     updateQuickModelBar();
                     updateMessageCounter();
                 }
@@ -1143,7 +1185,7 @@
             migrateLegacyApiKey();
             migrateLegacyChatPrefs();
             loadChatPrefs();
-            apiKey = getSecureItem(chatKey('chat_api_key')) || '';
+            apiKey = readStoredApiKey() || '';
 
             const byoToggle = document.getElementById('byo-toggle');
             if (byoToggle) byoToggle.checked = useByoKey;

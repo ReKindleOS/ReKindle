@@ -166,10 +166,26 @@ Fixed in code, uncommitted at the time of writing; alerts only re-evaluate on th
   become newlines, then `DOMParser` (inert document) + `body.textContent` strips markup and decodes
   entities exactly once. Side effect: `&amp;lt;` now exports as `&lt;` instead of `<` (it used to
   decode `&amp;` before `&lt;`).
-* `js/clear-text-storage-of-sensitive-data`, `chat.html` — `migrateLegacyApiKey()` writes the BYO
-  key with `setSecureItem` (matching the `getSecureItem` read path) and `chat_api_key` is no longer
-  in the plain-text pref list. It is retried in `openSettings()` / `loadSettingsFromFirebase()`
-  because the uid is usually not resolved yet when `initSettings()` runs.
+* `js/clear-text-storage-of-sensitive-data`, `chat.html` — `migrateLegacyApiKey()` no longer copies
+  the legacy value raw (what the alert flagged) and no longer re-obfuscates it either: it reads the
+  legacy value with `deobfuscate()` and writes it with `setSecureItem()`, so the sink stays behind
+  `obfuscate()` and the key keeps its encoding. The legacy `chat_api_key` has been stored obfuscated
+  since 2026-05-14, so a raw copy was already correctly encoded; a plain value (pre-2026-05-14
+  devices) is detected and wrapped once. `readStoredApiKey()` repairs values that the interim build
+  double-encoded (see below), and `scripts/test-chat-key-migration.js` (in `npm test`) pins obfuscated
+  and plain legacy handling, the repair, and per-account isolation.
+
+**2026-11-24 correction — the chat key migration regression.** The first version of that fix (commit
+`846ee85`, prod ≈13:45–14:5x) called `setSecureItem(scoped, legacy)`, i.e. `obfuscate(obfuscate(key))`.
+Because the legacy value was already obfuscated, every user whose device still held a global
+`chat_api_key` and who opened `chat.html` in that window got a base64 blob instead of their key
+(OpenAI/Anthropic keys are unaffected by the old raw copy — it preserved the encoding). The shipped
+fix round-trips through the accessors and `readStoredApiKey()` recovers the original from a
+double-encoded value (both halves must be base64 and the twice-decoded value printable, which a real
+key — even a hex/base64 one — does not satisfy), rewriting it single-encoded. Users whose key was
+mangled and then re-pasted are fine; users whose key was mangled and never re-opened Settings are
+repaired on their next chat load. Do not "simplify" this back to a raw copy or a second obfuscation.
+
 * `js/bad-tag-filter` + `js/incomplete-url-substring-sanitization`,
   `scripts/test-sports-scores.js` — inline-script matcher is case-insensitive, and the ESPN host
   assertion is an escaped regex instead of `indexOf('https://…')`.
