@@ -296,6 +296,16 @@ const SHIPPED = [
         id: '-OvtOlr66qKLJuxmqkOU',
         title: 'Alignment Change In Notes App',
         why: 'Notes gained an Alignment button that cycles paragraph alignment left/center/right (notes.html, deployed 2026-11-24).'
+    },
+    {
+        id: '-OwI6zWyPU6r1T_cSK9T',
+        title: 'Note Download',
+        why: 'Notes now downloads the current note or all notes as a valid EPUB (Kindle/Kobo compatible, lazily using JSZip) as well as TXT. AZW3 conversion still needs Calibre/Send to Kindle; a browser cannot emit KF8.'
+    },
+    {
+        id: '-Oxuq_hCoi4mPQu7V-tT',
+        title: 'More tools in notes app',
+        why: 'Notes now has left/center/right alignment, A-/A+ font size controls for a selection, and explicit Copy/Paste toolbar actions.'
     }
 ];
 
