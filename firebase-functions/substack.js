@@ -14,7 +14,7 @@
  * as `standardebooks.js` and the Akinator relay. The Cloudflare Worker is left
  * in the repo for rollback, but the app no longer calls it.
  *
- * Contract: GET/HEAD https://.../substack?path=/api/v1/posts%3Flimit%3D15&host=pub.substack.com
+ * Contract: GET/HEAD https://.../substack?path=/api/v1/posts%3Flimit%3D15%26cursor%3D...&host=pub.substack.com
  *   - Authorization: Bearer <Firebase ID token> is REQUIRED (verified with
  *     admin.auth().verifyIdToken). Without it this would be an open proxy that
  *     anyone could point at Substack from the project's GCP egress.
@@ -24,6 +24,10 @@
  *     prefix, which keeps the metadata/RFC1918 SSRF surface closed.
  *   - `host` defaults to substack.com (the reader API). Publication feeds pass
  *     the publication subdomain or custom domain.
+ *   - Paging is the caller's job: since 2026-11-25 Substack's /api/v1/posts
+ *     rejects `?offset=` with 400 and pages with `?cursor=<nextCursor>`. The
+ *     relay passes the query through untouched and forwards any upstream error
+ *     status/body, so a regression shows up as a real Substack message.
  *   - `X-Substack-SID` is forwarded as both `connect.sid` and `substack.sid`
  *     (Substack renamed the cookie; new accounts only carry connect.sid). It is
  *     never logged or stored.

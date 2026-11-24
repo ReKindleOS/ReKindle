@@ -470,6 +470,52 @@ Subscriptions are cached for 6 hours under `substack_subs:<uid>` so the feed can
 start without the `subscriptions/page_v2` round trip; **Refresh** forces a
 re-fetch, and a failed re-fetch keeps serving the cached list.
 
+### Substack `/api/v1/posts` moved to cursor paging (2026-11-25)
+
+**Symptom:** every publication feed failed with `Substack proxy error 400` and
+the console showed `Failed to load resource: the server responded with a status
+of 400 ... (substack)`. `subscriptions/page_v2` still worked (often from the
+6-hour cache), so the sidebar rendered and only the posts were dead — the
+"Substack is broken again" report.
+
+**Cause:** Substack replaced numeric paging on `/api/v1/posts`. Any request that
+still carries `offset` now answers
+
+```
+400 {"errors":[{"location":"query","param":"offset","value":"0","msg":"Invalid value"}]}
+```
+
+and a page is `{"posts":[...], "nextCursor":"<base64 of the last post_date>"}`;
+page 2+ must send `&cursor=<nextCursor>` (URL-encoded — the base64 can contain
+`+`, `/` and `=`; a bare `+` is decoded as a space). Reproduced 2026-11-25 on
+`noahpinion.substack.com`, `www.noahpinion.blog` and `worksinprogress.co`:
+`?limit=15` → 200, `?limit=15&offset=0` → 400. `/api/v1/posts/<numeric id>`
+also 404s on every host, so `/posts/<slug>` is the only working single-post
+identifier.
+
+The relay forwards the upstream status and body verbatim (by design), and
+`apiCall()` had no case for an upstream 400, hence the opaque message.
+
+**Fix (`substack.html` only — no function deploy):**
+* `fetchAggregatedFeed()` keeps `state.subCursors[publicationId]` and
+  `state.subExhausted`, sends `?limit=15` then `&cursor=...`, skips a
+  publication that returned no `nextCursor`, and `allSubsExhausted()` stops the
+  request rows and clears `hasMore` instead of re-asking finished publications.
+* A single publication uses `state.pubCursor`, reset whenever the view changes
+  or a refresh starts at `offset === 0`; `hasMore` is `!!nextCursor`, because a
+  page shorter than `limit` can still have a cursor.
+* `apiCall()` appends Substack's own message
+  (`Substack API error 400 (offset: Invalid value)`) so the next API drift is
+  legible instead of "proxy error 400".
+* `fetchFullPost()` tries `/posts/<slug>` first (numeric ids always 404),
+  removing one guaranteed failed request per article.
+* `scripts/test-substack.js` fails if `/posts?` is ever requested with `offset`
+  again, and round-trips a cursor containing `+`, `/` and `=` through the relay's
+  `?path` parsing.
+
+Do **not** reintroduce `sort=new`: `posts` is newest-first by default and the
+param is ignored. The `offset`-based examples in older notes are obsolete.
+
 ### Pro gate init order (2026-10-24)
 
 `pro-gate.js` `check()` used to invoke the page callback from the

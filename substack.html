@@ -837,7 +837,15 @@
             hasMore: true,
             activeFeed: 'following', // 'following', 'subscriptions' OR 'pub_ID'
             fullInbox: null, // For aggregated feed
-            subOffset: 0, // Per-subscription offset for progressive loading
+            // Substack replaced the numeric ?offset= on /api/v1/posts with an
+            // opaque ?nextCursor= (2026-11-25). A request that still sends
+            // offset=N now gets 400 {"errors":[{"param":"offset","msg":"Invalid
+            // value"}]}, which is why every publication feed failed with
+            // "Substack proxy error 400". Cursors are per publication; an id in
+            // subExhausted has no next page left.
+            subCursors: {},
+            subExhausted: {},
+            pubCursor: '',
             maxCache: 300, // Maximum posts to keep in memory for aggregated feed
             partialFeedErrors: [], // Publication names that failed on the last aggregate
             sidRejected: false, // last Substack call said the saved cookie is invalid
@@ -845,8 +853,9 @@
             maxDomItems: 100 // Maximum items to render at once
         };
 
-        // Page size for the aggregated feed. The offset must advance by exactly
-        // this much or posts between pages become unreachable.
+        // Page size for the aggregated feed. Each publication is paged with its
+        // own nextCursor, so this only sets how many posts one "load more" pass
+        // asks each publication for.
         const AGG_PAGE_SIZE = 15;
 
         let auth, db;
@@ -904,6 +913,20 @@
         };
 
         // --- API CLIENT ---
+        // Substack reports bad parameters as
+        // {"errors":[{"location":"query","param":"offset","msg":"Invalid value"}]}.
+        // Surface that instead of an opaque "proxy error 400" when their API
+        // changes shape again.
+        function upstreamErrorDetail(payload) {
+            if (!payload) return '';
+            const first = payload.errors && payload.errors[0];
+            if (first && first.msg) {
+                return first.param ? ` (${first.param}: ${first.msg})` : ` (${first.msg})`;
+            }
+            if (typeof payload.error === 'string' && payload.error) return ` (${payload.error})`;
+            return '';
+        }
+
         async function apiCall(endpoint, options = {}) {
             if (!state.sid) throw new Error("No SID provided");
             if (!auth || !auth.currentUser) throw new Error("Please log in to ReKindle again.");
@@ -958,7 +981,7 @@
                         : "Substack is rate-limiting ReKindle right now. Try again in a minute.");
                 }
 
-                throw new Error(`Substack proxy error ${res.status}`);
+                throw new Error(`Substack API error ${res.status}${upstreamErrorDetail(payload)}`);
 
             } catch (e) {
                 console.error("API failed:", e.message);
@@ -974,9 +997,11 @@
             state.subs = [];
             state.inbox = [];
             state.fullInbox = null;
-            state.subOffset = 0;
             state.offset = 0;
             state.subsFetchedAt = 0;
+            state.pubCursor = '';
+            state.subCursors = {};
+            state.subExhausted = {};
             clearSubsCache(uidForCache);
             const subsList = document.getElementById('sub-list');
             if (subsList) subsList.innerHTML = '';
@@ -1326,25 +1351,28 @@
             try {
                 let newPosts = [];
                 let data;
+                let pubNextCursor = null;
+                const isPubFeed = state.activeFeed !== 'following' && state.activeFeed !== 'subscriptions';
 
                 if (state.activeFeed === 'following') {
                     // AGGREGATED FEED: Fetch from all subs and merge
                     if (state.offset === 0) {
                         state.fullInbox = null;
-                        state.subOffset = 0;
+                        state.subCursors = {};
+                        state.subExhausted = {};
                     }
 
                     // Initial fetch or need more?
                     const needsMore = !state.fullInbox || (state.offset + state.limit > state.fullInbox.length);
 
-                    if (needsMore) {
+                    if (needsMore && !allSubsExhausted()) {
                         const loadingMsg = document.createElement('div');
                         loadingMsg.id = 'agg-loading';
                         loadingMsg.style.cssText = "padding:20px; text-align:center; font-style:italic;";
                         loadingMsg.innerText = state.fullInbox ? "Loading more posts..." : "Aggregating feeds... (This may take a moment)";
                         list.appendChild(loadingMsg);
 
-                        const morePosts = await fetchAggregatedFeed(state.subOffset);
+                        const morePosts = await fetchAggregatedFeed();
                         if (document.getElementById('agg-loading')) document.getElementById('agg-loading').remove();
 
                         if (morePosts.length > 0) {
@@ -1358,7 +1386,6 @@
                             } else {
                                 state.fullInbox = morePosts;
                             }
-                            state.subOffset += AGG_PAGE_SIZE; // must match the ?limit= below
                         } else {
                         }
                     }
@@ -1376,11 +1403,15 @@
                         || (sub.publication.subdomain ? `https://${sub.publication.subdomain}.substack.com` : null);
                     if (!resolvedBase) throw new Error("No base_url for: " + sub.publication.name);
                     const targetDomain = new URL(resolvedBase).hostname;
-                        const sort = 'new';
-                        const endpoint = `/posts?limit=${state.limit}&offset=${state.offset}&sort=${sort}`;
+                        // Cursor paging, not offset: Substack 400s any
+                        // /api/v1/posts request that carries ?offset=.
+                        if (state.offset === 0) state.pubCursor = '';
+                        const cursor = encodeURIComponent(state.pubCursor || '');
+                        const endpoint = `/posts?limit=${state.limit}` + (cursor ? `&cursor=${cursor}` : '');
                         data = await apiCall(endpoint, { headers: { 'X-Substack-Target': targetDomain } });
-                        newPosts = data || [];
-                        if (newPosts.posts) newPosts = newPosts.posts;
+                        pubNextCursor = (data && data.nextCursor) || null;
+                        state.pubCursor = pubNextCursor || '';
+                        newPosts = Array.isArray(data) ? data : ((data && data.posts) || []);
                         newPosts.forEach(p => {
                             if (!p.publication) p.publication = sub.publication;
                         });
@@ -1389,7 +1420,19 @@
                     }
                 }
 
-                async function fetchAggregatedFeed(offset = 0) {
+                // True when every subscribed publication has returned its last
+                // page, so a "load more" pass has nothing left to ask for.
+                function allSubsExhausted() {
+                    if (!state.subs.length) return false;
+                    for (let i = 0; i < state.subs.length; i++) {
+                        const pub = state.subs[i].publication;
+                        const pubId = pub && pub.id;
+                        if (!state.subExhausted[pubId]) return false;
+                    }
+                    return true;
+                }
+
+                async function fetchAggregatedFeed() {
                     const allPosts = [];
                     // REDUCED FOR KINDLE STABILITY
                     const batchSize = 2;
@@ -1402,22 +1445,38 @@
                         const batch = state.subs.slice(i, i + batchSize);
                         // Kindle-compatible alternative to Promise.allSettled
                         const wrappedPromises = batch.map(async sub => {
+                            const pub = sub.publication || {};
+                            // Cursor paging: ?offset= now 400s on /api/v1/posts.
+                            // Each publication keeps its own nextCursor, and a
+                            // publication without one is finished for this feed.
+                            if (state.subExhausted[pub.id]) {
+                                return { status: 'fulfilled', value: [] };
+                            }
                             try {
-                                const baseUrl = sub.publication.base_url || sub.publication.custom_domain_optional
-                                    || (sub.publication.subdomain ? `https://${sub.publication.subdomain}.substack.com` : null);
-                                if (!baseUrl) throw new Error('No base_url for ' + sub.publication.name);
+                                const baseUrl = pub.base_url || pub.custom_domain_optional
+                                    || (pub.subdomain ? `https://${pub.subdomain}.substack.com` : null);
+                                if (!baseUrl) throw new Error('No base_url for ' + pub.name);
                                 const domain = new URL(baseUrl).hostname;
-                                const posts = await apiCall(`/posts?limit=${subLimit}&offset=${offset}&sort=new`, {
+                                const cursor = encodeURIComponent(state.subCursors[pub.id] || '');
+                                const qs = `/posts?limit=${subLimit}` + (cursor ? `&cursor=${cursor}` : '');
+                                const posts = await apiCall(qs, {
                                     headers: { 'X-Substack-Target': domain }
                                 });
+                                const list = Array.isArray(posts) ? posts : ((posts && posts.posts) || []);
+                                const next = (posts && posts.nextCursor) || null;
+                                if (next) {
+                                    state.subCursors[pub.id] = next;
+                                } else {
+                                    state.subExhausted[pub.id] = true;
+                                }
                                 return {
-                                    status: 'fulfilled', value: (posts.posts || posts || []).map(p => {
-                                        if (!p.publication) p.publication = sub.publication;
+                                    status: 'fulfilled', value: list.map(p => {
+                                        if (!p.publication) p.publication = pub;
                                         return p;
                                     })
                                 };
                             } catch (e) {
-                                console.warn(`Failed to fetch from ${sub.publication.name}`, e);
+                                console.warn(`Failed to fetch from ${pub.name}`, e);
                                 return { status: 'rejected', reason: e };
                             }
                         });
@@ -1476,8 +1535,14 @@
                     renderInbox(newPosts, true);
                 }
 
-                // Proactive hasMore check
-                if (rawLength < state.limit || rawLength === 0) {
+                // Proactive hasMore check. A publication feed is driven by
+                // Substack's nextCursor (present = another page exists); the
+                // aggregated feed still infers it from the batch size.
+                if (isPubFeed) {
+                    state.hasMore = !!pubNextCursor;
+                } else if (allSubsExhausted()) {
+                    state.hasMore = false;
+                } else if (rawLength < state.limit || rawLength === 0) {
                     state.hasMore = false;
                 } else {
                     state.hasMore = true; // explicitly keep true if we got a full batch
@@ -1785,16 +1850,22 @@
                 }
 
 
+                // Post Fetch Strategy (checked 2026-11-25): /posts/{numeric id}
+                // answers 404 on every host, including the publication's own
+                // domain, so try the slug first and keep the id only as a
+                // fallback. The old order cost a guaranteed failed request on
+                // every article, which hurts on a slow e-ink connection.
                 let data;
-                try {
-                    data = await apiCall(`/posts/${id}`, { headers: { 'X-Substack-Target': targetDomain } });
-                } catch (err1) {
-                    console.warn("API /posts/{id} failed, trying slug:", err1);
-                    if (state.currentArticle.slug) {
-                        data = await apiCall(`/posts/${state.currentArticle.slug}`, { headers: { 'X-Substack-Target': targetDomain } });
-                    } else {
-                        throw err1;
+                const slug = state.currentArticle.slug;
+                if (slug) {
+                    try {
+                        data = await apiCall(`/posts/${encodeURIComponent(slug)}`, { headers: { 'X-Substack-Target': targetDomain } });
+                    } catch (err1) {
+                        console.warn("API /posts/{slug} failed, trying id:", err1);
+                        data = await apiCall(`/posts/${id}`, { headers: { 'X-Substack-Target': targetDomain } });
                     }
+                } else {
+                    data = await apiCall(`/posts/${id}`, { headers: { 'X-Substack-Target': targetDomain } });
                 }
 
                 var readerContent = document.getElementById('reader-content');

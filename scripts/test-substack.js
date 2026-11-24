@@ -1,5 +1,6 @@
 /*
- * Guards for the Substack relay (firebase-functions/substack.js).
+ * Guards for the Substack relay (firebase-functions/substack.js) and the
+ * cursor contract of the reader page (substack.html).
  *
  * Run: node scripts/test-substack.js
  *
@@ -7,6 +8,11 @@
  * assert that only /api/v1/ paths and public hostnames pass, and that the
  * wildcard-DNS / metadata / RFC1918 escapes used by /api/proxy are rejected
  * before any outbound fetch happens.
+ *
+ * 2026-11-25: Substack moved /api/v1/posts from ?offset=N to ?nextCursor. Any
+ * request that still sends offset now gets 400 {"errors":[{"param":"offset",
+ * "msg":"Invalid value"}]}. The last block pins the cursor round trip through
+ * the relay's query parsing and keeps the page from regressing to offset.
  */
 const assert = require("assert");
 const {
@@ -34,13 +40,14 @@ function blocked(path, host) {
 // --- allowed targets -------------------------------------------------------
 allowed("/api/v1/subscriptions", "substack.com");
 allowed("/api/v1/subscriptions/page_v2", "substack.com");
-allowed("/api/v1/posts?limit=15&offset=0&sort=new", "platformer.substack.com");
+allowed("/api/v1/posts?limit=15", "platformer.substack.com");
+allowed("/api/v1/posts?limit=15&cursor=eyJwb3N0X2RhdGUiOiIyMDI2In0%3D", "platformer.substack.com");
 allowed("/api/v1/posts?limit=2", "www.thefp.com"); // publication custom domain
 allowed("/api/v1/posts", "SUBSTACK.COM", "substack.com"); // normalised
 assert.strictEqual(parseUpstreamPath("/api/v1/subscriptions", undefined).hostname, "substack.com");
 assert.strictEqual(
-    parseUpstreamPath("/api/v1/posts?limit=15&offset=0&sort=new", "platformer.substack.com").search,
-    "?limit=15&offset=0&sort=new"
+    parseUpstreamPath("/api/v1/posts?limit=15&cursor=abc%3D", "platformer.substack.com").search,
+    "?limit=15&cursor=abc%3D"
 );
 
 // --- path / host validation ------------------------------------------------
@@ -105,5 +112,42 @@ for (let i = 0; i < RATE_CAPACITY; i++) {
 }
 assert.strictEqual(allowRequest(uid), false, "request over capacity should be limited");
 assert.strictEqual(allowRequest("another-user"), true, "a different uid has its own bucket");
+
+// --- cursor contract (2026-11-25) -----------------------------------------
+// Substack answers any /api/v1/posts request carrying ?offset=N with
+// 400 {"errors":[{"location":"query","param":"offset","msg":"Invalid value"}]}
+// and pages with an opaque ?cursor=<nextCursor> instead.
+const fs = require("fs");
+const path = require("path");
+const page = fs.readFileSync(path.join(__dirname, "..", "substack.html"), "utf8");
+
+assert.ok(
+    !/\/posts\?[^"'`\n]*\boffset=/.test(page),
+    "substack.html must page /posts with cursor, not offset (Substack 400s offset)"
+);
+assert.ok(page.indexOf("nextCursor") !== -1, "substack.html must follow nextCursor");
+assert.ok(
+    /encodeURIComponent\(state\.(?:pubCursor|subCursors\[[^\]]+\])\s*\|\|\s*''\)/.test(page),
+    "substack.html must URL-encode the cursor"
+);
+
+// Round trip: the page builds the relay URL, the relay decodes ?path and
+// rebuilds the upstream URL. A base64 cursor carries '=' and may carry '+' or
+// '/', and a lone unescaped '+' is decoded as a space by qs, so the value must
+// survive both hops byte-for-byte.
+const CURSORS = [
+    "eyJwb3N0X2RhdGUiOiIyMDI2LTExLTE0VDA5OjAwOjQ0LjgxNzQ2OFoifQ==",
+    "a+b/c=="
+];
+CURSORS.forEach(function (raw) {
+    const relay = new URL("https://us-central1-rekindle-dd1fa.cloudfunctions.net/substack");
+    relay.searchParams.set("path", "/api/v1/posts?limit=15&cursor=" + encodeURIComponent(raw));
+    relay.searchParams.set("host", "platformer.substack.com");
+    // Express/qs decodes ?path exactly once before the handler sees it.
+    const seenPath = new URLSearchParams(relay.search).get("path");
+    const target = parseUpstreamPath(seenPath, "platformer.substack.com");
+    assert.ok(target, "cursor path must pass the relay guards: " + raw);
+    assert.strictEqual(target.searchParams.get("cursor"), raw, "cursor must survive the relay: " + raw);
+});
 
 console.log("PASS - Substack relay guards");
