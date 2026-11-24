@@ -299,12 +299,14 @@
             padding: 8px;
             border-bottom: 2px solid black;
             display: flex;
+            flex-wrap: wrap;
             background: #eee;
             flex-shrink: 0;
         }
 
         .editor-toolbar>*+* {
             margin-left: 10px;
+            margin-top: 5px;
         }
 
         #note-title-input {
@@ -430,6 +432,7 @@
                 </select>
                 <button class="sys-btn" onclick="createNote()" data-i18n="notes.btn.new">+ New</button>
                 <button class="sys-btn" onclick="downloadAllTXT()" data-i18n="notes.btn.export_all">Export All</button>
+                <button class="sys-btn" onclick="downloadAllEPUB()" title="Export all notes as EPUB">EPUB</button>
             </div>
             <div class="title-controls">
                 <button class="icon-btn" onclick="toggleFullScreen()" title="Full Screen">
@@ -463,11 +466,18 @@
                         ontouchstart="applyFormat(event, 'underline')" title="Underline"><u>U</u></button>
                     <button class="sys-btn" id="btn-align" onmousedown="cycleAlignment(event)"
                         ontouchstart="cycleAlignment(event)" title="Cycle alignment">L</button>
+                    <button class="sys-btn" onmousedown="applyFontSize(event, -1)" ontouchstart="applyFontSize(event, -1)"
+                        title="Smaller text">A-</button>
+                    <button class="sys-btn" onmousedown="applyFontSize(event, 1)" ontouchstart="applyFontSize(event, 1)"
+                        title="Larger text">A+</button>
+                    <button class="sys-btn" onclick="copyNote()" title="Copy note text">Copy</button>
+                    <button class="sys-btn" onclick="pasteIntoNote()" title="Paste text">Paste</button>
                     <button class="sys-btn" onclick="downloadTXT()" title="Download TXT" data-i18n-title="notes.btn.txt_title">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
                             <path d="M12 2v14M7 11l5 5 5-5M4 22h16"></path>
                         </svg>
                     </button>
+                    <button class="sys-btn" onclick="downloadEPUB()" title="Download EPUB (Kindle/Kobo)">EPUB</button>
                     <button class="sys-btn" onclick="promptDelete()" data-i18n="common.delete">Delete</button>
                 </div>
                 <div id="note-content" contenteditable="true" data-placeholder="Type here..."
@@ -879,6 +889,143 @@
             const textContent = tempDiv.innerText || tempDiv.textContent || "";
             document.body.removeChild(tempDiv);
             return textContent;
+        }
+
+        function applyFontSize(e, delta) {
+            e.preventDefault();
+            const sizes = ['2', '3', '4', '5', '6', '7'];
+            const current = parseInt(document.queryCommandValue('fontSize') || '3', 10);
+            let idx = sizes.indexOf(String(current));
+            if (idx < 0) idx = 1;
+            idx = Math.max(0, Math.min(sizes.length - 1, idx + delta));
+            document.execCommand('fontSize', false, sizes[idx]);
+        }
+
+        function copyNote() {
+            const editor = document.getElementById('note-content');
+            if (!editor) return;
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            try {
+                const ok = document.execCommand('copy');
+                showNoteStatus(ok ? 'Copied to clipboard.' : 'Copy is not available in this browser.');
+            } catch (err) {
+                showNoteStatus('Copy is not available in this browser.');
+            }
+            sel.removeAllRanges();
+        }
+
+        async function pasteIntoNote() {
+            try {
+                if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('unsupported');
+                const text = await navigator.clipboard.readText();
+                document.getElementById('note-content').focus();
+                document.execCommand('insertText', false, text);
+                showNoteStatus('Pasted.');
+            } catch (err) {
+                showNoteStatus('Paste is not available in this browser.');
+            }
+        }
+
+        function showNoteStatus(message) {
+            const el = document.getElementById('status-bar');
+            if (!el) return;
+            const previous = el.innerText;
+            el.innerText = message;
+            setTimeout(function () { if (el.innerText === message) el.innerText = previous; }, 3000);
+        }
+
+        function downloadBlob(filename, blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+        }
+
+        function ensureJSZip() {
+            if (window.JSZip) return Promise.resolve(window.JSZip);
+            if (window.__noteJSZipPromise) return window.__noteJSZipPromise;
+            window.__noteJSZipPromise = new Promise(function (resolve, reject) {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js';
+                script.integrity = 'sha384-6M0rZuK8mRhdpnt5f7OV2x+2kGHdPMTeq8E4qSbS5S4Ohq+Mcq1ZmSWQV3FdawvW';
+                script.crossOrigin = 'anonymous';
+                script.onload = function () { resolve(window.JSZip); };
+                script.onerror = function () { reject(new Error('Could not load the EPUB builder.')); };
+                document.head.appendChild(script);
+            });
+            return window.__noteJSZipPromise;
+        }
+
+        function epubEscape(text) {
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function epubBody(text) {
+            const paragraphs = String(text || '').split(/\n+/).map(function (line) {
+                return '<p>' + epubEscape(line) + '</p>';
+            }).join('');
+            return paragraphs || '<p></p>';
+        }
+
+        async function buildEpub(chapters, title) {
+            await ensureJSZip();
+            const zip = new window.JSZip();
+            const uuid = 'urn:uuid:' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now());
+            const modified = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+            const navItems = chapters.map(function (ch, i) {
+                return '<li><a href="text.xhtml#note-' + (i + 1) + '">' + epubEscape(ch.title) + '</a></li>';
+            }).join('');
+            const body = chapters.map(function (ch, i) {
+                return '<section id="note-' + (i + 1) + '"><h1>' + epubEscape(ch.title) + '</h1>' + epubBody(ch.text) + '</section>';
+            }).join('');
+            zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+            zip.file('META-INF/container.xml', '<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+            zip.file('OEBPS/content.opf', '<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">' + uuid + '</dc:identifier><dc:title>' + epubEscape(title) + '</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">' + modified + '</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="text" href="text.xhtml" media-type="application/xhtml+xml"/><item id="css" href=\x22style.css\x22 media-type="text/css"/></manifest><spine><itemref idref="text"/></spine></package>');
+            zip.file('OEBPS/nav.xhtml', '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><\x74itle>' + epubEscape(title) + '</\x74itle></head><body><nav epub:type="toc" id="toc"><h1>' + epubEscape(title) + '</h1><ol>' + navItems + '</ol></nav></body></html>');
+            zip.file('OEBPS/text.xhtml', '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><\x74itle>' + epubEscape(title) + '</\x74itle><link rel="stylesheet" type="text/css" href=\x22style.css\x22/></head><body>' + body + '</body></html>');
+            zip.file('OEBPS/style.css', 'body{font-family:serif;line-height:1.45;margin:1em;}h1{font-size:1.4em;margin:1.2em 0 .5em;}p{margin:0 0 .7em;}');
+            return zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+        }
+
+        async function downloadEPUB() {
+            if (!currentNoteId) return;
+            const note = notes.find(n => n.id === currentNoteId);
+            if (!note) return;
+            try {
+                const title = note.title || window.t('notes.label.untitled', 'Untitled');
+                const blob = await buildEpub([{ title: title, text: notePlainText(note) }], title);
+                downloadBlob(title + '.epub', blob);
+            } catch (e) {
+                showNoteStatus(e.message || 'Could not build the EPUB.');
+            }
+        }
+
+        async function downloadAllEPUB() {
+            if (!notes.length) return;
+            try {
+                const chapters = notes.map(function (note) {
+                    return {
+                        title: note.title || window.t('notes.label.untitled', 'Untitled'),
+                        text: notePlainText(note)
+                    };
+                });
+                const stamp = new Date().toISOString().slice(0, 10);
+                const blob = await buildEpub(chapters, 'ReKindle Notes');
+                downloadBlob('rekindle-notes-' + stamp + '.epub', blob);
+            } catch (e) {
+                showNoteStatus(e.message || 'Could not build the EPUB.');
+            }
         }
 
         function downloadTextFile(filename, textContent) {
