@@ -281,6 +281,21 @@ const SHIPPED = [
         id: '-P-95tXvHmFxe70cIvU-',
         title: 'Make It So That When Someone Leaves Pictionary The Game Isnt Over',
         why: 'Pictionary advanceTurn() skips uids no longer in players and heals drawOrder, and the host watchdog auto-picks/skips a missing drawer in tickTimer(), so a leaver can no longer freeze the match.'
+    },
+    {
+        id: '-P63Tazy_ZPdpGKXwvkI',
+        title: '"Randomize" feature on Decider',
+        why: 'Decider gained a Randomize order button (decide.html) that shuffles the option array before the wheel is drawn, so grouped options no longer occupy one half of the wheel.'
+    },
+    {
+        id: '-P77YNkm2wuKC8L83FX3',
+        title: 'Language request:',
+        why: 'Urdu is a shipped locale (locales/ur.json, SHIPPED includes ur), so this request is already satisfied.'
+    },
+    {
+        id: '-OvtOlr66qKLJuxmqkOU',
+        title: 'Alignment Change In Notes App',
+        why: 'Notes gained an Alignment button that cycles paragraph alignment left/center/right (notes.html, deployed 2026-11-24).'
     }
 ];
 
