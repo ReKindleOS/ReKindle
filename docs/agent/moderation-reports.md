@@ -75,8 +75,9 @@ Set `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` on the **ReKindle Social**
 1. Create/choose a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications)
 2. "Bot" tab → Reset Token → copy it
 3. Invite the bot with "Send Messages" and "Embed Links"
-4. `npx wrangler secret put DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` from
-   `workers/rekindle-moderate` with the social account's `CLOUDFLARE_ACCOUNT_ID`/token
+4. `npm run deploy:worker -- rekindle-moderate` creates the worker in the pinned social
+   account; add secrets with `npx wrangler secret put DISCORD_BOT_TOKEN` from
+   `workers/rekindle-moderate` (the wrapper exports the social token)
 
 **Auto-Deletion:** When 2 different users report the same content (same `contentType` + `contentId`), the content is automatically deleted and both reports are marked as "resolved" — independent of Discord. The notification, when enabled, showed a green embed.
 
@@ -124,8 +125,8 @@ Notes for maintainers:
 * `scripts/test-reports.js` asserts the whole rule: the old unconditional path must stay gone, the
   moderation gate must exist, the fail-safe branch must exist, and the client warning copy must say
   "removed immediately when reported and moderation agrees".
-* **Deploy the worker before the Pages build** (`cd workers/rekindle-moderate && npx wrangler deploy`);
-  the client side only carries the warning copy.
+* **Deploy the worker before the Pages build** (`npm run deploy:worker -- rekindle-moderate`);
+  the client side only carries the warning copy. The account is pinned in `wrangler.toml`.
 * There is no new field, collection or rule — `resolutionNote` already existed on reports.
 
 

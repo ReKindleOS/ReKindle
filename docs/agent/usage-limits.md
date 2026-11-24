@@ -283,11 +283,19 @@ main site.
 **Deploy/ops (the token is outside the repo, `~/.cloudflare-social-token`):**
 
 ```bash
-export CLOUDFLARE_API_TOKEN=$(cat ~/.cloudflare-social-token)
-export CLOUDFLARE_ACCOUNT_ID=8d69e380e0c4e0580c47f21d9757c71c
-cd workers/rekindle-moderate && npx wrangler deploy
-cd ../rekindle-translate && npx wrangler deploy
+npm run deploy:worker -- rekindle-moderate
+npm run deploy:worker -- rekindle-translate
+# both at once:
+npm run deploy:workers:social
 ```
+
+`account_id` is pinned in every `workers/*/wrangler.toml` (social workers to
+`8d69e380e0c4e0580c47f21d9757c71c`, everything else to the main account), so a bare
+`npx wrangler deploy` can no longer silently target whichever account the shell is logged
+into. `scripts/deploy-worker.sh` reads the social token file and refuses to run if the pin
+is missing/unknown; `scripts/test-worker-accounts.js` (in `npm test`) keeps the pins
+honest. Do not set `CLOUDFLARE_ACCOUNT_ID` by hand — the wrapper drops it so the TOML pin
+wins.
 
 Secrets on both Workers: `SOCIAL_SERVICE_ACCOUNT_JSON` (from
 `service-account-social.json`), `FIREBASE_PROJECT_ID=rekindle-dd1fa` (this makes
