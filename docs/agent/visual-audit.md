@@ -260,10 +260,11 @@ The follow-up to the polish pass implements the proposals in
 - **Search palette** — `?q=chess` (and the magnifier) searches apps plus
   Settings/Help/ReKindle+/Login/Dashboard actions, highlights matched app labels (skips
   folder pills, where a black highlight is invisible), and caps at 60 results.
-- **Dashboard additions** — quick actions (Notes/Timer/Calendar/Search) in the Local Time
-  card; open-arrow links on the clock, weather and calendar widgets; Today and New event
-  in the calendar footer. New event deep-links to
+- **Dashboard additions** — open-arrow links on the clock, weather and calendar widgets;
+  Today and New event in the calendar footer. New event deep-links to
   `calendar.html?date=YYYY-MM-DD&new=1` (calendar.html sets the day and opens the form).
+  The Notes/Timer/Calendar/Search quick-action row was **removed 2026-11-25** to free
+  vertical space for the clock/weather details.
 - **Data** — weather has a 15-minute `localStorage` snapshot with a stale-while-revalidate
   path, an 8 s AbortController, feels-like/rain/wind/sunrise/sunset and an updated-age
   line. The agenda caches a month in memory, queries Google/CalDAV once per month (with a
@@ -274,7 +275,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=10`, `js/home.js?v=13` and the generated
+- **Assets** — `css/home.css?v=12`, `js/home.js?v=14` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.
@@ -303,14 +304,15 @@ Two follow-up fixes after the first dashboard pass:
 - **The dashboard now fits the viewport without page scroll.** `fitDashboard()`
   in `js/home.js` measures `#dashboard-section` after render and after the
   weather/agenda promises settle, then applies `dash-compact`, `dash-minimal`,
-  `dash-tiny` or `dash-ultra` until `scrollHeight <= clientHeight`. Compact hides
-  world clocks, the hourly strip, weather extras and the updated label; minimal
-  drops the month grid and quick actions; tiny hides weather details/date; ultra
-  hides the calendar. `primeDashboardDensity()` applies a first guess to avoid a
-  one-frame scrollbar, and a 0px section height is ignored so the first paint
-  cannot jump straight to ultra.
-- Measured: 800×1000 full, 600×800 full, 800×600 compact, 400×700 compact,
-  320×568 minimal, 1024×600 compact — `app-view.scrollHeight <= clientHeight`
+  `dash-tiny` or `dash-ultra` until `scrollHeight <= clientHeight`. Compact drops
+  only the hourly strip and tightens the calendar, keeping world clocks and the
+  weather's feels-like/rain/wind/sun readouts; minimal drops the month grid but
+  keeps those readouts; tiny hides weather details/date; ultra hides the calendar.
+  `primeDashboardDensity()` applies a first guess to avoid a one-frame scrollbar,
+  and a 0px section height is ignored so the first paint cannot jump straight to
+  ultra.
+- Measured: 800×1000 full, 600×800 full, 800×600 compact, 400×700 full,
+  320×568 compact, 1024×600 compact — `app-view.scrollHeight <= clientHeight`
   in every case.
 - The large weather glyph is no longer boxed: `#db-weather-icon` is just a flex
   item; the border, padding and background were removed.
@@ -368,3 +370,14 @@ tap/click, making the active tab look double-selected. `.folder-tab:focus` and
 `.foryou-tab:focus` now set `outline: none`; the global focus ring stays for
 other controls. The 8px left `border-left` on dashboard widget titles was also
 removed (the 2px bottom rule remains).
+
+
+## 2026-11-25 dashboard quick actions removed; extras prioritized
+
+The Local Time card's Notes/Timer/Calendar/Search row was removed. In compact
+density the hourly strip is the only dashboard readout that hides: world clocks,
+feels-like/rain/wind/sunrise/sunset and the updated age stay visible, while the
+calendar drops to 30px day cells and a 270px minimum row. Minimal hides the month
+grid but keeps those same clock/weather extras. Verified no page scroll at
+800x600, 400x700, 320x568 and 800x1000; 400x700 now fits the full dashboard with
+the hourly strip and calendar.

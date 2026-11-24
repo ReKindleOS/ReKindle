@@ -1463,11 +1463,6 @@
             renderAppGrid('all');
         }
 
-        function quickHomeSearch() {
-            if (currentFilter !== 'all') filterApps('all', document.querySelector('#nav-all'));
-            openAppSearch();
-        }
-
         function toggleAppSearch() {
             if (appSearchOpen || appSearchQuery) closeAppSearch();
             else openAppSearch();
@@ -3224,7 +3219,6 @@
         window.toggleAppSearch = toggleAppSearch;
         window.openAppSearch = openAppSearch;
         window.closeAppSearch = closeAppSearch;
-        window.quickHomeSearch = quickHomeSearch;
         window.runHomeSearch = runHomeSearch;
         window.clearRecentApps = clearRecentApps;
         window.recordRecentApp = recordRecentApp;

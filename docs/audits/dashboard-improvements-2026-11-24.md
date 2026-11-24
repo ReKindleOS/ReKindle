@@ -29,7 +29,7 @@ cached assets, and no animations.
 | Area | What shipped |
 | :--- | :--- |
 | Boot | `js/firebase-loader.js` + `js/home.js`: shell/grid first; Firebase only for a stored session or login intent. A guest loads **0 Firebase bytes**; a returning user loads app+auth in idle, then Firestore+RTDB after auth. `counter.dev` is `async`. |
-| Code split | Inline CSS → `css/home.css?v=10`, inline logic → `js/home.js?v=13`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
+| Code split | Inline CSS → `css/home.css?v=12`, inline logic → `js/home.js?v=14`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
 | Presence | Removed `window.rekindlePresence = true`; the dashboard no longer opens a presence listener/write. |
 | Weather | 15-minute `localStorage` snapshot (stale-while-revalidate), 8 s abort, feels-like/rain/wind/sunrise/sunset, updated-age label. |
 | Agenda | In-memory month cache, one Google/CalDAV fetch per month (2-day edge margin), bounded Firestore range query instead of the whole collection; loading/empty/session-expired states. |
@@ -42,7 +42,7 @@ cached assets, and no animations.
 | Grid | Rendered app tiles are cached (LRU 4) and re-appended on tab switches instead of rebuilding ~100 nodes. |
 | Prefetch | `warmRecentApp()` skips hidden tabs and keeps the `saveData` guard; only the exact `.html` href is warmed. |
 | Density | `fitDashboard()` picks full/compact/minimal/tiny/ultra so the Dashboard never makes the app view scroll; the weather glyph is unboxed and the header hit-area overlay that broke the For You tabs is fixed. |
-| Follow-ups | All Applications now includes recent **and favorite** apps (including featured favorites); the open For You shelf is persisted in `localStorage` and restored on reload, with a fallback while auth/Firestore data loads. |
+| Follow-ups | All Applications now includes recent **and favorite** apps (including featured favorites); the open For You shelf is persisted in `localStorage` and restored on reload, with a fallback while auth/Firestore data loads. Dashboard quick actions were removed and compact density now keeps world clocks/weather extras, shrinking the calendar instead. |
 
 Verified with `test-i18n`, `test-locales`, `test-compat`, `test-load-budget`,
 `test-home-bundle`, `test-seo`, `test-kindle`, plus 800×1000 light/dark and 600×800
@@ -206,7 +206,9 @@ back.
 5. **Quick actions on the Dashboard.** A compact row under the widgets (New Note,
    Timer, Add Event, Search) gives the glance screen one-tap destinations and uses the
    space that is otherwise below the calendar on short screens. Use existing app routes
-   and keys where possible; do not add another upsell.
+   and keys where possible; do not add another upsell. *(Removed 2026-11-25 at the
+   user's request; the Local Time card now goes straight from the date to world clocks,
+   freeing height for weather details and the calendar.)*
 6. **Make the widgets deep-link.** The clock, weather and calendar widgets should open
    `clock.html`, `weather.html` and `calendar.html` (with the selected date) on tap.
    Currently only the calendar's day cells are interactive.
