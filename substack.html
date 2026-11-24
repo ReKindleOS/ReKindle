@@ -542,9 +542,9 @@
             }
         }
     </style>
-    <script src="theme.js?v=35"></script>
+    <script src="theme.js?v=36"></script>
     <script src="time.js?v=9"></script>
-    <script src="pro-gate.js?v=11"></script>
+    <script src="pro-gate.js?v=12"></script>
     <script src="js/i18n.js?v=6"></script>
     <script src="js/emoji-render.js?v=1"></script>
     <script src="js/safe-html.js?v=1"></script>
@@ -820,6 +820,9 @@
         }
 
         // --- STATE ---
+        // rss_icon.png never existed; an inline SVG avoids a broken-image 404 loop.
+        const RSS_PLACEHOLDER = "data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2032%2032%22%3E%3Crect%20width=%2232%22%20height=%2232%22%20fill=%22%23eee%22/%3E%3Ccircle%20cx=%229%22%20cy=%2223%22%20r=%223%22%20fill=%22%23000%22/%3E%3Cpath%20d=%22M6%204a22%2022%200%200%201%2022%2022%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%224%22/%3E%3Cpath%20d=%22M6%2012a14%2014%200%200%201%2014%2014%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%224%22/%3E%3C/svg%3E";
+
         let state = {
             sid: '', // Only loaded from Firestore (Pro-protected)
             apiUrl: SUBSTACK_API,
@@ -1520,11 +1523,11 @@
             list.innerHTML = `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:20px; padding:20px;">
                 ${state.subs.map(sub => {
                 const pub = sub.publication;
-                const cover = pub.logo_url || pub.author_photo_url || pub.cover_photo_url || "rss_icon.png";
+                const cover = pub.logo_url || pub.author_photo_url || pub.cover_photo_url || RSS_PLACEHOLDER;
                 return `
                     <div style="background:white; border:2px solid black; box-shadow:4px 4px 0 black; cursor:pointer;" onclick="filterBySub(${pub.id})">
                         <div style="height:100px; background:#ddd; overflow:hidden; border-bottom:2px solid black;">
-                            <img src="${cover}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='rss_icon.png'">
+                            <img src="${cover}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='${RSS_PLACEHOLDER}'">
                         </div>
                         <div style="padding:10px;">
                             <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${pub.name}</div>
@@ -1559,6 +1562,18 @@
             updateSubstackConnectionUi();
         }
 
+        // Subscriptions search box (was wired to a function that never existed).
+        function filterSubs() {
+            const input = document.getElementById('filter-input');
+            if (!input) return;
+            const needle = (input.value || '').trim().toLowerCase();
+            const items = document.querySelectorAll('#sub-list .sub-item');
+            for (let i = 0; i < items.length; i++) {
+                const label = (items[i].textContent || '').toLowerCase();
+                items[i].style.display = (!needle || label.indexOf(needle) !== -1) ? '' : 'none';
+            }
+        }
+
         function renderSubs() {
             const list = document.getElementById('sub-list');
             list.innerHTML = '';
@@ -1571,7 +1586,7 @@
                 el.className = 'sub-item';
                 el.onclick = () => filterBySub(pub.id);
                 el.innerHTML = `
-                    <img src="${pub.logo_url || pub.author_photo_url || ''}" class="sub-icon" onerror="this.src='rss_icon.png'">
+                    <img src="${pub.logo_url || pub.author_photo_url || ''}" class="sub-icon" onerror="this.src='${RSS_PLACEHOLDER}'">
                     <span class="nav-label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${pub.name}</span>
                 `;
                 list.appendChild(el);

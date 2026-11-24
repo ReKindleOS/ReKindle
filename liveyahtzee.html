@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="theme.js?v=35"></script>
+    <script src="theme.js?v=36"></script>
 
     <style>
         /* SYSTEM 7 AESTHETICS */
@@ -480,6 +480,13 @@
     <script src="js/gamerules.js?v=3"></script>
 
     <script>
+        // Player names are user-controlled (any authed client can write them).
+        function rkEscapeName(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         const firebaseConfig = {
             apiKey: "AIzaSyDY7x7vVmlYUyVZNLuCCmIQYa6PWFVfZqQ",
             authDomain: "rekindle-dd1fa.firebaseapp.com",
@@ -494,6 +501,10 @@
 
         const auth = firebase.auth();
         const rtdb = firebase.database();
+        // RTDB clock offset: a Kindle clock can be minutes off (AGENTS §9).
+        let serverTimeOffset = 0;
+        rtdb.ref('.info/serverTimeOffset').on('value', function (snap) { serverTimeOffset = snap.val() || 0; });
+        function serverTime() { return Date.now() + serverTimeOffset; }
 
         let currentUser = null;
         let matchId = null;
@@ -658,7 +669,7 @@
             listDiv.innerHTML = players.map(p => `
                 <div style="display:flex; align-items:center; font-weight:bold; font-size:1.1rem; border-bottom:1px solid #eee; padding:5px 0;">
                     <canvas id="avatar-${p.uid}" width="32" height="32" style="border:2px solid black; width:32px; height:32px; image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; image-rendering:pixelated;"></canvas>
-                    <span style="margin-left:10px;">${p.name}</span>
+                    <span style="margin-left:10px;">${rkEscapeName(p.name)}</span>
                 </div>
             `).join('');
 
@@ -673,17 +684,17 @@
 
             const statusDiv = document.getElementById('lobby-status');
             if (gameState.countdown > 0) {
-                const secondsLeft = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                const secondsLeft = Math.max(0, Math.ceil((gameState.countdown - serverTime()) / 1000));
                 statusDiv.innerText = window.tFormat
                     ? window.tFormat('liveyahtzee.lobby.starting_in', { seconds: secondsLeft }, 'Starting in ${seconds}s...')
                     : 'Starting in ' + secondsLeft + 's...';
                 if (!countdownTimer) {
                     countdownTimer = setInterval(() => {
-                        const s = Math.max(0, Math.ceil((gameState.countdown - Date.now()) / 1000));
+                        const s = Math.max(0, Math.ceil((gameState.countdown - serverTime()) / 1000));
                         document.getElementById('lobby-status').innerText = window.tFormat
                             ? window.tFormat('liveyahtzee.lobby.starting_in', { seconds: s }, 'Starting in ${seconds}s...')
                             : 'Starting in ' + s + 's...';
-                        if (s <= 0 && isHost) { clearInterval(countdownTimer); countdownTimer = null; startGame(); }
+                        if (s <= 0) { clearInterval(countdownTimer); countdownTimer = null; if (isHost) startGame(); }
                     }, 1000);
                 }
             } else {
@@ -691,7 +702,7 @@
                     ? window.tFormat('liveyahtzee.lobby.waiting', { count: players.length }, 'Waiting for players... (${count})')
                     : 'Waiting for players... (' + players.length + ')';
                 if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-                if (isHost && players.length >= 2 && gameState.countdown === 0) matchRef.update({ countdown: Date.now() + 15000 });
+                if (isHost && players.length >= 2 && gameState.countdown === 0) matchRef.update({ countdown: serverTime() + 15000 });
             }
         }
 
@@ -1090,7 +1101,7 @@
             document.getElementById('winner-modal').style.display = 'flex';
             const board = document.getElementById('final-scoreboard');
             const sorted = Object.values(gameState.players).sort((a,b) => b.total - a.total);
-            board.innerHTML = sorted.map((p, idx) => `<div>${idx+1}. ${p.name}: <b>${p.total}</b></div>`).join('');
+            board.innerHTML = sorted.map((p, idx) => `<div>${idx+1}. ${rkEscapeName(p.name)}: <b>${p.total}</b></div>`).join('');
             document.getElementById('winner-text').innerText = (sorted[0].uid === currentUser.uid) ? "You Win!" : `${sorted[0].name} Wins!`;
         }
         if (window.rekindleApplyWallpaper) window.rekindleApplyWallpaper();

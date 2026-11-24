@@ -144,6 +144,23 @@ const root = path.join(__dirname, '..');
     assert.ok(/removed immediately when reported and moderation agrees/.test(clientSource),
         'the client warning must describe the moderation-confirmed rule');
 
+    /* ------------------------------------------------------------------ */
+    /* 7. Reported content is resolved server-side (2026-11-24)            */
+    /* ------------------------------------------------------------------ */
+    // The client used to supply contentSnapshot, so any signed-in user could
+    // forge a slur in a report and have the Worker auto-delete someone else's
+    // real message. Only dm_message was fetched server-side; every type now is.
+    assert.ok(/resolveReportedContent\(contentType, contentPath, contentId, env, accessToken\)/.test(workerSource),
+        'non-DM reports must resolve their content server-side');
+    assert.ok(/reportContentSnapshot = resolved\.text\.substring\(0, 2000\)/.test(workerSource),
+        'the moderation snapshot must come from the server-side lookup');
+    assert.ok(/reportContentResolved = resolved\.resolved/.test(workerSource),
+        'the Worker must track whether the content could be resolved');
+    assert.ok(!/let reportContentSnapshot = \(contentSnapshot \|\| ""\)/.test(workerSource),
+        'the client-supplied report snapshot must no longer be trusted');
+    assert.ok(/else if \(!reportContentResolved\)/.test(workerSource),
+        'an unresolvable report must be held, not auto-deleted');
+
     console.log('PASS - report comments');
     console.log('  rejected samples: ' + rejected.length);
     console.log('  accepted samples: ' + accepted.length);

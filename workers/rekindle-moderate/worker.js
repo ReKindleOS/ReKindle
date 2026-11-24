@@ -381,9 +381,94 @@ async function rtdbUpdateReport(reportId, updates, accessToken) {
 /*  CONTENT DELETION                                                   */
 /* ------------------------------------------------------------------ */
 
+/* Resolve reported content server-side. The report body's contentSnapshot is
+ * client-supplied, so moderating it let any signed-in user forge a slur and
+ * auto-delete someone else's message (2026-11-24 audit). Only the DM branch
+ * was safe; this is the same rule for every other type. */
+function firestoreTextField(field) {
+    if (!field) return "";
+    if (field.stringValue !== undefined) return field.stringValue;
+    if (field.arrayValue && field.arrayValue.values) {
+        return field.arrayValue.values.map(v => v.stringValue || "").filter(Boolean).join("\n");
+    }
+    return "";
+}
+
+function firestoreDocText(doc) {
+    if (!doc || !doc.fields) return "";
+    const keys = ["title", "subheading", "description", "text", "body", "content", "message", "pollQuestion", "options"];
+    const parts = [];
+    for (const k of keys) {
+        const val = firestoreTextField(doc.fields[k]);
+        if (val) parts.push(val);
+    }
+    return parts.join("\n").slice(0, 2000);
+}
+
+function firestoreDocAuthor(doc) {
+    if (!doc || !doc.fields) return "";
+    return firestoreTextField(doc.fields.authorId) || firestoreTextField(doc.fields.uid) || "";
+}
+
+async function firestoreSocialDoc(docPath, accessToken) {
+    const url = `https://firestore.googleapis.com/v1/projects/rekindle-socials/databases/(default)/documents/${docPath}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } });
+    if (resp.status === 404) return null;
+    if (!resp.ok) throw new Error(`Firestore get failed (${resp.status})`);
+    return await resp.json();
+}
+
+function safeIdPart(value) {
+    const out = String(value || "");
+    return /^[A-Za-z0-9_-]{1,80}$/.test(out) ? out : "";
+}
+
+async function resolveReportedContent(contentType, clientPath, contentId, env, accessToken) {
+    const id = safeIdPart(contentId);
+    if (!id) return { path: "", uid: "", text: "", resolved: false };
+    try {
+        if (contentType === "kindlechat") {
+            const res = await rtdbSocialGet(`kindlechat/messages/${id}`, accessToken);
+            const msg = res.data;
+            if (!msg || typeof msg !== "object") return { path: `kindlechat/messages/${id}`, uid: "", text: "", resolved: false };
+            return { path: `kindlechat/messages/${id}`, uid: msg.uid || "", text: String(msg.text || ""), resolved: true };
+        }
+        if (contentType === "suggestion") {
+            const msg = await rtdbGetWithAccessToken(`suggestions/${id}`, env, accessToken);
+            if (!msg || typeof msg !== "object") return { path: `suggestions/${id}`, uid: "", text: "", resolved: false };
+            return { path: `suggestions/${id}`, uid: msg.authorUid || "", text: [msg.title, msg.description].filter(Boolean).join("\n"), resolved: true };
+        }
+        if (contentType === "topic" || contentType === "neighbourhood_post") {
+            const root = contentType === "topic" ? "topics" : "neighbourhood_posts";
+            const doc = await firestoreSocialDoc(`${root}/${id}`, accessToken);
+            return { path: `${root}/${id}`, uid: firestoreDocAuthor(doc), text: firestoreDocText(doc), resolved: !!doc };
+        }
+        if (contentType === "topic_comment" || contentType === "neighbourhood_comment" || contentType === "suggestion_comment") {
+            const root = contentType === "topic_comment" ? "topics"
+                : contentType === "neighbourhood_comment" ? "neighbourhood_posts" : "suggestions";
+            const parsed = parseCommentPath(clientPath, root);
+            if (!parsed || parsed.commentId !== id) return { path: "", uid: "", text: "", resolved: false };
+            const parentId = safeIdPart(parsed.parentId);
+            if (!parentId) return { path: "", uid: "", text: "", resolved: false };
+            const canonical = `${root}/${parentId}/comments/${id}`;
+            if (contentType === "suggestion_comment") {
+                const c = await rtdbGetWithAccessToken(canonical, env, accessToken);
+                if (!c || typeof c !== "object") return { path: canonical, uid: "", text: "", resolved: false };
+                return { path: canonical, uid: c.authorUid || c.uid || "", text: String(c.text || ""), resolved: true };
+            }
+            const doc = await firestoreSocialDoc(canonical, accessToken);
+            return { path: canonical, uid: firestoreDocAuthor(doc), text: firestoreDocText(doc), resolved: !!doc };
+        }
+    } catch (e) {
+        console.error("[REPORT] Could not load reported content:", e.message);
+    }
+    return { path: "", uid: "", text: "", resolved: false };
+}
+
 // Comment documents live one level below their parent, so a bare comment id
 // cannot identify the parent on its own. Only accept the exact shape the
 // reporting client writes: {root}/{parentId}/comments/{commentId}.
+
 function parseCommentPath(contentPath, root) {
     if (!contentPath) return null;
     const parts = String(contentPath).split("/");
@@ -3118,9 +3203,10 @@ export default {
                 // path, author and snapshot from the social RTDB after proving
                 // the reporter is a participant. This stops a forged report
                 // from auto-deleting someone else's message.
-                let reportContentPath = contentPath || "";
-                let reportReportedUserId = reportedUserId || "";
-                let reportContentSnapshot = (contentSnapshot || "").substring(0, 2000);
+                let reportContentPath = "";
+                let reportReportedUserId = "";
+                let reportContentSnapshot = "";
+                let reportContentResolved = true;
                 let dmContext = null;
                 if (contentType === "dm_message") {
                     const parsed = parseDmMessagePath(contentPath);
@@ -3140,6 +3226,14 @@ export default {
                     reportReportedUserId = msg.uid || "";
                     reportContentSnapshot = String(msg.text || "").substring(0, 2000);
                     dmContext = await getDmReportContext(parsed.threadId, accessToken);
+                } else {
+                    // Every non-DM report is verified server-side now: the client
+                    // snapshot/path is never trusted for the moderation verdict.
+                    const resolved = await resolveReportedContent(contentType, contentPath, contentId, env, accessToken);
+                    reportContentPath = resolved.path;
+                    reportReportedUserId = resolved.uid;
+                    reportContentSnapshot = resolved.text.substring(0, 2000);
+                    reportContentResolved = resolved.resolved;
                 }
                 
                 // Rate limit: token bucket (no bypass)
@@ -3212,6 +3306,10 @@ export default {
                         } else {
                             heldForReview = true;
                         }
+                    } else if (!reportContentResolved) {
+                        // Could not read the content (deleted, or the lookup
+                        // failed): never let one reporter delete on that basis.
+                        heldForReview = true;
                     } else {
                         shouldAutoDelete = true;
                         deleteNote = "Auto-deleted after 1 report (moderation unavailable)";

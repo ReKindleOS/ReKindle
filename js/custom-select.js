@@ -40,6 +40,19 @@ class CustomSelect {
             this.toggle();
         });
 
+        // The native select is display:none, so the painted trigger must be
+        // focusable and operable from the keyboard (2026-11-24 audit).
+        this.selectedDisplay.setAttribute('role', 'button');
+        this.selectedDisplay.tabIndex = 0;
+        this.selectedDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.toggle();
+            } else if (e.key === 'Escape') {
+                this.close();
+            }
+        });
+
         // Add arrow icon to trigger
         const arrow = document.createElement('span');
         arrow.className = 'custom-arrow';

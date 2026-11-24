@@ -893,7 +893,8 @@
         // Allow double-tap on editable elements or inputs
         var target = event.target;
         var isEditable = target.isContentEditable ||
-            (['input', 'textarea', 'select'].includes(target.tagName.toLowerCase()));
+            (['input', 'textarea', 'select'].includes(target.tagName.toLowerCase())) ||
+            (target.closest && target.closest('a,button,[onclick],label,canvas,summary'));
 
         if (now - lastTouchEnd <= 300 && !isEditable) {
             event.preventDefault();

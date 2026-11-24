@@ -212,10 +212,14 @@
                 }
 
                 if (expires > now) {
-                    // User is Pro!
-                    const wasPro = localStorage.getItem(CACHE_KEY);
-                    localStorage.setItem(CACHE_KEY, expires.toString());
-                    localStorage.setItem(CACHE_UID_KEY, user.uid);
+                    // User is Pro! Cache writes are best-effort: a quota/wiped
+                    // cache must never turn a paying user into a paywall.
+                    let wasPro = null;
+                    try {
+                        wasPro = localStorage.getItem(CACHE_KEY);
+                        localStorage.setItem(CACHE_KEY, expires.toString());
+                        localStorage.setItem(CACHE_UID_KEY, user.uid);
+                    } catch (cacheErr) { }
                     isPro = true;
                     hidePaywall();
 
@@ -310,7 +314,8 @@
         /\.plus-label\s*\{[^}]*display\s*:\s*none/i
     ];
 
-    setInterval(() => {
+    const antiTamperTimer = setInterval(() => {
+        if (document.hidden) return;
         // 1. Overlay integrity check (hard gate only; freemium upsells are
         // dismissible and must stay closed after "Not now")
         if (!FREEMIUM && checkComplete && !isPro) {
@@ -360,6 +365,7 @@
             // We can't unlock it, but we can force the paywall back
             if (!FREEMIUM && checkComplete && !isPro) showPaywall('Subscription required.');
         }
+        if (checkComplete && isPro) clearInterval(antiTamperTimer);
     }, 500);
 
     // Expose API
