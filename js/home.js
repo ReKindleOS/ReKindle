@@ -1306,7 +1306,13 @@
             } else {
                 grid.className = 'grid-container';
                 const list = currentHomeShelf === 'recent' ? data.recent : data.favorites;
-                list.forEach(function (app) { fragment.appendChild(createAppElement(app)); });
+                list.forEach(function (app) {
+                    const el = createAppElement(app);
+                    // The same app may now also be in All Applications; keep
+                    // DOM ids unique across the two surfaces.
+                    el.id = 'shelf-icon-' + app.id;
+                    fragment.appendChild(el);
+                });
             }
             grid.appendChild(fragment);
 
@@ -1854,16 +1860,17 @@
 
             if (category === 'all' || currentFilter === 'all') {
                 document.getElementById('category-title').innerText = categoryTitleFor('all');
-                let baseList = APPS.filter(a => (!a.featured || featuredHidden) && !favoriteApps.includes(a.id));
+                // Recent apps also belong in All Applications. A recent app
+                // that is also a favorite must be added back here, otherwise
+                // the favorite filter below would still hide it from All.
+                const recentVisibleIds = (!recentHidden && !isEditMode && currentFilter === 'all')
+                    ? getVisibleRecentApps().map(function (app) { return app.id; })
+                    : [];
+                let baseList = APPS.filter(a =>
+                    (!a.featured || featuredHidden) &&
+                    (!favoriteApps.includes(a.id) || recentVisibleIds.indexOf(a.id) !== -1)
+                );
                 if (!isEditMode) baseList = baseList.filter(a => !hiddenApps.includes(a.id));
-                // A launcher already visible in Recent must not appear again in
-                // the All Applications grid.
-                if (!recentHidden && !isEditMode && currentFilter === 'all') {
-                    const recentIds = getVisibleRecentApps().map(function (app) { return app.id; });
-                    if (recentIds.length) {
-                        baseList = baseList.filter(function (app) { return recentIds.indexOf(app.id) === -1; });
-                    }
-                }
                 if (gamesDisabled) baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
                 let games = baseList.filter(a => (a.cat === 'games' || a.cat === 'two_player' || a.cat === 'live_game'));
                 const apps = baseList.filter(a => a.cat !== 'games' && a.cat !== 'two_player' && a.cat !== 'live_game');

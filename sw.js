@@ -3,7 +3,7 @@ const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './css/home.css?v=6',
-    './js/home.js?v=11',
+    './js/home.js?v=12',
     './js/home-deps.js?v=1',
     './js/firebase-loader.js?v=1',
     './icons.js?v=9',

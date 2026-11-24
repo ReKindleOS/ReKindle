@@ -274,7 +274,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=6`, `js/home.js?v=11` and the generated
+- **Assets** — `css/home.css?v=6`, `js/home.js?v=12` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.
@@ -317,3 +317,17 @@ Two follow-up fixes after the first dashboard pass:
 
 Verified by hit-testing every shelf tab, clicking Favorites, switching to
 Recent/Featured, the search button, and screenshots at the sizes above.
+
+## 2026-11-24 recent apps in All Applications
+
+Recent apps were excluded from the All Applications grid to avoid repeats, which
+made a launcher disappear from the main grid as soon as it had been opened once.
+The All grid now **includes** every app shown in the Recent shelf. The favorite
+filter still keeps ordinary favorites out of All, but a favorite that is also in
+Recent is added back explicitly (`recentVisibleIds` in `buildAppGrid`). Shelf
+tiles get `shelf-icon-<id>` ids so the same app can exist in the shelf and the All
+grid without duplicate DOM ids.
+
+Verified with `recent=["calculator","notes"]` and `favorites=["notes","calendar"]`:
+All shows Calculator and Notes, recent shelf shows Calculator and Notes with
+`shelf-icon-*` ids, and `icon-notes` occurs exactly once.
