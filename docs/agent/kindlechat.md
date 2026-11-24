@@ -276,7 +276,7 @@ kindlechat/config/dm_beta_enabled    # beta.rekindle.ink only (default false)
 
 Rate limits: `dm` = 8 tokens / 8 s; `dm_request` = 5 tokens / 2 h plus the hard 3-pending cap. DM text is never written to `automod_log` (`storeText:false`); categories only.
 
-Reports: `contentType: 'dm_message'` is immediately auto-deleted on the first report. The worker **derives** the path/author/snapshot from the social RTDB after proving the reporter is a participant, and attaches a report-scoped `dmContext` (last 10 messages) for moderators. There is deliberately **no** moderator read rule on `dm_messages`; the context is stored only on the report. Discord delete resolves the thread from the report’s `contentPath`.
+Reports: `contentType: 'dm_message'` is auto-deleted only when a second, different user reports it or automated moderation confirms the reported text; otherwise the report is held for review. The worker **derives** the path/author/snapshot from the social RTDB after proving the reporter is a participant, and attaches a report-scoped `dmContext` (last 10 messages) for the moderation console. There is deliberately **no** blanket moderator read rule on `dm_messages`; the context is stored only on the report.
 
 ### Client (`kindlechat.html`)
 

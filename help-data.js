@@ -51,7 +51,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>ReKindle is a web dashboard for E-ink devices. It turns a Kindle, Kobo or Boox e-reader into a set of useful apps: a task list, calendar, mail client, reader, RSS feed, games arcade and more. It also works in a normal phone or desktop browser.</p>
             <h2>The two ways to use it</h2>
             <ul>
-                <li><b>Guest mode</b> - no account. Everything is stored in your browser's local storage on that device. Nothing is uploaded to ReKindle.</li>
+                <li><b>Guest mode</b> - no account. Everything is stored in your browser's local storage on that device. Nothing is stored on ReKindle's servers in guest mode; the only automatic upload is an anonymous page-view count.</li>
                 <li><b>Cloud mode</b> - a free ReKindle account. App data, favourites and supported settings sync through Google Firebase, so a second device can pick up where you left off.</li>
             </ul>
             <p>You can start in guest mode and register later. Games, notes, tasks and most tools work in both modes; social apps and a few integrations need an account.</p>
@@ -152,10 +152,10 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p><b>Forgot the current password?</b> If you are still signed in on this device, choose <b>Forgot your current password?</b> in the same box, type your username to confirm, and set a new password (at least 8 characters). This works from the live session - there is no "forgot password" email because accounts do not require an email address. Only do this on a device you control: anyone who can use a device you are signed in on could reset the password too.</p>
             <p>If you are signed out and locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
             <h2>Deleting your account</h2>
-            <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account, profile, files, scores and suggestions from the main project. Your social username and profile picture are removed, so other people see "Deleted User" with a blank avatar. Your public social history (posts, comments, chat messages and DMs) stays in the social project and ages out under the normal retention policy. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
+            <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account, profile, files, scores and suggestions from the main project. Your social username and profile picture are removed, so other people see "Deleted User" with a blank avatar. Your public social history (posts, comments and chat messages) stays in the social project and ages out under the normal retention policy; direct messages are not automatically deleted. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
             <h2>Age verification for social apps</h2>
             <p>KindleChat, Neighbourhood and Topics require an age check before they load. You enter your date of birth and country; ReKindle checks the minimum social-media age for that country. The check is a self-declaration, not an ID upload, and the social apps stay locked until it is complete - browsing, posting and messaging all need it.</p>
-            <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used for the age check and kept in your account's age-verification record for audit and support. See the <a href="privacy.html">Privacy Policy</a>.</div>
+            <div class="note"><b>Privacy:</b> Your password is handled by Firebase Authentication. Your date of birth and country are used for the age check and kept in your account's age-verification record for audit and support; deleting the account removes it. See the <a href="privacy.html">Privacy Policy</a>.</div>
         `
     },
     {
@@ -174,27 +174,27 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>General settings: manual location, timezone, units, language, rotation, wallpaper and games toggle.</li>
                 <li>App data for tasks, notes, journal, habits, flashcards, reading logs, bookmarks, library items and similar apps.</li>
                 <li>Reading positions and books saved into your ReKindle library.</li>
-                <li>Social identity (username, public profile, avatars) and social content.</li>
+                <li>Your ReKindle+ status. Social identity (username, public profile, avatars) and social content live in the separate social project, not under <code>users/{uid}</code>.</li>
             </ul>
-            <p>Not everything syncs. Games mostly keep high scores locally and separately post verified scores to leaderboards. Google OAuth tokens and Readwise tokens stay on the device. Mail saves an encrypted copy of app passwords to your account (and keeps its Outlook token on ReKindle's server), and several Pro integrations save their credentials to your private account records too: the AI Assistant's API key, Dropbox, Bluesky, Mastodon, Pinterest and Substack. Each app's guide says what it stores.</p>
+            <p>Not everything syncs. Games mostly keep high scores locally and separately post verified scores to leaderboards. Google OAuth tokens and Readwise tokens normally stay on the device (Quick ToDo is the exception: it saves its Google Tasks token to your Pro records so the connection follows you). Mail saves an encrypted copy of app passwords to your account (and keeps its Outlook token on ReKindle's server), and several Pro integrations save their credentials to your private account records too: Dropbox, Bluesky, Mastodon, Pinterest, Substack and Quick ToDo. The AI Assistant's API key is the exception: it stays on this device. Each app's guide says what it stores.</p>
             <h2>Guest mode</h2>
             <p>Guest mode never creates a server record. Data is in your browser's <code>localStorage</code> (and IndexedDB/localforage for larger files such as books). It is available only in that browser on that device. Clearing site data or the browser cache removes it permanently.</p>
             <h2>Offline and conflicts</h2>
             <p>Apps are expected to work from local state first and sync when a connection returns. The account settings listener usually treats the newest timestamp as authoritative. If two devices edit the same item offline, one version can overwrite the other - sync is a convenience, not a real-time collaborative editor.</p>
             <div class="note"><b>Moving devices:</b> sign in on the new device before creating lots of guest data. Guest data is not merged into an account automatically.</div>
             <h2>Google and third-party data</h2>
-            <p>Google Tasks, Calendar and Contacts are fetched directly from Google APIs using a token kept in local storage. ReKindle does not copy that data to its own servers. Readwise tokens also stay on the device. AI API keys, Dropbox/Bluesky/Mastodon/Pinterest credentials and a Substack cookie are saved to your private account records (Pro data) so the connection follows you to another device.</p>
+            <p>Google Tasks, Calendar and Contacts are fetched directly from Google APIs using a token kept in local storage. ReKindle does not copy that data to its own servers. Readwise tokens also stay on the device. Dropbox/Bluesky/Mastodon/Pinterest credentials, Quick ToDo's Google token and a Substack cookie are saved to your private account records (Pro data) so the connection follows you to another device; AI API keys stay on the device.</p>
         `
     },
     {
         id: 'pro',
         cat: 'start',
         title: 'ReKindle+',
-        summary: 'Plans, prices, what a membership unlocks, and how to manage or cancel it.',
+        summary: 'Plans, prices, free vs Plus limits, gift codes, and how to manage or cancel.',
         tags: 'pro plus subscription pay pricing stripe upgrade premium supporter monthly yearly lifetime manage cancel',
         related: ['account', 'mail', 'chat', 'files'],
         body: `
-            <p>ReKindle+ is an optional supporter subscription. The core dashboard, reader, games and most tools stay free. A membership covers the server costs of cloud and AI features and unlocks the premium apps.</p>
+            <p>ReKindle+ is an optional supporter subscription. The core dashboard, reader, games and most tools stay free. A membership covers the server costs of cloud and AI features and unlocks the premium apps. The plans and the full free-vs-Plus comparison are on the <a href="membership.html">ReKindle+ page</a>.</p>
             <h2>Plans</h2>
             <table>
                 <tr><th>Plan</th><th>Price</th></tr>
@@ -203,9 +203,18 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td>Lifetime</td><td>$30 once</td></tr>
             </table>
             <p>Payment is handled by Stripe from the <a href="pay.html">ReKindle+ page</a>. You must be signed in first, because the membership is attached to your account.</p>
+            <h2>Free and Plus</h2>
+            <table>
+                <tr><th>Feature</th><th>Free</th><th>ReKindle+</th></tr>
+                <tr><td>Files</td><td>5 MB on this device</td><td>100 MB cloud storage</td></tr>
+                <tr><td>Docs</td><td>Local drafts and .txt export</td><td>Save to Files, .docx import/export</td></tr>
+                <tr><td>AI Assistant</td><td>1 message/day</td><td>10/day, or your own API key</td></tr>
+                <tr><td>Mail, Photo Frame, Flipbook</td><td>Preview only</td><td>Full app</td></tr>
+                <tr><td>The 13 Plus apps</td><td>Preview only</td><td>Full access</td></tr>
+            </table>
             <h2>What it unlocks</h2>
             <ul>
-                <li><b>Mail</b> - IMAP/SMTP email client.</li>
+                <li><b>Mail</b> - IMAP/SMTP email client, including Outlook/Hotmail sign-in.</li>
                 <li><b>AI Assistant</b> - built-in AI chat (custom API keys also require Pro).</li>
                 <li><b>Files</b> and <b>Docs</b> - cloud file storage and a document editor.</li>
                 <li><b>Quick ToDo</b> - handwriting OCR task capture.</li>
@@ -216,7 +225,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Starting KindleChat direct messages; receiving them is free.</li>
             </ul>
             <h2>Managing and cancelling</h2>
-            <p>Open <a href="pay.html">ReKindle+</a> or <b>Settings</b> while signed in. An active membership shows its expiry date and a <b>Manage Subscription</b> button that opens the ReKindle+ page, where the Stripe billing portal link lives. Cancelling stops the renewal; access normally continues to the end of the paid period.</p>
+            <p>Open the <a href="membership.html">ReKindle+ page</a> or <b>Settings</b> while signed in. An active membership shows its expiry date and a <b>Membership details</b> link in Settings; the membership page labels the Stripe billing button <b>Manage on Stripe</b> (the pay page says <b>Manage Subscription on Stripe</b>). Cancelling stops the renewal; access normally continues to the end of the paid period.</p>
+            <h2>Gift ReKindle+</h2>
+            <p>You can buy a year or a lifetime as a gift from the <a href="membership.html#gifts">ReKindle+ page</a> or Settings -&gt; <b>Gift ReKindle+</b>. Payment creates a single-use code; send it to the person, who redeems it under <b>Gift ReKindle+</b> on the membership page. Codes do not expire. A gift can only be redeemed when the account is not already a member, so an active subscriber should wait until their term ends. Buyers can see their codes under <b>Your gift codes</b>.</p>
+            <h2>Previews</h2>
+            <p>Opening a locked Plus app shows a preview of what the app does, with a link to the plans, instead of a dead end.</p>
             <div class="note"><b>If Pro does not unlock:</b> wait a minute and refresh, confirm you are signed in as the account that paid, then check the expiry date on the ReKindle+ page. Webhook delays and stale tokens are the usual causes. See <a href="#troubleshooting">Troubleshooting</a>.</div>
             <p>Some Pro features still have their own limits or keys: the hosted AI Assistant allows 10 messages a day (a custom API key removes that cap), Mail depends on your email provider's sign-in, and Dropbox/Bluesky/etc. need your own account.</p>
         `
@@ -233,7 +246,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Tabs and views</h2>
             <ul>
                 <li><b>All</b> - everything, with a separate All Games section at the bottom.</li>
-                <li><b>Dashboard</b> (the grid icon) - clock, weather, calendar agenda and shortcuts.</li>
+                <li><b>Dashboard</b> (the grid icon) - clock, weather, calendar agenda and a ReKindle+ nudge card when you are not a member.</li>
                 <li><b>Essentials / Tools / Lifestyle / Games / Multiplayer Games</b> - category views.</li>
                 <li><b>Favourites</b> - apps you star, shown above the grid on the All tab.</li>
                 <li><b>Recent</b> - your last opened apps, shown above the grid. Toggle it with <b>Recent: ON/OFF</b> in Edit mode.</li>
@@ -252,6 +265,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Favourites and hidden apps sync to your account when signed in, and are cached locally for guest mode.</p>
             <h2>Folders</h2>
             <p>Games with several modes are grouped into one icon. For example, Chess opens a folder containing Single, Local and Live versions. Tap the folder, then choose a mode. The folder title uses the game name; the little badges explain each option (see <a href="#badges">Badges explained</a>).</p>
+            <p>Apps marked with a <b>+</b> badge need ReKindle+. Opening one while you are not a member shows a preview of the app with a link to the plans.</p>
             <h2>Dashboard widgets</h2>
             <p>The dashboard uses the location saved in Settings. It shows local time, a weather summary with an hourly strip, and today's calendar agenda. If the clock is wrong, set your location in Settings; Kindle system timezones are unreliable and ReKindle applies its own offset.</p>
             <div class="note"><b>Games hidden?</b> If the Games and Multiplayer tabs are missing, open Settings and turn off <b>Disable Games</b>. Parents use this to keep the arcade out of reach.</div>
@@ -274,7 +288,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td><b>LIVE</b></td><td>Online multiplayer against other ReKindle users. Needs an account and a connection.</td></tr>
                 <tr><td><b>1P</b></td><td>Single-player version, shown inside a game folder.</td></tr>
                 <tr><td><b>2P</b></td><td>Local pass-and-play version for two people sharing one device.</td></tr>
-                <tr><td><b>+</b></td><td>Requires an active ReKindle+ membership. Tapping opens the subscribe prompt. See <a href="#pro">ReKindle+</a>.</td></tr>
+                <tr><td><b>+</b></td><td>Requires an active ReKindle+ membership. Tapping opens a preview of the app with a link to the plans. See <a href="#pro">ReKindle+</a>.</td></tr>
                 <tr><td><b>CLOSED</b></td><td>Reserved for an app whose service is temporarily unavailable; tapping explains why. No app currently uses it.</td></tr>
             </table>
             <h2>Unsupported-app warning</h2>
@@ -306,9 +320,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Removes local caches and downloaded books.</li>
                 <li>Cloud data stays safe and returns when you sign in again.</li>
             </ul>
-            <div class="note"><b>Before clearing:</b> sign in and open the app once so unsynced changes get a chance to write. There is no general "export everything" button yet; for a specific app, use its download/export option (Docs, Mindmap, Pixel, Flipbook, Sheet Music) or contact support.</div>
+            <div class="note"><b>Before clearing:</b> sign in and open the app once so unsynced changes get a chance to write. There is no general "export everything" button yet; for a specific app, use its download/export option (Notes, Docs, Mindmap, Pixel, Flipbook, Sheet Music) or contact support.</div>
             <h2>Privacy</h2>
-            <p>Guest mode sends no personal data to ReKindle. Cloud mode sends only what the apps you use need. Google and Readwise tokens stay on the device. Mail app passwords, AI API keys and several Pro integration credentials (Dropbox, Bluesky, Mastodon, Pinterest, Substack) are stored in your private Firebase records, so clearing site data does not remove them. Read the full <a href="privacy.html">Privacy Policy</a>.</p>
+            <p>Guest mode keeps your data on the device; the only automatic upload is an anonymous page-view count (Counter.dev). Cloud mode sends only what the apps you use need. Google and Readwise tokens stay on the device. Mail app passwords and several Pro integration credentials (Dropbox, Bluesky, Mastodon, Pinterest, Substack, Quick ToDo) are stored in your private Firebase records, so clearing site data does not remove them; the AI Assistant's API key stays on the device, so clearing site data does remove it. Read the full <a href="privacy.html">Privacy Policy</a>.</p>
         `
     },
     {
@@ -364,7 +378,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Suggestions</h2>
             <p>The <a href="#suggestions">Suggestions</a> app is the official feature-request and bug tracker. You can post an idea, a problem or a translation issue, vote on others, and follow status changes. Search before posting - duplicates are merged or closed.</p>
             <h2>Reporting content or a person</h2>
-            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. A report adds a snapshot of the content and its author to ReKindle's report queue. Every report needs a reason and a short comment containing at least one real word. Chat messages, DMs and comments are removed on the first report; topics and posts need two independent reports. In KindleChat you can also block a user from inside a direct message thread, and unblock them again there. For urgent safety issues, email support and say "safety" in the subject.</p>
+            <p>In KindleChat, Neighbourhood and Topics, use the <b>!</b> report control on a message, post or comment. A report adds a snapshot of the content and its author to ReKindle's report queue. Every report needs a reason and a short comment containing at least one real word. A chat message, DM or comment is removed when a second person reports it, when automated moderation confirms it, or when the moderation service cannot be reached; if moderation finds nothing, the report is held for review. Topics and posts need two independent reports. In KindleChat you can also block a user from inside a direct message thread, and unblock them again there. For urgent safety issues, email support and say "safety" in the subject.</p>
             <div class="note"><b>Help app feedback:</b> every guide has a "Report a problem" link at the bottom that opens an email with the guide title filled in. Typos, outdated steps and missing apps are all worth reporting.</div>
         `
     },
@@ -376,9 +390,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         tags: 'new updates changelog recent added latest release 2026',
         related: ['welcome', 'games-overview', 'reader'],
         body: `
-            <p>ReKindle is actively developed. This page lists the changes most likely to affect how you use it, current as of <b>October 2026</b>. For the complete commit log, open the <a href="changelog.html">Changelog</a>.</p>
+            <p>ReKindle is actively developed. This page lists the changes most likely to affect how you use it, current as of <b>November 2026</b>. For the complete commit log, open the <a href="changelog.html">Changelog</a>.</p>
             <h2>Recently added</h2>
             <ul>
+                <li>Scores - 137 leagues across 12 sports, with a merged Favourites feed.</li>
+                <li>ReKindle+ - free tiers for Files, Docs and AI, gift codes, and previews instead of locked tiles.</li>
+                <li>Notes - EPUB export (one note or all), font size, alignment and copy/paste.</li>
+                <li>Mail - several mailboxes, a merged All inboxes view, and Outlook/Hotmail sign-in.</li>
+                <li>Languages - 30 more interface languages, machine-translated and marked BETA.</li>
+                <li>Decider - Randomize order before spinning.</li>
                 <li><b>Mail: Outlook and Hotmail</b> - Microsoft sign-in codes replace app passwords, so a Microsoft mailbox works without typing a password on the Kindle.</li>
                 <li><b>Delete Account</b> - permanent self-service deletion in Settings, including cloud files, scores and the main profile.</li>
                 <li><b>Forgot current password</b> - reset the password from a signed-in device without an email address.</li>
@@ -395,7 +415,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Recently improved</h2>
             <ul>
                 <li>Game leaderboards are server-validated, so impossible scores are rejected.</li>
-                <li>Social moderation is automatic: reported chat, DMs and comments are removed on the first report, and the moderation console is owner-only.</li>
+                <li>Social moderation is automatic: a reported chat message, DM or comment is removed when a second person reports it, automated moderation confirms it, or the moderation service cannot be reached; the moderation console is owner-only.</li>
                 <li>KindleChat translations are more reliable, and flood/link/promotion blocking is enforced on the server as well as in the browser.</li>
                 <li>The Suggestions board loads faster, finds duplicates as you type, and pages older ideas with <b>Load older</b>.</li>
                 <li>Pinterest authorises once and follows your account to other devices.</li>
@@ -413,7 +433,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         related: ['welcome', 'account', 'pro', 'troubleshooting'],
         body: `
             <h2>Is ReKindle free?</h2>
-            <p>Yes. The dashboard, reader, games and most tools are free. ReKindle+ ($2/month, $15/year or $30 lifetime) is optional and unlocks Mail, AI, Files, Docs and a few integrations. See <a href="#pro">ReKindle+</a>.</p>
+            <p>Yes. The dashboard, reader, games and most tools are free. ReKindle+ ($2/month, $15/year or $30 lifetime) is optional and adds the server-backed apps: 100 MB Files, Docs with cloud save and .docx, 10 AI messages/day, full Mail, Photo Frame, Flipbook and the other Plus apps. Free accounts keep 5 MB of device storage in Files, local drafts and .txt in Docs, 1 AI message/day and previews of the Plus apps. See <a href="#pro">ReKindle+</a>.</p>
             <h2>Do I need an account?</h2>
             <p>No. Guest mode stores data locally. An account is needed for cloud sync, social apps, live multiplayer and ReKindle+ purchases.</p>
             <h2>Does it work on my Kindle?</h2>
@@ -421,7 +441,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Can I use it on a phone or computer?</h2>
             <p>Yes. Open rekindle.ink in any modern browser. Everything works, and a physical keyboard is handy for the games and editors.</p>
             <h2>Is my data private?</h2>
-            <p>Guest mode keeps everything on the device. Cloud mode stores only what your apps need in your own Firebase records. Google and Readwise tokens stay on the device; Mail, AI and several Pro integrations keep credentials in your private Firebase records. Details are in the <a href="privacy.html">Privacy Policy</a>.</p>
+            <p>Guest mode keeps everything on the device. Cloud mode stores only what your apps need in your own Firebase records. Google and Readwise tokens stay on the device; Mail and several Pro integrations keep credentials in your private Firebase records, while the AI API key stays on the device. Details are in the <a href="privacy.html">Privacy Policy</a>.</p>
             <h2>How does dark mode work?</h2>
             <p>Open <b>Settings</b> and set Theme to <b>Light</b>, <b>Dark</b> or <b>Auto (Night)</b>. Auto switches to dark after 6pm and back at 6am, using your saved timezone, or follows the system preference. Dark mode is marked BETA: it inverts the whole interface, so photos and some accent colours look different. Bright themes usually ghost less on e-ink panels.</p>
             <h2>Why do typed emojis show as boxes?</h2>
@@ -429,13 +449,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>I forgot my password</h2>
             <p>If you are still signed in on a device, open <b>Settings</b>, choose <b>Change Password</b> and use <b>Forgot your current password?</b> to set a new one without email. If you are signed out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#account">Account and sign-in</a>.</p>
             <h2>How do I cancel ReKindle+?</h2>
-            <p>Open the ReKindle+ page while signed in and use <b>Manage Subscription</b>. It opens the Stripe billing portal. Access continues until the end of the paid period.</p>
+            <p>Open the ReKindle+ page while signed in and use <b>Manage on Stripe</b>. It opens the Stripe billing portal. Access continues until the end of the paid period.</p>
             <h2>I paid but Pro is missing, or I need a refund</h2>
             <p>Email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> from the address used at checkout. Include your ReKindle username, the purchase date and the amount. Do not post card details or receipts on the Suggestions board or in chat.</p>
-            <p>If Pro disappeared after a renewal, open the ReKindle+ page and confirm the subscription is active under <b>Manage Subscription</b> first; the membership webhook can take a minute to land. A refund is handled case by case - a cancelled subscription stops future renewals but does not automatically refund the current period.</p>
+            <p>If Pro disappeared after a renewal, open the ReKindle+ page and confirm the subscription is active under <b>Manage on Stripe</b> first; the membership webhook can take a minute to land. A refund is handled case by case - a cancelled subscription stops future renewals but does not automatically refund the current period.</p>
             <h2>How do I delete my account or data?</h2>
-            <p>Sign in, open <b>Settings</b> and tap <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account plus its main-project content - notes, files, scores and suggestions. Your social username and profile picture are removed (other people see "Deleted User" with a blank avatar). Public social history is retained and ages out under the normal retention policy.</p>
-            <p>If you subscribe to ReKindle+, check <b>Manage Subscription</b> on the ReKindle+ page afterwards and cancel there if the plan is still active. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Guest data can be removed by clearing the browser's site data.</p>
+            <p>Sign in, open <b>Settings</b> and tap <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account plus its main-project content - notes, files, scores and suggestions. Your social username and profile picture are removed (other people see "Deleted User" with a blank avatar). Public social history is retained and ages out under the normal retention policy; direct messages are not automatically deleted.</p>
+            <p>If you subscribe to ReKindle+, check <b>Manage on Stripe</b> on the ReKindle+ page afterwards and cancel there if the plan is still active. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Guest data can be removed by clearing the browser's site data.</p>
             <h2>Why is a game or app missing?</h2>
             <p>Check Settings for <b>Disable Games</b>, check whether the app is hidden in Edit mode, and check the A-Z index for a renamed app. Some unlisted pages are described in <a href="#hidden-legacy">Unlisted &amp; legacy pages</a>.</p>
             <h2>Why is the clock or date wrong?</h2>
@@ -468,7 +488,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>"Offline / No Database Connection" means Firebase could not load. Check the network and reload.</li>
             </ul>
             <h2>Pro features still locked</h2>
-            <p>Wait a minute and refresh so the membership webhook can land. Confirm you are signed in as the paying account and that the ReKindle+ page shows an active expiry date. If it still fails, tap <b>Manage Subscription</b>, confirm the subscription is active in Stripe, then contact support.</p>
+            <p>Wait a minute and refresh so the membership webhook can land. Confirm you are signed in as the paying account and that the ReKindle+ page shows an active expiry date. If it still fails, tap <b>Manage on Stripe</b>, confirm the subscription is active in Stripe, then contact support.</p>
             <h2>Clock, weather or language is wrong</h2>
             <p>Set a manual location in Settings. The timezone prompt appears the first time an app needs local time; complete it and the page reloads. Signing in restores a saved timezone.</p>
             <h2>Games tab or a game is missing</h2>
@@ -593,7 +613,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Tap Connect. If the connection works, credentials are encrypted and saved to your account (cached on this device).</li>
             </ol>
             <div class="note"><b>Gmail app passwords:</b> Google requires 2-Step Verification first, then an app password from myaccount.google.com/apppasswords. Normal passwords are rejected. Yahoo and iCloud users with 2FA need an app password too.</div>
-            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP"). Leave the Mail page open while it checks for approval. This works with personal Outlook.com and Hotmail accounts; work or school Microsoft 365 accounts are not supported yet.</div>
+            <div class="note"><b>Outlook / Hotmail:</b> Microsoft no longer accepts passwords or app passwords for Outlook.com, so Mail uses a Microsoft sign-in code instead. Choose <b>Outlook / Hotmail</b>, tap Connect, then on a phone or computer open the address Mail shows (usually <b>microsoft.com/devicelogin</b>) and type the code. Nothing secret is typed into the Kindle and no password is stored. Make sure IMAP is switched on in Outlook.com (Settings &rarr; Mail &rarr; Forwarding and IMAP &rarr; "Let devices and apps use IMAP"). Leave the Mail page open while it checks for approval. This works with personal Outlook.com and Hotmail accounts. Work or school Microsoft 365 accounts can use the same sign-in, but your tenant administrator may need to approve ReKindle first.</div>
             <div class="note"><b>Several mailboxes at once:</b> tap <b>Settings</b> to see every account signed in on this device, switch between them, add another with <b>Add another account</b>, or <b>Rename</b> one so the list reads "Work" instead of an address. Use the <b>Accounts</b> button in the toolbar to jump between mailboxes, or choose <b>All inboxes</b> to see every Inbox merged into one list, with a small tag showing which account each message came from. You can add more than one Gmail, Yahoo or Outlook account; each keeps its own folders and signing out of one leaves the others alone. Accounts are remembered per ReKindle user, so they follow you to another device.</div>
             <h2>Reading and organising</h2>
             <ul>
@@ -606,7 +626,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Limitations</h2>
             <ul>
                 <li>Compose attachments are capped at 3 files / 4 MB total; use your provider's own app for heavy attachments.</li>
-                <li>Mail needs ReKindle+ and a working network. It will not work offline.</li>
+                <li>Mail needs ReKindle+ (free accounts see a preview) and a working network. It will not work offline.</li>
                 <li>Very large mailboxes load one folder at a time, which keeps e-ink rendering manageable.</li>
             </ul>
             <h2>Security</h2>
@@ -699,7 +719,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'scores',
         cat: 'essentials',
         title: 'Scores',
-        summary: 'Live and recent scores for 100+ leagues across 12 sports, with Favourites for your teams in one feed.',
+        summary: 'Live and recent scores for 137 leagues across 12 sports, with Favourites for your teams in one feed.',
         tags: 'scores sports nfl nba mlb nhl nrl football basketball baseball hockey soccer softball rugby afl lacrosse volleyball water polo field hockey epl mls ncaa espn favourites favorites',
         appHref: 'scores',
         appName: 'Scores',
@@ -707,7 +727,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>Scores shows scoreboards for major sports, with a <b>Favourites</b> tab that combines your teams into one list.</p>
             <h2>Leagues</h2>
-            <p>Football, basketball, baseball, softball, ice hockey, soccer, rugby, Australian rules, lacrosse, volleyball, field hockey and water polo, with more than 100 leagues and competitions. Data comes from ESPN's public scoreboard API, fetched directly by your browser; NRL is served by a dedicated ReKindle endpoint.</p>
+            <p>Football, basketball, baseball, softball, ice hockey, soccer, rugby, Australian rules, lacrosse, volleyball, field hockey and water polo, with 137 leagues and competitions. Data comes from ESPN's public scoreboard API, fetched directly by your browser; NRL is served by a dedicated ReKindle endpoint.</p>
             <h2>Following teams</h2>
             <ol>
                 <li>Open a league to see its games.</li>
@@ -1061,7 +1081,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'notes',
         cat: 'productivity',
         title: 'Notes',
-        summary: 'A clean note editor with bold, italic and underline, sorting and cloud sync.',
+        summary: 'A clean note editor with formatting, export to text or EPUB, sorting and cloud sync.',
         tags: 'notes note taking editor bold italic underline sort cloud local write',
         appHref: 'notes',
         appName: 'Notes',
@@ -1071,11 +1091,12 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Writing</h2>
             <ol>
                 <li>Tap <b>+ New</b>, give the note a title and start typing.</li>
-                <li>Use <b>B</b>, <b>I</b> and <b>U</b> for bold, italic and underline.</li>
+                <li>Use <b>B</b>, <b>I</b> and <b>U</b> for bold, italic and underline, the <b>L</b> button to cycle alignment, and <b>A-</b>/<b>A+</b> to change the note font size.</li>
+                <li><b>Copy</b> and <b>Paste</b> move text through the device clipboard where the browser supports it.</li>
                 <li>Notes save automatically. The back arrow returns to the list.</li>
             </ol>
             <h2>Finding and organising</h2>
-            <p>Sort by Newest, Oldest, Title A-Z or Title Z-A. Notes sync to your account when signed in; guest notes stay in local storage. Delete uses a confirmation dialog. <b>Export All</b> downloads every note as a text file, and each note has its own download control.</p>
+            <p>Sort by Newest, Oldest, Title A-Z or Title Z-A. Notes sync to your account when signed in; guest notes stay in local storage. Delete uses a confirmation dialog. <b>Export All</b> downloads every note as a text file and also offers a single EPUB containing all notes; each note has its own download control for .txt or .epub, which is handy for sideloading onto a Kindle or Kobo.</p>
             <div class="note"><b>Notes feed the Teleprompter:</b> any note can be shown line by line in the <a href="#teleprompter">Teleprompter</a> app. Keep one note per speech or script for the cleanest result.</div>
             <p>For long documents with headings, tables, DOCX import/export and print-style formatting, use <a href="#docs">Docs</a> instead.</p>
         `
@@ -1084,7 +1105,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'docs',
         cat: 'productivity',
         title: 'Docs',
-        summary: 'A ReKindle+ document editor that opens and saves Word files through Files.',
+        summary: 'A document editor with free local writing and .txt export; ReKindle+ adds cloud save and Word files.',
         tags: 'docs documents editor word docx import export files pro ckeditor',
         badges: ['REKINDLE+'],
         plus: true,
@@ -1092,18 +1113,18 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         appName: 'Docs',
         related: ['files', 'notes'],
         body: `
-            <p>Docs is a rich-text document editor for ReKindle+. It can create a document from scratch, open a <code>.docx</code> from your Files storage, and save the result back as a Word file.</p>
+            <p>Docs is a rich-text document editor. Free accounts can write locally and export plain text; ReKindle+ adds cloud save to Files and <code>.docx</code> import and export.</p>
             <h2>Creating and editing</h2>
             <ol>
                 <li>Tap <b>Create New Document</b>, or <b>Open from Files</b> to pick an uploaded Word file.</li>
                 <li>The toolbar covers headings, bold, italic, underline, strikethrough, bulleted and numbered lists, indent/outdent, block quotes, tables, undo and redo.</li>
-                <li>Tap <b>Save</b>. Choose a filename; the document is written to your Files storage as a DOCX.</li>
-                <li>If you are not signed in, Save downloads a DOCX copy instead of storing it.</li>
+                <li>Tap <b>Save</b>. With ReKindle+, choose a filename and the document is written to your Files storage as a DOCX. Free accounts get a .txt download instead; the <b>Text</b> button exports plain text at any time.</li>
+                <li>Word import/export, Files and recent documents need ReKindle+; local writing and .txt export work for everyone.</li>
             </ol>
             <h2>Import and export</h2>
             <p>Word import converts the document to editable HTML with Mammoth, preserving headings, lists, tables and basic formatting. Complex layouts, text boxes and tracked changes may not survive. Export rebuilds a clean DOCX from the editor content, so what you see in the editor is what the file contains.</p>
             <div class="note"><b>Storage:</b> Docs depends on <a href="#files">Files</a>, which has a shared 100 MB quota. A very large document may fail to save when the quota is full. Delete old files or export them first.</div>
-            <p>Docs needs ReKindle+ and a network connection. For quick notes, <a href="#notes">Notes</a> is lighter and works offline.</p>
+            <p>Cloud save and Word import/export need ReKindle+ and a network connection; local writing and .txt export work free and offline. For quick notes, <a href="#notes">Notes</a> is lighter and works offline.</p>
         `
     },
     {
@@ -1587,6 +1608,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Using it</h2>
             <ol>
                 <li>Type an option and add it to the wheel. Add as many as you like.</li>
+                <li>Use <b>Randomize order</b> to shuffle the list before you spin.</li>
                 <li>Tap <b>Spin!</b>.</li>
                 <li>The result appears in the centre. Tap OK and spin again, or edit the options.</li>
             </ol>
@@ -1686,7 +1708,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>Copy to Note</b> on a reply saves it into <a href="#notes">Notes</a>.</li>
             </ol>
             <h2>Bring your own key</h2>
-            <p>Open <b>Settings</b> in the app and enable a custom provider. Supported presets include OpenAI, Google Gemini, Groq, xAI (Grok), Mistral, Perplexity, Together AI, Fireworks AI, Ollama (local) and custom OpenAI- or Gemini-compatible endpoints. Pick a model, paste the API key and save. The key is stored in your private account settings (Firebase), so it follows you to another device; clearing site data does not remove it. Saving a custom key requires ReKindle+.</p>
+            <p>Open <b>Settings</b> in the app and enable a custom provider. Supported presets include OpenAI, Google Gemini, Groq, xAI (Grok), Mistral, Perplexity, Together AI, Fireworks AI, Ollama (local) and custom OpenAI- or Gemini-compatible endpoints. Pick a model, paste the API key and save. The key is stored on this device, not in your Firebase account, so clearing site data removes it and you re-enter it on another device. Saving a custom key requires ReKindle+.</p>
             <div class="note"><b>Privacy:</b> messages sent to a hosted provider are subject to that provider's terms. Do not paste passwords, private keys or sensitive personal data into any AI chat. Local Ollama keeps prompts on your own network.</div>
             <p><b>Tip:</b> ask for short answers and plain formatting. Long markdown tables and code blocks are harder to read on a small e-ink screen.</p>
         `
@@ -2109,7 +2131,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Links and URLs are blocked. Promotion of competing services is blocked and masked.</li>
                 <li>Art must be safe for all ages.</li>
                 <li>Messages are moderated. Use the <b>!</b> report control; if a direct-message thread makes you uncomfortable, block the person there.</li>
-                <li>Flood protection rejects the third near-identical message within 10 minutes and exact repeats within 5 minutes.</li>
+                <li>Flood protection rejects the third near-identical message within 10 minutes and exact repeats within 5 minutes. Longer repeated pastes are fingerprinted too, and three blocks in 10 minutes mute chat for 10 minutes.</li>
             </ul>
             <p>General chat keeps the last 30 days of messages (and always at least the latest 50), so old conversations age out. Replies and reactions are available on each message.</p>
             <div class="note"><b>Direct messages</b> are opt-in and separate from the public room. See <a href="#kindlechat-dm">KindleChat DMs</a>.</div>
@@ -2161,7 +2183,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <ol>
                 <li>Write a post at the top of the Posts tab and tap <b>Post</b>.</li>
                 <li>Tap the comment control under a post to read and add comments.</li>
-                <li>Edit or delete your own posts. A reported post is removed after two independent reports; a comment goes on the first. The owner can also remove anything that breaks the rules.</li>
+                <li>Edit or delete your own posts. A reported post is removed after two independent reports. A reported comment is removed when a second person reports it or automated moderation confirms it, and is held for review otherwise. The owner can also remove anything that breaks the rules.</li>
             </ol>
             <h2>Finding people</h2>
             <p>Profiles are reached from their posts and comments. Tap a profile to view it, then <b>Message</b> to start a KindleChat direct conversation.</p>
@@ -2192,7 +2214,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>The sidebar loads the 60 most recent topics; <b>Show all topics</b> loads the rest. Use search to filter and <b>Mark Read</b> to clear unread markers.</li>
                 <li>Tap a topic to open it, then add a comment (up to 1,000 characters).</li>
                 <li>Vote in a poll by tapping an option; a submitted vote cannot be changed.</li>
-                <li>Edit or delete your own topic and comments. A reported topic is removed after two independent reports (comments go on the first), and the owner can remove anything that breaks the rules.</li>
+                <li>Edit or delete your own topic and comments. A reported topic is removed after two independent reports. A reported comment is removed when a second person reports it or automated moderation confirms it, and is held for review otherwise. The owner can also remove anything that breaks the rules.</li>
             </ul>
             <h2>Rules</h2>
             <p>Search before posting, keep topics conversational, no spam or self-promotion, and be respectful. Links and competitor promotions are blocked. Use the <b>!</b> report control for problems.</p>
@@ -2210,7 +2232,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Age verification</h2>
             <p>Opening KindleChat, Neighbourhood or Topics asks you to confirm your date of birth and country before anything else loads. ReKindle checks the minimum social-media age for that country. This is a self-declaration, not an identity document upload, and the prompt cannot be dismissed - the social app stays locked until it is completed.</p>
             <h2>Reporting</h2>
-            <p>Messages, posts, topic comments and direct messages have a <b>!</b> report control; profiles and the art gallery viewer do not. A report adds a snapshot of the content and its author to ReKindle's report queue, which only the owner can read. Every report needs a reason and a short comment containing at least one real word. Repeated false reports are themselves a rule violation.</p>
+            <p>Messages, posts, topic comments, direct messages and pixel art in the gallery viewer have a <b>!</b> report control; profiles and the flipbook viewer do not. A report adds a snapshot of the content and its author to ReKindle's report queue, which only the owner can read. Every report needs a reason and a short comment containing at least one real word. Repeated false reports are themselves a rule violation.</p>
             <h2>Blocking</h2>
             <p>Blocking is available inside a KindleChat direct-message thread (there is no block in the public chat room or in Neighbourhood). Open the thread and tap <b>Block</b>: it ends the conversation and prevents new requests until you unblock them. Tap <b>Unblock</b> in the same place, and it returns to how it was before (an accepted chat reopens; a message request goes back to your inbox). Only the person who set the block can lift it. Elsewhere, stop interacting and report the account; the owner can remove or restrict it.</p>
             <h2>What is not allowed</h2>
@@ -3701,7 +3723,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Location, language and units</h2>
             <ul>
                 <li><b>Manual Location</b> sets the city used for time, weather and language detection.</li>
-                <li><b>Language</b> sets the interface language, or Auto to follow the location/browser.</li>
+                <li><b>Language</b> sets the interface language, or Auto to follow the location/browser. Languages added in the November 2026 batch are marked BETA and machine-translated; English is authoritative.</li>
                 <li><b>Measurement Units</b> sets Metric, Imperial or Auto for weather and distances.</li>
             </ul>
             <h2>Preferences and integrations</h2>
@@ -3711,7 +3733,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li><b>Google Tasks / Calendar / Contacts</b> connect via Google OAuth. <b>iCalendar (.ics)</b> and <b>CardDAV / vCard</b> accept read-only feed URLs.</li>
             </ul>
             <h2>Account</h2>
-            <p>Change your password here, including the <b>Forgot your current password?</b> reset while you are signed in. <b>Delete Account</b> permanently removes the account and its main-project data after you re-enter your password and type your username; public social history is retained under the normal retention policy. ReKindle+ status and subscription management are also available from this area and the ReKindle+ page.</p>
+            <p>Change your password here, including the <b>Forgot your current password?</b> reset while you are signed in. <b>Delete Account</b> permanently removes the account and its main-project data after you re-enter your password and type your username; public social history is retained under the normal retention policy. ReKindle+ status and subscription management are also available from this area and the ReKindle+ page, including <b>Gift ReKindle+</b> and <b>My gifts</b> for buying and tracking gift codes.</p>
         `
     },
     {
@@ -3732,7 +3754,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Scaling</h2>
             <p><b>Auto Scaling</b> fits the interface to the screen. <b>Fixed Scale</b> lets you pick 50-200%. Larger values help with small text but push controls off-screen; smaller values show more content but make buttons harder to hit. Games that use a canvas disable page zoom so touch coordinates stay aligned.</p>
             <h2>Rotation</h2>
-            <p>Portrait is the default. Landscape can help with crosswords, sheet music and wide tables. The 180-degree option is for devices whose native orientation is inverted. Rotation is marked beta because a few apps assume portrait dimensions.</p>
+            <p>Portrait is the default. Landscape can help with crosswords, sheet music and wide tables. The 180-degree and 270-degree options are for devices whose native orientation is inverted or rotated. Rotation is marked beta because a few apps assume portrait dimensions.</p>
             <h2>Fullscreen</h2>
             <p>Many apps have a fullscreen control in the title bar. <b>Default Fullscreen</b> in Settings makes supported apps open that way, removing the desktop border for a little more reading area.</p>
             <div class="note"><b>Dark mode:</b> choose Dark or Auto (Night) under Settings - Theme. It is marked BETA and inverts the whole interface; on an e-ink panel, Light still refreshes less and ghosts less. Auto switches at 6pm and 6am using your saved timezone.</div>
@@ -3776,9 +3798,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         body: `
             <p>ReKindle is built to keep guest data on the device and to send only the minimum needed for cloud features. The full legal text is in the <a href="privacy.html">Privacy Policy</a>; this is the practical summary.</p>
             <h2>Guest mode</h2>
-            <p>No account, no server record. Notes, tasks, games and settings live in browser storage on that device. Nothing is uploaded to ReKindle.</p>
+            <p>No account, no server record. Notes, tasks, games and settings live in browser storage on that device. Nothing is stored on ReKindle's servers in guest mode; the only automatic upload is an anonymous page-view count.</p>
             <h2>Cloud mode</h2>
-            <p>When you sign in, supported app data is stored in Google Firebase (Firestore, Storage and Realtime Database) under your user ID. Security rules restrict each user to their own records. Social content is in ReKindle's social project; the owner-only moderation console can read reports and automod entries, with no blanket access to private direct messages.</p>
+            <p>When you sign in, supported app data is stored in Google Firebase (Firestore, Storage and Realtime Database) under your user ID. Security rules keep each user's records separate; the policy also describes the deliberately public records (profiles, leaderboards, Suggestions) and the owner's administrative access. Social content is in ReKindle's social project; the owner-only moderation console can read reports and automod entries, with no blanket access to private direct messages.</p>
             <h2>Google data</h2>
             <p>Google Tasks, Calendar and Contacts are accessed with OAuth tokens stored on the device. ReKindle's use of information received from Google APIs follows the Google API Services User Data Policy, including the Limited Use requirements: the data is used only to provide the feature you connected, not sold, and not used for advertising. It is fetched directly from Google's APIs, not copied into ReKindle's database.</p>
             <h2>Third-party services</h2>
@@ -3786,11 +3808,11 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Mail connects to your email provider via IMAP/SMTP; app passwords are encrypted before an encrypted copy is saved to your private account record. Outlook/Hotmail uses a Microsoft refresh token kept on ReKindle's server and never returned to the browser, so the device stores no password.</li>
                 <li>AI chat sends your prompts to the selected provider (or locally to Ollama).</li>
                 <li>Dropbox, Bluesky, Mastodon, Pinterest and Substack use tokens/cookies you provide, stored on the device or in your private account records.</li>
-                <li>News, RSS, weather, stocks, Wikipedia and similar apps fetch public data from their providers.</li>
+                <li>News, RSS, weather, stocks, Wikipedia and similar apps fetch public data from their providers. Translation sends the text you ask to translate to MyMemory.</li>
             </ul>
             <p>Each service has its own privacy policy. Do not paste secrets or sensitive personal data into third-party apps.</p>
             <h2>Deleting data</h2>
-            <p>Clear browser site data to remove guest data and local caches. To delete your account and cloud records, sign in and use <b>Settings -> Delete Account</b>; it removes your profile, files and scores from the main project; public social history (posts, comments, chat messages and DMs) is retained and ages out under the normal retention policy. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
+            <p>Clear browser site data to remove guest data and local caches. To delete your account and cloud records, sign in and use <b>Settings -> Delete Account</b>; it removes your profile, files, scores and mail configuration from the main project; public social history (posts, comments and chat messages) is retained and ages out under the normal retention policy, while direct messages are not automatically deleted. If you are locked out, email <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. See <a href="#storage">Where your data lives</a> for what each clear operation affects.</p>
         `
     },
     {
@@ -3810,6 +3832,13 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><td><code>/texasholdem</code></td><td>Poker against three bots. Beta; see <a href="#texasholdem">Texas Hold'em</a>.</td></tr>
                 <tr><td><code>/words</code></td><td>Asynchronous Scrabble-style matches. Beta and needs an opponent; see <a href="#words">Words Online</a>.</td></tr>
                 <tr><td><code>/quicknotes</code></td><td>An older handwritten-notes page superseded by Quick ToDo and Notes. Pro-gated; kept for compatibility.</td></tr>
+            </table>
+            <h2>Linked but not on the grid</h2>
+            <table>
+                <tr><th>Page</th><th>What it is</th></tr>
+                <tr><td><code>/membership</code></td><td>The ReKindle+ plans, the free-vs-Plus comparison and gift redemption. Linked from Settings, the nudge card and Plus previews.</td></tr>
+                <tr><td><code>/pay</code></td><td>Stripe checkout and the billing portal for ReKindle+ and gift purchases.</td></tr>
+                <tr><td><code>/preview</code></td><td>A preview of a Plus app, opened from a locked tile (for example <code>/preview?app=mail</code>).</td></tr>
             </table>
             <h2>Retired or redirect pages</h2>
             <table>

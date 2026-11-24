@@ -77,7 +77,11 @@ writes the file only after every batch succeeds. `--repair` retries values that
 stayed English; `--individual` sends one string per request. It is a development tool: never call it from the app or `npm test`.
 Output is **unreviewed machine translation** behind the BETA language badge.
 
-The 2026-11-10 batch (40 languages total) was generated this way; privacy
-policies were deliberately left in English. See
+The 2026-11-10 batch (40 languages total) was generated this way. The
+`privacy-<code>.json` files were generated in the same batch and carry the visible
+machine-translation notice; English remains the authoritative version. After any
+English privacy edit, regenerate them all with
+`node scripts/translate-locales.js --privacy <codes>` and have a speaker review
+the legal wording where possible. See
 [`docs/agent/i18n.md`](../docs/agent/i18n.md#machine-generated-locale-batch-2026-11-10)
 for the list, rationale and detector caveats.

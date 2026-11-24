@@ -30,7 +30,7 @@ Each entry is keyed by a Firebase push ID and contains:
 DM reports are special because message IDs are only unique inside a thread:
 - The client sends `contentType: 'dm_message'`, `contentId: '<messageId>'` and `contentPath: 'kindlechat/dm_messages/<threadId>/<messageId>'`.
 - The worker **ignores** the client's author/snapshot/path: it verifies the reporter is a thread participant, reads the message from the social RTDB, derives the path/author/snapshot, and attaches `dmContext` (last 10 messages). A forged path cannot auto-delete another thread.
-- `dm_message` is in `IMMEDIATE_DELETE_TYPES` (first report deletes) and `autoDeleteContent` only accepts the strict DM path shape.
+- `dm_message` is in `IMMEDIATE_DELETE_TYPES` (deleted only when a second reporter reports it or the moderation re-check flags it; otherwise held) and `autoDeleteContent` only accepts the strict DM path shape.
 - Moderators deliberately have **no blanket read rule** on `dm_threads`/`dm_messages`; the report's `dmContext` is the only context they see. Discord's delete action looks up the report to recover the thread path.
 - Cleanup of a deleted user's DM data is done by `admin/cleanup_user.js` / `admin/nuke_user.js` (service account), not the moderation console.
 

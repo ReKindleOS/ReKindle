@@ -193,3 +193,97 @@ Tasks, Calendar, Books, News, and the live/multiplayer gates.
   with a Retry button that re-fetches the current category.
 - `index.html` and `newspaper.html` now load `js/ui-kit.js?v=2`;
   `index_old.html` (Lite/Legacy dashboard) still lacks search/recents (BL-25).
+
+## 2026-11-24 dashboard polish (`index.html`)
+
+A look-and-feel pass on the home screen and its Dashboard tab, captured at 800×1000
+(light, dark, `?lang=de`), 600×800, 400×700, in edit mode and scrolled to the game grid.
+
+- **Folder tabs** — dropped the solid-black resting style on Games/Multiplayer. It read
+  as "selected" while All was active. All tabs now share the grey resting style; the
+  active tab is white, 2px taller and merges into the window border. The Games group is
+  separated by a 24px gap instead of colour.
+- **Featured** — the outer box now has a real `.featured-box-header` ("Featured" +
+  square marker) and the grid has its own 14px padding. Cards get 44px icons, a
+  two-line description, a right-hand chevron affordance and room for the PLUS badge.
+- **Section headings** — All Applications, Recent, Favorites and the injected All Games
+  heading share an 8px black left marker (`.view-header > span:first-child`).
+- **App tiles** — 44px icons in a fixed 44px wrap, 96px rows, 14px grid gap, and a
+  two-line `-webkit-line-clamp` label so long names cannot push the next row around.
+  Do not add `overflow:hidden` to `.app-icon`; it clips the `top:-4px` BETA/NEW/PLUS
+  badges.
+- **Dashboard tab layout** — the dashboard section is `display:flex` (set by
+  `filterApps`) and the grid is `auto minmax(390px, 1fr)`, so the calendar widget fills
+  the window instead of leaving a white void. The 390px floor keeps the calendar from
+  collapsing on short screens; `app-view` then scrolls as usual.
+- **Calendar** — month navigation is two real 24px buttons; the widget body is a
+  2-column grid (month + agenda) that stacks at ≤520px; days are 46px flex cells;
+  the agenda has its own `.dashboard-agenda-heading` and a dashed empty state using the
+  existing `calendar.msg.empty` key. The previous "No events today." string was
+  hardcoded English. Month and weekday labels now come from the app language
+  (`toLocaleDateString` with English arrays as fallback).
+- **Weather hourly** — the hour labels use the app language too, so the strip does not
+  mix an English "1 am" into a French dashboard.
+- **Weather** — the icon sits in a 56px bordered well, the hourly strip uses fixed
+  `.db-hour` cells with dotted separators, and the condition text now uses the existing
+  `weather.cond.*` keys. The error state uses `weather.status.error` instead of
+  "Unavailable".
+- **Local Time** — the date is formatted with the app language (`toLocaleDateString(lang)`)
+  rather than hardcoded `en-US`. Do not use `time.js` `getUserLocale()` here: it appends the
+  location country (`fr-AU`), and WebKit falls back to the device locale for tags it does
+  not support, which printed an English date on a French dashboard.
+- **Guest avatar** — `drawGuestAvatar()` draws a 16×16 pixel silhouette in Guest Mode;
+  the previous blank white canvas read as an unchecked checkbox in the menu bar.
+
+Verification: light/dark/`de` at 800×1000, 600×800, 400×700, edit mode, a dashboard →
+All tab switch, and three seeded agenda events (including all-day). No horizontal
+overflow and no raw locale keys. `test-i18n`, `test-locales`, `test-compat`,
+`test-load-budget`, `test-seo` and `test-kindle` pass.
+
+Known trade-off: the calendar's implicit grid rows stretch with the widget, so on very
+tall desktop viewports the day cells get large. Cap the dashboard section or add a
+`grid-auto-rows` maximum if that becomes a complaint; at 800×1000 the result is a
+full-height wall calendar.
+
+## 2026-11-24 dashboard functional pass
+
+The follow-up to the polish pass implements the proposals in
+[`docs/audits/dashboard-improvements-2026-11-24.md`](../audits/dashboard-improvements-2026-11-24.md).
+
+- **Lazy boot** — `js/firebase-loader.js` loads Firebase on demand; `js/home.js` renders
+  the shell/grid first. A guest with no `rekindle_uid` now loads **zero** Firebase code;
+  a stored session loads app+auth in idle, then Firestore+RTDB. Login/register load
+  Functions on submit. `counter.dev` is `async`.
+- **One For You shelf** — Featured/Recent/Favorites are segmented tabs inside
+  `#foryou-section`; Featured uses the card grid, the other tabs reuse the 44px icon
+  grid. All Applications is no longer pushed down by three separate sections.
+- **Search palette** — `?q=chess` (and the magnifier) searches apps plus
+  Settings/Help/ReKindle+/Login/Dashboard actions, highlights matched app labels (skips
+  folder pills, where a black highlight is invisible), and caps at 60 results.
+- **Dashboard additions** — quick actions (Notes/Timer/Calendar/Search) in the Local Time
+  card; open-arrow links on the clock, weather and calendar widgets; Today and New event
+  in the calendar footer. New event deep-links to
+  `calendar.html?date=YYYY-MM-DD&new=1` (calendar.html sets the day and opens the form).
+- **Data** — weather has a 15-minute `localStorage` snapshot with a stale-while-revalidate
+  path, an 8 s AbortController, feels-like/rain/wind/sunrise/sunset and an updated-age
+  line. The agenda caches a month in memory, queries Google/CalDAV once per month (with a
+  2-day edge margin) and uses a bounded Firestore range query; it shows an updated-age
+  and a translated session-expired state.
+- **Grid cache** — `renderAppGrid` caches up to four rendered category node lists keyed
+  by tab/edit/Pro/games/favorites/recents/date and re-appends them on tab switches.
+  Watch the cache key if you add another flag that changes tile state.
+- **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
+  world clocks derive from `rekindle_location_manual` and cache the decoded list.
+- **Assets** — `css/home.css?v=4`, `js/home.js?v=8` and the generated
+  `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
+  `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
+  fails if it drifts from its sources.
+- **Tabs/persistence** — the last tab and per-tab scroll positions live in
+  `sessionStorage`; `restoreHomeView()` applies them after the grid exists. `initShell`
+  must run after the script's `let` declarations (it uses `setTimeout(0)` for the
+  deferred script) or `currentHomeShelf` is in its temporal dead zone.
+
+Verification: 800×1000 light/dark, 600×800, en/fr, guest with `firebase === undefined`,
+login modal, guest Live Games gate, For You tabs, edit mode, calendar deep link, and a
+seeded weather/agenda cache. `test-i18n`, `test-locales`, `test-compat`,
+`test-load-budget`, `test-home-bundle`, `test-seo` and `test-kindle` pass.

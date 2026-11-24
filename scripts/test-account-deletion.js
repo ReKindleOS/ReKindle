@@ -161,7 +161,8 @@ check('primary delete paths cover identity nodes and never touch moderation bans
     const keys = Object.keys(paths);
     ['users_public/uid123', 'user_cards/uid123', 'users_private/uid123',
         'presence/uid123', 'timeouts/uid123', 'moderators/uid123',
-        'mail_rate_limits/uid123', 'kindlechat/user_limits/alice'].forEach(function (key) {
+        'mail_rate_limits/uid123', 'mail_oauth/uid123', 'mail_oauth_pending/uid123',
+        'kindlechat/user_limits/alice'].forEach(function (key) {
         assert.ok(keys.indexOf(key) !== -1, 'missing ' + key);
     });
     keys.forEach(function (key) {

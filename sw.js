@@ -1,7 +1,11 @@
-const CACHE_NAME = 'rekindle-cache-v27'; // Bumped 2026-10-20: force client caches to drop pre-visual-upgrade assets
+const CACHE_NAME = 'rekindle-cache-v28'; // v28: home CSS/JS split + lazy Firebase loader
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
+    './css/home.css?v=4',
+    './js/home.js?v=8',
+    './js/home-deps.js?v=1',
+    './js/firebase-loader.js?v=1',
     './icons.js?v=9',
     './theme.js?v=36',
     './logo.svg',

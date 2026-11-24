@@ -112,6 +112,109 @@ const assert = require('assert');
         global.fetch = realFetch;
     }
 
+    // --- Page-1 freshness revalidation (Atom feed head) ---------------------
+    const { parseHeadSha } = commits;
+    const headA = 'a'.repeat(40);
+    const headB = 'b'.repeat(40);
+    const atom = '<?xml version="1.0"?><feed><entry>' +
+        '<id>tag:github.com,2008:Grit::Commit/' + headB + '</id>' +
+        '<title>New commit</title></entry></feed>';
+
+    assert.strictEqual(parseHeadSha(atom), headB, 'Atom head SHA is parsed');
+    assert.strictEqual(parseHeadSha('<feed></feed>'), null);
+    assert.strictEqual(parseHeadSha(null), null);
+
+    function fakeCache() {
+        const store = new Map();
+        return {
+            store: store,
+            match: async function (request) {
+                return store.get(request.url) || null;
+            },
+            put: async function (request, response) {
+                store.set(request.url, response);
+            }
+        };
+    }
+
+    function pageResponse(head) {
+        return new Response(JSON.stringify({
+            page: 1,
+            perPage: 100,
+            commits: [{
+                sha: head,
+                short: head.slice(0, 7),
+                message: 'Old cached commit',
+                author: 'ReKindle',
+                date: '2026-11-24T04:00:00Z',
+                url: 'https://github.com/ReKindleOS/ReKindle/commit/' + head
+            }],
+            hasMore: true,
+            totalPages: 9
+        }), {
+            status: 200,
+            headers: { 'content-type': 'application/json', 'X-Changelog-Head': head }
+        });
+    }
+
+    const pageUrl = 'https://rekindle.ink/api/commits?page=1&per_page=100';
+    const realCaches = global.caches;
+    try {
+        const cache = fakeCache();
+        global.caches = { default: cache };
+        cache.store.set(pageUrl, pageResponse(headA));
+
+        let restCalls = 0;
+        global.fetch = async function (url) {
+            if (String(url).indexOf('.atom') !== -1) {
+                return new Response(atom, { status: 200 });
+            }
+            restCalls++;
+            return new Response(JSON.stringify([{
+                sha: headB,
+                html_url: 'https://github.com/ReKindleOS/ReKindle/commit/' + headB,
+                commit: { message: 'New commit', author: { name: 'ReKindle', date: '2026-11-24T05:00:00Z' } }
+            }]), { status: 200, headers: { 'content-type': 'application/json' } });
+        };
+
+        const refreshed = await onRequest({ request: new Request(pageUrl) });
+        const refreshedPayload = await refreshed.json();
+        assert.strictEqual(refreshed.status, 200);
+        assert.strictEqual(refreshedPayload.commits[0].sha, headB, 'stale page 1 is replaced with the new head');
+        assert.strictEqual(refreshed.headers.get('X-Changelog-Head'), headB);
+        assert.strictEqual(restCalls, 1, 'one REST request refreshes page 1');
+        assert.strictEqual(cache.store.get(pageUrl).headers.get('X-Changelog-Head'), headB, 'cache now holds the new head');
+
+        // Same head: the hour cache is reused without another REST call.
+        const cached = await onRequest({ request: new Request(pageUrl) });
+        const cachedPayload = await cached.json();
+        assert.strictEqual(cachedPayload.commits[0].sha, headB);
+        assert.strictEqual(restCalls, 1, 'matching head serves the cached page');
+
+        // Feed failure: keep serving the cached page rather than erroring.
+        const failedCache = fakeCache();
+        global.caches = { default: failedCache };
+        failedCache.store.set(pageUrl, pageResponse(headA));
+        let failedRestCalls = 0;
+        global.fetch = async function (url) {
+            if (String(url).indexOf('.atom') !== -1) throw new Error('feed down');
+            failedRestCalls++;
+            return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+        };
+        const fallback = await onRequest({ request: new Request(pageUrl) });
+        const fallbackPayload = await fallback.json();
+        assert.strictEqual(fallback.status, 200);
+        assert.strictEqual(fallbackPayload.commits[0].sha, headA);
+        assert.strictEqual(failedRestCalls, 0, 'a failed feed check never forces an error page');
+    } finally {
+        global.fetch = realFetch;
+        if (realCaches === undefined) {
+            delete global.caches;
+        } else {
+            global.caches = realCaches;
+        }
+    }
+
     console.log('PASS - commits proxy');
 })().catch(err => {
     console.error('FAIL - commits proxy:', err);

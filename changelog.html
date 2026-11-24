@@ -588,7 +588,22 @@
 
             function applyResponse(data) {
                 var incoming = data.commits || [];
-                state.commits = state.commits.concat(incoming);
+                var seen = {};
+                var i;
+
+                for (i = 0; i < state.commits.length; i++) {
+                    if (state.commits[i].sha) seen[state.commits[i].sha] = true;
+                }
+
+                // A commit pushed between page requests shifts GitHub's paging,
+                // so page 2 can repeat the last row of page 1. Keep one row per SHA.
+                for (i = 0; i < incoming.length; i++) {
+                    var sha = incoming[i].sha;
+                    if (sha && seen[sha]) continue;
+                    if (sha) seen[sha] = true;
+                    state.commits.push(incoming[i]);
+                }
+
                 state.page = typeof data.page === 'number' ? data.page : state.page + 1;
                 if (typeof data.totalPages === 'number' && data.totalPages > 0) {
                     state.totalPages = data.totalPages;

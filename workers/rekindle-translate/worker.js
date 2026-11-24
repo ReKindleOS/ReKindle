@@ -807,7 +807,15 @@ export default {
             const payload = await request.json();
             const { user, uid, text, msgId, reprocess, translateOnly, app } = payload;
 
-            console.log("Worker received payload:", JSON.stringify(payload));
+            // Never log message text: request logs are provider-visible metadata.
+            console.log("Worker received payload:", JSON.stringify({
+                app: app,
+                msgId: msgId,
+                hasText: !!text,
+                textLength: text ? String(text).length : 0,
+                reprocess: !!reprocess,
+                translateOnly: !!translateOnly
+            }));
 
             let baseFirebaseUrl = "https://rekindle-socials-default-rtdb.firebaseio.com/kindlechat/messages";
             if (app === 'neighbourhood') {

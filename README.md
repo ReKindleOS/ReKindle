@@ -108,7 +108,7 @@ ReKindle operates in two modes: **Guest Mode** (all data stored locally on your 
 
 ## ⚡ ReKindle+
 
-Support the development of ReKindle and unlock premium features, including Mail integration, AI-powered handwriting recognition, and advanced productivity tools.
+Support the development of ReKindle and unlock the server-backed features, including Mail, cloud Files and Docs, the hosted AI Assistant, and several integrations. Free accounts keep device-only Files (5 MB), local Docs with .txt export, and one hosted AI message a day.
 
 **Pricing:**
 *   **Monthly:** $2/mo
@@ -123,9 +123,9 @@ Support the development of ReKindle and unlock premium features, including Mail 
 
 ReKindle is designed with privacy as a priority.
 
-*   **Guest Mode:** By default, ReKindle uses your browser's `localStorage`. No data leaves your device.
+*   **Guest Mode:** By default, ReKindle uses your browser's `localStorage` and creates no server record. Anonymous page-view analytics (Counter.dev) and the third-party requests listed in the [Privacy Policy](https://rekindle.ink/privacy) still occur.
 *   **Cloud Sync:** If you choose to log in, app-specific data (notes, tasks, game states) is synced securely via Google Firebase.
-*   **Google Data:** Google Tokens are stored locally on your device. ReKindle fetches Calendar/Contacts/Tasks data directly from Google APIs to your browser; this data is **never** stored on ReKindle servers.
+*   **Google Data:** Google OAuth tokens are normally stored locally on your device. Quick ToDo is the exception: its Google Tasks token is kept in your private Pro records so the connection follows you between devices. Calendar/Contacts/Tasks data is fetched directly from Google APIs to your browser and is not copied to ReKindle's database; Google Contacts are also cached locally for offline use. See the [Privacy Policy](https://rekindle.ink/privacy).
 
 ## License
 
@@ -156,7 +156,7 @@ ReKindle uses specialized Cloudflare Workers to handle sensitive API requests an
 *   **Chords:** Fetches song tabs and lyrics.
 *   **Story (IFDB):** Serves interactive fiction stories.
 *   **Stripe:** Manages supporter status and donations.
-*   **Translate:** Proxies translation requests.
+*   **Translate:** Legacy translation proxy. Current clients translate in the browser through MyMemory (`js/translate-client.js`).
 
 ## 🛠️ Building & Deployment
 

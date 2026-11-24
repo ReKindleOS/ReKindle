@@ -39,9 +39,10 @@
  * Usage notes:
  * - `zh-Hant` is sent to Google as `zh-TW` and to Bing as `zh-Hant`.
  * - `tl` is sent to Bing as `fil`; `no` as `nb`; `sr` as `sr-Cyrl`.
- * - Privacy policies are NOT generated: the English text is the authoritative
- *   legal version, and privacy.html falls back to it until a speaker reviews a
- *   translated policy.
+ * - Privacy policies are generated only with --privacy. The English text is the
+ *   authoritative legal version; generated files carry a visible machine-
+ *   translation notice and privacy.html falls back per key if a value fails
+ *   validation. Regenerate after every English privacy edit.
  */
 const fs = require('fs');
 const path = require('path');
@@ -58,7 +59,7 @@ const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 // shared IP with a CAPTCHA after a burst. Bing's ttranslatev3 uses an LLM,
 // accepts ~900 chars per POST, and has been the more reliable bulk provider.
 const GOOGLE_TARGET = { 'zh-Hant': 'zh-TW' };
-const BING_TARGET = { 'zh-Hant': 'zh-Hant', tl: 'fil', no: 'nb', sr: 'sr-Cyrl' };
+const BING_TARGET = { zh: 'zh-Hans', 'zh-Hant': 'zh-Hant', tl: 'fil', no: 'nb', sr: 'sr-Cyrl' };
 
 const args = process.argv.slice(2);
 const force = args.indexOf('--force') !== -1;

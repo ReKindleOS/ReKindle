@@ -11,6 +11,9 @@
  *   - normalises each commit down to the handful of fields the page renders
  *     (the raw GitHub payload is several KB per commit)
  *   - caches each page at the edge for an hour, shared by all visitors
+ *   - revalidates page 1 against GitHub's commit Atom feed (a feed request is
+ *     not part of the 60/hour REST quota), so a push shows up within a minute
+ *     instead of waiting for the hour cache to expire
  *   - lazily reports the total page count from GitHub's Link header
  *   - accepts an optional GITHUB_TOKEN binding (5,000 req/hour instead of 60)
  *
@@ -20,6 +23,7 @@
 const REPO = 'ReKindleOS/ReKindle';
 const REPO_URL = 'https://github.com/' + REPO;
 const API_BASE = 'https://api.github.com/repos/' + REPO + '/commits';
+const FEED_URL = REPO_URL + '/commits/main.atom';
 
 const DEFAULT_PER_PAGE = 100;
 const MAX_PER_PAGE = 100;
@@ -27,6 +31,11 @@ const MAX_PAGE = 500; // safety bound: 50,000 commits
 
 const EDGE_TTL = 3600;      // shared edge cache: one upstream fetch / hour
 const CLIENT_MAX_AGE = 600; // browser may reuse a page for 10 minutes
+const FRESH_MAX_AGE = 60;   // page 1 can be replaced by a revalidated copy every minute
+
+const HEAD_TTL = 60;          // Atom-feed head check: one request / minute / colo
+const HEAD_TIMEOUT = 5000;
+const HEAD_CACHE_PATH = '/api/commits/head';
 
 const UPSTREAM_TIMEOUT = 10000;
 const MAX_ATTEMPTS = 2;
@@ -53,13 +62,29 @@ export async function onRequest(context) {
     const cache = (typeof caches !== 'undefined' && caches.default) ? caches.default : null;
     const cacheKey = cache ? new Request(url.toString(), { method: 'GET' }) : null;
 
+    let cached = null;
     if (cache && cacheKey && method === 'GET') {
         try {
-            const cached = await cache.match(cacheKey);
-            if (cached) return cached;
+            cached = await cache.match(cacheKey);
         } catch (e) {
             // Cache reads are best effort; fall through to the origin.
         }
+    }
+
+    // Page 1 is the only page that can be out of date in a way the reader
+    // notices. GitHub's Atom feed is not part of the REST quota, so use its
+    // newest SHA to decide whether the hour-long page cache is still current.
+    let headSha = null;
+    if (method === 'GET' && page === 1) {
+        headSha = await fetchHeadSha(context, cache);
+    }
+
+    if (cached) {
+        if (page !== 1 || !headSha) return cached;
+
+        const cachedHead = await cachedHeadSha(cached);
+        if (cachedHead && cachedHead === headSha) return cached;
+        // A commit was pushed after this page was cached: fall through and refetch.
     }
 
     let upstream = null;
@@ -121,15 +146,12 @@ export async function onRequest(context) {
         fetchedAt: new Date().toISOString()
     };
 
-    const headers = corsHeaders();
-    headers.set('Cache-Control', 'public, max-age=' + CLIENT_MAX_AGE + ', s-maxage=' + EDGE_TTL);
-
+    const headers = payloadHeaders(page, commits);
     const result = jsonResponse(payload, 200, headers);
 
     if (cache && cacheKey && method === 'GET' && commits.length > 0) {
         try {
-            const cacheHeaders = corsHeaders();
-            cacheHeaders.set('Cache-Control', 'public, max-age=' + CLIENT_MAX_AGE + ', s-maxage=' + EDGE_TTL);
+            const cacheHeaders = payloadHeaders(page, commits);
             await cache.put(cacheKey, jsonResponse(payload, 200, cacheHeaders));
         } catch (e) {
             // Cache writes are best effort too.
@@ -141,6 +163,132 @@ export async function onRequest(context) {
     }
 
     return result;
+}
+
+function payloadHeaders(page, commits) {
+    const headers = corsHeaders();
+    const head = commits.length ? commits[0].sha : '';
+    const maxAge = page === 1 ? FRESH_MAX_AGE : CLIENT_MAX_AGE;
+    headers.set('Cache-Control', 'public, max-age=' + maxAge + ', s-maxage=' + EDGE_TTL);
+    if (head) {
+        // Kept on the cached copy so a later request can tell whether the page
+        // still matches GitHub's head without re-reading the whole body.
+        headers.set('X-Changelog-Head', head);
+        headers.set('Access-Control-Expose-Headers', 'X-Changelog-Head');
+    }
+    return headers;
+}
+
+function headCacheKey(requestUrl) {
+    try {
+        return new URL(HEAD_CACHE_PATH, requestUrl).toString();
+    } catch (e) {
+        return 'https://rekindle.ink' + HEAD_CACHE_PATH;
+    }
+}
+
+/**
+ * Newest commit SHA from GitHub's Atom feed, cached for a minute per colo.
+ * The feed is a normal github.com response, not a REST API call, so checking
+ * it does not consume the 60 requests/hour unauthenticated REST quota.
+ */
+async function fetchHeadSha(context, cache) {
+    const key = cache ? new Request(headCacheKey(context.request.url), { method: 'GET' }) : null;
+
+    if (cache && key) {
+        try {
+            const cached = await cache.match(key);
+            if (cached) {
+                const sha = (await cached.text()).trim();
+                return sha || null;
+            }
+        } catch (e) {
+            // Fall through to the feed.
+        }
+    }
+
+    const sha = await fetchFeedHead(context.env);
+
+    if (sha && cache && key) {
+        try {
+            const headers = new Headers();
+            headers.set('Content-Type', 'text/plain; charset=utf-8');
+            headers.set('Cache-Control', 'public, max-age=' + HEAD_TTL + ', s-maxage=' + HEAD_TTL);
+            await cache.put(key, new Response(sha, { status: 200, headers: headers }));
+        } catch (e) {
+            // Head cache is best effort.
+        }
+    }
+
+    return sha;
+}
+
+async function fetchFeedHead(env) {
+    const headers = {
+        'Accept': 'application/atom+xml, application/xml;q=0.9, text/xml;q=0.8',
+        'Accept-Encoding': 'gzip',
+        'User-Agent': 'ReKindle-Changelog/1.0 (+https://rekindle.ink/changelog)'
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, HEAD_TIMEOUT);
+
+    let response = null;
+    try {
+        response = await fetch(FEED_URL, {
+            method: 'GET',
+            headers: headers,
+            redirect: 'follow',
+            signal: controller.signal
+        });
+    } catch (e) {
+        response = null;
+    } finally {
+        clearTimeout(timer);
+    }
+
+    if (!response || response.status !== 200) return null;
+
+    try {
+        return parseHeadSha(await response.text());
+    } catch (e) {
+        return null;
+    }
+}
+
+export function parseHeadSha(xml) {
+    if (typeof xml !== 'string' || !xml) return null;
+
+    const entryAt = xml.search(/<entry(?:\s|>)/);
+    if (entryAt === -1) return null;
+
+    // The <id> is at the top of the first entry; a bounded slice keeps the
+    // regex away from the rest of the (much larger) feed.
+    const entry = xml.slice(entryAt, entryAt + 4096);
+    const id = /<id>\s*tag:github\.com,2008:Grit::Commit\/([0-9a-f]{7,64})\s*<\/id>/i.exec(entry);
+    if (id) return id[1];
+
+    const link = /href="https:\/\/github\.com\/[^"/]+\/[^"/]+\/commit\/([0-9a-f]{7,64})"/i.exec(entry);
+    return link ? link[1] : null;
+}
+
+async function cachedHeadSha(response) {
+    if (!response) return null;
+
+    const header = response.headers.get('X-Changelog-Head');
+    if (header) return header;
+
+    // Older cache entries predate the header; read the first commit instead.
+    try {
+        const data = await response.clone().json();
+        if (data && Array.isArray(data.commits) && data.commits.length) {
+            return data.commits[0].sha || null;
+        }
+    } catch (e) {
+        // Ignore an unreadable cache entry; the caller will refetch.
+    }
+
+    return null;
 }
 
 async function fetchCommitsPage(page, perPage, env) {

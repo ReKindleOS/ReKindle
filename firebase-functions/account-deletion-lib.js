@@ -47,9 +47,14 @@ const PRIMARY_USER_RTDB_ROOTS = [
     'presence',
     'timeouts',
     'moderators',
-    // Written by the mail callables (firebase-functions/index.js
-    // mail_rate_limits/{uid}/{kind}); no content, but it is uid-keyed.
+    // Written by the mail callables (firebase-functions/index.js):
+    // mail_rate_limits/{uid}/{kind} (no content) and mail_oauth/{uid}/{accountId}
+    // (Microsoft refresh token + mailbox address). Both are uid-keyed and must
+    // not outlive the account. mail_oauth_pending/{uid} holds an in-flight
+    // device-code exchange and is cleared too.
     'mail_rate_limits',
+    'mail_oauth',
+    'mail_oauth_pending',
     // Written by resetForgottenPassword (password-reset.js): the per-uid
     // attempt window and the "password changed without current password"
     // audit entries. Both are uid-keyed and must not outlive the account.

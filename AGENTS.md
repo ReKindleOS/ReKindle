@@ -28,7 +28,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [kindlechat.md](docs/agent/kindlechat.md) | `kindlechat.html`, `emojis.js`, `sw.js` + OpenMoji caching |
 | [games.md](docs/agent/games.md) | Any game page, `js/gamerules.js`, canvas sizing |
 | [performance.md](docs/agent/performance.md) | Slow-device / e-ink optimisation: load path + caching, containment, dirty-flag rendering, feed pagination, rect caching, `commentCount` |
-| [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, Discord notifications |
+| [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, owner-only console |
 | [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs) |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |
 | [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, visual review, System 7 checklist |
@@ -601,7 +601,7 @@ The moderation worker enforces **global, per-user token-bucket rate limits** usi
 | `neighbourhood_comment` | 10 | 1 token / 30 s |
 | `dm` | 8 | 1 token / 8 s |
 | `dm_request` | 5 | 1 token / 2 h (plus a 3-pending cap) |
-| `report` | 5 | 1 token / 12 min |
+| `report` | 60 | 60 per hour (burst allowed) |
 
 #### Duplicate / repetitive-content detection
 *   **Chat:** handled by the repetition guard in §5 below (state rides on the rate-limit bucket; adds no Firebase operations).

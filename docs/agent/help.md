@@ -10,7 +10,7 @@ browsing, deep links (`/help#tasks`) and an A-Z app index.
 | `help.html` | System 7 shell, routing, search, A-Z index, article renderer, text-size control. |
 | `help-data.js` | `HELP_CATEGORIES` and `HELP_ARTICLES` (142 guides, English copy). No network requests. |
 
-`help-data.js` is loaded with `?v=12` in `help.html`. **Bump that query when the
+`help-data.js` is loaded with `?v=22` in `help.html`. **Bump that query when the
 data changes** so edge/service-worker caches cannot serve an old guide set. The
 page itself is included in the generated sitemap automatically.
 
@@ -109,7 +109,7 @@ Manage Subscription first, and treat cancellation (stops renewal) separately
 from a refund (case by case). The Suggestions board's triage strip links to
 `help#faq` and `help#support`, and its Suggest an idea guide now explains the
 "Load older" window and the duplicate finder. Bump `help-data.js?v=` in
-`help.html` after any copy edit (currently `?v=12`).
+`help.html` after any copy edit (currently `?v=22`).
 
 ## Content audit (2026-10-26)
 
@@ -155,3 +155,22 @@ A full pass checked every article against the page source. Rules for future edit
   cloud access; say cloud features pause and device/export copies keep working.
 - The section is rendered by `proSectionHtml()`; do not hand-edit the generated
   HTML strings if you can update that function instead.
+
+## 2026-11-24 privacy/help alignment pass
+
+- `privacy.html` / `locales/privacy-en.json` were rewritten for the changes since
+  24 October 2026: Microsoft mailbox OAuth, gift codes, owner-only moderation and
+  the 2026-10-26 report rules, account deletion (social history retained, DMs not
+  auto-deleted), presence/analytics, and the third-party list (Microsoft,
+  MyMemory, chess-api, NWS, Northflank relay; Gutendex/Unsplash/Beeper/Ko-fi/
+  Discord/Lingva removed). All `privacy-<code>.json` files were regenerated with
+  `scripts/translate-locales.js --privacy`; English remains authoritative.
+- Help articles updated for ReKindle+ free tiers, gift codes and previews,
+  Scores (137 leagues / 12 sports), Notes EPUB/alignment/clipboard, Docs' free
+  tier, `mail` M365 sign-in, `support`/`neighbourhood`/`topics`/`whats-new` report
+  wording, `safety`'s gallery Report button, `hidden-legacy` (`membership`,
+  `pay`, `preview`) and the November 2026 date. `help-data.js?v=22`.
+- `settings.html`'s Delete Account note and `moderation.html`'s automod help text
+  were corrected to match the policy and the worker.
+- The app registry still has no guide for `discord` (external link) and game
+  variants intentionally share their parent guide; coverage is otherwise 1:1.
