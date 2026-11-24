@@ -2,7 +2,7 @@ const CACHE_NAME = 'rekindle-cache-v28'; // v28: home CSS/JS split + lazy Fireba
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './css/home.css?v=6',
+    './css/home.css?v=7',
     './js/home.js?v=12',
     './js/home-deps.js?v=1',
     './js/firebase-loader.js?v=1',

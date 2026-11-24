@@ -199,10 +199,10 @@ Tasks, Calendar, Books, News, and the live/multiplayer gates.
 A look-and-feel pass on the home screen and its Dashboard tab, captured at 800×1000
 (light, dark, `?lang=de`), 600×800, 400×700, in edit mode and scrolled to the game grid.
 
-- **Folder tabs** — dropped the solid-black resting style on Games/Multiplayer. It read
-  as "selected" while All was active. All tabs now share the grey resting style; the
-  active tab is white, 2px taller and merges into the window border. The Games group is
-  separated by a 24px gap instead of colour.
+- **Folder tabs** — originally restyled (black Games group removed, taller tabs). This
+  was **reverted on 2026-11-24 at the user's request**: the original 6px/15px padding,
+  4px radius, grey/black Games group and inset active highlight are back. ARIA roles,
+  keyboard activation and the focus outline are retained (accessibility, not styling).
 - **Featured** — the outer box now has a real `.featured-box-header` ("Featured" +
   square marker) and the grid has its own 14px padding. Cards get 44px icons, a
   two-line description, a right-hand chevron affordance and room for the PLUS badge.
@@ -274,7 +274,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=6`, `js/home.js?v=12` and the generated
+- **Assets** — `css/home.css?v=7`, `js/home.js?v=12` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.

@@ -29,7 +29,7 @@ cached assets, and no animations.
 | Area | What shipped |
 | :--- | :--- |
 | Boot | `js/firebase-loader.js` + `js/home.js`: shell/grid first; Firebase only for a stored session or login intent. A guest loads **0 Firebase bytes**; a returning user loads app+auth in idle, then Firestore+RTDB after auth. `counter.dev` is `async`. |
-| Code split | Inline CSS → `css/home.css?v=6`, inline logic → `js/home.js?v=12`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
+| Code split | Inline CSS → `css/home.css?v=7`, inline logic → `js/home.js?v=12`; five boot dependencies are generated into `js/home-deps.js?v=1` (`npm run build:home-deps`, guarded by `test-home-bundle.js`). |
 | Presence | Removed `window.rekindlePresence = true`; the dashboard no longer opens a presence listener/write. |
 | Weather | 15-minute `localStorage` snapshot (stale-while-revalidate), 8 s abort, feels-like/rain/wind/sunrise/sunset, updated-age label. |
 | Agenda | In-memory month cache, one Google/CalDAV fetch per month (2-day edge margin), bounded Firestore range query instead of the whole collection; loading/empty/session-expired states. |
@@ -38,7 +38,7 @@ cached assets, and no animations.
 | Search | Apps + Settings/Help/Membership/Login/Dashboard actions; matched label text highlighted; 60-result cap. |
 | i18n | Date/month/weekday/hour labels follow the app language; weather conditions + new dashboard labels use locale keys (English fallback where a locale has not translated the new keys). |
 | Clocks | Default world clocks derive from the saved location; the decoded list is cached; dashboard and top-bar intervals stop while hidden/off-tab. |
-| A11y | ARIA tabs/labels, focus outlines, keyboard calendar days, 44px folder tabs, expanded hit areas on 30px header controls. |
+| A11y | ARIA tabs/labels, focus outlines, keyboard calendar days, expanded hit areas on 30px header controls. Folder-tab restyling was reverted at the user's request; the original tab dimensions/colours are back. |
 | Grid | Rendered app tiles are cached (LRU 4) and re-appended on tab switches instead of rebuilding ~100 nodes. |
 | Prefetch | `warmRecentApp()` skips hidden tabs and keeps the `saveData` guard; only the exact `.html` href is warmed. |
 | Density | `fitDashboard()` picks full/compact/minimal/tiny/ultra so the Dashboard never makes the app view scroll; the weather glyph is unboxed and the header hit-area overlay that broke the For You tabs is fixed. |
@@ -51,8 +51,8 @@ the calendar `?date=…&new=1` link, and a seeded weather/agenda cache.
 **Deliberate compromises:** the new dashboard strings (12 keys: Dashboard, Actions,
 New event, All Day, Feels, Sunrise, Sunset, Updated, the live-games sign-in prompt and
 H/L) exist only in `en.json` today, so other languages fall back to English until the
-next translation batch; folder tabs are 44px (header buttons use ~46px expanded hit
-areas) rather than a literal 48px; the agenda month cache is memory-only because it
+next translation batch; folder-tab styling was reverted to the original
+(6px/15px padding, 4px radius, black Games group); the agenda month cache is memory-only because it
 contains private event titles; and `js/home-deps.js` duplicates the five shared scripts
 for the homepage in exchange for fewer requests.
 
