@@ -274,7 +274,7 @@ The follow-up to the polish pass implements the proposals in
   Watch the cache key if you add another flag that changes tile state.
 - **Clocks** — dashboard and top-bar intervals stop when the tab is hidden or left;
   world clocks derive from `rekindle_location_manual` and cache the decoded list.
-- **Assets** — `css/home.css?v=7`, `js/home.js?v=12` and the generated
+- **Assets** — `css/home.css?v=7`, `js/home.js?v=13` and the generated
   `js/home-deps.js?v=1` (time/icons/icons-beta/ui-kit/ip-ban) are precached in `sw.js`.
   `npm run build:home-deps` regenerates the bundle; `test-home-bundle.js` (in `npm test`)
   fails if it drifts from its sources.
@@ -331,3 +331,22 @@ grid without duplicate DOM ids.
 Verified with `recent=["calculator","notes"]` and `favorites=["notes","calendar"]`:
 All shows Calculator and Notes, recent shelf shows Calculator and Notes with
 `shelf-icon-*` ids, and `icon-notes` occurs exactly once.
+
+## 2026-11-24 favorites in All + For You tab persistence
+
+- **All Applications now includes favorites.** The favorite filter is gone;
+  a featured app that is also a favorite is included too (`!a.featured ||
+  featuredHidden || favoriteApps.includes(a.id)`). Recent apps were already
+  added back on 2026-11-24. Shelf tiles keep `shelf-icon-<id>` ids so the
+  Favorites/Recent shelf and All can show the same app without duplicate ids.
+- **The open For You shelf survives reloads.** `selectHomeShelf()` writes
+  `rekindle_home_shelf` to `localStorage` (with a `sessionStorage` mirror for
+  older sessions), and init reads it back (validated to featured/recent/
+  favorites). If the saved shelf is temporarily empty while auth/Firestore data
+  loads, `homeShelfFallback` restores it once its apps arrive instead of
+  sticking on Featured.
+
+Verified with `favorites=["notes","calendar","kindlechat"]` and
+`recent=["calculator","notes"]`: All shows Notes, Calendar, KindleChat and
+Calculator, including the featured KindleChat favorite; clicking Favorites and
+Recent survives a reload with the same tab and apps active.

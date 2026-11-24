@@ -1217,8 +1217,17 @@
             window.liveGamesUnsubscribe = () => ref.off('value', listener);
         }
 
-        let currentHomeShelf = null;
-        try { currentHomeShelf = sessionStorage.getItem('rekindle_home_shelf') || null; } catch (e) { currentHomeShelf = null; }
+        let preferredHomeShelf = 'featured';
+        try {
+            preferredHomeShelf = localStorage.getItem('rekindle_home_shelf') ||
+                sessionStorage.getItem('rekindle_home_shelf') || 'featured';
+        } catch (e) { preferredHomeShelf = 'featured'; }
+        if (['featured', 'recent', 'favorites'].indexOf(preferredHomeShelf) === -1) {
+            preferredHomeShelf = 'featured';
+        }
+        let currentHomeShelf = preferredHomeShelf;
+        let homeShelfFallback = false;
+        try { localStorage.setItem('rekindle_home_shelf', preferredHomeShelf); } catch (e) { /* unavailable */ }
 
         function createShelfCard(app) {
             const a = document.createElement('a');
@@ -1262,8 +1271,14 @@
         }
 
         function selectHomeShelf(shelf) {
+            if (['featured', 'recent', 'favorites'].indexOf(shelf) === -1) return;
             currentHomeShelf = shelf;
-            try { sessionStorage.setItem('rekindle_home_shelf', shelf); } catch (e) { /* unavailable */ }
+            preferredHomeShelf = shelf;
+            homeShelfFallback = false;
+            try {
+                localStorage.setItem('rekindle_home_shelf', shelf);
+                sessionStorage.setItem('rekindle_home_shelf', shelf);
+            } catch (e) { /* unavailable */ }
             renderForYouShelf();
         }
 
@@ -1279,8 +1294,16 @@
             const available = order.filter(function (key) { return counts[key] > 0; });
             if (!available.length) { hideForYouShelf(); return; }
 
+            // A saved shelf can be temporarily unavailable while auth/Firestore
+            // data is still loading; remember that we fell back so it can be
+            // restored as soon as its data arrives.
+            if (homeShelfFallback && available.indexOf(preferredHomeShelf) !== -1) {
+                currentHomeShelf = preferredHomeShelf;
+                homeShelfFallback = false;
+            }
             if (!currentHomeShelf || available.indexOf(currentHomeShelf) === -1) {
                 currentHomeShelf = available[0];
+                homeShelfFallback = true;
             }
 
             const tabs = section.querySelectorAll('.foryou-tab');
@@ -1860,15 +1883,11 @@
 
             if (category === 'all' || currentFilter === 'all') {
                 document.getElementById('category-title').innerText = categoryTitleFor('all');
-                // Recent apps also belong in All Applications. A recent app
-                // that is also a favorite must be added back here, otherwise
-                // the favorite filter below would still hide it from All.
-                const recentVisibleIds = (!recentHidden && !isEditMode && currentFilter === 'all')
-                    ? getVisibleRecentApps().map(function (app) { return app.id; })
-                    : [];
+                // Favorites and recent apps also belong in All Applications.
+                // A featured favorite is included here even while the Featured
+                // shelf is showing, otherwise it would still be absent from All.
                 let baseList = APPS.filter(a =>
-                    (!a.featured || featuredHidden) &&
-                    (!favoriteApps.includes(a.id) || recentVisibleIds.indexOf(a.id) !== -1)
+                    !a.featured || featuredHidden || favoriteApps.includes(a.id)
                 );
                 if (!isEditMode) baseList = baseList.filter(a => !hiddenApps.includes(a.id));
                 if (gamesDisabled) baseList = baseList.filter(app => app.cat !== 'games' && app.cat !== 'two_player' && app.cat !== 'live_game');
