@@ -307,3 +307,21 @@ The grid keeps an LRU(4) cache of rendered category node lists (`appGridCache` i
 `js/home.js`). The key includes tab, edit/Pro/games/featured/recent flags, favorites,
 hidden apps, visible recents and the local date (Calendar's icon getter); add any new
 tile-state flag to `appGridCacheKey()` or the cache will show stale tiles.
+
+## Gallery thumbnails from the logical grid (`pixel.html`, 2026-11-25)
+
+`performSave()` used `canvas.toDataURL('image/png')` on the editor canvas for the
+gallery preview. That canvas is resized/scaled per device and window, so previews
+could be blank, huge, or carry editor artefacts, and the full canvas PNG inflated
+the manifest stored in localStorage/Firestore.
+
+`createThumbnailDataUrl(grid, gridSize)` now renders the *logical* grid into a
+fixed 64x64 canvas: white background, greyscale ink cells, no grid lines and no
+template overlay (16/32/64 grids scale 4x/2x/1x). Saving uses it, and
+`openDrawing()` calls `refreshDrawingThumbnail()` so legacy previews are healed
+once their grid is loaded (`thumbnailUpdated` makes that local copy win the
+cloud-manifest merge without touching `modified` or gallery order).
+
+`scripts/test-pixel-templates.js` executes the helpers against a fake canvas and
+pins 64x64, white background, 4x cell scale and the absence of
+`item.thumbnail = canvas.toDataURL`.

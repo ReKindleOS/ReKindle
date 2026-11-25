@@ -1,5 +1,13 @@
 # Deferred optimisation & QoL backlog — 2026-10-20
 
+> **2026-11-25 shipped:** the #4 quality pass (loading skeletons on Wordle/Maps/
+> Crossword/KindleChat/Neighbourhood/Topics, custom-select 48 px, ten-page
+> typography, seven Pro-app toolbars, shared dialog normalizer, KindleChat
+> reply-prefix fix), Case Files (`mystery.html`), pixel tracing templates,
+> recovery code + data export, and private game codes. Details live in
+> [games.md](games.md), [password-recovery.md](password-recovery.md) and
+> [visual-audit.md](visual-audit.md). Do not re-open these as backlog items.
+
 > **ReKindle+ 2026-10-26 follow-ups:** the app-wide touch/design pass, window-width map,
 > 48 px evidence, per-app order and the remaining Mail/social/OAuth/CSP work now live in
 > [`docs/audits/rekindle-plus-followups-2026-10-26.md`](../audits/rekindle-plus-followups-2026-10-26.md).

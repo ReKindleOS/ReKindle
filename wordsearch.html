@@ -4,7 +4,7 @@
     
     <title>Word Search – Find words in every direction | ReKindle</title>
     <script src="js/i18n.js?v=6"></script>
-    <script src="js/gamerules.js?v=3"></script>
+    <script src="js/gamerules.js?v=4"></script>
     <style>
         /* SYSTEM 7 AESTHETICS */
         :root {
@@ -168,12 +168,16 @@
         .window-content {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 15px;
+            padding: 12px 14px;
             background: white;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+        }
+
+        .window {
+            max-width: 600px;
         }
 
         /* WORD LIST */
@@ -181,38 +185,63 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            margin-bottom: 15px;
+            margin-bottom: 8px;
             width: 100%;
+            max-width: 520px;
             min-height: 30px;
+            border: 2px solid #000;
+            background: #f4f4f4;
+            padding: 7px 8px;
+            box-sizing: border-box;
+            box-shadow: 2px 2px 0 #000;
         }
-        #word-bank > * + * {
-            margin-left: 10px;
-}
+
+        #word-bank > * {
+            margin: 2px 4px;
+        }
 
         .word-item {
-            font-family: "Courier New", monospace;
-            font-size: 1rem;
+            font-size: 0.75rem;
             font-weight: bold;
-            padding: 2px 4px;
+            padding: 3px 7px;
             text-transform: uppercase;
+            border: 2px solid #000;
+            background: #fff;
+            box-shadow: 1px 1px 0 #000;
+            letter-spacing: 0.03em;
         }
 
         .word-item.found {
             text-decoration: line-through;
-            color: #999;
+            color: #fff;
+            background: #000;
+            box-shadow: none;
+        }
+
+        #status-msg {
+            width: 100%;
+            max-width: 520px;
+            box-sizing: border-box;
+            border: 2px solid #000;
+            background: #000;
+            color: #fff;
+            padding: 5px 8px;
+            text-align: center;
+            font-size: 0.72rem;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
         }
 
         /* GAME GRID */
         #grid-container {
             display: grid;
-            gap: 0;
-            border: 4px solid black;
+            gap: 1px;
+            border: 2px solid black;
             background: black;
-            /* Gap color */
-            touch-action: manipulation;
+            touch-action: none;
             width: 100%;
-            max-width: 550px;
-            /* Larger size */
+            max-width: 500px;
+            box-shadow: 4px 4px 0 #000;
             /* Height is set by JS to ensure square */
         }
 
@@ -222,13 +251,16 @@
             justify-content: center;
             align-items: center;
             font-weight: bold;
-            font-size: 1.6rem;
-            /* Larger font */
+            font-size: 1.35rem;
             cursor: pointer;
             user-select: none;
             text-transform: uppercase;
-            border: 1px solid #ccc;
+            border: 1px solid #e0e0e0;
             /* Height/Width handled by Grid layout */
+        }
+
+        .cell:hover {
+            background: #f4f4f4;
         }
 
         /* SELECTION STATES */
@@ -236,6 +268,11 @@
             background-color: black;
             color: white;
             border-color: black;
+        }
+
+        .cell.drag-preview {
+            background: #e5e5e5;
+            border-color: #000;
         }
 
         .cell.found {
@@ -326,7 +363,10 @@
         let gridData = [];
         let placedWords = [];
         let foundWords = [];
-        let startSelection = null; // {r, c}
+        let startSelection = null;
+        let dragStart = null;
+        let dragActive = false;
+        let suppressClick = false; // {r, c}
 
         // --- INIT ---
         window.onload = () => {
@@ -466,21 +506,104 @@
             resizeGrid();
         }
 
+        function cellFromPoint(x, y) {
+            const el = document.elementFromPoint(x, y);
+            if (!el || !el.closest) return null;
+            const cell = el.closest('.cell');
+            if (!cell || !cell.id || cell.id.indexOf('c-') !== 0) return null;
+            const parts = cell.id.split('-');
+            return { r: parseInt(parts[1], 10), c: parseInt(parts[2], 10) };
+        }
+
+        function clearDragPreview() {
+            document.querySelectorAll('.cell.drag-preview').forEach(function (el) {
+                el.classList.remove('drag-preview');
+            });
+        }
+
+        function previewDragTo(r, c) {
+            clearDragPreview();
+            if (!startSelection) return;
+            const dr = r - startSelection.r;
+            const dc = c - startSelection.c;
+            if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return;
+            const steps = Math.max(Math.abs(dr), Math.abs(dc));
+            const stepR = dr === 0 ? 0 : dr / Math.abs(dr);
+            const stepC = dc === 0 ? 0 : dc / Math.abs(dc);
+            for (let i = 1; i <= steps; i++) {
+                const id = 'c-' + (startSelection.r + i * stepR) + '-' + (startSelection.c + i * stepC);
+                const el = document.getElementById(id);
+                if (el) el.classList.add('drag-preview');
+            }
+        }
+
+        function onPointerDown(e) {
+            if (!e.isPrimary) return;
+            const cell = cellFromPoint(e.clientX, e.clientY);
+            if (!cell) return;
+            dragStart = cell;
+            dragActive = false;
+            dragStart.x = e.clientX;
+            dragStart.y = e.clientY;
+        }
+
+        function onPointerMove(e) {
+            if (!dragStart) return;
+            const dx = e.clientX - dragStart.x;
+            const dy = e.clientY - dragStart.y;
+            if (!dragActive && (dx * dx + dy * dy) < 64) return;
+            if (!dragActive) {
+                dragActive = true;
+                suppressClick = true;
+                if (startSelection) {
+                    const old = document.getElementById('c-' + startSelection.r + '-' + startSelection.c);
+                    if (old) old.classList.remove('active-start');
+                }
+                startSelection = { r: dragStart.r, c: dragStart.c };
+                const startEl = document.getElementById('c-' + startSelection.r + '-' + startSelection.c);
+                if (startEl) startEl.classList.add('active-start');
+            }
+            const cell = cellFromPoint(e.clientX, e.clientY);
+            if (cell) previewDragTo(cell.r, cell.c);
+        }
+
+        function endPointerDrag(e) {
+            if (!dragStart) return;
+            if (dragActive) {
+                const cell = cellFromPoint(e.clientX, e.clientY) || dragStart;
+                clearDragPreview();
+                const start = startSelection;
+                startSelection = null;
+                const startEl = start ? document.getElementById('c-' + start.r + '-' + start.c) : null;
+                if (startEl) startEl.classList.remove('active-start');
+                if (start) handleTapFrom(start, cell);
+                setTimeout(function () { suppressClick = false; }, 50);
+            }
+            dragStart = null;
+            dragActive = false;
+        }
+
         // --- INTERACTION (Tap-Tap) ---
         function handleTap(r, c) {
-            // 1. If no start point selected
-            if (!startSelection) {
-                startSelection = { r, c };
-                document.getElementById(`c-${r}-${c}`).classList.add('active-start');
+            if (suppressClick) {
+                suppressClick = false;
                 return;
             }
+            handleTapFrom(startSelection, { r: r, c: c });
+        }
 
+        function handleTapFrom(startSelectionValue, end) {
+            if (!startSelectionValue) {
+                startSelection = end;
+                const el = document.getElementById(`c-${end.r}-${end.c}`);
+                if (el) el.classList.add('active-start');
+                return;
+            }
+            const start = startSelectionValue;
             // 2. If start point exists (Second Tap)
-            const start = startSelection;
-            const end = { r, c };
-
             // Reset visual for start
-            document.getElementById(`c-${start.r}-${start.c}`).classList.remove('active-start');
+            const startEl = document.getElementById(`c-${start.r}-${start.c}`);
+            if (startEl) startEl.classList.remove('active-start');
             startSelection = null;
 
             // Validate line
@@ -530,6 +653,15 @@
             }
         }
 
+        // Pointer drag selection (mouse, touch, pen) where supported.
+        (function attachWordSearchDrag() {
+            const grid = document.getElementById('grid-container');
+            if (!grid) return;
+            grid.addEventListener('pointerdown', onPointerDown);
+            document.addEventListener('pointermove', onPointerMove, { passive: true });
+            document.addEventListener('pointerup', endPointerDrag);
+            document.addEventListener('pointercancel', endPointerDrag);
+        })();
     </script>
 
     <script>

@@ -614,3 +614,67 @@ glitchy/laggy on a 10th-gen Kindle. Surfer already redraws on a 100 ms tick
 * This is a CPU/refresh-pressure cut, not a full fix: a 10th-gen Kindle still
   has a slow JIT-less CPU. Keep new moving games on integer 1-bit drawing and
   a <=30 Hz redraw budget.
+
+## Case Files (mystery.html) — generated whodunit (2026-11-25)
+
+A solo/daily logic mystery for e-ink. **No Firebase, no chat, no user-authored
+cases, no leaderboard and no Cloud Functions.** The client generates and solves
+everything, so the game costs nothing to run beyond the static page.
+
+### Model and fairness
+
+- `js/mystery-engine.js` is pure UMD (`window.RekindleMystery` in the browser,
+  `module.exports` in Node). It has no DOM/Firebase/localStorage access.
+- `n` guests (Easy 3, Normal 4, Hard 5) each occupy a unique room at a unique
+  time. The crime has one room/time; the culprit is the guest there.
+- The generator adds true clues until the solver finds **exactly one** possible
+  assignment. `scripts/test-mystery.js` runs 150 seeds per difficulty in `npm test` (450
+  cases; pass a larger count to widen it) and asserts uniqueness, clue truth, source
+  reachability, determinism, variety and scoring monotonicity.
+- If a future clue type can leave two solutions, `generateCase()` throws
+  instead of shipping an unfair case.
+- `js/mystery-cases.js` names/story templates live in `SETTINGS` inside the
+  engine; six skins (manor, express, camp, museum, hotel, school fair). Clue
+  text uses `window.tFormat` with English fallbacks.
+- UI strings are in `locales/en.json` under `mystery.*`. Case proper nouns stay
+  English (a later translation batch can localise the templates).
+
+### Page behaviour
+
+- Daily seed = local `YYYY-MM-DD`; Practice uses a random seed. Daily progress
+  and streak live in `localStorage` `rekindle_mystery_v1`, notes in
+  `rekindle_mystery_notes_v1` (pruned to 20 cases / 60 days).
+- Interview/search reveals clues; the notes tab has two tap-to-cycle grids;
+  three accusations; hints reveal one unread clue and lower the score.
+- The page calls only `window.RekindleMystery`; it makes no network requests.
+- `js/gamerules.js` has a `mystery` entry; `icons.js`, `scripts/seo-pages.js`
+  and `help-data.js` are registered. The page is indexable.
+
+### Do not
+
+- Add a client-writable leaderboard; use `RekindleScores` only if a server
+  score is ever added (functions deploy first).
+- Let players author cases/clues. That reintroduces moderation and abuse.
+- Put the solution in shared state for an online race; a client can read it.
+  Online races (if added) should write only accusation/finish metadata.
+
+## Private live-game codes (js/live-codes.js, 2026-11-25)
+
+Kid-safe social layer: no friends graph, no chat, no search, no notifications.
+
+- A host taps **Invite a friend** after creating a lobby. `js/live-codes.js`
+  publishes an 8-character code from an unambiguous alphabet to
+  `game_codes/{code}` (2-hour expiry) and marks the lobby
+  `matchmaking/{game}/{matchId}/private: true`.
+- Guests enter the code under **Live Games** on the dashboard; the helper
+  resolves it to `{game, matchId}`, checks the game is still in `lobby`, and
+  navigates to `?matchId=`.
+- Private lobbies are filtered from the dashboard list and badge in `js/home.js`.
+- Rules: root `game_codes` is unreadable; a known code is readable by any
+  signed-in user; only the host can create/delete; the code must point at a
+  game node whose `host` is the caller. `scripts/test-live-codes.js` pins this.
+- Cost: one small write when Invite is tapped, one read when a guest joins. No
+  Cloud Function, no listener, no scheduled cleanup. Expired codes are ignored
+  on read and can be overwritten after expiry.
+- Only share codes with people you know. A code is not a content filter: the
+  game's existing chat/guess surface (Pictionary) is unchanged.

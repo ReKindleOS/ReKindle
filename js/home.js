@@ -323,7 +323,7 @@
                             for (const gameType in games) {
                                 for (const matchId in games[gameType]) {
                                     const match = games[gameType][matchId];
-                                    if (match && match.status === 'waiting') {
+                                    if (match && match.status === 'waiting' && !match.private) {
                                         checks.push(cachedMatchValidation(gameType, matchId, match));
                                     }
                                 }
@@ -446,7 +446,28 @@
                     authListenerAttached = true;
                     let lastUid = null;
                     try { lastUid = localStorage.getItem('rekindle_uid'); } catch (e) { /* storage disabled */ }
+                    let nullGraceTimer = null;
                     auth.onAuthStateChanged(function (user) {
+                        if (!user && lastUid && hasStoredSession()) {
+                            // Firebase can emit null once while LOCAL persistence
+                            // is still restoring, especially on a Kindle. Give it
+                            // a moment before declaring Guest Mode.
+                            if (nullGraceTimer) return;
+                            nullGraceTimer = setTimeout(function () {
+                                nullGraceTimer = null;
+                                if (auth.currentUser) {
+                                    handleAuthState(auth.currentUser, lastUid);
+                                    lastUid = auth.currentUser.uid;
+                                } else {
+                                    handleAuthState(null, lastUid);
+                                }
+                            }, 4000);
+                            return;
+                        }
+                        if (nullGraceTimer) {
+                            clearTimeout(nullGraceTimer);
+                            nullGraceTimer = null;
+                        }
                         handleAuthState(user, lastUid);
                         lastUid = user ? user.uid : null;
                     });
@@ -540,6 +561,22 @@
             } catch (e) { /* malformed URL */ }
             warmRecentApp();
 
+            // Returning signed-in users should not flash "Guest Mode" while
+            // Firebase restores LOCAL persistence. Prefer the cached name; the
+            // auth listener replaces it (or resets it) when it settles.
+            if (hasStoredSession()) {
+                try {
+                    const cachedName = localStorage.getItem('rekindle_last_username');
+                    const display = document.getElementById('user-display');
+                    const authBtn = document.getElementById('auth-btn');
+                    if (cachedName && display) display.innerText = cachedName;
+                    if (cachedName && authBtn) {
+                        authBtn.innerText = 'Log Out';
+                        authBtn.onclick = openLogoutModal;
+                    }
+                } catch (e) { /* storage disabled */ }
+            }
+
             // Auth is a background upgrade: the grid is already usable.
             scheduleAuthBoot();
         }
@@ -577,7 +614,10 @@
             let previousUid = null;
             try {
                 previousUid = localStorage.getItem('rekindle_uid');
-                localStorage.removeItem('rekindle_uid');
+                // Keep the uid as a "this device was signed in" hint: a slow
+                // Kindle auth restore can emit null before the session arrives,
+                // and erasing the hint made the next home load skip auth boot
+                // and stay in Guest Mode forever. Explicit Log Out removes it.
             } catch (e) { /* storage disabled */ }
 
             const noticeKey = 'rekindle_signout_notice';
@@ -806,7 +846,7 @@
             const featToggle = document.getElementById('featured-toggle-btn');
             const recentToggle = document.getElementById('recent-toggle-btn');
             const searchToggle = document.getElementById('app-search-toggle');
-            if (searchToggle) searchToggle.style.display = isEditMode ? 'none' : 'flex';
+            if (searchToggle) searchToggle.style.display = (isEditMode || currentFilter !== 'all') ? 'none' : 'flex';
             if (isEditMode) {
                 btn.innerText = window.t('home.btn.done', 'Done');
                 if (resetBtn) resetBtn.style.display = 'inline-flex';
@@ -1042,6 +1082,10 @@
             else if (typeof stopDashboardClock === 'function') stopDashboardClock();
             const mvh = document.getElementById('main-view-header');
             if (mvh) mvh.style.display = category === 'dashboard' ? 'none' : 'flex';
+            // App search belongs to the main All Applications view only; the
+            // category tabs and Live Games get the full width for their content.
+            const searchToggle = document.getElementById('app-search-toggle');
+            if (searchToggle) searchToggle.style.display = (category === 'all' && !isEditMode) ? 'flex' : 'none';
             document.getElementById('app-grid').style.display = category === 'dashboard' ? 'none' : 'grid';
 
             const searchRow = document.getElementById('app-search-row');
@@ -1117,7 +1161,7 @@
                     for (const gameType in games) {
                         for (const matchId in games[gameType]) {
                             const match = games[gameType][matchId];
-                            if (match.status === 'waiting') {
+                            if (match.status === 'waiting' && !match.private) {
                                 waitingMatches.push({ gameType, matchId, match });
                             }
                         }
@@ -3221,6 +3265,41 @@
         window.openAbout = openAbout;
         window.openDiscordModal = openDiscordModal;
         window.openDonateModal = openDonateModal;
+        function joinWithCode() {
+            const input = document.getElementById('live-code-input');
+            const status = document.getElementById('live-code-status');
+            if (!input || !status) return;
+            const code = input.value.trim();
+            if (!code) {
+                status.textContent = 'Enter the code your friend shared.';
+                return;
+            }
+            if (!rtdb) {
+                status.textContent = 'Sign in to join a game.';
+                return;
+            }
+            if (!window.RekindleLiveCodes) {
+                status.textContent = 'Live codes are not available on this browser.';
+                return;
+            }
+            status.textContent = 'Checking code...';
+            window.RekindleLiveCodes.join(rtdb, code).then(function (result) {
+                status.textContent = 'Joining ' + result.game + '...';
+                window.location.href = result.url;
+            }).catch(function (error) {
+                status.textContent = error && error.message ? error.message : 'Could not join that game.';
+            });
+        }
+
+        window.joinWithCode = joinWithCode;
+        document.addEventListener('DOMContentLoaded', function () {
+            const input = document.getElementById('live-code-input');
+            if (!input) return;
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); joinWithCode(); }
+            });
+        });
+
         window.openLogin = openLogin;
         window.openResetModal = openResetModal;
         window.closeModal = closeModal;

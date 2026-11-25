@@ -59,6 +59,7 @@ const PRIMARY_USER_RTDB_ROOTS = [
     // attempt window and the "password changed without current password"
     // audit entries. Both are uid-keyed and must not outlive the account.
     'password_reset_limits',
+    'recovery_limits',
     'security_events'
 ];
 

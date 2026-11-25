@@ -1,5 +1,8 @@
 export default {
   async fetch(request, env, ctx) {
+    // Public read-only chord data. Do not gate on Origin: Kindle WebKit can
+    // send a missing/"null" Origin, which used to produce a CORS failure that
+    // surfaced in the app as "Load failed".
     const allowedOrigins = [
       "https://beta.rekindle.ink",
       "https://rekindle.ink",
@@ -7,26 +10,37 @@ export default {
       "https://legacy.rekindle.ink",
     ];
     const origin = request.headers.get("Origin");
-    const isAllowed = allowedOrigins.includes(origin);
-
     const corsHeaders = {
-      "Access-Control-Allow-Origin": isAllowed ? origin : "null",
-      "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Max-Age": "86400",
+      "Vary": "Origin",
     };
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
 
-    if (!isAllowed) {
-      return new Response("Forbidden", { status: 403, headers: corsHeaders });
-    }
-
     const url = new URL(request.url);
     const cmd = url.searchParams.get("cmd") || "search"; // Default to search if ambiguous
     const query = url.searchParams.get("q");
     const targetUrl = url.searchParams.get("url");
+
+    const cache = caches.default;
+    const cacheKey = new Request(url.toString(), { method: "GET" });
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+
+    function jsonResponse(data, ttl) {
+      return new Response(JSON.stringify(data), {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=" + ttl,
+        },
+      });
+    }
 
     try {
       if (cmd === "search") {
@@ -59,9 +73,9 @@ export default {
           });
         }
 
-        return new Response(JSON.stringify(results), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        const response = jsonResponse(results, 21600);
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
 
       } else if (cmd === "get") {
         if (!targetUrl) throw new Error("No url provided for get");
@@ -91,15 +105,16 @@ export default {
 
         if (!content) throw new Error("Could not parse content");
 
-        return new Response(JSON.stringify({ content: content, source: targetUrl }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        const response = jsonResponse({ content: content, source: targetUrl }, 86400);
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
       }
 
       throw new Error("Invalid command");
 
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), {
+        status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

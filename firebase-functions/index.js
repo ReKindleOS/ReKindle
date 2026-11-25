@@ -2315,6 +2315,16 @@ exports.resetForgottenPassword = onCall(callOptions, function (request) {
 });
 
 /**
+ * resetWithRecoveryCode — signed-out reset using the one-time recovery code
+ * saved in Settings. Rate-limited per uid and IP; the code is consumed on
+ * success. See firebase-functions/recovery.js.
+ */
+const recovery = require("./recovery");
+exports.resetWithRecoveryCode = onCall(callOptions, function (request) {
+    return recovery.resetWithRecoveryCode(request);
+});
+
+/**
  * createRssFeed — Server-enforced RSS feed creation for free users.
  * Pro users write directly to Firestore (rules allow it); free users call this.
  *

@@ -342,15 +342,6 @@
             transform: translate(2px, 2px);
         }
 
-        /* STATUS BAR */
-        #status-bar {
-            border-top: 2px solid black;
-            padding: 5px;
-            font-size: 0.8rem;
-            background: #eee;
-            text-align: center;
-        }
-
         /* STANDARD MODAL SYSTEM */
         #modal-overlay {
             display: none;
@@ -409,10 +400,11 @@
             box-shadow: none;
         }
     </style>
-    <link rel="stylesheet" href="css/custom-select.css?v=1">
+    <link rel="stylesheet" href="js/system-dialog.css?v=5">
+    <link rel="stylesheet" href="css/custom-select.css?v=3">
     <script src="time.js?v=9"></script>
     <script src="theme.js?v=36"></script>
-    
+
     <script src="js/i18n.js?v=6"></script>
     <script src="js/ui-kit.js?v=2"></script>
     <script src="js/custom-select.js?v=3"></script>
@@ -453,13 +445,12 @@
             <div style="text-align:center; margin-top:20px; font-style:italic; color:#888;">Loading events...</div>
         </div>
 
-        <div id="status-bar" data-i18n="countdown.status.local">Local Mode</div>
     </div>
 
     <!-- ADD MODAL -->
     <div id="add-modal" class="modal-overlay">
         <div class="modal-box">
-            <h3 data-i18n="countdown.modal.add.title">New Timer</h3>
+            <h3 id="event-modal-title" data-i18n="countdown.modal.add.title">New Timer</h3>
             <input type="text" id="event-name" placeholder="Title (e.g. Birthday, Anniversary)"
                 data-i18n-placeholder="countdown.ph.title">
 
@@ -483,7 +474,7 @@
             </div>
 
             <div style="display: flex; justify-content: center">
-                <button class="sys-btn" onclick="addEvent()" data-i18n="countdown.btn.save">Save</button>
+                <button class="sys-btn" id="event-save-btn" onclick="addEvent()" data-i18n="countdown.btn.save">Save</button>
                 <button class="sys-btn" onclick="closeModal('add-modal')" data-i18n="common.cancel"
                     style="margin-left: 10px">Cancel</button>
             </div>
@@ -553,6 +544,7 @@
         let currentUser = null;
         let updateInterval = null;
         let deleteTargetId = null;
+        let editTargetId = null;
 
         // --- INIT ---
         window.onload = () => {
@@ -561,10 +553,10 @@
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = window.t('status.synced', "Synced: ") + user.email;
+
                     loadCloudEvents();
                 } else {
-                    document.getElementById('status-bar').innerText = window.t('countdown.status.local', "Guest Mode (Local)");
+
                     loadLocalEvents();
                 }
             });
@@ -662,13 +654,24 @@
             };
 
             if (currentUser) {
-                db.collection('users').doc(currentUser.uid).collection('countdown_events').add(newEvent);
+                if (editTargetId) {
+                    db.collection('users').doc(currentUser.uid).collection('countdown_events')
+                        .doc(editTargetId).update(newEvent);
+                } else {
+                    db.collection('users').doc(currentUser.uid).collection('countdown_events').add(newEvent);
+                }
             } else {
-                newEvent.id = Date.now().toString();
-                events.push(newEvent);
+                if (editTargetId) {
+                    const idx = events.findIndex(function (item) { return item.id === editTargetId; });
+                    if (idx !== -1) events[idx] = Object.assign({}, events[idx], newEvent);
+                } else {
+                    newEvent.id = Date.now().toString();
+                    events.push(newEvent);
+                }
                 saveEventsLocal();
             }
 
+            editTargetId = null;
             closeModal('add-modal');
         }
 
@@ -820,7 +823,7 @@
                 const div = document.createElement('div');
                 div.className = 'event-card';
 
-                const deleteBtn = `<button class="delete-btn" onclick="promptDelete('${e.id}')">×</button>`;
+                const deleteBtn = `<button class="delete-btn" onclick="promptDelete('${e.id}')" aria-label="Delete">×</button><button class="edit-btn" onclick="openModal('${e.id}')" aria-label="Edit">Edit</button>`;
 
                 if (e.recurring) {
                     // Recurring View
@@ -890,17 +893,49 @@
         }
 
         // --- MODAL LOGIC ---
-        function openModal() {
-            document.getElementById('add-modal').style.display = 'flex';
-            document.getElementById('event-name').value = "";
-            document.getElementById('event-date').value = "";
-            document.getElementById('event-recurring').checked = false;
+        function openModal(id) {
+            editTargetId = id || null;
+            const title = document.getElementById('event-modal-title');
+            const save = document.getElementById('event-save-btn');
+            const nameEl = document.getElementById('event-name');
+            const dateEl = document.getElementById('event-date');
+            const recEl = document.getElementById('event-recurring');
+            const freqEl = document.getElementById('event-frequency');
+
+            if (editTargetId) {
+                const ev = events.find(function (item) { return item.id === editTargetId; });
+                if (!ev) return;
+                title.innerText = window.t('countdown.modal.edit.title', 'Edit Timer');
+                save.innerText = window.t('countdown.btn.update', 'Update');
+                nameEl.value = ev.name || '';
+                dateEl.value = toDateTimeLocalValue(ev.date);
+                recEl.checked = !!ev.recurring;
+                freqEl.value = ev.frequency || 'yearly';
+            } else {
+                title.innerText = window.t('countdown.modal.add.title', 'New Timer');
+                save.innerText = window.t('countdown.btn.save', 'Save');
+                nameEl.value = '';
+                dateEl.value = '';
+                recEl.checked = false;
+                freqEl.value = 'yearly';
+            }
             toggleRecurringOptions();
+            document.getElementById('add-modal').style.display = 'flex';
+        }
+
+        // Format a true UTC timestamp as the user's local wall-clock string for
+        // a datetime-local input, without relying on the browser timezone.
+        function toDateTimeLocalValue(utcMs) {
+            const d = window.rekindleGetDateInZone ? window.rekindleGetDateInZone(new Date(utcMs)) : new Date(utcMs);
+            const pad = function (n) { return String(n).padStart(2, '0'); };
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+                'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         }
 
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
             if (id === 'delete-modal') deleteTargetId = null;
+            if (id === 'add-modal') editTargetId = null;
         }
 
         function toggleRecurringOptions() {
@@ -927,6 +962,7 @@
     </div>
 
 
+    <script src="js/dialog-enhance.js?v=2"></script>
 </body>
 
 </html>

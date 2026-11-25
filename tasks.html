@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="en"><head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
     <meta charset="UTF-8">
-    
+
     <title>Tasks – Task list with Google Tasks sync | ReKindle</title>
 
     <!-- Firebase SDKs -->
@@ -392,16 +392,17 @@
 }
 
         #status-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: #eee;
-            border-top: 2px solid black;
-            padding: 5px;
-            font-size: 0.8rem;
-            text-align: center;
-            box-sizing: border-box;
+            padding: 2px 10px 6px;
+            font-size: 0.7rem;
+            color: #666;
+            background: transparent;
+            border: none;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        #status-bar:empty {
+            display: none;
         }
 
         /* STANDARD MODAL SYSTEM */
@@ -461,7 +462,59 @@
             transform: translate(1px, 1px);
             box-shadow: none;
         }
-    </style>
+
+        /* Shared Google auth card (matches Calendar/Tasks/Contacts/QuickTodo). */
+        #auth-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: rgba(0, 0, 0, 0.45) !important;
+            z-index: 10000 !important;
+            padding: 20px;
+            box-sizing: border-box;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #auth-overlay .auth-card {
+            width: 100%;
+            max-width: 380px;
+            padding: 0;
+            text-align: left;
+        }
+
+        #auth-overlay .auth-card .rk-dialog-body {
+            text-align: center;
+        }
+
+        #auth-overlay .auth-desc {
+            margin: 0 0 14px;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        #auth-overlay .auth-card .sys-btn {
+            width: 100%;
+            min-height: 0;
+            padding: 8px 12px;
+        }
+
+        #auth-overlay .auth-card .auth-primary {
+            margin: 0;
+        }
+
+        #auth-overlay .auth-card .auth-secondary {
+            margin-top: 8px;
+            border: 0;
+            background: #fff;
+            box-shadow: none;
+            text-decoration: underline;
+            font-weight: normal;
+        }
+</style>
+    <link rel="stylesheet" href="js/system-dialog.css?v=5">
     <script src="time.js?v=9"></script>
     <script src="theme.js?v=36"></script>
     <script src="js/i18n.js?v=6"></script>
@@ -520,17 +573,19 @@
             </div>
         </div>
 
-        <div id="status-bar" data-i18n="tasks.status.ready">Ready.</div>
+        <div id="status-bar"></div>
 
-        <div id="auth-overlay">
-            <div class="auth-card">
-                <h2 style="margin-bottom:10px;" data-i18n="tasks.overlay.google.title">Google Tasks</h2>
-                <p style="margin-bottom:20px; font-size:0.9rem;" data-i18n="tasks.overlay.google.desc">Log in to sync your
-                    tasks.</p>
-                <button class="sys-btn" id="authorize_button" onclick="oauthSignIn()" data-i18n="tasks.btn.login">Log
-                    In</button>
-                <button class="sys-btn auth-secondary" onclick="useLocalTasks()"
-                    data-i18n="tasks.btn.use_local">Use local tasks</button>
+        <div id="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div class="auth-card rk-dialog">
+                <div class="rk-dialog-bar">
+                    <div class="rk-dialog-stripes"></div>
+                    <span class="rk-dialog-title" id="auth-title" data-i18n="tasks.overlay.google.title">Google Tasks</span>
+                </div>
+                <div class="rk-dialog-body">
+                    <p class="auth-desc" data-i18n="tasks.overlay.google.desc">Log in to sync your tasks.</p>
+                    <button class="sys-btn auth-primary" id="authorize_button" onclick="oauthSignIn()" data-i18n="tasks.btn.login">Log In</button>
+                    <button class="sys-btn auth-secondary" onclick="useLocalTasks()" data-i18n="tasks.btn.use_local">Use local tasks</button>
+                </div>
             </div>
         </div>
     </div>
@@ -616,7 +671,6 @@
                     currentUser = user;
                     checkSyncSettings();
                 } else {
-                    document.getElementById('status-bar').innerText = window.t('status.guest', "Guest Mode (Local)");
                     initNativeMode();
                 }
             });
@@ -657,7 +711,6 @@
                 initGoogleMode();
             } else if (setting === 'false') {
                 googleEnabled = false;
-                document.getElementById('status-bar').innerText = window.t('status.synced', "Synced: ") + currentUser.email;
                 initNativeMode();
             } else {
                 // Not set (First time logged in for this app)
@@ -681,9 +734,6 @@
                 initGoogleMode();
             } else {
                 googleEnabled = false;
-                document.getElementById('status-bar').innerText = currentUser
-                    ? (window.t('status.synced', "Synced: ") + currentUser.email)
-                    : window.t('status.guest', "Guest Mode (Local)");
                 initNativeMode();
             }
         }
@@ -696,7 +746,6 @@
             } else {
                 googleEnabled = false;
                 localStorage.setItem('rekindle_google_tasks_enabled', 'false');
-                document.getElementById('status-bar').innerText = window.t('status.guest', "Guest Mode (Local)");
                 initNativeMode();
             }
         }
@@ -737,16 +786,12 @@
                         if (savedToken && expiry && now < expiry) {
                             useToken(savedToken);
                         } else {
-                            // Auto-login check (avoid loop if error in URL)
-                            if (!location.hash.includes('error=')) {
-                                // Show connecting state
-                                document.getElementById('auth-overlay').style.display = 'flex';
-                                document.querySelector('#auth-overlay h2').innerText = window.t('auth.redirecting', "Redirecting...");
-                                document.querySelector('#auth-overlay p').innerText = window.t('auth.refreshing', "Refreshing Google Session");
-                                oauthSignIn();
-                            } else {
-                                document.getElementById('auth-overlay').style.display = 'flex';
-                            }
+                            // Never bounce the user to Google automatically. Show
+                            // the same Google auth card used by Calendar, Contacts
+                            // and QuickTodo; Log In is an explicit choice.
+                            document.getElementById('auth-overlay').style.display = 'flex';
+                            document.querySelector('#auth-overlay h2').innerText = window.t('tasks.overlay.google.title', 'Google Tasks');
+                            document.querySelector('#auth-overlay p').innerText = window.t('tasks.overlay.google.desc', 'Log in to sync your tasks.');
                         }
                     }
                 } catch (e) {
@@ -773,21 +818,14 @@
         }
 
         function handleUnauthorized() {
-            console.warn("Unauthorized (401). Clearing token and redirecting...");
+            console.warn("Unauthorized (401). Clearing the Google token.");
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('token_expiry');
-            // Prevent rapid redirect loops
-            const lastAuth = sessionStorage.getItem('last_auth_attempt') || 0;
-            const now = Date.now();
-            if (now - lastAuth < 5000) {
-                console.error("Auth loop detected.");
-                document.getElementById('auth-overlay').style.display = 'flex';
-                document.querySelector('#auth-overlay h2').innerText = window.t('auth.failed', "Login Failed");
-                document.querySelector('#auth-overlay p').innerText = window.t('auth.retry', "Please try again manually.");
-                return;
-            }
-            sessionStorage.setItem('last_auth_attempt', now.toString());
-            oauthSignIn();
+            // Do not auto-redirect to Google: show the shared auth card and let
+            // the user tap Log In (or switch to local tasks).
+            document.getElementById('auth-overlay').style.display = 'flex';
+            document.querySelector('#auth-overlay h2').innerText = window.t('tasks.overlay.google.title', 'Google Tasks');
+            document.querySelector('#auth-overlay p').innerText = window.t('tasks.overlay.google.expired', 'Your Google session expired. Log in again to sync.');
         }
 
         async function useToken(token) {
@@ -844,7 +882,7 @@
                         );
                     }
                 }
-                document.getElementById('status-bar').innerText = window.t('tasks.status.synced_short', 'Synced.');
+                document.getElementById('status-bar').innerText = '';
             } catch (e) {
                 console.error(e);
                 document.getElementById('status-bar').innerText = window.t('tasks.error.sync', 'Error syncing.');
@@ -973,4 +1011,5 @@
     </div>
 
 
+    <script src="js/dialog-enhance.js?v=2"></script>
 </body></html>

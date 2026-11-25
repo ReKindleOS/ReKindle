@@ -150,7 +150,14 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <h2>Changing your password</h2>
             <p>Open <b>Settings</b> and use <b>Change Password</b> under Account. Enter the current password, then the new one twice. Passwords must be at least 6 characters here.</p>
             <p><b>Forgot the current password?</b> If you are still signed in on this device, choose <b>Forgot your current password?</b> in the same box, type your username to confirm, and set a new password (at least 8 characters). This works from the live session - there is no "forgot password" email because accounts do not require an email address. Only do this on a device you control: anyone who can use a device you are signed in on could reset the password too.</p>
-            <p>If you are signed out and locked out, contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
+            <p>If you are signed out and locked out, use a <b>recovery code</b> if you saved one: open <b>Log In / Register</b> and choose <b>Forgot your password? Use a recovery code</b>. Otherwise contact <a href="mailto:support@rekindle.ink">support@rekindle.ink</a> with your username. Staff can restore access but will never ask for your password.</p>
+            <h2>Recovery code</h2>
+            <p>A recovery code is optional. Open <b>Settings</b> → Account → <b>Recovery code</b> → <b>Set up</b>. ReKindle shows a 20-character code once; copy it or download the recovery kit and keep it somewhere private. Only a salted hash is stored, so nobody at ReKindle can read the code.</p>
+            <p>If you forget your password and are signed out, open the login dialog, choose <b>Forgot your password? Use a recovery code</b>, and enter your username, the code and a new password. The code works once and is then used up; generate a new one from Settings. Regenerating invalidates the old code. There is no email reset because ReKindle accounts do not require an email address.</p>
+            <h2>Download my data</h2>
+            <p>Open <b>Settings</b> → Account → <b>Download my data</b>. Choose the categories you want and ReKindle builds a JSON file in your browser. It includes your profile, settings and the app data you selected. Passwords, tokens, API keys, IP addresses and recovery data are removed automatically. The export is never uploaded; if the browser cannot download, the dialog shows the text so you can copy it.</p>
+            <p>Exports are limited to one per week. The dialog tells you the date the next export becomes available; the limit is recorded in your account, not just on this device.</p>
+            <p>Social posts and chat history live in a separate project and are not included in this version of the export.</p>
             <h2>Deleting your account</h2>
             <p>Sign in, open <b>Settings</b> and use <b>Delete Account</b> under Account. Re-enter your password and type your username to confirm. Deletion is permanent and removes your account, profile, files, scores and suggestions from the main project. Your social username and profile picture are removed, so other people see "Deleted User" with a generic person icon. Your public social history (posts, comments and chat messages) stays in the social project and ages out under the normal retention policy; direct messages are not automatically deleted. See the <a href="#faq">FAQ</a> for what to do about an active subscription.</p>
             <h2>Age verification for social apps</h2>
@@ -2056,6 +2063,8 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Use undo/redo and <b>Clear</b> as needed.</li>
                 <li>Changes save automatically. Drawings appear in <b>My Drawings</b>.</li>
             </ol>
+            <h2>Tracing templates</h2>
+            <p>Tap <b>Templates</b> in the gallery to start from a faint outline. Choose 16x16, 32x32 or 64x64, pick a shape, then trace over the guide. The template is only a guide: it is not saved as part of your drawing and does not appear in downloads or KindleChat posts.</p>
             <h2>What you can do with a drawing</h2>
             <ul>
                 <li><b>Download</b> - save a PNG to the device.</li>
@@ -2334,6 +2343,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>Real-time games against other ReKindle users. You need an account and a connection. Typical flow:</p>
             <ol>
                 <li>Host a game from the live app, or open the home screen's <b>Live Games</b> list to join one. A shared link also works.</li>
+                <li><b>Private codes:</b> after creating a lobby, tap <b>Invite a friend</b> to get an 8-character code. The lobby is then hidden from the public Live Games list. Your friend enters the code under <b>Have a code?</b> on the home screen. Codes expire after 2 hours. Share them only with people you know.</li>
                 <li>Wait for an opponent. Most two-player games start automatically on the second join; Uno and Pictionary lobbies wait for the host to press Start.</li>
                 <li>Play in real time. Uno has a 30-second AFK auto-skip and Pictionary has round timers; the other live games have no turn timer.</li>
                 <li>If the host leaves, another player is promoted so the match can continue.</li>
@@ -2699,6 +2709,33 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ol>
             <p>The header shows remaining mines and elapsed time. <b>New</b> starts a fresh board after a confirmation. Progress saves on the device and, when signed in, to your account.</p>
             <div class="note"><b>Logic, not luck:</b> most positions can be deduced. If two squares are ambiguous, look at the numbers on both sides of them. Guessing should be a last resort on the first click, which is always safe.</div>
+        `
+    },
+    {
+        id: 'mystery',
+        cat: 'games',
+        title: 'Case Files',
+        summary: 'Solve a cozy whodunit by interviewing guests, searching rooms and comparing clues.',
+        tags: 'mystery case files whodunit detective logic puzzle daily practice notes accusation',
+        sub: 'Mystery',
+        appHref: 'mystery',
+        appName: 'Case Files',
+        related: ['crossword', 'sudoku', 'memory'],
+        body: `
+            <p>Case Files is a text-first whodunit. Every guest was in a different room at a different time, and the crime happened in one room at one time. Work out who was there.</p>
+            <h2>How to play</h2>
+            <ol>
+                <li>Open the <b>Brief</b> to read the story and see the crime room and time.</li>
+                <li>Open <b>Suspects</b> and tap <b>Interview</b> to collect each guest's clue.</li>
+                <li>Open <b>Rooms</b> and tap <b>Search</b> to collect clues from each room.</li>
+                <li>Use <b>Notes</b> to mark what you have ruled out: tap a box to cycle blank, check and cross.</li>
+                <li>When you are sure, tap <b>Accuse</b> and choose the guest. You have three attempts.</li>
+            </ol>
+            <h2>Daily and practice</h2>
+            <p>The daily case is the same for everyone that day and keeps your streak. Practice cases are generated for you and do not affect the streak. Easy uses three guests, Normal four and Hard five.</p>
+            <h2>Hints and scoring</h2>
+            <p>Hints reveal a clue but lower your score. A wrong accusation removes that guest and reveals one more clue. There is no timer pressure: the clock only affects your score.</p>
+            <p>Case Files is a gentle mystery: the story avoids graphic detail, and there is no chat or user-written case content.</p>
         `
     },
     {

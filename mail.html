@@ -617,7 +617,8 @@
             background: #f0f0f0;
         }
     </style>
-    <link rel="stylesheet" href="css/custom-select.css?v=1">
+    <link rel="stylesheet" href="js/system-dialog.css?v=5">
+    <link rel="stylesheet" href="css/custom-select.css?v=3">
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -1073,6 +1074,7 @@
         // browser.
         const ACCOUNTS_KEY = 'rekindle_mail_accounts';
         const ACTIVE_ACCOUNT_KEY = 'rekindle_mail_active';
+        const LAST_EMAIL_KEY = 'rekindle_mail_last_email';
         const THREADING_KEY = 'rekindle_mail_threading';
 
         // Mailboxes are per ReKindle account. The old unscoped keys were
@@ -1086,6 +1088,7 @@
         }
         function mailAccountsKey() { return ACCOUNTS_KEY + ':' + mailStorageUid(); }
         function mailActiveKey() { return ACTIVE_ACCOUNT_KEY + ':' + mailStorageUid(); }
+        function mailLastEmailKey() { return LAST_EMAIL_KEY + ':' + mailStorageUid(); }
 
         function migrateLegacyMailStorage() {
             try {
@@ -1105,6 +1108,7 @@
 
         let accounts = [];
         let activeAccountId = null;
+        let lastAccountHint = '';
         let threadingEnabled = true;   // grouped conversations are the default
         let threads = [];
 
@@ -1147,6 +1151,9 @@
                 localStorage.setItem(mailAccountsKey(), JSON.stringify(accounts.map(serializeAccount)));
                 if (activeAccountId) localStorage.setItem(mailActiveKey(), activeAccountId);
                 else localStorage.removeItem(mailActiveKey());
+                const active = getActiveAccount();
+                if (active) localStorage.setItem(mailLastEmailKey(), (active.email + '|' + (active.provider || '')).toLowerCase());
+                else localStorage.removeItem(mailLastEmailKey());
                 // Drop the insecure device-global copies after the first scoped save.
                 localStorage.removeItem(ACCOUNTS_KEY);
                 localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
@@ -1176,6 +1183,7 @@
                     }
                 }
                 activeAccountId = localStorage.getItem(mailActiveKey()) || null;
+                lastAccountHint = localStorage.getItem(mailLastEmailKey()) || '';
                 threadingEnabled = localStorage.getItem(THREADING_KEY) !== 'off';
                 unifiedMode = localStorage.getItem(UNIFIED_KEY) === '1';
             } catch (e) {
@@ -1332,6 +1340,10 @@
             const previousActive = activeAccountId;
             activeAccountId = account.id;
             userEmail = account.email;
+            // Remember the selected mailbox immediately, even if opening it is
+            // slow or the app is closed before loadEmails() settles. A failure
+            // below restores and re-saves the previous choice.
+            saveAccountsLocal();
 
             if (account.provider === 'microsoft') {
                 const cfg = { oauth: 'microsoft', accountId: account.accountId || account.id };
@@ -1380,13 +1392,19 @@
                 await loadFolders();
                 await loadEmails();
                 saveAccountsLocal();
+                persistAccountsToFirebase();
                 return true;
             } catch (e) {
                 console.error('Could not open mailbox', e);
                 if (previousActive && previousActive !== account.id
                     && accounts.some(a => a.id === previousActive)) {
                     activeAccountId = previousActive;
+                } else if (!previousActive) {
+                    // The first mailbox failed to open; do not remember it as
+                    // the last-used account.
+                    activeAccountId = null;
                 }
+                saveAccountsLocal();
                 updateAccountsButton();
                 if (!opts.quiet) {
                     showModal('Could not open ' + account.email + '. ' +
@@ -1713,7 +1731,9 @@
                 return;
             }
             if (!activeAccountId || !accounts.some(a => a.id === activeAccountId)) {
-                activeAccountId = accounts[0].id;
+                const hinted = lastAccountHint && accounts.find(a =>
+                    (String(a.email).toLowerCase() + '|' + (a.provider || '')).toLowerCase() === lastAccountHint);
+                activeAccountId = hinted ? hinted.id : accounts[0].id;
             }
             updateAccountsButton();
 
@@ -3552,9 +3572,20 @@
 
                     // This device's last choice wins as long as it still exists; a
                     // sync from another device only fills the gap.
-                    const preferred = [localActive, data.activeId]
+                    let preferred = [localActive, data.activeId]
                         .find(id => id && accounts.some(a => a.id === id));
+                    if (!preferred && data.activeEmail) {
+                        const hinted = accounts.find(a =>
+                            (String(a.email).toLowerCase() + '|' + (a.provider || '')).toLowerCase() === data.activeEmail);
+                        if (hinted) preferred = hinted.id;
+                    }
                     activeAccountId = preferred || (accounts[0] && accounts[0].id) || null;
+                    if (activeAccountId) {
+                        const active = accounts.find(a => a.id === activeAccountId);
+                        lastAccountHint = active
+                            ? (active.email + '|' + (active.provider || '')).toLowerCase()
+                            : '';
+                    }
                     if (typeof data.threading === 'boolean') threadingEnabled = data.threading;
                     saveAccountsLocal();
                     return;
@@ -3595,6 +3626,9 @@
                     .collection('pro_data').doc('mail').set({
                         accounts: accounts.map(serializeAccount),
                         activeId: activeAccountId,
+                        activeEmail: getActiveAccount()
+                            ? (getActiveAccount().email + '|' + (getActiveAccount().provider || '')).toLowerCase()
+                            : null,
                         threading: threadingEnabled,
                         // Fields from the single-mailbox schema. Deleting them means
                         // a migrated password cannot linger beside the account list.
@@ -3641,6 +3675,7 @@
     </script>
 
 
+    <script src="js/dialog-enhance.js?v=2"></script>
 </body>
 
 </html>

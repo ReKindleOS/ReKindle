@@ -173,7 +173,6 @@
             width: 100%;
             max-width: 300px;
             margin-bottom: 10px;
-            font-family: "Courier New", monospace;
             font-weight: bold;
             font-size: 1.1rem;
             border-bottom: 2px solid black;
@@ -181,7 +180,8 @@
         }
 
         canvas {
-            border: 4px solid black;
+            border: 2px solid black;
+            box-shadow: 4px 4px 0 #000;
             background-color: #fff;
             display: block;
             image-rendering: pixelated;
@@ -211,7 +211,9 @@
             justify-content: center;
             cursor: pointer;
             box-shadow: 3px 3px 0 black;
-            border-radius: 6px;
+            border-radius: 0;
+            height: 48px;
+            font-size: 1.2rem;
             user-select: none;
         }
 
@@ -294,7 +296,6 @@
             justify-content: space-between;
             padding: 5px;
             border-bottom: 1px solid #eee;
-            font-family: "Courier New", monospace;
             font-size: 0.9rem;
         }
 
@@ -627,46 +628,84 @@
             draw();
         }
 
+        function roundedCell(px, py, inset, radius) {
+            const x = px + inset;
+            const y = py + inset;
+            const w = GRID_SIZE - inset * 2;
+            const h = GRID_SIZE - inset * 2;
+            const r = Math.min(radius, w / 2, h / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+
         function draw() {
-            // Clear
+            // Clear and draw a faint table grid.
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            ctx.strokeStyle = "#ececec";
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= TILE_COUNT; i++) {
+                const p = i * GRID_SIZE + 0.5;
+                ctx.beginPath();
+                ctx.moveTo(p, 0);
+                ctx.lineTo(p, CANVAS_SIZE);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, p);
+                ctx.lineTo(CANVAS_SIZE, p);
+                ctx.stroke();
+            }
 
-            // Draw Snake
+            // Connect the body as a chain of rounded black cells. The tail is a
+            // smaller pill, so the snake reads as one creature rather than a
+            // row of detached squares.
             ctx.fillStyle = "black";
-            snake.forEach((part, index) => {
-                if (index === 0) {
-                    ctx.beginPath();
-                    ctx.arc(part.x * GRID_SIZE + GRID_SIZE / 2, part.y * GRID_SIZE + GRID_SIZE / 2, GRID_SIZE / 2 - 1, 0, 2 * Math.PI);
-                    ctx.fill();
-                } else if (index === snake.length - 1 && snake.length > 1) {
-                    const prev = snake[index - 1];
-                    const dx = part.x - prev.x;
-                    const dy = part.y - prev.y;
-                    const cx = part.x * GRID_SIZE + GRID_SIZE / 2;
-                    const cy = part.y * GRID_SIZE + GRID_SIZE / 2;
-                    const r = GRID_SIZE / 2 - 1;
-                    ctx.beginPath();
-                    ctx.moveTo(cx + dx * r, cy + dy * r);
-                    ctx.lineTo(cx + (-dy) * r, cy + dx * r);
-                    ctx.lineTo(cx - (-dy) * r, cy - dx * r);
-                    ctx.closePath();
-                    ctx.fill();
-                } else {
-                    ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 1, GRID_SIZE - 1);
-                }
-            });
+            for (let i = snake.length - 1; i >= 1; i--) {
+                const part = snake[i];
+                const inset = (i === snake.length - 1) ? 4 : 2;
+                roundedCell(part.x * GRID_SIZE, part.y * GRID_SIZE, inset, i === snake.length - 1 ? 5 : 4);
+            }
 
-            // Draw Food (Circle)
-            ctx.beginPath();
+            // Head: slightly larger rounded block with two white eyes.
+            const head = snake[0];
+            const hx = head.x * GRID_SIZE;
+            const hy = head.y * GRID_SIZE;
+            roundedCell(hx, hy, 0, 7);
+
+            ctx.fillStyle = "white";
+            const eyeY = hy + GRID_SIZE * 0.33;
+            ctx.fillRect(hx + GRID_SIZE * 0.22, eyeY, 3, 3);
+            ctx.fillRect(hx + GRID_SIZE * 0.62, eyeY, 3, 3);
+            ctx.fillStyle = "black";
+            ctx.fillRect(hx + GRID_SIZE * 0.26, eyeY + 1, 2, 2);
+            ctx.fillRect(hx + GRID_SIZE * 0.66, eyeY + 1, 2, 2);
+
+            // Food: a simple apple-like dot with a stem.
             const centerX = food.x * GRID_SIZE + GRID_SIZE / 2;
             const centerY = food.y * GRID_SIZE + GRID_SIZE / 2;
-            ctx.arc(centerX, centerY, GRID_SIZE / 2 - 2, 0, 2 * Math.PI);
-            ctx.stroke(); // Hollow circle for E-ink style contrast
-
-            // Inner dot
+            ctx.fillStyle = "black";
             ctx.beginPath();
-            ctx.arc(centerX, centerY, 2, 0, 2 * Math.PI);
+            ctx.arc(centerX, centerY + 1, GRID_SIZE / 2 - 3, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - 5);
+            ctx.lineTo(centerX + 2, centerY - 9);
+            ctx.stroke();
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(centerX - 2, centerY - 1, 1.5, 0, 2 * Math.PI);
             ctx.fill();
         }
 
@@ -740,6 +779,7 @@
     </script>
     <script src="https://cdn.counter.dev/script.js" data-id="4e551911-0e5d-4c48-91a6-b828c3301675"
         data-utcoffset="11" defer></script>
+    <script src="js/leaderboard-dialog.js?v=1"></script>
 </body>
 
 </html>

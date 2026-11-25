@@ -381,3 +381,56 @@ calendar drops to 30px day cells and a 270px minimum row. Minimal hides the mont
 grid but keeps those same clock/weather extras. Verified no page scroll at
 800x600, 400x700, 320x568 and 800x1000; 400x700 now fits the full dashboard with
 the hourly strip and calendar.
+
+## 2026-11-25 shared dialog chrome, loading skeletons and touch pass
+
+### Dialog normalizer
+
+`js/dialog-enhance.js` runs after the page script on the 90 pages that contain
+`.modal-box`. It moves a direct `h2`/`h3`/`.modal-title` into a
+`.rk-dialog-bar` and wraps the remaining children in `.rk-dialog-body`; the
+heading element itself is preserved (ids, `data-i18n`, JS updates keep working).
+
+- Skips `.rk-dialog` (already styled), `.window-style` (calendar), computed
+  `display:flex` boxes (mastodon/doom/weather/bluesky) and heading-less alert
+  boxes. Those remain page-local by design.
+- `js/system-dialog.css` is `?v=3`; its full-width button rule is scoped to
+  `.rk-dialog-body > button` so nested button rows keep their layout. The
+  title rule uses `!important` to override page heading margins/borders.
+- `scripts/test-dialogs.js` asserts every eligible dialog page loads both files
+  and that no `<link>` sits inside a `<style>` block (the index.html
+  `document.write` string trap).
+- The enhancer also reuses a page's existing close button (`.modal-close` /
+  `.close-box`) and moves it into the title bar as `.rk-dialog-close`, and
+  honours `data-dialog-title` for heading-less dialogs (Docs, Files, RSS).
+  The About dialog is explicit `rk-dialog` markup. **Only one modal still has
+  no striped title bar: Files → Preview** (`files.html#preview-modal`), which
+  deliberately uses a filename header row in a flex column with its own
+  Close/Download actions. Do not normalise it without preserving the flex
+  image area.
+
+### Loading skeletons
+
+`css/loading.css` provides static, non-animated placeholders. The three pages
+(wordle, maps, crossword) carry a
+`data-rk-boot` skeleton that the existing first render replaces. No new shared
+JS. `scripts/test-load-states.js` pins the assets and the `role="status"` text.
+
+### Touch/typography
+
+- The ten densest pages from the 2026-11-24 audit were raised to a 0.75rem
+  (12px) minimum; decorative badges are the only intended exception.
+- **Reverted 2026-11-25:** the 48px custom-select/`.sys-btn`/`touch-48.css`
+  inflation was too large for the owner's taste and made title-bar
+  `toolbar-btn` controls overflow the 35px bar. `css/touch-48.css` was deleted
+  and `css/custom-select.css` restored to its original 34px sizing. Title-bar
+  buttons must fit inside the bar; do not put a global `min-height: 48px` on
+  `.toolbar-btn`/`.sys-btn`.
+- `scripts/test-a11y.js` now guards only the 12px text pass.
+
+### KindleChat reply prefix
+
+`js/reply-text.js` builds `@user ` without touching the composer. `sendMessage`
+validates the outgoing text first, then inserts the prefix only after the rules
+gate passes. `scripts/test-chat-reply.js` covers prefix/empty/already-prefixed
+and the validation-before-insertion order.

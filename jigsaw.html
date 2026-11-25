@@ -137,8 +137,44 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 14px 16px;
             overflow: hidden;
+        }
+
+        .game-head {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 10px;
+        }
+
+        #msg-area {
+            font-weight: bold;
+            font-size: 0.92rem;
+            line-height: 1.3;
+        }
+
+        .game-stats {
+            display: flex;
+            flex-shrink: 0;
+            margin-left: 10px;
+            font-size: 0.62rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #555;
+        }
+
+        .game-stats span + span {
+            margin-left: 10px;
+        }
+
+        .game-stats b {
+            color: #000;
+            font-size: 0.8rem;
         }
 
         /* PUZZLE BOARD */
@@ -187,10 +223,32 @@
         /* CONTROLS */
         .controls {
             display: flex;
-            margin-top: 20px;
+            flex-wrap: wrap;
+            margin-top: 14px;
             width: 100%;
             justify-content: center;
             max-width: 400px;
+        }
+
+        .diff-group {
+            display: flex;
+            flex: 1;
+        }
+
+        .diff-btn {
+            flex: 1;
+            padding: 8px 6px;
+            font-size: 0.72rem;
+        }
+
+        .diff-btn + .diff-btn {
+            margin-left: 6px;
+        }
+
+        .diff-btn.active {
+            background: #000;
+            color: #fff;
+            box-shadow: none;
         }
         .controls > * + * {
             margin-left: 10px;
@@ -199,12 +257,12 @@
         button {
             background: white;
             border: 2px solid black;
-            padding: 8px 15px;
+            padding: 8px 10px;
             font-family: inherit;
             font-weight: bold;
             cursor: pointer;
             box-shadow: 2px 2px 0 black;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             text-transform: uppercase;
             flex: 1;
         }
@@ -281,15 +339,23 @@
         </div>
 
         <div class="game-content">
-            <div id="msg-area" data-i18n="jigsaw.label.instruction">Tap pieces to swap them.</div>
+            <div class="game-head">
+                <div id="msg-area" data-i18n="jigsaw.label.instruction">Tap pieces to swap them.</div>
+                <div class="game-stats">
+                    <span>Moves <b id="moves">0</b></span>
+                    <span>Time <b id="timer">0:00</b></span>
+                </div>
+            </div>
 
             <div id="puzzle-board">
                 <!-- Pieces injected here -->
             </div>
 
             <div class="controls">
-                <button onclick="setDifficulty(3)">3x3</button>
-                <button onclick="setDifficulty(4)">4x4</button>
+                <div class="diff-group">
+                    <button class="diff-btn active" id="diff-3" onclick="setDifficulty(3)">3x3</button>
+                    <button class="diff-btn" id="diff-4" onclick="setDifficulty(4)">4x4</button>
+                </div>
                 <button onclick="newGame()" data-i18n="jigsaw.btn.new_art">New Art</button>
                 <button onclick="togglePreview()" data-i18n="jigsaw.btn.peek">Peek</button>
             </div>
@@ -314,6 +380,9 @@
         let selectedIdx = -1;
         let isSolved = false;
         let imageUrl = '';
+        let moves = 0;
+        let startTime = 0;
+        let timerInterval = null;
 
         // --- INIT ---
         window.onload = () => {
@@ -325,6 +394,10 @@
 
         function setDifficulty(size) {
             gridSize = size;
+            const three = document.getElementById('diff-3');
+            const four = document.getElementById('diff-4');
+            if (three) three.classList.toggle('active', size === 3);
+            if (four) four.classList.toggle('active', size === 4);
             newGame();
         }
 
@@ -377,6 +450,11 @@
         function newGame() {
             isSolved = false;
             selectedIdx = -1;
+            moves = 0;
+            startTime = Date.now();
+            updateStats();
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            timerInterval = setInterval(updateStats, 1000);
             const msgArea = document.getElementById('msg-area');
             msgArea.innerText = window.t ? window.t('jigsaw.label.instruction', 'Tap pieces to swap them.') : "Tap pieces to swap them.";
             msgArea.removeAttribute('data-i18n');
@@ -436,9 +514,31 @@
             } else {
                 [pieces[selectedIdx], pieces[index]] = [pieces[index], pieces[selectedIdx]];
                 selectedIdx = -1;
+                moves++;
+                updateStats();
                 checkWin();
             }
             renderBoard();
+        }
+
+        function updateStats() {
+            const movesEl = document.getElementById('moves');
+            const timerEl = document.getElementById('timer');
+            if (movesEl) movesEl.innerText = String(moves);
+            if (timerEl) {
+                const elapsed = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+                const mins = Math.floor(elapsed / 60);
+                const secs = String(elapsed % 60).padStart(2, '0');
+                timerEl.innerText = mins + ':' + secs;
+            }
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            updateStats();
         }
 
         function checkWin(silent = false) {
@@ -448,6 +548,7 @@
 
             if (!silent) {
                 isSolved = true;
+                stopTimer();
                 const msgArea = document.getElementById('msg-area');
                 msgArea.innerText = window.t ? window.t('jigsaw.msg.solved', 'Puzzle Solved!') : "Puzzle Solved!";
                 msgArea.removeAttribute('data-i18n');

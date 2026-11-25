@@ -586,6 +586,14 @@ const APPS = [
         icon: '<path d="M10 4 h12 v8 h4 v12 h-12 v-4 h-8 v-12 h4 v-4 z"/><circle cx="16" cy="12" r="2"/>'
     },
     {
+        id: 'mystery',
+        name: 'Case Files',
+        cat: 'games',
+        desc: 'A daily whodunit logic mystery.',
+        new: true,
+        icon: '<circle cx="14" cy="14" r="8" fill="none" stroke="black" stroke-width="2"/><path d="M20 20l8 8" stroke="black" stroke-width="2"/><path d="M11 13c0-2 1.7-3 3-3s3 1 3 3c0 1.5-1.5 1.8-2.5 2.7V17" fill="none" stroke="black" stroke-width="2"/><circle cx="14.5" cy="20" r="1" fill="black"/>'
+    },
+    {
         id: 'memory',
         name: 'Memory',
         es6: true,
@@ -835,19 +843,6 @@ const APPS = [
         name: '8 Ball',
         cat: 'two_player',
         icon: '<circle cx="16" cy="16" r="14" fill="none" stroke="black" stroke-width="2"/><text x="16" y="21" font-size="14" font-weight="bold" text-anchor="middle" fill="black">8</text>'
-    },
-    {
-        id: 'doom',
-        name: 'DOOM',
-        cat: 'games',
-        desc: 'Rip and Tear',
-        // Official Doom logo vector from user provided file (Doom_–_Game’s_logo.svg)
-        // Original viewBox: 0 0 1680 869. Scaled down to fit ~30px width.
-        // Group transform adjusts for the file's internal offset (-7.13, -565.73) and scales it (0.020).
-        // Outer translate (-1, 7) centers it in the 32x32 box (width ~33.6px).
-        icon: `<g transform="translate(-1, 7) scale(0.020) translate(-7.13, -565.73)">
-            <path d="m 1476.3012,1327.8121 -0.2917,-292.4969 -46.7662,163.4072 -46.7058,-162.6616 -0.2827,222.0343 -152.4945,-114.3724 11.559,-8.6664 -0.5292,-569.30683 144.9467,0.3774 43.4492,152.19623 43.5126,-152.40042 214.4342,0.69673 -70.3645,52.57665 -0.1246,814.42954 z M 78.328958,619.06163 7.1328025,565.73124 l 401.3006875,0.54398 45.93055,35.08717 0.0378,533.50351 12.16772,8.8133 -388.148567,291.252 z m 235.518822,416.21877 -0.15295,-307.89242 -10.75764,-8.78449 -83.44785,0.40375 -0.18291,387.17176 z m 152.39799,82.7814 -0.0717,-516.75483 47.07325,-35.27648 281.69722,-0.0156 46.98005,35.42167 0.17344,597.96244 -133.22444,100.1999 z m 223.12917,-399.76328 -71.04792,0.49268 -11.09868,8.52709 0.15885,308.10291 93.32018,69.9936 0.24947,-377.92826 z m 164.80854,481.66028 -0.34116,-598.79687 46.91876,-35.23879 282.06992,0.26967 47.2183,35.27898 -0.3246,515.55821 -241.33557,182.4526 z m 234.65122,-164.742 -0.03,-308.02638 -11.8726,-9.07298 -70.9365,0.23276 -11.40484,8.78228 0.70414,377.32652 z" fill="black" />
-        </g>`
     },
     {
         id: 'yahtzee',

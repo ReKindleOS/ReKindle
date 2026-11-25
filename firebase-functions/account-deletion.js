@@ -394,6 +394,11 @@ async function cleanupPrimaryFirestore(ctx) {
     await db.recursiveDelete(db.collection('users').doc(uid));
     summary.firestoreDocuments++;
 
+    // Top-level weekly export claim. Rules deny client deletes, so this must
+    // be removed by the Admin SDK during account deletion.
+    await db.collection('export_limits').doc(uid).delete();
+    summary.firestoreDocuments++;
+
     // Leaderboards + game run tokens are keyed by uid across many collections.
     for (let i = 0; i < LEADERBOARD_COLLECTIONS.length; i++) {
         assertWithinBudget(deadline);

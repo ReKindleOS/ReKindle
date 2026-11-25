@@ -67,6 +67,22 @@ service cloud.firestore {
       return isDeveloper() || hasLegacyPro || isSupporter;
     }
 
+    // 0. DATA EXPORT RATE LIMIT
+    // One successful "Download my data" per user per 7 days. The client writes
+    // only a server timestamp; rules deny deletes so the record cannot be
+    // reset from the browser. Admin SDK bypasses this, as usual.
+    match /export_limits/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly(['lastExportAt']) &&
+        request.resource.data.lastExportAt == request.time;
+      allow update: if request.auth != null && request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly(['lastExportAt']) &&
+        request.resource.data.lastExportAt == request.time &&
+        request.time.toMillis() - resource.data.lastExportAt.toMillis() >= 604800000;
+      allow delete: if false;
+    }
+
     // 1. USER PRIVATE DATA (e.g., settings, notes, substack_sid)
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isDeveloper());

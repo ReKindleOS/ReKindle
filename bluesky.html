@@ -30,7 +30,7 @@
             transform-origin: top left !important;
         }
 
-        /* 
+        /*
            COMPATIBILITY: Chromium 75 / E-ink
            - No transitions/animations
            - No gap in flexbox
@@ -420,7 +420,110 @@
         .nav-icon {
             font-size: 1.5rem;
         }
-    </style>
+
+        /* Shared ReKindle social chrome */
+        .bottom-nav {
+            height: 44px;
+            border-top: 2px solid #000;
+            background: #fff;
+        }
+
+        .nav-item {
+            border-right: 2px solid #000;
+        }
+
+        .nav-item:last-child {
+            border-right: 0;
+        }
+
+        .nav-item.active,
+        .nav-item:active {
+            background: #000;
+            color: #fff;
+            box-shadow: none;
+        }
+
+        .toolbar {
+            background: #e5e5e5;
+            border-bottom: 2px solid #000;
+            padding: 7px 10px;
+            align-items: center;
+        }
+
+        .login-card {
+            border: 2px solid #000;
+            box-shadow: 6px 6px 0 #000;
+            background: #fff;
+            padding: 20px;
+            max-width: 360px;
+        }
+
+        .login-card h2 {
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+
+        .login-input {
+            height: 36px;
+            padding: 0 8px;
+            margin: 8px 0;
+            font-size: 0.9rem;
+        }
+
+        .login-card .sys-btn {
+            width: 100%;
+            padding: 8px 12px;
+            margin-top: 8px;
+            font-size: 0.82rem;
+        }
+
+        .post,
+        .toot {
+            padding: 12px 14px;
+            border-bottom: 2px solid #000;
+            background: #fff;
+        }
+
+        .post-header,
+        .toot-header {
+            margin-bottom: 6px;
+        }
+
+        .avatar,
+        .toot-avatar {
+            border-radius: 0;
+            width: 36px;
+            height: 36px;
+            background: #e5e5e5;
+        }
+
+        .display-name,
+        .toot-author {
+            font-size: 0.92rem;
+        }
+
+        .handle,
+        .toot-handle {
+            font-size: 0.72rem;
+        }
+
+        .post-content,
+        .toot-content {
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .post-footer,
+        .toot-actions {
+            border-top: 1px dashed #bbb;
+            padding-top: 5px;
+            margin-top: 6px;
+            font-size: 0.72rem;
+        }
+</style>
+    <link rel="stylesheet" href="js/system-dialog.css?v=5">
     <!-- Firebase for Pro Gate -->
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com">
@@ -459,7 +562,7 @@
     <div class="window">
         <div class="title-bar">
             <div class="title-stripes"></div>
-            <div class="close-box" onclick="window.location.href='index.html'">X</div>
+            <div class="close-box" onclick="window.location.href='index'">X</div>
             <span class="title-text">Bluesky</span>
             <div style="position: absolute; right: 10px; z-index: 2; display: flex; align-items: center;">
                 <button id="title-logout-btn" onclick="app.logout()" data-i18n="bluesky.nav.logout"
@@ -609,14 +712,23 @@
             if (window.rekindleApplyDefaultFullscreen) window.rekindleApplyDefaultFullscreen();
 
             function startBsky() {
+                // app.init() is async and can reject on a stale session, a
+                // missing Firestore doc or a browser without WebCrypto. Without
+                // this catch the shell stays a blank white window forever.
+                function begin() {
+                    Promise.resolve(app.init()).catch(function (err) {
+                        console.error('Bluesky init failed', err);
+                        app.showLogin();
+                        var errorEl = document.getElementById('login-error');
+                        if (errorEl) errorEl.innerText = 'Bluesky could not be loaded. Please sign in again.';
+                    });
+                }
                 if (window.rekindleProGate) {
                     window.rekindleProGate.check(isPro => {
-                        if (isPro) {
-                            app.init();
-                        }
+                        if (isPro) begin();
                     });
                 } else {
-                    app.init();
+                    begin();
                 }
             }
 
@@ -635,6 +747,17 @@
                 document.addEventListener('rekindle:i18n:ready', go, { once: true });
                 setTimeout(go, 2000);
             }
+
+            // Last-resort watchdog: if init neither showed the login view nor
+            // painted anything into the feed, never leave a blank white window.
+            setTimeout(function () {
+                const login = document.getElementById('login-view');
+                const feed = document.getElementById('feed-container');
+                if (login && login.style.display !== 'none') return;
+                if (feed && feed.children.length === 0) {
+                    app.showLogin();
+                }
+            }, 8000);
         };
 
         // Bluesky's UI is rendered from JavaScript, so static data-i18n attributes
@@ -1695,6 +1818,7 @@
         };
     </script>
     <script src="time.js?v=9"></script>
+    <script src="js/dialog-enhance.js?v=2"></script>
 </body>
 
 </html>

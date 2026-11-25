@@ -90,15 +90,17 @@ ReKindle operates in two modes: **Guest Mode** (all data stored locally on your 
 *   **Word Games:** Wordle, Spelling Bee, Connections, Crossword (NYT Archives), Anagrams, Hangman, Word Search.
 *   **Logic & Numbers:** Sudoku, Nerdle (Math Wordle), 2048, Minesweeper, Memory, Jigsaw Puzzles, Tower of Hanoi, Lights Out, Nonograms, Codebreaker.
 *   **Classic:** Solitaire, Tetris, Snake, Blackjack, Dino, Pet (Virtual Pet), Block Blast, Texas Hold'em (beta), DOOM (beta).
+*   **Mystery:** **Case Files**, a daily/practice whodunit with interview, search, notes and accusation. No timer pressure, no chat and no user-authored cases.
 
 **Multiplayer & Local:**
 *   **Words Online:** Play Scrabble-style games asynchronously against other ReKindle users.
 *   **Pass-and-Play:** Local 2-player versions of Chess, Checkers, Battleships, Connect 4, Tic-Tac-Toe, and 8 Ball.
+*   **Private game codes:** Host a live lobby, tap **Invite a friend**, and share an 8-character code. Private lobbies are hidden from the public list and the code expires after two hours.
 
 ### Social & Creative
 *   **KindleChat:** An exclusive chat platform for ReKindle users.
 *   **Reddit:** A text-optimized Reddit client.
-*   **Sketchpad & Pixel Art:** Create simple drawings or 1-bit pixel art canvases.
+*   **Sketchpad & Pixel Art:** Create simple drawings or 1-bit pixel art canvases, with optional tracing templates.
 *   **Flipbook⁺:** Create pixel animations directly on your e-ink device.
 *   **Music:** Sheet Music library and Guitar Chords/Tabs search.
 
@@ -123,7 +125,7 @@ Support the development of ReKindle and unlock the server-backed features, inclu
 
 ReKindle is designed with privacy as a priority.
 
-*   **Guest Mode:** By default, ReKindle uses your browser's `localStorage` and creates no server record. Anonymous page-view analytics (Counter.dev) and the third-party requests listed in the [Privacy Policy](https://rekindle.ink/privacy) still occur.
+*   **Guest Mode:** By default, ReKindle uses your browser's `localStorage` and creates no server record. Signed-in users can optionally save a one-time **recovery code** and use **Download my data** to export their own records as JSON. Anonymous page-view analytics (Counter.dev) and the third-party requests listed in the [Privacy Policy](https://rekindle.ink/privacy) still occur.
 *   **Cloud Sync:** If you choose to log in, app-specific data (notes, tasks, game states) is synced securely via Google Firebase.
 *   **Google Data:** Google OAuth tokens are normally stored locally on your device. Quick ToDo is the exception: its Google Tasks token is kept in your private Pro records so the connection follows you between devices. Calendar/Contacts/Tasks data is fetched directly from Google APIs to your browser and is not copied to ReKindle's database; Google Contacts are also cached locally for offline use. See the [Privacy Policy](https://rekindle.ink/privacy).
 

@@ -141,12 +141,31 @@ export async function onRequest(context) {
                     });
                 }
 
+                // Reddit sometimes returns a valid RSS/JSON body with a 404
+                // status (the rss.reddit.com redirect does this). Treat that as
+                // success so the app does not show a false "404" error.
+                if (response.status === 404) {
+                    try {
+                        const peek = await response.clone().text();
+                        const looksLikeFeed = /<feed[\s>]|<rss[\s>]|^\s*[\[{]/.test(peek);
+                        if (looksLikeFeed) {
+                            return new Response(peek, {
+                                status: 200,
+                                statusText: 'OK',
+                                headers: withCorsHeaders(response.headers)
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('Could not inspect Reddit 404 body:', e);
+                    }
+                }
+
                 // Retry on rate limits and server errors.
                 if (response.status === 429 || response.status >= 500) {
                     continue;
                 }
 
-                // Non-retryable response (403, 404, etc.). Try the next URL if available.
+                // Non-retryable response (403, etc.). Try the next URL if available.
                 break;
             } catch (e) {
                 // Network-level failure. Retry.

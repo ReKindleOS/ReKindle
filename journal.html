@@ -64,7 +64,6 @@
             width: 40px;
             text-align: right;
             font-size: 0.8rem;
-            font-family: monospace;
         }
 
         .stats-list {
@@ -83,7 +82,6 @@
 
         .stats-list li span:last-child {
             font-weight: bold;
-            font-family: monospace;
         }
 
         body {
@@ -596,7 +594,7 @@
             width: 100%;
             border: none;
             padding: 20px;
-            font-family: "Courier New", Courier, monospace;
+            font-family: inherit;
             font-size: 1.2rem;
             line-height: 1.5;
             resize: none;
@@ -611,12 +609,17 @@
         }
 
         #status-bar {
-            border-top: 2px solid black;
-            padding: 4px;
-            font-size: 0.75rem;
-            background: #eee;
-            text-align: center;
+            padding: 2px 10px 6px;
+            font-size: 0.7rem;
+            color: #666;
+            background: transparent;
+            border: none;
+            text-align: right;
             flex-shrink: 0;
+        }
+
+        #status-bar:empty {
+            display: none;
         }
 
         #modal-overlay {
@@ -669,6 +672,7 @@
             border-bottom: 1px solid #000;
         }
     </style>
+    <link rel="stylesheet" href="js/system-dialog.css?v=5">
     <script src="theme.js?v=36"></script>
     
     
@@ -813,7 +817,7 @@
                 </div>
             </div>
         </div>
-        <div id="status-bar" data-i18n="status.guest">Local Mode</div>
+        <div id="status-bar"></div>
     </div>
 
     <!-- MODAL -->
@@ -882,11 +886,9 @@
             auth.onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    document.getElementById('status-bar').innerText = window.t('status.synced', "Synced: ") + user.email;
                     loadCachedNotes();
                     loadCloudNotes();
                 } else {
-                    document.getElementById('status-bar').innerText = window.t('status.guest', "Guest Mode (Local)");
                     loadLocalNotes();
                 }
             });
@@ -995,7 +997,7 @@
                 updated: note.updated
             }).then(() => {
                 document.getElementById('status-bar').innerText = window.t('notes.status.saved', "Saved.");
-                setTimeout(() => { document.getElementById('status-bar').innerText = window.t('status.synced', "Synced: ") + currentUser.email; }, 2000);
+                setTimeout(() => { document.getElementById('status-bar').innerText = ''; }, 2000);
             }).catch((e) => {
                 document.getElementById('status-bar').innerText = window.t('notes.status.failed', "Save Failed.");
                 console.error(e);
@@ -1510,15 +1512,18 @@
             moodContainer.innerHTML = '';
             for (let i = 5; i >= 1; i--) {
                 let pct = totalMoods > 0 ? Math.round((moodCounts[i] / totalMoods) * 100) : 0;
-                // Get translated label
-                let rawLabel = '';
-                if (i === 5) rawLabel = 'journal.mood.great';
-                else if (i === 4) rawLabel = 'journal.mood.good';
-                else if (i === 3) rawLabel = 'journal.mood.neutral';
-                else if (i === 2) rawLabel = 'journal.mood.bad';
-                else if (i === 1) rawLabel = 'journal.mood.awful';
-
-                let label = window.t ? window.t(rawLabel) : rawLabel.split('.').pop();
+                // Every window.t() call needs an English fallback: if the
+                // locale has not loaded, t(key) returns the raw key, which is
+                // what made the stats bars show "journal.mood.great".
+                const moodLabels = {
+                    5: { key: 'journal.mood.great', fallback: 'Great' },
+                    4: { key: 'journal.mood.good', fallback: 'Good' },
+                    3: { key: 'journal.mood.neutral', fallback: 'Neutral' },
+                    2: { key: 'journal.mood.bad', fallback: 'Bad' },
+                    1: { key: 'journal.mood.awful', fallback: 'Awful' }
+                };
+                const moodLabel = moodLabels[i];
+                let label = window.t ? window.t(moodLabel.key, moodLabel.fallback) : moodLabel.fallback;
 
                 moodContainer.innerHTML += `
                     <div class="stats-bar-container">
@@ -1536,7 +1541,7 @@
             feelingsList.innerHTML = '';
             let sortedFeelings = Object.entries(feelingCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
             if (sortedFeelings.length === 0) {
-                feelingsList.innerHTML = `<li style="font-style:italic; border-bottom:none; color:#666;">No feelings logged yet.</li>`;
+                feelingsList.innerHTML = `<li style="font-style:italic; border-bottom:none; color:#666;">${window.t ? window.t('journal.stats.no_feelings', 'No feelings logged yet.') : 'No feelings logged yet.'}</li>`;
             } else {
                 sortedFeelings.forEach(([feeling, count]) => {
                     let label = window.t ? window.t(`journal.feeling.${feeling}`, feeling) : feeling;
@@ -1549,7 +1554,7 @@
             causesList.innerHTML = '';
             let sortedCauses = Object.entries(causeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
             if (sortedCauses.length === 0) {
-                causesList.innerHTML = `<li style="font-style:italic; border-bottom:none; color:#666;">No causes logged yet.</li>`;
+                causesList.innerHTML = `<li style="font-style:italic; border-bottom:none; color:#666;">${window.t ? window.t('journal.stats.no_causes', 'No causes logged yet.') : 'No causes logged yet.'}</li>`;
             } else {
                 sortedCauses.forEach(([cause, count]) => {
                     let label = window.t ? window.t(`journal.cause.${cause}`, cause) : cause;
@@ -1557,6 +1562,13 @@
                 });
             }
         }
+
+        // Re-render dynamic stats once translations arrive, so mood labels and
+        // empty-state text are never left in English or as raw keys.
+        document.addEventListener('rekindle:i18n:ready', function () {
+            const statsView = document.getElementById('stats-view');
+            if (statsView && statsView.style.display !== 'none') renderStats();
+        });
 
         function toggleFullScreen() {
             document.querySelector('.window').classList.toggle('fullscreen');
@@ -1570,6 +1582,7 @@
 
     </script>
 
+    <script src="js/dialog-enhance.js?v=2"></script>
 </body>
 
 </html>

@@ -197,3 +197,73 @@ endpoint. All callables must have `roles/run.invoker` for `allUsers`.
   `security_events`.
 * Introduce a second rate-limit store; the transaction is the concurrency
   guard.
+
+## One-time recovery code (2026-11-25)
+
+An **optional, opt-in** self-serve path for users who are signed out and have
+forgotten their password. It is not email: ReKindle accounts never collect a
+real address, and there is no transactional sender or budget for one.
+
+### Flow
+
+1. Signed-in Settings → **Recovery code** → **Set up** (or **Regenerate**).
+2. The browser generates a 20-character code (31-char unambiguous alphabet),
+   shows it once, and offers **Copy code** / **Download kit**.
+3. It hashes `uid:salt:code` with SHA-256 and stores only
+   `{v, salt, hash, createdAt}` in
+   `users/{uid}/privateSettings/recovery` (owner-only Firestore).
+4. Signed out → `recover.html` (linked from the login modal) → username +
+   code + new password → `resetWithRecoveryCode` callable.
+5. The callable verifies the hash, updates the password, revokes refresh
+   tokens, deletes the recovery record (one-time use) and writes
+   `security_events/{uid}`. Generic error for unknown user/wrong code.
+
+### Security / cost
+
+- Rate limits: `recovery_limits/{uid}` (same 3/hour, 5/day transaction as the
+  signed-in reset) and `recovery_ip_limits/{sha256(ip)}`; both service-account
+  only in `rtdb-rules.json`.
+- `lookupUid` queries `user_cards` by `username` (index exists). Usernames are
+  case-sensitive at login, so the recovery form asks for the exact username.
+- `crypto.timingSafeEqual` on equal-length buffers; a missing record still
+  computes a dummy hash.
+- One callable invocation per reset; no scheduled jobs, no email, no PII.
+- Losing the code is a support case; support can reset from the Firebase
+  console. Regenerating invalidates the old code.
+- `admin/account-deletion` removes `recovery_limits`; the Firestore recovery
+  record is inside the recursive `users/{uid}` delete.
+
+### Do not
+
+- Re-add an email field until a verified transactional sender and a retention
+  policy exist; an unverified address is worse than no address.
+- Store the code itself, log it, or return it from the callable.
+- Grant clients read/write to `recovery_limits` / `recovery_ip_limits`.
+
+## Download my data (2026-11-25)
+
+`js/data-export.js` (Settings → **Download my
+data**). Client-only: reads the signed-in user's Firestore docs, redacts
+secrets, and downloads one JSON file. No Cloud Function and no upload.
+
+- Categories: Account & settings, Notes/tasks/journal, Reading, Creative,
+  Games. `users/{uid}` profile plus the known subcollections.
+- Central redaction drops keys matching
+  `password|token|secret|apiKey|substack_sid|recovery|ipAddress|refresh|customEndpoint`
+  at any depth. `privateSettings/ai` therefore exports model/preset only, and
+  `pro_data` loses Pinterest tokens.
+- Local storage is allowlisted; `rekindle_uid`, `rekindle_is_pro`,
+  `rekindle_pro_expiry`, location/timezone, chat API keys and recovery state
+  are excluded.
+- Cap: 8 MB / 5,000 docs per collection; a truncation flag is written instead
+  of silently dropping. Blob download with a copyable fallback.
+- **One export per user per week.** After a successful export the browser
+  writes `export_limits/{uid}.lastExportAt = serverTimestamp()`. Firestore
+  rules allow create/update only at `request.time`, reject any extra field,
+  and deny deletes; updates require a 604,800,000 ms gap. `claimExport()` runs
+  in a transaction before the download, so two tabs cannot both claim it. The
+  doc is deleted by `deleteAccount` because rules block client deletes.
+- Social posts/chat are out of scope in v1 (separate project, Spark read
+  budget); only the social profile is visible in-app.
+- `scripts/test-data-export.js` pins redaction, local allowlist, manifest
+  coverage and wiring.
