@@ -20,6 +20,8 @@ import { parsePixelGrid, isBlankGrid, renderPixelGridPng, validateFlipnote } fro
 const ALLOWED_ORIGINS = [
     "https://beta.rekindle.ink",
     "https://rekindle.pages.dev",
+    "https://rekindle-lite.pages.dev",
+    "https://rekindle-legacy.pages.dev",
     "https://rekindle.ink",
     "https://lite.rekindle.ink",
     "https://legacy.rekindle.ink"

@@ -247,9 +247,11 @@ showed *"temporarily unavailable"*, on every account — the 2026-11-26 Suggesti
 file the suggestion because Suggestions writes to RTDB directly, which is the giveaway
 that only Worker calls were failing.
 
-`https://rekindle.pages.dev` is now in every browser-facing Worker allowlist and in the
-callable `allowedOrigins` list in `firebase-functions/index.js` (Cloud Functions CORS is
-configured separately; without it the alternate address cannot call `getSocialToken`).
+`https://rekindle.pages.dev` (plus the `rekindle-lite.pages.dev` and
+`rekindle-legacy.pages.dev` project domains) is now in every browser-facing Worker
+allowlist and in the callable `allowedOrigins` list in `firebase-functions/index.js`
+(Cloud Functions CORS is configured separately; without it the alternate addresses cannot
+call `getSocialToken`).
 `scripts/test-worker-cors.js` scans every `workers/*/worker.js` list and the callable list
 for it, so adding a Worker later without the alternate origin fails `npm test`. Re-deploy
 every changed Worker (`npm run deploy:workers:social` covers moderate + translate; the

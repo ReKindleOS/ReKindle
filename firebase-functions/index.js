@@ -51,6 +51,8 @@ const allowedOrigins = [
     // Documented alternate address (help: Spanish La Liga block). Workers were
     // missing it too, so the workaround could read but not post (2026-11-26).
     "https://rekindle.pages.dev",
+    "https://rekindle-lite.pages.dev",
+    "https://rekindle-legacy.pages.dev",
 ];
 
 // Common options for all functions

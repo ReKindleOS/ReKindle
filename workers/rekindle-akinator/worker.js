@@ -6,6 +6,8 @@ export default {
             "https://legacy.rekindle.ink",
             "https://beta.rekindle.ink",
             "https://rekindle.pages.dev",
+            "https://rekindle-lite.pages.dev",
+            "https://rekindle-legacy.pages.dev",
             "http://localhost:8788",
             "http://localhost:3000"
         ];

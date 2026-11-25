@@ -69,9 +69,11 @@ const MIN_MAX_AGE = 600; // Safari clamps Access-Control-Max-Age to 600s
     // block) to use rekindle.pages.dev. A Worker that omits that origin fails
     // the CORS preflight, and chat/posts/reports show the "temporarily
     // unavailable" message forever (2026-11-26 report: "i still cant chat").
-    assert.strictEqual(corsHeaders('https://rekindle.pages.dev')['Access-Control-Allow-Origin'],
-        'https://rekindle.pages.dev',
-        'rekindle.pages.dev must be an allowed origin');
+    ['rekindle.pages.dev', 'rekindle-lite.pages.dev', 'rekindle-legacy.pages.dev'].forEach(function (host) {
+        assert.strictEqual(corsHeaders('https://' + host)['Access-Control-Allow-Origin'],
+            'https://' + host,
+            host + ' must be an allowed origin');
+    });
     const workersDir = path.join(__dirname, '..', 'workers');
     const checkedWorkers = [];
     fs.readdirSync(workersDir).forEach(function (dir) {
@@ -82,8 +84,10 @@ const MIN_MAX_AGE = 600; // Safari clamps Access-Control-Max-Age to 600s
         if (!list) return;
         // Public read-only workers reflect "*" and do not need the list.
         if (/"Access-Control-Allow-Origin":\s*"\*"/.test(src)) return;
-        assert.ok(list[1].indexOf('rekindle.pages.dev') !== -1,
-            path.relative(path.join(__dirname, '..'), file) + ' must allow rekindle.pages.dev');
+        ['rekindle.pages.dev', 'rekindle-lite.pages.dev', 'rekindle-legacy.pages.dev'].forEach(function (host) {
+            assert.ok(list[1].indexOf(host) !== -1,
+                path.relative(path.join(__dirname, '..'), file) + ' must allow ' + host);
+        });
         checkedWorkers.push(dir);
     });
     assert.ok(checkedWorkers.length >= 8,
@@ -97,8 +101,10 @@ const MIN_MAX_AGE = 600; // Safari clamps Access-Control-Max-Age to 600s
         path.join(__dirname, '..', 'firebase-functions', 'index.js'), 'utf8');
     const callableList = functionsSrc.match(/const allowedOrigins = \[([\s\S]*?)\];/);
     assert.ok(callableList, 'firebase-functions/index.js must define allowedOrigins');
-    assert.ok(callableList[1].indexOf('rekindle.pages.dev') !== -1,
-        'the callable allowedOrigins list must include rekindle.pages.dev');
+    ['rekindle.pages.dev', 'rekindle-lite.pages.dev', 'rekindle-legacy.pages.dev'].forEach(function (host) {
+        assert.ok(callableList[1].indexOf(host) !== -1,
+            'the callable allowedOrigins list must include ' + host);
+    });
 
     console.log('worker CORS preflight checks passed');
 })().catch(function (err) {

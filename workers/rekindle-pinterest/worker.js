@@ -6,6 +6,8 @@ export default {
             "https://legacy.rekindle.ink",
             "https://beta.rekindle.ink",
             "https://rekindle.pages.dev",
+            "https://rekindle-lite.pages.dev",
+            "https://rekindle-legacy.pages.dev",
         ];
 
         const origin = request.headers.get("Origin");
