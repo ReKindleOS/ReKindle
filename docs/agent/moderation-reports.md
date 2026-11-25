@@ -168,6 +168,24 @@ entries can no longer be undone from `moderation.html`. Full design:
   `workers/rekindle-moderate/worker.js`). Every content write used to pay an RTDB GET for
   `timeouts/{uid}`, a node that is empty for almost every user. Repeat attempts from a timed-out
   user now stop costing a Firebase round trip. A newly set timeout takes effect within 30 s.
+
+### Timeout enforcement lives in the SOCIAL RTDB (fixed 2026-11-26)
+
+**The bug:** `checkTimeout()` read the **primary** project's `timeouts/{uid}` with the caller's
+social ID token, then with the social service account. Both are cross-project reads
+(`rekindle-socials` → `rekindle-dd1fa`) and both return **401**; the errors were logged and the
+result silently stayed `timedOut: false`. Timeouts were therefore cosmetic server-side — the
+client banner appeared (clients read primary) but every post still succeeded. Discord-issued
+timeouts wrote the social copy, which nothing read.
+
+**The rule now:** the moderation Worker enforces `timeouts/{uid}` in the **social** RTDB
+(`rtdbSocialGet`, same database as chat/topics/neighbourhood), because that is the only database
+its credentials can read. The moderation UIs (`kindlechat.html`, `topics.html`,
+`neighbourhood.html`) and `admin/timeout_user.js` write the **primary** copy (client banner) and
+mirror the **social** copy (server enforcement). Clearing a timeout removes both. The Discord
+report action already writes social and therefore now enforces correctly (no client banner).
+`rtdb-social-rules.json` `timeouts/$uid` allows reads by self/owner/moderator and writes by
+owner/moderator (the service account bypasses rules). `scripts/test-timeouts.js` pins the split.
 - **Report buttons are 48×48 touch targets**: the 20 px circle is now a `.report-dot` inside a
   transparent `.report-btn` that occupies real layout space (no overlap with the timestamp /
   Edit button). Applied in `neighbourhood.html` and `topics.html`.

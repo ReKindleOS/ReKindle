@@ -1,9 +1,12 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
+const path = require('path');
 
 // --- CONFIGURATION ---
-const SERVICE_ACCOUNT_PATH = '../service-account.json';
+const SERVICE_ACCOUNT_PATH = path.join(__dirname, '../service-account.json');
+const SOCIAL_SERVICE_ACCOUNT_PATH = path.join(__dirname, '../service-account-social.json');
 const DATABASE_URL = 'https://rekindle-dd1fa-default-rtdb.firebaseio.com/';
+const SOCIAL_DATABASE_URL = 'https://rekindle-socials-default-rtdb.firebaseio.com';
 
 // --- ARGS ---
 const args = process.argv.slice(2);
@@ -54,6 +57,21 @@ admin.initializeApp({
 });
 
 const rtdb = admin.database();
+
+// The moderation Worker runs in the ReKindle Social project and enforces the
+// SOCIAL copy of timeouts/{uid}; it cannot read the primary project. The
+// primary copy is what the client banners read, so write both.
+let socialRtdb = null;
+if (fs.existsSync(SOCIAL_SERVICE_ACCOUNT_PATH)) {
+    const socialServiceAccount = require(SOCIAL_SERVICE_ACCOUNT_PATH);
+    const socialApp = admin.initializeApp({
+        credential: admin.credential.cert(socialServiceAccount),
+        databaseURL: SOCIAL_DATABASE_URL
+    }, 'social');
+    socialRtdb = socialApp.database();
+} else {
+    console.warn('Warning: social service account not found; the timeout will only update the client banner, not server-side enforcement.');
+}
 
 // --- RESOLVE USER ---
 async function resolveUser(target) {
@@ -107,19 +125,23 @@ async function main() {
 
         if (IS_CLEAR) {
             await rtdb.ref('timeouts/' + user.uid).remove();
+            if (socialRtdb) await socialRtdb.ref('timeouts/' + user.uid).remove();
             console.log('\n[OK] Timeout cleared. User can access social features immediately.');
         } else {
             const until = Date.now() + (HOURS * 60 * 60 * 1000);
-            await rtdb.ref('timeouts/' + user.uid).set({
+            const payload = {
                 reason: REASON,
                 until: until,
                 moderatorUid: 'admin-cli',
                 moderatorName: 'admin-cli',
                 createdAt: admin.database.ServerValue.TIMESTAMP,
-            });
+            };
+            await rtdb.ref('timeouts/' + user.uid).set(payload);
+            if (socialRtdb) await socialRtdb.ref('timeouts/' + user.uid).set(payload);
             console.log(`\n[OK] User timed out for ${HOURS} hour(s).`);
             console.log(`     Reason: "${REASON}"`);
             console.log(`     Expires: ${new Date(until).toISOString()}`);
+            console.log(`     Primary (banner): written${socialRtdb ? ' | Social (worker enforcement): written' : ' | Social: SKIPPED'}`);
         }
 
     } catch (e) {

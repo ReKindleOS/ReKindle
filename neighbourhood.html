@@ -4169,13 +4169,14 @@
                 const until = Date.now() + (hours * 3600000);
                 const updates = {};
                 const logKey = db.ref('mod_actions').push().key;
-                updates['timeouts/' + targetUid] = {
+                const timeoutPayload = {
                     until: until,
                     reason: reason,
                     moderatorUid: currentUser.uid,
                     moderatorName: getKindleName(myProfile) || currentUser.uid,
                     createdAt: firebase.database.ServerValue.TIMESTAMP
                 };
+                updates['timeouts/' + targetUid] = timeoutPayload;
                 updates['mod_actions/' + logKey] = {
                     type: 'timeout',
                     moderatorUid: currentUser.uid,
@@ -4188,6 +4189,10 @@
                     undone: false
                 };
                 db.ref().update(updates).then(() => {
+                    // The primary copy drives the client banner; the moderation
+                    // Worker enforces the social copy (it cannot read primary).
+                    return socialRtdb.ref('timeouts/' + targetUid).set(timeoutPayload);
+                }).then(() => {
                     showAlertModal('User timed out for ' + hours + ' hour(s).', 'Success');
                 }).catch(e => {
                     showAlertModal('Timeout failed: ' + (e.message || e), 'Error');

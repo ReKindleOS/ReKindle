@@ -80,9 +80,9 @@ const SOCIAL_USER_RTDB_ROOTS = [
     'users_public',
     'user_cards',
     'users_private',
-    // The moderation worker applies Discord-issued timeouts in the SOCIAL
-    // project (`timeouts/{uid}`), while moderation.html writes the same node
-    // in the primary project. Both are cleared.
+    // The moderation worker enforces timeouts from the SOCIAL project
+    // (`timeouts/{uid}`); the moderation UIs also write the primary copy for
+    // the client banner. Both copies are cleared.
     'timeouts',
     'kindlechat/server_rate_limits',
     'kindlechat/user_recent',

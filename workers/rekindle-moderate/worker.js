@@ -1003,7 +1003,15 @@ async function checkTimeout(uid, env, userToken, accessToken) {
 
     let result = { timedOut: false };
     try {
-        const data = await rtdbGetWithUserToken(`timeouts/${uid}`, env, userToken);
+        // Timeouts are enforced from the SOCIAL RTDB. This Worker runs with
+        // ReKindle Social credentials and cannot read the primary project's
+        // `timeouts/{uid}` (the user token belongs to the social project and
+        // the social service account gets 401 from rekindle-dd1fa), so the old
+        // primary read silently failed and no timeout was ever enforced here.
+        // The moderation UIs write the primary copy for the client banner and
+        // mirror it here; see docs/agent/moderation-reports.md.
+        const res = await rtdbSocialGet(`timeouts/${uid}`, accessToken);
+        const data = res.data;
         if (data && typeof data.until === "number") {
             const now = Date.now();
             if (data.until > now) {
@@ -1012,20 +1020,8 @@ async function checkTimeout(uid, env, userToken, accessToken) {
             }
         }
     } catch (e) {
-        console.error("[Moderate] Timeout check with user token failed:", e.message);
-        // Fallback to service account (bypasses rules, needs IAM permissions)
-        try {
-            const data = await rtdbGetWithAccessToken(`timeouts/${uid}`, env, accessToken);
-            if (data && typeof data.until === "number") {
-                const now = Date.now();
-                if (data.until > now) {
-                    const remainingMinutes = Math.ceil((data.until - now) / 60000);
-                    result = { timedOut: true, remainingMinutes };
-                }
-            }
-        } catch (e2) {
-            console.error("[Moderate] Timeout check with access token failed:", e2.message);
-        }
+        // Fail open: a transient RTDB error must not block every social write.
+        console.error("[Moderate] Timeout check failed:", e.message);
     }
     return cacheTimeoutResult(uid, result);
 }
