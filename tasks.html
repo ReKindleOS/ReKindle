@@ -219,6 +219,110 @@
             align-content: start;
         }
 
+        /* LAYOUT DROPDOWN (title bar) */
+        .layout-select-wrap {
+            position: absolute;
+            left: 36px;
+            top: 50%;
+            margin-top: -11px;
+            width: 88px;
+            height: 22px;
+            z-index: 2;
+        }
+
+        .layout-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 22px;
+            box-sizing: border-box;
+            border: 2px solid black;
+            border-radius: 0;
+            background: white;
+            color: black;
+            font-family: inherit;
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 0 16px 0 5px;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 black;
+            outline: none;
+        }
+
+        .layout-select:active {
+            background: #eee;
+        }
+
+        .layout-select-wrap::after {
+            content: "";
+            position: absolute;
+            right: 6px;
+            top: 9px;
+            width: 0;
+            height: 0;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-top: 4px solid black;
+            pointer-events: none;
+        }
+
+        /* Layout: stacked - one list per row, no nested scrolling */
+        #dashboard.layout-stacked {
+            grid-template-columns: 1fr;
+        }
+
+        #dashboard.layout-stacked .task-list {
+            max-height: none;
+        }
+
+        /* Layout: compact - dense rows for small screens and long lists */
+        #dashboard.layout-compact {
+            grid-template-columns: 1fr;
+            gap: 8px;
+            padding: 8px;
+        }
+
+        #dashboard.layout-compact .column {
+            box-shadow: none;
+        }
+
+        #dashboard.layout-compact .column-header {
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            text-align: left;
+        }
+
+        #dashboard.layout-compact .task-list {
+            max-height: none;
+        }
+
+        #dashboard.layout-compact .task {
+            padding: 5px 8px;
+            font-size: 0.8rem;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #dashboard.layout-compact .task-checkbox {
+            margin-top: 0;
+            margin-right: 8px;
+            box-shadow: none;
+        }
+
+        #dashboard.layout-compact .add-task-wrapper {
+            padding: 4px;
+        }
+
+        #dashboard.layout-compact .add-task-input {
+            padding: 3px 5px;
+            font-size: 0.8rem;
+        }
+
+        #dashboard.layout-compact .add-btn {
+            padding: 0 8px;
+        }
+
         .tasks-loading {
             grid-column: 1 / -1;
             padding: 40px 20px;
@@ -549,6 +653,13 @@
         <div class="title-bar">
             <div class="title-stripes"></div>
             <div class="close-box" onclick="window.location.href='index'">X</div>
+            <div class="layout-select-wrap">
+                <select id="layout-select" class="layout-select" aria-label="Layout" data-i18n-title="tasks.layout.label" onchange="setTasksLayout(this.value)">
+                    <option value="columns" data-i18n="tasks.layout.columns">Columns</option>
+                    <option value="stacked" data-i18n="tasks.layout.stacked">Stacked</option>
+                    <option value="compact" data-i18n="tasks.layout.compact">Compact</option>
+                </select>
+            </div>
             <span class="title-text" id="app-title" data-i18n="tasks.title">Tasks</span>
             <div class="title-controls">
                 <button class="sys-btn" onclick="refreshData()" style="padding: 2px 6px; height: 22px; font-size: 0.7rem;" data-i18n="common.refresh">Refresh</button>
@@ -561,7 +672,7 @@
             </div>
         </div>
 
-        <div class="window-content" id="dashboard">
+        <div class="window-content layout-columns" id="dashboard">
             <div id="tasks-loading" class="tasks-loading" data-i18n="common.loading">Loading...</div>
             <!-- Native Mode Default Layout -->
             <div class="column" id="native-col" style="display:none;">
@@ -630,6 +741,37 @@
         let db = null;
         let auth = null;
         let googleEnabled = false;
+
+        // --- LAYOUT ---
+        const TASKS_LAYOUTS = ['columns', 'stacked', 'compact'];
+        const TASKS_LAYOUT_KEY = 'rekindle_tasks_layout';
+
+        function getTasksLayout() {
+            const saved = localStorage.getItem(TASKS_LAYOUT_KEY);
+            return TASKS_LAYOUTS.indexOf(saved) !== -1 ? saved : 'columns';
+        }
+
+        function applyTasksLayout(mode) {
+            const dashboard = document.getElementById('dashboard');
+            if (!dashboard) return;
+            const layout = TASKS_LAYOUTS.indexOf(mode) !== -1 ? mode : 'columns';
+            TASKS_LAYOUTS.forEach(function (name) {
+                dashboard.classList.remove('layout-' + name);
+            });
+            dashboard.classList.add('layout-' + layout);
+            const select = document.getElementById('layout-select');
+            if (select && select.value !== layout) select.value = layout;
+        }
+
+        function setTasksLayout(mode) {
+            if (TASKS_LAYOUTS.indexOf(mode) === -1) return;
+            localStorage.setItem(TASKS_LAYOUT_KEY, mode);
+            applyTasksLayout(mode);
+        }
+        window.setTasksLayout = setTasksLayout;
+
+        // Restore the saved layout before the tasks render.
+        applyTasksLayout(getTasksLayout());
 
         // --- INIT ---
         window.onload = function () {
@@ -839,7 +981,7 @@
             const dashboard = document.getElementById('dashboard');
             document.getElementById('status-bar').innerText = window.t('tasks.status.syncing', "Syncing...");
             if (first) {
-                // Clear any google columns (but keep native-col hidden)
+                // Clear any google columns (but keep native-col)
                 Array.from(dashboard.children).forEach(child => {
                     if (child.id !== 'native-col') child.remove();
                 });

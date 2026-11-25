@@ -1039,7 +1039,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         cat: 'productivity',
         title: 'Tasks',
         summary: 'A simple task list that syncs with Google Tasks or stays local.',
-        tags: 'tasks todo google tasks checklist sync due complete refresh',
+        tags: 'tasks todo google tasks checklist sync due complete refresh layout columns stacked compact',
         appHref: 'tasks',
         appName: 'Tasks',
         related: ['quicktodo', 'notes', 'calendar'],
@@ -1050,6 +1050,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Open Tasks. If this is the first run, choose <b>Use Google</b> or <b>Use Local</b>.</li>
                 <li>Type a task and add it. Tap the checkbox to complete it.</li>
                 <li>Use <b>Refresh</b> to pull the latest list from Google or your account.</li>
+                <li>Use the <b>Layout</b> dropdown in the title bar to switch between <b>Columns</b> (lists side by side), <b>Stacked</b> (one full-width list per row) and <b>Compact</b> (dense rows for long lists). The choice is remembered on this device.</li>
             </ol>
             <h2>Google Tasks sync</h2>
             <p>Choosing Google opens an OAuth consent screen. ReKindle requests access to your Google Tasks, then reads and writes the list directly. Each Google list appears as a column and shows up to 100 open tasks. The token is kept on the device. If the connection expires, tap <b>Log In</b> again.</p>

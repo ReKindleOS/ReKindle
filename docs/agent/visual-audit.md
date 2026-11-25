@@ -434,3 +434,34 @@ JS. `scripts/test-load-states.js` pins the assets and the `role="status"` text.
 validates the outgoing text first, then inserts the prefix only after the rules
 gate passes. `scripts/test-chat-reply.js` covers prefix/empty/already-prefixed
 and the validation-before-insertion order.
+
+## 2026-11-25 Tasks layout options
+
+`tasks.html` has a **Layout** dropdown in the title bar, next to the close box:
+**Columns** (the original side-by-side lists), **Stacked** (one full-width list
+per row) and **Compact** (dense rows). It is a native `<select>` with
+`appearance: none` and a CSS triangle, styled to the same outer height (22px)
+as the title-bar **Refresh** and full-screen buttons, in an
+absolutely-positioned `.layout-select-wrap` at `left: 36px` (same slot as Manga's
+Back button). The native picker keeps the menu usable on Kindle without
+custom-select.js.
+
+The choice persists in `localStorage['rekindle_tasks_layout']`;
+`getTasksLayout()` validates the value, `applyTasksLayout()` sets
+`layout-columns` / `layout-stacked` / `layout-compact` on `#dashboard` and syncs
+the select, and `onchange="setTasksLayout(this.value)"` writes the preference.
+`applyTasksLayout(getTasksLayout())` runs as the inline script parses (after the
+select markup) so a saved layout does not flash Columns first.
+
+**Do not put layout controls inside `#dashboard`.** The grid is
+`repeat(auto-fit, minmax(300px, 1fr))`; a full-width in-grid bar with
+`grid-column: 1 / -1` occupies both tracks, so `auto-fit` never collapses the
+empty second track and a lone list stops filling the window (measured 355px of
+730px at 800×1000). Title-bar placement also survives Google mode's first-load
+clear of `#dashboard`, which removes every child except `#native-col`.
+
+Stacked and compact set `.task-list { max-height: none }` so the lists flow into
+the one outer `.window-content` scroller instead of adding nested scroll areas.
+Verified at 800×1000, 600×800 and 400×700 in all three modes: the dropdown
+matches the Refresh button height (22px), changing it re-renders, and a reload
+restores `saved=compact` / `select.value=compact`.
