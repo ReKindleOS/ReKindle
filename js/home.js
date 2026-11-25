@@ -2737,7 +2737,7 @@
                 return window.t ? window.t(key, fallback) : fallback;
             };
             const item = function (key, fallback, value) {
-                return '<span class="db-wx-item"><span class="db-wx-label">' + label(key, fallback) + '</span> ' + value + '</span>';
+                return '<span class="db-wx-item"><span class="db-wx-label">' + label(key, fallback) + '</span><span class="db-wx-value">' + value + '</span></span>';
             };
 
             if (data.hourly && data.hourly.apparent_temperature && startIdx >= 0 &&
