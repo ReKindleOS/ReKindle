@@ -281,22 +281,63 @@
             }
         }
 
+        // The home avatar is cached until an explicit logout. The generic
+        // user-card cache has a 1h TTL; this separate key deliberately lives
+        // longer so returning to Home does not re-download the same avatar.
+        function homeAvatarCacheKey(uid) {
+            return 'rekindle_home_avatar:' + uid;
+        }
+
+        function readHomeAvatar(uid) {
+            try {
+                const raw = localStorage.getItem(homeAvatarCacheKey(uid));
+                if (raw === null) return null;
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function writeHomeAvatar(uid, seed) {
+            try {
+                localStorage.setItem(homeAvatarCacheKey(uid), JSON.stringify(seed));
+            } catch (e) { /* storage disabled */ }
+        }
+
+        function clearHomeAvatar(uid) {
+            if (!uid) return;
+            try { localStorage.removeItem(homeAvatarCacheKey(uid)); } catch (e) { }
+        }
+
+        function paintCachedHomeAvatar(uid) {
+            if (!uid) return false;
+            const cached = readHomeAvatar(uid);
+            if (cached === null) return false;
+            drawAvatar('user-badge-icon', cached);
+            return true;
+        }
+
         function watchUserCard(uid) {
             if (!rtdb) return;
             if (userCardsRef) {
                 try { userCardsRef.off(); } catch (e) { }
                 userCardsRef = null;
             }
-            userCardsRef = rtdb.ref('user_cards/' + uid);
-            userCardsRef.on('value', function (snap) {
+            // Use the persistent cache first and skip the RTDB read entirely.
+            if (paintCachedHomeAvatar(uid)) return;
+
+            // No cached avatar yet: fetch once, then keep it until logout.
+            rtdb.ref('user_cards/' + uid).once('value').then(function (snap) {
+                if (currentUser && currentUser.uid !== uid) return;
+                let seed = uid;
                 if (snap.exists()) {
                     const card = snap.val();
-                    const avatarSeed = card.customAvatar || card.avatarSeed || uid;
-                    drawAvatar('user-badge-icon', avatarSeed);
-                    window.rekindleInvalidateUserCard && window.rekindleInvalidateUserCard(uid);
-                } else {
-                    drawAvatar('user-badge-icon', uid);
+                    seed = card.customAvatar || card.avatarSeed || uid;
                 }
+                writeHomeAvatar(uid, seed);
+                drawAvatar('user-badge-icon', seed);
+            }).catch(function () {
+                drawAvatar('user-badge-icon', uid);
             });
         }
 
@@ -373,6 +414,8 @@
             }
             if (previousUid && previousUid !== user.uid) {
                 clearServiceWorkerCache();
+                clearHomeAvatar(previousUid);
+                window.rekindleInvalidateUserCard && window.rekindleInvalidateUserCard(previousUid);
             }
             currentUser = user;
             window._rekindleAuthedUid = user.uid;
@@ -538,7 +581,11 @@
             // Draw the neutral silhouette for the menu bar while auth resolves;
             // a real avatar replaces it in watchUserCard().
             const badgeIcon = document.getElementById('user-badge-icon');
-            if (badgeIcon) drawGuestAvatar(badgeIcon);
+            if (badgeIcon) {
+                let restoredUid = null;
+                try { restoredUid = localStorage.getItem('rekindle_uid'); } catch (e) { }
+                if (!restoredUid || !paintCachedHomeAvatar(restoredUid)) drawGuestAvatar(badgeIcon);
+            }
 
             if (new URLSearchParams(window.location.search).get('login') === 'true') {
                 openLogin();
@@ -2300,6 +2347,12 @@
         }
         function confirmLogout() {
             if (isFirebaseAvailable && auth) auth.signOut().catch(e => console.error("Sign out error:", e));
+            let signedOutUid = null;
+            try { signedOutUid = localStorage.getItem('rekindle_uid'); } catch (e) { }
+            if (signedOutUid) {
+                clearHomeAvatar(signedOutUid);
+                window.rekindleInvalidateUserCard && window.rekindleInvalidateUserCard(signedOutUid);
+            }
             localStorage.removeItem('rekindle_uid'); localStorage.removeItem('rekindle_favorites');
             localStorage.removeItem('rekindle_was_pro');
             closeModal('logout-modal'); location.reload();

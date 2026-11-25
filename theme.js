@@ -984,6 +984,12 @@
         delete window.rekindleCardCache[uid];
         try { localStorage.removeItem(_CARD_LS_PREFIX + uid); } catch (e) { }
     };
+    // Home caches its own menu-bar avatar separately (no TTL) so it survives
+    // repeat visits until logout. Profile edits clear this key explicitly.
+    window.rekindleInvalidateHomeAvatar = function (uid) {
+        if (!uid) return;
+        try { localStorage.removeItem('rekindle_home_avatar:' + uid); } catch (e) { }
+    };
 
     // --- AVATAR CACHING HELPER ---
     // Delegates to rekindleFetchUserCard so avatar and card lookups share a single
