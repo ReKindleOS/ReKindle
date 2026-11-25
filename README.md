@@ -131,9 +131,20 @@ ReKindle is designed with privacy as a priority.
 
 ## License
 
-**ReKindle** is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License**.
+ReKindle is **source-available**, not open source. It is licensed under the **ReKindle Source License 1.0**.
 
-You are free to share and adapt the work for non-commercial purposes, provided you give appropriate credit and distribute your contributions under the same license.
+- **Source** — you may copy, modify, publish, mirror and fork the code publicly for **noncommercial** purposes, with credit to ReKindle and Ukiyo, a link to <https://rekindle.ink>, and a different name and logo for your fork.
+- **App** — you may copy, run and modify the app for **personal, noncommercial use only**. You may not deploy, host, publish or distribute the app, a built copy, or a clone — even noncommercially.
+
+Commercial use of any part requires a separate license. Full terms are in [LICENSE](LICENSE); a plain-English summary is in [LICENSE.md](LICENSE.md).
+
+If you publish a modified source, your changes must stay under the same license. The rights granted are perpetual and irrevocable for the version they accompany.
+
+Code published before 26 November 2026 was released under CC BY-NC-SA 4.0, and those copies remain available under that license.
+
+**Commercial use or deploying a clone:** ask first — <hello@rekindle.ink>.
+
+This project does not accept code contributions.
 
 ***
 
