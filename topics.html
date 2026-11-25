@@ -3529,16 +3529,35 @@
         function resolveAuthorName(uid, element, avatarId) {
             if (!uid || !element) return;
 
-            function applyCard(card, el) {
+            // Paint the deterministic uid avatar immediately. The real card
+            // replaces it when it arrives; this avoids a row of white canvases
+            // while RTDB lookups are in flight.
+            if (avatarId) drawAvatar(avatarId, uid, uid);
+
+            function renderDeletedProfile(el) {
+                // Account deleted (or a profile that never existed): neutral
+                // person outline and a neutral name, never a uid prefix or a
+                // white square (white is a real avatar choice again).
+                el.innerText = window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User';
+                if (avatarId) {
+                    if (window.rekindleDrawDeletedAvatar) window.rekindleDrawDeletedAvatar(avatarId);
+                    else drawAvatar(avatarId, null);
+                }
+            }
+
+            function applyCard(card, el, fromPublicFallback) {
                 if (!card || (window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) {
-                    // Account deleted (or a profile that never existed): neutral
-                    // person outline and a neutral name, never a uid prefix or a
-                    // white square (white is a real avatar choice again).
-                    el.innerText = window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User';
-                    if (avatarId) {
-                        if (window.rekindleDrawDeletedAvatar) window.rekindleDrawDeletedAvatar(avatarId);
-                        else drawAvatar(avatarId, null);
+                    // Older profiles can exist in the social users_public tree
+                    // but not in the primary user_cards mirror. Try that mirror
+                    // once before declaring the profile deleted.
+                    if (!card && !fromPublicFallback && socialRtdb) {
+                        socialRtdb.ref('users_public/' + uid).once('value').then(function (snap) {
+                            if (snap.exists()) applyCard(snap.val(), el, true);
+                            else renderDeletedProfile(el);
+                        }).catch(function () { renderDeletedProfile(el); });
+                        return;
                     }
+                    renderDeletedProfile(el);
                     return;
                 }
                 var kindleName = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
