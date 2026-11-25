@@ -442,6 +442,22 @@
             if (badge) badge.onclick = function () { location.href = 'neighbourhood?uid=' + user.uid; };
             const userDisplay = document.getElementById('user-display');
             if (userDisplay) userDisplay.innerText = displayUser;
+            // Auth caches the user record, so a display name set recently may not
+            // be in this tab yet. Read the tiny card field once per session when
+            // the Auth name was unusable, instead of waiting for a token refresh.
+            if (displayUser === authHandle && rtdb && user.uid) {
+                let nameChecked = false;
+                try { nameChecked = sessionStorage.getItem('rekindle_name_checked:' + user.uid) === '1'; } catch (e) { /* storage disabled */ }
+                if (!nameChecked) {
+                    try { sessionStorage.setItem('rekindle_name_checked:' + user.uid, '1'); } catch (e) { /* storage disabled */ }
+                    rtdb.ref('user_cards/' + user.uid + '/displayName').once('value').then(function (snap) {
+                        const cardName = snap.val() ? String(snap.val()).trim() : '';
+                        if (!cardName || !isCaseOnlyNameVariant(cardName, authHandle)) return;
+                        const el = document.getElementById('user-display');
+                        if (el && currentUser && currentUser.uid === user.uid) el.innerText = cardName;
+                    }).catch(function () { /* offline */ });
+                }
+            }
             const authBtn = document.getElementById('auth-btn');
             if (authBtn) {
                 authBtn.innerText = 'Log Out';
