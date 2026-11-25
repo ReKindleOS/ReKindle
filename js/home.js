@@ -2718,17 +2718,6 @@
             return h + ':' + m + ' ' + ampm;
         }
 
-        function renderWeatherUpdated(timestamp) {
-            const el = document.getElementById('db-weather-updated');
-            if (!el) return;
-            if (!timestamp) { el.textContent = ''; el.title = ''; return; }
-            const mins = Math.round((Date.now() - timestamp) / 60000);
-            const age = mins < 1 ? 'now' : (mins < 60 ? mins + 'm' : Math.round(mins / 60) + 'h');
-            const label = window.t ? window.t('dashboard.status.updated', 'Updated') : 'Updated';
-            el.textContent = label + ' ' + age;
-            try { el.title = new Date(timestamp).toLocaleString(); } catch (e) { el.title = ''; }
-        }
-
         function renderWeatherExtra(data, startIdx, unit) {
             const container = document.getElementById('db-weather-extra');
             if (!container) return;
@@ -2736,8 +2725,8 @@
             const label = function (key, fallback) {
                 return window.t ? window.t(key, fallback) : fallback;
             };
-            const item = function (key, fallback, value) {
-                return '<span class="db-wx-item"><span class="db-wx-label">' + label(key, fallback) + '</span><span class="db-wx-value">' + value + '</span></span>';
+            const item = function (key, fallback, value, className) {
+                return '<span class="db-wx-item ' + (className || '') + '"><span class="db-wx-label">' + label(key, fallback) + '</span><span class="db-wx-value">' + value + '</span></span>';
             };
 
             if (data.hourly && data.hourly.apparent_temperature && startIdx >= 0 &&
@@ -2754,11 +2743,11 @@
             }
             if (data.daily && data.daily.sunrise && data.daily.sunrise[0]) {
                 const rise = formatWeatherClock(data.daily.sunrise[0]);
-                if (rise) items.push(item('weather.label.sunrise', 'Sunrise', rise));
+                if (rise) items.push(item('weather.label.sunrise', 'Sunrise', rise, 'db-wx-sun'));
             }
             if (data.daily && data.daily.sunset && data.daily.sunset[0]) {
                 const set = formatWeatherClock(data.daily.sunset[0]);
-                if (set) items.push(item('weather.label.sunset', 'Sunset', set));
+                if (set) items.push(item('weather.label.sunset', 'Sunset', set, 'db-wx-sun'));
             }
             container.innerHTML = items.join('');
         }
@@ -2834,7 +2823,6 @@
                 hourlyContainer.style.display = html ? 'flex' : 'none';
             }
 
-            renderWeatherUpdated(record.fetchedAt);
         }
 
         async function fetchDashboardWeather(force) {
@@ -2886,8 +2874,6 @@
                     if (dw) dw.textContent = window.t ? window.t('weather.status.error', 'Connection Error') : 'Unavailable';
                     const tw = document.getElementById('db-weather-temp');
                     if (tw) tw.textContent = '--°';
-                    const updated = document.getElementById('db-weather-updated');
-                    if (updated) updated.textContent = '';
                 }
             } finally {
                 if (timer) clearTimeout(timer);
@@ -3005,17 +2991,6 @@
             const cache = agendaMonthCache[agendaMonthKey(y, m)];
             if (!cache) return;
 
-            const updatedEl = document.getElementById('db-agenda-updated');
-            if (updatedEl) {
-                if (cache.fetchedAt) {
-                    const mins = Math.round((Date.now() - cache.fetchedAt) / 60000);
-                    const age = mins < 1 ? 'now' : (mins < 60 ? mins + 'm' : Math.round(mins / 60) + 'h');
-                    const label = window.t ? window.t('dashboard.status.updated', 'Updated') : 'Updated';
-                    updatedEl.textContent = label + ' ' + age;
-                } else {
-                    updatedEl.textContent = '';
-                }
-            }
 
             if (cache.authError) {
                 const msg = window.t ? window.t('dashboard.agenda.session_expired', 'Session expired. Open Calendar to reconnect.') : 'Session expired. Open Calendar to reconnect.';
