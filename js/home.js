@@ -29,6 +29,9 @@
 
         let isEditMode = false;
         let isFirebaseAvailable = false;
+        // First-run copy of #login-msg, captured before an error/status message
+        // overwrites it, so opening the login window can restore it verbatim.
+        let loginMsgDefault = null;
 
         // --- ReKindle+ status: verified, then cached per account -------------
         // The ribbon, the PLUS labels and the featured section all key off
@@ -339,6 +342,69 @@
             if (cached === null) return false;
             drawAvatar('user-badge-icon', cached);
             return true;
+        }
+
+        // --- The previous account's cached identity ------------------------
+        // The menu-bar name and avatar are cached in localStorage so Home can
+        // paint before Firebase Auth settles (watchUserCard above,
+        // rekindle_display_name:<uid>, rekindle_last_username), and the
+        // "signed out unexpectedly" prompt prefills the login form from that
+        // cache. On a shared Kindle the next person must inherit none of it:
+        // opening Login / Register is a "someone may be about to sign in"
+        // signal, so the cached identity is dropped instead of shown to them.
+        // The keys are per account, so sweep every account this device has
+        // seen rather than only the uid that is still recorded.
+        function removeStoredKeysWithPrefix(prefix) {
+            try {
+                const stale = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.indexOf(prefix) === 0) stale.push(key);
+                }
+                for (let i = 0; i < stale.length; i++) localStorage.removeItem(stale[i]);
+            } catch (e) { /* storage disabled */ }
+        }
+
+        function clearCachedIdentity() {
+            let uid = null;
+            try { uid = localStorage.getItem('rekindle_uid'); } catch (e) { /* storage disabled */ }
+            if (uid) {
+                // One entry holds both the display name and the avatar seed.
+                if (window.rekindleInvalidateUserCard) window.rekindleInvalidateUserCard(uid);
+                try { sessionStorage.removeItem('rekindle_display_name_refreshed:' + uid); } catch (e) { /* storage disabled */ }
+            }
+            try { localStorage.removeItem('rekindle_last_username'); } catch (e) { /* storage disabled */ }
+            // Do NOT sweep rekindle_ucard_*: that cache also holds other
+            // members' cards, and clearing it would re-download every author
+            // on the next KindleChat load.
+            removeStoredKeysWithPrefix('rekindle_home_avatar:');
+            removeStoredKeysWithPrefix('rekindle_display_name:');
+        }
+
+        // A fresh Login / Register window must not inherit the previous
+        // account's cached handle, name or avatar.
+        function resetLoginWindow() {
+            // A live account is not stale data. While nobody is signed in the
+            // menu bar is showing cache, so repaint it as the guest bar.
+            if (!currentUser) {
+                clearCachedIdentity();
+                const display = document.getElementById('user-display');
+                if (display) display.innerText = window.t ? window.t('home.guest_mode', 'Guest Mode') : 'Guest Mode';
+                const badgeIcon = document.getElementById('user-badge-icon');
+                if (badgeIcon) drawGuestAvatar(badgeIcon);
+            }
+            // Blank the form: a handle prefilled by the sign-out prompt, a
+            // typed password, or a previous error message must not survive
+            // for the next person.
+            const usernameField = document.getElementById('username');
+            if (usernameField) usernameField.value = '';
+            const passwordField = document.getElementById('password');
+            if (passwordField) passwordField.value = '';
+            const msg = document.getElementById('login-msg');
+            if (msg) {
+                if (loginMsgDefault === null) loginMsgDefault = msg.innerText;
+                if (msg.innerText !== loginMsgDefault) msg.innerText = loginMsgDefault;
+            }
         }
 
         function watchUserCard(uid) {
@@ -2303,6 +2369,10 @@
             return true;
         }
         function openLogin() {
+            // Clear the previous account's cached name/avatar (and any prefilled
+            // handle) before the window appears, so a shared Kindle never shows
+            // the last person's identity in a "fresh" Login / Register window.
+            resetLoginWindow();
             document.getElementById('login-modal').style.display = 'flex';
             // User intent: start the auth SDK while they type their password.
             bootFirebaseAuth();

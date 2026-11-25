@@ -37,7 +37,7 @@ Every render path applies the same guard: a stored `displayName` is printed **on
 
 Implemented in:
 
-- `js/home.js` and `index_old.html` — the greeting prefers Auth `user.displayName` (only when non-empty, <20 chars and not email-like), falling back to the email handle. `rekindle_last_username` still stores the handle so the login form can rebuild the email.
+- `js/home.js` and `index_old.html` — the greeting prefers Auth `user.displayName` (only when non-empty, <20 chars and not email-like), falling back to the email handle. `rekindle_last_username` still stores the handle so the sign-out prompt can prefill the login form; opening the login window drops it again (see the last section).
 - `settings.html` — "Logged in as" prints the display name (handle in the tooltip); the password-reset and delete-account confirmation forms still use the handle.
 - `kindlechat.html` — `resolveMessageAuthor`, DM names, gallery/pixel-art authors and reply prefixes use `displayName || username`; `currentUsername`, message `user` fields, reactions and avatar caches stay on the handle. The old hard-coded `Ukiyo` in the DEV branch is gone.
 - `neighbourhood.html` — `getKindleName()` and post/comment headers prefer the display name; the Edit Profile form owns the Display Name input; profile saves no longer rebuild `user_cards.username` from the lowercase email (that silently flattened capitals on every save). A profile save/social-profile load also syncs Auth `displayName` into `users_public`.
@@ -64,3 +64,48 @@ The owner account was migrated on 2026-11-26: `displayName: "Ukiyo"` on Auth, pr
 - Topic documents store `authorName` at creation from the handle, so they still show `ukiyo`.
 - Game leaderboard names come from `email.split('@')[0]` on the server (`firebase-functions/scores.js`), so they remain lowercase.
 - `fetchProfileByUsername()` and DM search match `user_cards.username` exactly (case-sensitive by design).
+
+## Login / Register clears the previous account's cached identity (2026-11-26)
+
+**Symptom:** on a device that had been signed in, opening Login / Register on the home
+screen still showed the previous person: the menu bar kept its cached name and avatar, and
+the "Signed out — your session ended unexpectedly" prompt prefills `#username` from
+`rekindle_last_username`, so the next person's "fresh" form already contained the last
+handle. A typed password (or a previous `Error: ...` message) could survive too, because
+closing a modal only hides it.
+
+**Fix:** `openLogin()` in `js/home.js` calls `resetLoginWindow()` *before* showing
+`#login-modal`:
+
+- `clearCachedIdentity()` removes `rekindle_last_username`, sweeps every
+  `rekindle_display_name:<uid>` and `rekindle_home_avatar:<uid>` key (one small entry per
+  account this device has seen), and for the recorded `rekindle_uid` drops
+  `rekindle_ucard_<uid>` through `rekindleInvalidateUserCard()` plus the
+  `rekindle_display_name_refreshed:<uid>` session flag.
+- `rekindle_ucard_*` is **not** swept wholesale: that cache also holds other members'
+  cards, so a full sweep would re-download every author on the next KindleChat load.
+- The menu bar is repainted as the guest bar (`home.guest_mode` + `drawGuestAvatar()`) so
+  the old name/avatar cannot sit behind the modal.
+- `#username` / `#password` are blanked and `#login-msg` is restored to its first-run copy
+  (`loginMsgDefault`, captured on the first open; the element has no `data-i18n` key).
+
+**Guards:**
+
+- The clear runs only while `!currentUser`: a live account's cache is not stale data, and
+  its avatar is not re-downloaded for nothing.
+- The one path where a signed-in user can see the guest bar for a moment is
+  `index?login=true` during auth restore; the auth listener repaints and `onSignedIn()`
+  closes the modal.
+- `rekindle_uid` is deliberately kept (`handleGuestMode`): it is the "this device was
+  signed in" hint that keeps a slow Kindle auth restore booting. Only `confirmLogout()`
+  removes it.
+- Cost: a cleared avatar cache is one `user_cards/{uid}` read on the next signed-in load
+  (`watchUserCard` re-fetches and re-caches it). No Firebase operations are added while
+  signed out.
+- **Lite / Legacy (`index_old.html`)** has no cached identity (its greeting is painted from
+  Auth only, and it draws no avatar), so `openLogin()` there only blanks `#username` /
+  `#password` and restores `#login-msg`. Same shared-device rule, no cache to sweep.
+
+**Shipped as** `js/home.js?v=25` in `index.html` and `sw.js` `ASSETS_TO_CACHE`.
+`scripts/test-home-avatar-cache.js` pins the ordering, the key list, the live-session
+guard and the matching `?v=` in both files.

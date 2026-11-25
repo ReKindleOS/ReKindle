@@ -57,3 +57,13 @@ gone". Deleted profiles use a person outline instead.
   pixel still renders, malformed data falls back to the pattern, and the guest portrait
   matches **guest16.png** pixel-for-pixel at 16px and matches `js/home.js` at 16/32/48/128px.
   Update it when the avatar render path or the guest art changes.
+
+## Home menu-bar avatar cache and the login window (2026-11-26)
+
+`rekindle_home_avatar:<uid>` is the persistent seed cache for the menu-bar canvas
+(`js/home.js` `watchUserCard` / `paintCachedHomeAvatar`); logout, account switch and
+profile saves already invalidate it. Opening the home **Login / Register** window now also
+sweeps every `rekindle_home_avatar:*` key and repaints the guest portrait, so a shared
+Kindle does not show the previous user's picture while the next person types their
+credentials. The full key list, the guest-bar repaint and the `!currentUser` guard are in
+[display-names.md](display-names.md#login--register-clears-the-previous-accounts-cached-identity-2026-11-26).
