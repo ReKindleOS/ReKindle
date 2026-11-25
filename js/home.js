@@ -431,8 +431,33 @@
             // the value that builds the sign-in email.
             const authHandle = displayUser;
             const namedUser = user.displayName ? String(user.displayName).trim() : '';
-            if (namedUser && isCaseOnlyNameVariant(namedUser, authHandle)) {
+            // Paint from the last known name immediately so the greeting never
+            // flashes the lowercase handle while Auth/card caches settle.
+            let storedName = '';
+            try { storedName = localStorage.getItem('rekindle_display_name:' + user.uid) || ''; } catch (e) { /* storage disabled */ }
+            if (storedName && !isCaseOnlyNameVariant(storedName, authHandle)) storedName = '';
+            // Also accept the card cached by theme.js so the very first load after
+            // a name change paints the right case, not the lowercase handle.
+            let cachedCardName = '';
+            try {
+                const rawCard = localStorage.getItem('rekindle_ucard_' + user.uid);
+                if (rawCard) {
+                    const parsedCard = JSON.parse(rawCard);
+                    if (parsedCard && parsedCard.card && parsedCard.card.displayName) {
+                        cachedCardName = String(parsedCard.card.displayName).trim();
+                    }
+                }
+            } catch (e) { /* storage disabled */ }
+            if (cachedCardName && !isCaseOnlyNameVariant(cachedCardName, authHandle)) cachedCardName = '';
+            if (storedName) {
+                displayUser = storedName;
+            } else if (cachedCardName) {
+                displayUser = cachedCardName;
+            } else if (namedUser && isCaseOnlyNameVariant(namedUser, authHandle)) {
                 displayUser = namedUser;
+            }
+            if (displayUser !== authHandle) {
+                try { localStorage.setItem('rekindle_display_name:' + user.uid, displayUser); } catch (e) { /* storage disabled */ }
             }
             // Remember the name so the "session ended unexpectedly" prompt can
             // pre-fill the login form (see handleGuestMode).
@@ -442,17 +467,18 @@
             if (badge) badge.onclick = function () { location.href = 'neighbourhood?uid=' + user.uid; };
             const userDisplay = document.getElementById('user-display');
             if (userDisplay) userDisplay.innerText = displayUser;
-            // Auth caches the user record, so a display name set recently may not
-            // be in this tab yet. Read the tiny card field once per session when
-            // the Auth name was unusable, instead of waiting for a token refresh.
-            if (displayUser === authHandle && rtdb && user.uid) {
-                let nameChecked = false;
-                try { nameChecked = sessionStorage.getItem('rekindle_name_checked:' + user.uid) === '1'; } catch (e) { /* storage disabled */ }
-                if (!nameChecked) {
-                    try { sessionStorage.setItem('rekindle_name_checked:' + user.uid, '1'); } catch (e) { /* storage disabled */ }
+            // The card is the shared source of truth for the case. Refresh from it
+            // once per tab session (and after a Neighbourhood rename removes the
+            // flag), so a stale Auth cache cannot hold the old case.
+            if (rtdb && user.uid) {
+                let nameRefreshed = false;
+                try { nameRefreshed = sessionStorage.getItem('rekindle_display_name_refreshed:' + user.uid) === '1'; } catch (e) { /* storage disabled */ }
+                if (!nameRefreshed) {
+                    try { sessionStorage.setItem('rekindle_display_name_refreshed:' + user.uid, '1'); } catch (e) { /* storage disabled */ }
                     rtdb.ref('user_cards/' + user.uid + '/displayName').once('value').then(function (snap) {
                         const cardName = snap.val() ? String(snap.val()).trim() : '';
                         if (!cardName || !isCaseOnlyNameVariant(cardName, authHandle)) return;
+                        try { localStorage.setItem('rekindle_display_name:' + user.uid, cardName); } catch (e) { /* storage disabled */ }
                         const el = document.getElementById('user-display');
                         if (el && currentUser && currentUser.uid === user.uid) el.innerText = cardName;
                     }).catch(function () { /* offline */ });
@@ -584,9 +610,9 @@
             if (navAll) navAll.setAttribute('aria-label', window.t ? window.t('home.nav.all_apps', 'All Apps') : 'All Apps');
             if (navDash) navDash.setAttribute('aria-label', window.t ? window.t('home.nav.dashboard', 'Dashboard') : 'Dashboard');
             const guestAuthBtn = document.getElementById('auth-btn');
-            if (guestAuthBtn) guestAuthBtn.innerText = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : 'LOG IN / REGISTER';
+            if (guestAuthBtn) guestAuthBtn.innerText = window.t ? window.t('home.nav.login', 'Log In / Register') : 'Log In / Register';
             const guestModalBtn = document.getElementById('modal-auth-btn');
-            if (guestModalBtn) guestModalBtn.innerText = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : 'LOG IN / REGISTER';
+            if (guestModalBtn) guestModalBtn.innerText = window.t ? window.t('home.nav.login', 'Log In / Register') : 'Log In / Register';
             document.querySelectorAll('.folder-tab').forEach(function (tab) {
                 tab.setAttribute('role', 'tab');
                 if (!tab.hasAttribute('tabindex')) tab.setAttribute('tabindex', '0');
@@ -710,7 +736,7 @@
             }
 
             document.getElementById('user-display').innerText = window.t ? window.t('home.guest_mode', 'Guest Mode') : "Guest Mode";
-            document.getElementById('auth-btn').innerText = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : "LOG IN / REGISTER";
+            document.getElementById('auth-btn').innerText = window.t ? window.t('home.nav.login', 'Log In / Register') : "Log In / Register";
             document.getElementById('auth-btn').onclick = openLogin;
 
             document.getElementById('user-badge').onclick = function () {
@@ -724,7 +750,7 @@
 
             const modalAuthBtn = document.getElementById('modal-auth-btn');
             if (modalAuthBtn) {
-                modalAuthBtn.innerText = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : "LOG IN / REGISTER";
+                modalAuthBtn.innerText = window.t ? window.t('home.nav.login', 'Log In / Register') : "Log In / Register";
                 modalAuthBtn.onclick = openLogin;
             }
 
@@ -1190,7 +1216,7 @@
             const grid = document.getElementById('live-games-grid');
             if (!grid) return;
             const msg = window.t ? window.t('home.live_games.signin', 'Sign in to see live games.') : 'Sign in to see live games.';
-            const login = window.t ? window.t('home.nav.login', 'LOG IN / REGISTER') : 'LOG IN / REGISTER';
+            const login = window.t ? window.t('home.nav.login', 'Log In / Register') : 'Log In / Register';
             grid.innerHTML = '<div class="live-games-gate"><p>' + msg + '</p>' +
                 '<button type="button" class="sys-btn" onclick="openLogin()">' + login + '</button></div>';
         }

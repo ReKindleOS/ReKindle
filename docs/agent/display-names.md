@@ -42,7 +42,7 @@ Implemented in:
 - `kindlechat.html` — `resolveMessageAuthor`, DM names, gallery/pixel-art authors and reply prefixes use `displayName || username`; `currentUsername`, message `user` fields, reactions and avatar caches stay on the handle. The old hard-coded `Ukiyo` in the DEV branch is gone.
 - `neighbourhood.html` — `getKindleName()` and post/comment headers prefer the display name; the Edit Profile form owns the Display Name input; profile saves no longer rebuild `user_cards.username` from the lowercase email (that silently flattened capitals on every save). A profile save/social-profile load also syncs Auth `displayName` into `users_public`.
 
-Auth `displayName` can be stale in an existing browser tab: the SDK caches the user record. The edit form reloads it after a save (so the new case shows immediately); a name changed by an admin shows after a token refresh or the next sign-in. Card/`users_public` names are read fresh (5-minute cache).
+Auth `displayName` can be stale in an existing browser tab: the SDK caches the user record. The dashboard therefore paints from `localStorage` (`rekindle_display_name:<uid>`, written from the last valid card/Auth name) and re-reads `user_cards/{uid}/displayName` once per tab session, so the greeting does not flash the lowercase handle and a case change made elsewhere is picked up. A Neighbourhood save writes the new value to that cache and clears the session refresh flag. The edit form also reloads Auth after a save; an admin-side change shows after a token refresh or the next sign-in. Card/`users_public` names are read fresh (5-minute cache).
 
 ## Changing a display name
 

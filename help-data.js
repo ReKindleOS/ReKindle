@@ -60,7 +60,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <li>Open <b>rekindle.ink</b> in the device browser and bookmark it. See <a href="#install">Installing and supported devices</a>.</li>
                 <li>Use the tabs across the top of the home screen to browse Essentials, Tools, Lifestyle, Games and Multiplayer. The house tab shows every app; the grid tab opens the dashboard widgets.</li>
                 <li>Open <b>Settings</b> (top menu) and set your location, units and display scale. Location fixes the clock, weather and language detection.</li>
-                <li>If you want sync, tap <b>LOG IN / REGISTER</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
+                <li>If you want sync, tap <b>Log In / Register</b> and create an account. See <a href="#account">Account and sign-in</a>.</li>
                 <li>Star the apps you use most: tap <b>Edit</b> on the home screen, then the star on an app. See <a href="#home">The home screen</a>.</li>
             </ol>
             <div class="note"><b>Good to know:</b> ReKindle is a website, not an installed app. Normal use needs no jailbreak, app store install or USB step; a bookmark or home-screen shortcut is enough. The optional <a href="#kindle-fullscreen">ReKindle launcher</a> is <b>highly experimental</b> and only for jailbroken Kindles that want the browser chrome gone.</div>
@@ -137,7 +137,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             <p>A ReKindle account is free. It is a username and password - no email address is required. The username is turned into an internal address like <code>yourname@rekindle.ink</code> for Firebase Authentication.</p>
             <h2>Create an account</h2>
             <ol>
-                <li>On the home screen tap <b>LOG IN / REGISTER</b>.</li>
+                <li>On the home screen tap <b>Log In / Register</b>.</li>
                 <li>Choose <b>Register</b>, enter a username and password, and submit.</li>
                 <li>Usernames must be 1-20 characters and use letters and numbers only. Names that impersonate staff, contain banned words, or promote a competing service are rejected.</li>
             </ol>
@@ -3876,7 +3876,7 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
                 <tr><th>Page</th><th>Status</th></tr>
                 <tr><td><code>/manga</code></td><td>The old MangaDex reader. It redirects to the dashboard; unlicensed content was removed. Use <a href="#comics">Comics</a> for public-domain comics.</td></tr>
                 <tr><td><code>/index_old</code></td><td>The classic dashboard, used as the home page by the Lite build and whenever Home Layout is set to Classic. It has fewer features than the modern home screen.</td></tr>
-                <tr><td><code>/login</code></td><td>A diagnostics page for authentication, network, diagnostics and logout. It is not the normal sign-in flow - use the home screen's LOG IN / REGISTER modal. See <a href="#account">Account and sign-in</a>.</td></tr>
+                <tr><td><code>/login</code></td><td>A diagnostics page for authentication, network, diagnostics and logout. It is not the normal sign-in flow - use the home screen's Log In / Register modal. See <a href="#account">Account and sign-in</a>.</td></tr>
                 <tr><td><code>/moderation</code></td><td>Owner-only moderation console: Automod Log, Reports, Banned IPs, Users and Content Review. Social moderation is otherwise automatic, so this is not a general support page.</td></tr>
                 <tr><td><code>/changelog</code></td><td>A searchable list of every GitHub commit, newest first. Also linked from the About panel.</td></tr>
                 <tr><td><code>/probe</code></td><td>A browser capability report for support and the Lite/Legacy builds. Open it on the device when asked; it is a raw diagnostic page.</td></tr>
