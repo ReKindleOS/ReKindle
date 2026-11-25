@@ -431,7 +431,7 @@
             // the value that builds the sign-in email.
             const authHandle = displayUser;
             const namedUser = user.displayName ? String(user.displayName).trim() : '';
-            if (namedUser && namedUser.indexOf('@') === -1 && namedUser.length <= 40) {
+            if (namedUser && isCaseOnlyNameVariant(namedUser, authHandle)) {
                 displayUser = namedUser;
             }
             // Remember the name so the "session ended unexpectedly" prompt can
@@ -2222,6 +2222,24 @@
                 `</div>`;
             document.getElementById('generic-modal').style.display = 'flex';
         }
+        // Only a capitalisation variant of the handle may be printed. Legacy
+        // display names (old nicknames, full names) must keep falling back to
+        // the username; see docs/agent/display-names.md.
+        function isCaseOnlyNameVariant(name, handle) {
+            if (!name || !handle || name.length !== handle.length) return false;
+            for (let i = 0; i < name.length; i++) {
+                const a = name.charCodeAt(i);
+                const b = handle.charCodeAt(i);
+                if (a === b) continue;
+                const aUpper = a >= 65 && a <= 90;
+                const aLower = a >= 97 && a <= 122;
+                if (aUpper && b === a + 32) continue;
+                if (aLower && b === a - 32) continue;
+                return false;
+            }
+            return true;
+        }
+
         // Shared empty-field guard for the sign-in and registration forms. The
         // wording differs per form, so each caller supplies its own message.
         function credentialsMissing(username, password) {

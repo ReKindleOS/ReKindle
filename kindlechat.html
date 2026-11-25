@@ -3774,7 +3774,7 @@
                 return;
             }
             window.rekindleFetchUserCard(rtdb, uid, function (card) {
-                var shownName = (card && (card.displayName || card.username)) || '';
+                var shownName = cardShownName(card);
                 var name = (shownName && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? shownName : fallback;
                 dmNameCache[uid] = censorUsername(name);
                 callback(dmNameCache[uid]);
@@ -5208,7 +5208,7 @@
                 var seed = card.customAvatar || card.avatarSeed || uid;
                 drawAvatar(avatarId, seed, uid);
                 var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
-                var shownName = card.displayName || username;
+                var shownName = cardShownName(card) || username;
                 var nameEl = itemEl.querySelector('.gallery-author');
                 if (nameEl) nameEl.textContent = censorUsername(shownName);
                 // Cache for other lookups
@@ -5318,7 +5318,7 @@
                     drawAvatar('pixel-modal-avatar', seed);
                     var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
                     var nameEl = document.getElementById('pixel-modal-username');
-                    if (nameEl) nameEl.textContent = censorUsername(card.displayName || username);
+                    if (nameEl) nameEl.textContent = censorUsername(cardShownName(card) || username);
                 });
             }
         }
@@ -5423,6 +5423,30 @@
             if (window.rekindleCensorPromotedTerms) out = window.rekindleCensorPromotedTerms(out);
             if (window.filterBadWords) out = window.filterBadWords(out);
             return out;
+        }
+
+        // Only a capitalisation variant of the card's handle may be printed;
+        // legacy or forged display names fall back to the username.
+        function isCaseOnlyNameVariant(name, handle) {
+            if (!name || !handle || name.length !== handle.length) return false;
+            for (var i = 0; i < name.length; i++) {
+                var a = name.charCodeAt(i);
+                var b = handle.charCodeAt(i);
+                if (a === b) continue;
+                var aUpper = a >= 65 && a <= 90;
+                var aLower = a >= 97 && a <= 122;
+                if (aUpper && b === a + 32) continue;
+                if (aLower && b === a - 32) continue;
+                return false;
+            }
+            return true;
+        }
+
+        function cardShownName(card) {
+            if (!card) return '';
+            var handle = card.username || '';
+            var named = card.displayName ? String(card.displayName).trim() : '';
+            return (named && isCaseOnlyNameVariant(named, handle)) ? named : handle;
         }
 
         function censorUsername(username) {
@@ -5603,7 +5627,7 @@
                 var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
                 // `username` is the lowercase identity used for badges, lookups
                 // and profile links; `shownName` is what gets printed.
-                var shownName = card.displayName || username;
+                var shownName = cardShownName(card) || username;
 
                 // Update name element with badges
                 var nameEl = msgEl.querySelector('.author-name-field');
@@ -5713,15 +5737,15 @@
                     ? currentUser.displayName : currentUsername;
             } else if (window.rekindleCardCache && window.rekindleCardCache[uid] && window.rekindleCardCache[uid].card) {
                 var cachedCard = window.rekindleCardCache[uid].card;
-                username = cachedCard.displayName || cachedCard.username;
+                username = cardShownName(cachedCard);
             }
 
             if (username) {
                 startReply(msgId, uid, username, contextText, contextType);
             } else if (typeof window.rekindleFetchUserCard === 'function') {
                 window.rekindleFetchUserCard(rtdb, uid, function (card) {
-                    if (card && (card.displayName || card.username)) {
-                        startReply(msgId, uid, card.displayName || card.username, contextText, contextType);
+                    if (card && cardShownName(card)) {
+                        startReply(msgId, uid, cardShownName(card), contextText, contextType);
                     } else {
                         startReply(msgId, uid, uid.substring(0, 8), contextText, contextType);
                     }
@@ -6926,7 +6950,7 @@
             var authorName = authorUid ? authorUid.substring(0, 8) : 'Unknown';
             if (authorUid && window.rekindleCardCache && window.rekindleCardCache[authorUid] && window.rekindleCardCache[authorUid].card) {
                 var authorCard = window.rekindleCardCache[authorUid].card;
-                authorName = authorCard.displayName || authorCard.username || authorName;
+                authorName = cardShownName(authorCard) || authorName;
             }
 
             var id = 'saved_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -7465,7 +7489,7 @@
                             var isSelf = currentUser && (user === currentUsername);
                             var cardUid = msgEl.dataset.uid;
                             var cachedCard = cardUid && window.rekindleCardCache && window.rekindleCardCache[cardUid] && window.rekindleCardCache[cardUid].card;
-                            var shownName = (cachedCard && (cachedCard.displayName || cachedCard.username)) || user;
+                            var shownName = cardShownName(cachedCard) || user;
                             nameMeta.innerHTML = crown + (isSelf ? window.t('kindlechat.msg.you', 'You') : escapeHtml(censorUsername(shownName)));
                         }
                     }

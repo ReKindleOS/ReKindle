@@ -94,21 +94,36 @@ const settings = read('settings.html');
 assert.ok(settings.indexOf('user.displayName') !== -1, 'settings must prefer the display name');
 assert.ok(settings.indexOf('nameEl.textContent = shown') !== -1,
     'settings must render the name with textContent, not innerHTML');
+assert.ok(settings.indexOf('isCaseOnlyNameVariant(named, handle)') !== -1,
+    'settings must ignore display names that are not a case variant');
+
+const indexOld = read('index_old.html');
+assert.ok(indexOld.indexOf('isCaseOnlyNameVariant(namedUser, authHandle)') !== -1,
+    'the classic dashboard must ignore display names that are not a case variant');
+
+assert.ok(home.indexOf('isCaseOnlyNameVariant(namedUser, authHandle)') !== -1,
+    'the dashboard must ignore display names that are not a case variant');
 
 // --- KindleChat prints displayName, identity checks stay on the handle ------
 const chat = read('kindlechat.html');
 const author = chat.slice(chat.indexOf('function resolveMessageAuthor'), chat.indexOf('function fetchProfileByUsername'));
-assert.ok(author.indexOf('card.displayName || username') !== -1,
-    'message authors must print card.displayName || card.username');
+assert.ok(author.indexOf('cardShownName(card) || username') !== -1,
+    'message authors must print cardShownName(card) || card.username');
 assert.ok(author.indexOf("var isDev = (username === 'ukiyo')") !== -1,
     'the DEV role check must stay on the lowercase handle');
 assert.ok(author.indexOf('>Ukiyo</span>') === -1, 'the owner name must not be hard-coded');
-assert.ok(chat.indexOf('card.displayName || card.username') !== -1, 'DM names must use the display name');
+assert.ok(chat.indexOf('function cardShownName') !== -1, 'chat must guard cards with cardShownName');
+assert.ok(chat.indexOf('card.displayName ||') === -1 && chat.indexOf('card.displayName||') === -1,
+    'chat must never print an unguarded card display name');
 
 // --- Neighbourhood prefers the name, saves stop flattening the handle -------
 const neighbourhood = read('neighbourhood.html');
 const kindleName = neighbourhood.slice(neighbourhood.indexOf('function getKindleName'), neighbourhood.indexOf('function censorUsername'));
 assert.ok(kindleName.indexOf('displayName') !== -1, 'getKindleName must prefer the display name');
+assert.ok(kindleName.indexOf('isCaseOnlyUsernameChange(named, nameHandle)') !== -1,
+    'getKindleName must ignore legacy display names that are not a case variant');
+assert.ok(neighbourhood.indexOf('isCaseOnlyUsernameChange(legacyName, handle)') !== -1,
+    'the profile modal must ignore legacy display names');
 
 const saveProfile = neighbourhood.slice(neighbourhood.indexOf('async function saveProfile'), neighbourhood.indexOf('// LOAD MY PROFILE'));
 assert.ok(saveProfile.indexOf('profileData.displayName') === -1 && saveProfile.indexOf('cardUpdate.displayName') === -1,

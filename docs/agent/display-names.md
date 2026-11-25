@@ -28,9 +28,12 @@ await admin.auth().createUser({ email, password, displayName: username });
 ## Rendering rule
 
 ```js
-var shown = card.displayName || card.username;   // print this
-var handle = card.username;                      // lookups, role checks
+var shown = cardShownName(card);   // print this: card.displayName only when it
+                                   // is a capitalisation variant of card.username
+var handle = card.username;        // lookups, role checks
 ```
+
+Every render path applies the same guard: a stored `displayName` is printed **only** when it is a capitalisation variant of that account's handle. Anything else — an old free-form nickname or a forged value written directly to RTDB — falls back to the username. This keeps legacy `users_public.displayName` values from resurfacing now that the display name is preferred. The guards are duplicated in `js/home.js`, `settings.html`, `index_old.html`, `kindlechat.html` (`cardShownName`) and `neighbourhood.html`; `scripts/test-display-names.js` runs the checks against real inputs.
 
 Implemented in:
 
