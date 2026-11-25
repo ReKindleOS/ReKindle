@@ -15,6 +15,7 @@
  */
 
 import { applyModerationPolicy } from "./moderation-policy.mjs";
+import { parsePixelGrid, isBlankGrid, renderPixelGridPng, validateFlipnote } from "./pixel-art-guard.mjs";
 
 const ALLOWED_ORIGINS = [
     "https://beta.rekindle.ink",
@@ -1377,37 +1378,6 @@ async function moderateContent(text, apiKey, imageUrl) {
     return moderationResult;
 }
 
-/* ------------------------------------------------------------------ */
-/*  PIXEL ART GRID SIZE HELPER                                         */
-/* ------------------------------------------------------------------ */
-
-// Infer grid size from grid_data so we can reject unsupported sizes.
-function getGridSize(gridDataStr) {
-    try {
-        const grid = JSON.parse(gridDataStr);
-        if (Array.isArray(grid) && grid.length > 0) {
-            return grid.length;
-        }
-    } catch (e) { }
-    return null;
-}
-
-function isBlankGrid(gridDataStr) {
-    try {
-        const grid = JSON.parse(gridDataStr);
-        if (!Array.isArray(grid)) return false;
-        for (let r = 0; r < grid.length; r++) {
-            const row = grid[r];
-            if (!Array.isArray(row)) return false;
-            for (let c = 0; c < row.length; c++) {
-                if (row[c] !== 0) return false;
-            }
-        }
-        return true;
-    } catch (e) { }
-    return false;
-}
-
 function formatFlaggedCategories(categories) {
     const friendlyNames = {
         sexual: "sexual content",
@@ -2454,9 +2424,12 @@ export default {
             // --- KINDLECHAT ---
             if (type === "kindlechat") {
                 const trimmed = String(text).substring(0, 1000);
-                const hasFlipnote = body.flipnote_data && typeof body.flipnote_data === "object";
-                const hasPixelArt = body.pixel_art && typeof body.pixel_art === "string";
-                if (!trimmed && !hasFlipnote && !hasPixelArt) {
+                const isFlipnote = body.is_flipnote === true;
+                const isPixelArt = body.is_pixel_art === true;
+                if (isFlipnote && isPixelArt) {
+                    return new Response(JSON.stringify({ error: "Invalid art post." }), { status: 400, headers });
+                }
+                if (!trimmed && !isFlipnote && !isPixelArt) {
                     return new Response(JSON.stringify({ error: "Empty message" }), { status: 400, headers });
                 }
                 if (containsUrl(trimmed)) {
@@ -2469,8 +2442,35 @@ export default {
                     return new Response(JSON.stringify({ error: "That word is not allowed." }), { status: 400, headers });
                 }
 
-                const isFlipnote = body.is_flipnote === true;
-                const isPixelArt = body.is_pixel_art === true;
+                // Pixel art and flipbooks are rebuilt from validated fields
+                // here, before the rate limiter, so a malformed art post costs
+                // no token. `body.pixel_art` is deliberately ignored: the PNG
+                // is rasterised from the grid at 16x16 or 32x32 (see
+                // pixel-art-guard.mjs). This is what blocks the desktop
+                // extension that posted 256x256 art on 2026-11-25.
+                let artFields = null;
+                let pixelArt = null;
+                let gridSize = null;
+                let gridText = "";
+                if (isPixelArt) {
+                    const gridCheck = parsePixelGrid(body.grid_data);
+                    if (!gridCheck.ok) {
+                        return new Response(JSON.stringify({ error: gridCheck.error }), { status: 400, headers });
+                    }
+                    if (isBlankGrid(gridCheck.grid)) {
+                        return new Response(JSON.stringify({ error: "Blank pixel art cannot be posted." }), { status: 400, headers });
+                    }
+                    gridSize = gridCheck.size;
+                    gridText = JSON.stringify(gridCheck.grid);
+                    pixelArt = renderPixelGridPng(gridCheck.grid, gridSize);
+                    artFields = { is_pixel_art: true, grid_data: gridText, pixel_art: pixelArt };
+                } else if (isFlipnote) {
+                    const flipCheck = validateFlipnote(body.flipnote_data);
+                    if (!flipCheck.ok) {
+                        return new Response(JSON.stringify({ error: flipCheck.error }), { status: 400, headers });
+                    }
+                    artFields = { is_flipnote: true, flipnote_data: flipCheck.data };
+                }
 
                 // Rate limit + repetition guard in a single RTDB round-trip.
                 // The repetition state rides on the rate-limit bucket, so this
@@ -2481,7 +2481,7 @@ export default {
                 let spamOpts = null;
                 if (!isFlipnote) {
                     spamOpts = isPixelArt
-                        ? { text: String(body.grid_data || ""), isArt: true }
+                        ? { text: gridText, isArt: true }
                         : { text: trimmed, isArt: false };
                 }
                 const rl = await consumeRateLimitToken(uid, "kindlechat", accessToken, spamOpts);
@@ -2509,31 +2509,19 @@ export default {
                     timestamp: { ".sv": "timestamp" },
                     text: trimmed
                 };
-                // Allow known extra fields from client
-                const allowedExtras = ["pixel_art", "grid_data", "is_pixel_art", "is_flipnote", "flipnote_data", "replyTo"];
-                for (const key of allowedExtras) {
-                    if (key in body) msgData[key] = body[key];
-                }
+                if (artFields) Object.assign(msgData, artFields);
+                // Quoted replies are the only extra a text message may carry.
+                if (body.replyTo && typeof body.replyTo === "object") msgData.replyTo = body.replyTo;
                 addDetectedLang(msgData, body);
 
-                const pixelArt = body.pixel_art || null;
-                const gridSize = getGridSize(body.grid_data);
-                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "isPixelArt:", isPixelArt, "hasPixelArt:", !!pixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "pixelArtIsBase64:", pixelArt ? pixelArt.startsWith("data:image") : false, "gridSize:", gridSize, "skipOpenAIModeration:", skipOpenAIModeration);
-
-                if (gridSize === 64) {
-                    return new Response(JSON.stringify({ error: "64× pixel art is not supported in chat." }), { status: 400, headers });
-                }
-
-                if (isPixelArt && isBlankGrid(body.grid_data)) {
-                    return new Response(JSON.stringify({ error: "Blank pixel art cannot be posted." }), { status: 400, headers });
-                }
+                console.log("[WORKER] kindlechat request — isFlipnote:", isFlipnote, "isPixelArt:", isPixelArt, "pixelArtLength:", pixelArt ? pixelArt.length : 0, "gridSize:", gridSize, "skipOpenAIModeration:", skipOpenAIModeration);
 
                 console.log("[WORKER] kindlechat post — token claims:", { email: payload.email, ageVerified: payload.ageVerified, moderator: payload.moderator, aud: payload.aud });
                 const result = await rtdbPushWithAccessToken("kindlechat/messages", msgData, accessToken);
 
                 // Maintain a lightweight art index so the KindleChat gallery can load only art posts.
                 if (isFlipnote || isPixelArt) {
-                    const thumbnail = isPixelArt ? (body.pixel_art || null) : (isFlipnote && body.flipnote_data && body.flipnote_data.frames && body.flipnote_data.frames.length > 0 ? body.flipnote_data.frames[0] : null);
+                    const thumbnail = isPixelArt ? pixelArt : (artFields && artFields.flipnote_data && artFields.flipnote_data.frames.length > 0 ? artFields.flipnote_data.frames[0] : null);
                     const artIndexEntry = {
                         uid,
                         type: isPixelArt ? "pixel_art" : "flipbook",

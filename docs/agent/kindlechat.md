@@ -135,9 +135,23 @@ Each drawing in the user's manifest can carry a `postedToKindleChat: true` flag.
 ### Server-side duplicate detection (`workers/rekindle-moderate/worker.js`)
 
 *   Pixel art posts skip the text-only duplicate check (the placeholder text `"Shared a pixel art!"` would otherwise block different pixel art).
-*   Instead, the worker hashes `body.grid_data` and checks `kindlechat/user_recent/{uid}/kindlechat_pixel_art/{hash}` for a 5-minute duplicate window.
-*   After a successful post, the grid data hash is recorded under `kindlechat_pixel_art` for duplicate detection.
-*   No RTDB rule changes are required: `kindlechat/user_recent/{uid}` is already writable by the social service account for any child path.
+*   Instead, `consumeRateLimitToken(uid, "kindlechat", accessToken, { text: gridText, isArt: true })` runs the repetition guard against a hash of the **canonical grid JSON** for a short duplicate window and returns "You already posted this pixel art recently."
+*   The hash/fingerprint rides on `kindlechat/server_rate_limits/{uid}/kindlechat.rep`, so there is no separate `user_recent` read or write (that collection is dead — see AGENTS.md §4/§5).
+*   Use the validated `gridText` produced by `pixel-art-guard.mjs`, not the raw `body.grid_data`, or whitespace/reordering would defeat the duplicate check.
+
+## Chat Art Size Limits & Server-Side Rasterisation (2026-11-26)
+
+**Incident:** On 2026-11-25 the accounts `atomthefox@rekindle.ink` and `paxthefox@rekindle.ink` used an unpacked desktop extension ("Pixel Art Auto-Draw": upload an image, pick a grid size, generate) to POST 256x256 pixel art straight to the moderation worker, bypassing `pixel.html`'s 16/32/64 picker. The worker's only size check was `gridSize === 64`, so 256 was accepted and the chat rendered it at 512 CSS pixels (messages include `-P7J0AGeY66GIVppy-E5`, "256x256 is OUT CHAT WOO"). The extension's payload is a normal `type: "kindlechat"` request with `is_pixel_art: true`, a 256-row `grid_data`, and a 256x256 PNG in `pixel_art`.
+
+**Rules now enforced in `workers/rekindle-moderate/worker.js` via `pixel-art-guard.mjs`:**
+
+*   A chat pixel-art grid must be **square 16x16 or 32x32** — `grid.length` alone is not enough (a 32-row grid with 64 columns used to pass). Every cell must be a number in `[0, 1]`; max 32 KB of `grid_data` JSON. 64x64 and anything larger are rejected before the rate limiter runs.
+*   **`body.pixel_art` is ignored.** The worker rasterises the validated grid itself (`renderPixelGridPng`, a dependency-free zlib-stored greyscale PNG) and stores that 1:1 image. A caller cannot attach a higher-resolution image, a non-PNG data URL, or an image that disagrees with `grid_data`.
+*   `is_pixel_art` and `is_flipnote` are rejected together. A text message can no longer smuggle `pixel_art`/`grid_data`/`flipnote_data` by setting the flags false: only `replyTo` is copied from the request.
+*   Flipbook frames are PNG data URLs exactly **256x256** (`flipbook.html` `CANVAS_SIZE`), max **240 frames**, 400 KB per frame and 6 MB total. This keeps a flipbook from becoming a container for an arbitrary large image (`flipbook.html` really does use 256x256, so that size stays valid).
+*   `scripts/test-pixel-art-guard.js` (in `npm test`) decodes the generated PNG with `zlib.inflateSync` and asserts dimensions, greyscale pixels, and every rejection path.
+
+**RTDB rules (`rtdb-social-rules.json`, `kindlechat/messages/$messageId`):** the client update branch was removed — nothing in the app updates a message body (reactions and translations have their own child rules), so the branch only gave a client a way to add art fields to an existing message and bypass the worker. Art fields now also carry `.validate` caps (PNG prefix + 4 KB `pixel_art`, 16 KB `grid_data`, boolean flags, 1-240 flipbook frames).
 
 ## Unicode Emoji Picker (`POPULAR_EMOJIS` in emojis.js)
 `emojis.js` also defines `POPULAR_EMOJIS` (~120 curated `{emoji, name}` entries — deliberately trimmed to the most popular/wholesome set for the all-ages community: no edgy/gross, alcohol, anger, or money emojis) used by the KindleChat emoji picker (`initAsciiPicker()` in `kindlechat.html`). It is a **category object** (`{"Smileys": [...], "Hearts": [...], "Hands": [...], "Animals": [...], "Nature": [...], "Food": [...], "Fun": [...]}`), NOT a flat array — category keys become the picker sidebar tab labels. This is a **separate global from `ASCII_EMOJIS`** on purpose: the worker's `ASCII_EMOJI_ARTS` strip-list mirrors `ASCII_EMOJIS` only, so do NOT merge these arrays or the strip-list invariant breaks. Standard Unicode emojis do not trip omni-moderation the way ASCII art does, so they need no stripping.
