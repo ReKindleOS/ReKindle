@@ -2413,19 +2413,25 @@ exports.resetWithRecoveryCode = onCall(callOptions, function (request) {
  * Pro users write directly to Firestore (rules allow it); free users call this.
  *
  * Enforces: max 2 feeds, category forced to "Uncategorized" for free users.
+ * Idempotent on the URL: a repeat call returns the existing feed instead of a
+ * 409, because a slow first add makes people tap again (2026-11-25).
  *
  * Expects: { name: string, url: string, category: string }
- * Returns: { success: true, id: string }
+ * Returns: { success: true, id: string, duplicate?: true }
  */
 exports.createRssFeed = onCall(callOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
 
     const uid = request.auth.uid;
     const email = request.auth.token.email || null;
-    const { name, url, category } = request.data;
+    const payload = request.data || {};
+    const name = payload.name;
+    const category = payload.category;
+    const url = typeof payload.url === 'string' ? payload.url.trim() : '';
 
     // --- Validate URL ---
-    if (!url || typeof url !== 'string') throw new HttpsError('invalid-argument', 'url is required.');
+    if (!url) throw new HttpsError('invalid-argument', 'url is required.');
+    if (url.length > 2000) throw new HttpsError('invalid-argument', 'Invalid URL.');
     try {
         const p = new URL(url);
         if (p.protocol !== 'http:' && p.protocol !== 'https:') throw new Error('bad protocol');
@@ -2434,44 +2440,47 @@ exports.createRssFeed = onCall(callOptions, async (request) => {
     const safeName = (typeof name === 'string' && name.trim()) ? name.trim().substring(0, 200) : 'New Feed';
 
     // --- Pro status check (mirrors firestore.rules isProUser()) ---
+    // The two reads run in parallel and there is no auth.getUser() call: the
+    // token already carries the email, and every extra round trip was adding
+    // seconds to the add on a cold instance.
     const db = admin.firestore();
-    let userIsPro = false;
+    let userIsPro = uid === 'ukiyo' || email === 'ukiyo@rekindle.ink';
 
-    // 1. Developer check
-    try {
-        const rec = await admin.auth().getUser(uid);
-        if (rec.email === 'ukiyo@rekindle.ink') userIsPro = true;
-    } catch (e) { logger.warn('createRssFeed: getUser failed', e); }
-
-    // 2. Legacy proExpiresAt on user document
     if (!userIsPro) {
-        try {
-            const userDoc = await db.collection('users').doc(uid).get();
-            if (userDoc.exists) {
-                const d = userDoc.data();
-                if (d.proExpiresAt) {
-                    const exp = d.proExpiresAt.toMillis ? d.proExpiresAt.toMillis() : new Date(d.proExpiresAt).getTime();
-                    if (exp > Date.now()) userIsPro = true;
-                }
-            }
-        } catch (e) { logger.warn('createRssFeed: proExpiresAt check failed', e); }
-    }
+        const proChecks = [
+            db.collection('users').doc(uid).get().then(function (doc) {
+                if (!doc.exists) return false;
+                const d = doc.data();
+                if (!d.proExpiresAt) return false;
+                const exp = d.proExpiresAt.toMillis ? d.proExpiresAt.toMillis() : new Date(d.proExpiresAt).getTime();
+                return exp > Date.now();
+            }).catch(function (e) { logger.warn('createRssFeed: proExpiresAt check failed', e); return false; })
+        ];
 
-    // 3. config/supporters by email (new source of truth)
-    if (!userIsPro && email) {
-        try {
-            const sup = await db.collection('config').doc('supporters').get();
-            if (sup.exists) {
+        if (email) {
+            proChecks.push(db.collection('config').doc('supporters').get().then(function (sup) {
+                if (!sup.exists) return false;
                 const d = sup.data();
-                if (email in d && d[email] && d[email].expiresAt) {
-                    const exp = d[email].expiresAt.toMillis ? d[email].expiresAt.toMillis() : new Date(d[email].expiresAt).getTime();
-                    if (exp > Date.now()) userIsPro = true;
-                }
-            }
-        } catch (e) { logger.warn('createRssFeed: supporters check failed', e); }
+                if (!(email in d) || !d[email] || !d[email].expiresAt) return false;
+                const exp = d[email].expiresAt.toMillis ? d[email].expiresAt.toMillis() : new Date(d[email].expiresAt).getTime();
+                return exp > Date.now();
+            }).catch(function (e) { logger.warn('createRssFeed: supporters check failed', e); return false; }));
+        }
+
+        const results = await Promise.all(proChecks);
+        userIsPro = results.indexOf(true) !== -1;
     }
 
     const feedsRef = db.collection('users').doc(uid).collection('rss_feeds');
+
+    // --- Duplicate URL check (before the limit: a retry of an existing feed
+    // must succeed even when the account is already at its cap) ---
+    const dup = await feedsRef.where('url', '==', url).limit(1).get();
+    if (!dup.empty) {
+        const existingId = dup.docs[0].id;
+        logger.info(`createRssFeed: duplicate url for uid=${uid}, returning ${existingId}`);
+        return { success: true, id: existingId, duplicate: true };
+    }
 
     // --- Enforce 2-feed limit for free users ---
     const FREE_LIMIT = 2;
@@ -2481,10 +2490,6 @@ exports.createRssFeed = onCall(callOptions, async (request) => {
             throw new HttpsError('resource-exhausted', `Free accounts are limited to ${FREE_LIMIT} RSS feeds. Upgrade to ReKindle+ for unlimited feeds.`);
         }
     }
-
-    // --- Duplicate URL check ---
-    const dup = await feedsRef.where('url', '==', url).limit(1).get();
-    if (!dup.empty) throw new HttpsError('already-exists', 'Already subscribed to this feed.');
 
     // --- Create feed (force Uncategorized for free users) ---
     const safeCategory = userIsPro

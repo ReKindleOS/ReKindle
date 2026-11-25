@@ -453,28 +453,89 @@
             box-shadow: 1px 1px 0 black;
         }
 
+        /* Subscribed sources reuse the preset-feed tile: icon, name, url, 2px
+           border + hard shadow, with the row actions on the right. */
         .source-item {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 10px;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
-            background: #fafafa;
+            width: 100%;
+            min-height: 54px;
+            padding: 7px;
+            box-sizing: border-box;
+            border: 2px solid #000;
+            background: #fff;
+            box-shadow: 2px 2px 0 #000;
+            margin-bottom: 8px;
+            text-align: left;
+        }
+
+        .source-copy {
+            min-width: 0;
+            flex: 1;
         }
 
         .source-name {
+            display: block;
             font-weight: bold;
+            font-size: 0.78rem;
+            line-height: 1.2;
         }
 
         .source-url {
-            font-size: 0.8rem;
-            color: #666;
             display: block;
-            max-width: 200px;
+            font-size: 0.66rem;
+            line-height: 1.2;
+            color: #555;
+            margin-top: 2px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .source-actions {
+            flex: none;
+            display: flex;
+            align-items: center;
+            margin-left: 8px;
+        }
+
+        .source-actions > * + * {
+            margin-left: 6px;
+        }
+
+        .source-item .sys-btn.small,
+        .source-item .delete-btn {
+            min-height: 32px;
+            padding: 4px 9px;
+            border: 2px solid #000;
+            background: #fff;
+            color: #000;
+            font-family: inherit;
+            font-size: 0.72rem;
+            font-weight: bold;
+            box-shadow: 1px 1px 0 #000;
+            cursor: pointer;
+        }
+
+        .source-item .sys-btn.small:active,
+        .source-item .delete-btn:active {
+            background: #000;
+            color: #fff;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }
+
+        /* A preset that is already in the sources list: not tappable, plain
+           label, so a re-tap cannot fire a duplicate add. */
+        .preset-feed.is-subscribed {
+            background: #e6e6e6;
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .preset-feed.is-subscribed .preset-feed-desc {
+            color: #000;
+            font-weight: bold;
         }
 
         .delete-btn {
@@ -1041,6 +1102,15 @@
                 return false;
             }
 
+            // Mirror firestore.rules isDeveloper(): the developer account is
+            // always Pro, even if the config reads below fail or lag.
+            if (user.email === 'ukiyo@rekindle.ink') {
+                isPro = true;
+                proCheckDone = true;
+                applyProUI();
+                return true;
+            }
+
             const now = Date.now();
 
             // 1. Check legacy proExpiresAt on user document
@@ -1261,98 +1331,192 @@
         function loadLocalFeeds() {
             feeds = JSON.parse(localStorage.getItem('rss_feeds')) || [];
             renderSources();
+            renderPresetFeeds();
             if (feeds.length > 0) resetAndFetch();
         }
 
         function loadCloudFeeds() {
-            db.collection('users').doc(currentUser.uid).collection('rss_feeds')
-                .onSnapshot(snap => {
-                    feeds = [];
-                    snap.forEach(doc => {
-                        feeds.push({ id: doc.id, ...doc.data() });
-                    });
-                    renderSources();
-                    updateAddSourceButton();
-                    if (feeds.length > 0) {
-                        resetAndFetch();
-                        if (proCheckDone && !isPro && feeds.length > FREE_FEED_LIMIT) {
-                            maybeShowFeedSelectionModal();
-                        }
-                    } else {
-                        document.getElementById('articles-container').innerHTML = window.rekindleEmptyState(
-                            'No feeds subscribed. Go to Sources to add some.',
-                            { icon: 'rss' }
-                        );
-                    }
-                });
+            const feedsCol = db.collection('users').doc(currentUser.uid).collection('rss_feeds');
+            feedsCol.onSnapshot(applyFeedSnapshot, err => {
+                // Never leave the UI with a stale/empty list just because the
+                // realtime listener died: fall back to a one-off read.
+                console.warn('Feed sync listener failed, reading once:', err);
+                feedsCol.get().then(applyFeedSnapshot).catch(e => console.warn('Feed read failed:', e));
+            });
+        }
+
+        function applyFeedSnapshot(snap) {
+            if (!currentUser) return;
+            feeds = [];
+            snap.forEach(doc => {
+                feeds.push({ id: doc.id, ...doc.data() });
+            });
+            renderSources();
+            updateAddSourceButton();
+            renderPresetFeeds();
+            if (feeds.length > 0) {
+                resetAndFetch();
+                if (proCheckDone && !isPro && feeds.length > FREE_FEED_LIMIT) {
+                    maybeShowFeedSelectionModal();
+                }
+            } else {
+                document.getElementById('articles-container').innerHTML = window.rekindleEmptyState(
+                    'No feeds subscribed. Go to Sources to add some.',
+                    { icon: 'rss' }
+                );
+            }
+        }
+
+        function refreshCloudFeeds() {
+            if (!currentUser) return;
+            db.collection('users').doc(currentUser.uid).collection('rss_feeds').get()
+                .then(applyFeedSnapshot)
+                .catch(e => console.warn('Feed refresh failed:', e));
+        }
+
+        // --- URL helpers (duplicate detection) ---
+        // The server stores the URL as typed, so the same feed can arrive as
+        // "http://x.com/feed/" or "https://www.x.com/feed". Normalise before
+        // comparing so a repeat add is caught before it becomes a 409.
+        function normalizeFeedUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+            try {
+                const p = new URL(raw);
+                const host = p.hostname.toLowerCase().replace(/^www\./, '');
+                const port = p.port ? ':' + p.port : '';
+                const path = p.pathname.replace(/\/+$/, '');
+                // http/https and www./bare host are the same source.
+                return host + port + path + (p.search || '');
+            } catch (e) {
+                return raw.toLowerCase();
+            }
+        }
+
+        function findExistingFeed(url, skipId) {
+            const key = normalizeFeedUrl(url);
+            if (!key) return null;
+            return feeds.find(f => f.id !== skipId && normalizeFeedUrl(f.url) === key) || null;
+        }
+
+        function presetIconFor(url) {
+            const key = normalizeFeedUrl(url);
+            for (let i = 0; i < RSS_PRESETS.length; i++) {
+                if (normalizeFeedUrl(RSS_PRESETS[i].url) === key) return RSS_PRESETS[i].icon;
+            }
+            return 'rss';
+        }
+
+
+        // One add at a time. A slow round trip (the callable runs several
+        // Firestore reads before it writes) used to look like a failed tap, so
+        // people tapped again and the retry came back as a 409 "already
+        // subscribed". The feed is now shown immediately and extra taps are
+        // ignored until the write settles.
+        let feedSaveInFlight = false;
+
+        function setFeedStatus(msg) {
+            const el = document.getElementById('status-bar');
+            if (el) el.innerText = msg || '';
         }
 
         async function saveFeed(name, url, category, id = null) {
+            const cleanUrl = String(url || '').trim();
+            const cleanName = String(name || '').trim() || 'New Feed';
+
             if (currentUser) {
-                if (id) {
-                    // UPDATE — all users write directly; free users can't set a custom category
-                    const safeCategory = isPro ? (category || 'Uncategorized') : 'Uncategorized';
-                    try {
+                if (feedSaveInFlight) return;
+
+                // Local duplicate guard (normalised) for the create path.
+                if (!id && findExistingFeed(cleanUrl)) {
+                    showModal('Already subscribed to this feed.');
+                    return;
+                }
+
+                feedSaveInFlight = true;
+                setFeedStatus(t('rss.msg.adding', 'Adding source...'));
+
+                try {
+                    if (id) {
+                        // UPDATE — all users write directly; free users can't set a custom category
+                        const safeCategory = isPro ? (category || 'Uncategorized') : 'Uncategorized';
                         await db.collection('users').doc(currentUser.uid).collection('rss_feeds').doc(id).set({
-                            name: name,
-                            url: url,
+                            name: cleanName,
+                            url: cleanUrl,
                             category: safeCategory,
                             updated: firebase.firestore.FieldValue.serverTimestamp()
                         }, { merge: true });
-                    } catch (e) {
-                        console.error('saveFeed update failed:', e);
-                        showModal('Failed to save feed: ' + (e.message || 'Unknown error'));
-                    }
-                } else {
-                    // CREATE — pro users write directly; free users call Cloud Function
-                    if (isPro) {
-                        try {
-                            await db.collection('users').doc(currentUser.uid).collection('rss_feeds').add({
-                                name: name,
-                                url: url,
-                                category: category || 'Uncategorized',
-                                added: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        } catch (e) {
-                            console.error('saveFeed direct add failed:', e);
-                            showModal('Failed to add feed: ' + (e.message || 'Unknown error'));
-                        }
+                    } else if (isPro) {
+                        // CREATE — pro users write directly
+                        const ref = await db.collection('users').doc(currentUser.uid).collection('rss_feeds').add({
+                            name: cleanName,
+                            url: cleanUrl,
+                            category: category || 'Uncategorized',
+                            added: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        // Show it now instead of waiting for the snapshot round trip.
+                        feeds.push({ id: ref.id, name: cleanName, url: cleanUrl, category: category || 'Uncategorized' });
+                        renderSources();
+                        updateAddSourceButton();
+                        renderPresetFeeds();
                     } else {
-                        // Free user — enforce limit server-side
-                        try {
-                            const createFn = firebase.functions().httpsCallable('createRssFeed');
-                            await createFn({ name, url, category: 'Uncategorized' });
-                            // onSnapshot listener updates feeds[] automatically
-                        } catch (e) {
-                            const code = e.code || '';
-                            if (code === 'functions/resource-exhausted') {
-                                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
-                            } else if (code === 'functions/already-exists') {
-                                showModal('Already subscribed to this feed.');
-                            } else {
-                                console.error('createRssFeed failed:', e);
-                                showModal('Failed to add feed: ' + (e.message || 'Unknown error'));
-                            }
+                        // CREATE — free users call the Cloud Function
+                        const createFn = firebase.functions().httpsCallable('createRssFeed');
+                        const res = await createFn({ name: cleanName, url: cleanUrl, category: 'Uncategorized' });
+                        const newId = res && res.data && res.data.id;
+                        if (!feeds.some(f => f.id === newId)) {
+                            feeds.push({
+                                id: newId || ('local-' + Date.now()),
+                                name: cleanName,
+                                url: cleanUrl,
+                                category: 'Uncategorized'
+                            });
                         }
+                        renderSources();
+                        updateAddSourceButton();
+                        renderPresetFeeds();
                     }
+                    setFeedStatus('');
+                } catch (e) {
+                    const code = (e && e.code) || '';
+                    if (code === 'functions/resource-exhausted') {
+                        showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
+                    } else if (code === 'functions/already-exists' || code === 'already-exists') {
+                        // Server already had this URL (older deployment or a race):
+                        // show the real list rather than an error toast.
+                        refreshCloudFeeds();
+                        showModal('Already subscribed to this feed.');
+                    } else {
+                        console.error(id ? 'saveFeed update failed:' : 'saveFeed add failed:', e);
+                        showModal((id ? 'Failed to save feed: ' : 'Failed to add feed: ') + ((e && e.message) || 'Unknown error'));
+                    }
+                } finally {
+                    feedSaveInFlight = false;
+                    setFeedStatus('');
                 }
             } else {
                 // GUEST MODE — localStorage only
                 if (id) {
                     const idx = feeds.findIndex(f => f.id === id);
                     if (idx !== -1) {
-                        feeds[idx].name = name;
-                        feeds[idx].url = url;
+                        feeds[idx].name = cleanName;
+                        feeds[idx].url = cleanUrl;
                         feeds[idx].category = category || 'Uncategorized';
                     }
                 } else {
-                    feeds.push({ id: Date.now().toString(), name: name, url: url, category: category || 'Uncategorized' });
+                    if (findExistingFeed(cleanUrl)) {
+                        showModal('Already subscribed to this feed.');
+                        return;
+                    }
+                    feeds.push({ id: Date.now().toString(), name: cleanName, url: cleanUrl, category: category || 'Uncategorized' });
                 }
                 localStorage.setItem('rss_feeds', JSON.stringify(feeds));
                 renderSources();
+                renderPresetFeeds();
                 resetAndFetch();
             }
         }
+
 
         function removeFeed(id) {
             feedToDeleteId = id;
@@ -1465,7 +1629,8 @@
             radio: '<circle cx="16" cy="16" r="3"></circle><path d="M9 9a10 10 0 0 0 0 14M23 9a10 10 0 0 1 0 14"></path>',
             tech: '<rect x="9" y="9" width="14" height="14"></rect><path d="M13 4v5M19 4v5M13 23v5M19 23v5M4 13h5M4 19h5M23 13h5M23 19h5"></path>',
             science: '<path d="M12 4h8M13 4v8L7 26h18L19 12V4"></path><path d="M10 21h12"></path>',
-            comic: '<rect x="5" y="5" width="22" height="18"></rect><path d="M9 13h3M20 13h3M11 18c2 2 8 2 10 0M9 23l-2 4 6-2"></path>'
+            comic: '<rect x="5" y="5" width="22" height="18"></rect><path d="M9 13h3M20 13h3M11 18c2 2 8 2 10 0M9 23l-2 4 6-2"></path>',
+            rss: '<circle cx="8" cy="24" r="2" fill="currentColor" stroke="none"></circle><path d="M6 14a12 12 0 0 1 12 12"></path><path d="M6 6a20 20 0 0 1 20 20"></path>'
         };
 
         var RSS_PRESETS = [
@@ -1488,10 +1653,15 @@
         function renderPresetFeeds() {
             var host = document.getElementById('preset-feeds');
             if (!host) return;
+            var subscribedLabel = window.t ? window.t('rss.preset.subscribed', 'Subscribed') : 'Subscribed';
             var html = '';
             RSS_PRESETS.forEach(function (preset, index) {
-                var desc = window.t ? window.t('rss.preset.' + preset.key + '.desc', preset.desc) : preset.desc;
-                html += '<button type="button" class="preset-feed" data-preset="' + index + '">' +
+                var isSubscribed = !!findExistingFeed(preset.url);
+                var desc = isSubscribed
+                    ? subscribedLabel
+                    : (window.t ? window.t('rss.preset.' + preset.key + '.desc', preset.desc) : preset.desc);
+                html += '<button type="button" class="preset-feed' + (isSubscribed ? ' is-subscribed' : '') +
+                    '" data-preset="' + index + '"' + (isSubscribed ? ' aria-pressed="true"' : '') + '>' +
                     '<span class="preset-feed-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2">' + RSS_PRESET_ICONS[preset.icon] + '</svg></span>' +
                     '<span class="preset-feed-copy"><span class="preset-feed-name">' + escapeHtml(preset.name) + '</span>' +
                     '<span class="preset-feed-desc">' + escapeHtml(desc) + '</span></span></button>';
@@ -1574,16 +1744,19 @@
                 grouped[cat].forEach(feed => {
                     const div = document.createElement('div');
                     div.className = 'source-item';
-                    div.innerHTML = `
-                        <div>
-                            <div class="source-name">${feed.name}</div>
-                            <div class="source-url">${feed.url}</div>
-                        </div>
-                        <div>
-                             <button class="sys-btn small" onclick="openEditFeedModal('${feed.id}')">Edit</button>
-                             <button class="delete-btn" onclick="removeFeed('${feed.id}')">Remove</button>
-                        </div>
-                    `;
+                    const iconKey = presetIconFor(feed.url);
+                    const iconSvg = RSS_PRESET_ICONS[iconKey] || RSS_PRESET_ICONS.rss;
+                    const feedId = escapeJsString(String(feed.id));
+                    div.innerHTML =
+                        '<span class="preset-feed-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2">' + iconSvg + '</svg></span>' +
+                        '<span class="source-copy">' +
+                        '<span class="source-name">' + escapeHtml(feed.name || '') + '</span>' +
+                        '<span class="source-url">' + escapeHtml(feed.url || '') + '</span>' +
+                        '</span>' +
+                        '<span class="source-actions">' +
+                        '<button type="button" class="sys-btn small" onclick="openEditFeedModal(\'' + feedId + '\')">Edit</button>' +
+                        '<button type="button" class="delete-btn" onclick="removeFeed(\'' + feedId + '\')">Remove</button>' +
+                        '</span>';
                     list.appendChild(div);
                 });
             });
@@ -1645,24 +1818,29 @@
             }
 
             // Check for duplicates (skip if editing the same feed)
-            const duplicate = feeds.find(f => f.url === url && f.id !== id);
+            const duplicate = findExistingFeed(url, id);
             if (duplicate) {
                 showModal("Already subscribed to this feed.");
                 return;
             }
+
+            if (feedSaveInFlight) return;
 
             saveFeed(name, url, category, id || null);
             closeModal('add-feed-modal');
         }
 
         function addPreset(name, url) {
-            if (currentUser && !isPro && feeds.length >= FREE_FEED_LIMIT) {
-                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
+            if (feedSaveInFlight) return;
+
+            // Already followed (any spelling of the same URL) — say so instead
+            // of sending a second create and showing a 409 in the console.
+            if (findExistingFeed(url)) {
+                showModal("Already subscribed to this feed.");
                 return;
             }
-            const exists = feeds.some(f => f.url === url);
-            if (exists) {
-                showModal("Already subscribed.");
+            if (currentUser && !isPro && feeds.length >= FREE_FEED_LIMIT) {
+                showModal(t('rss.limit.msg', 'Free accounts support up to 2 RSS feeds. Upgrade to ReKindle+ for unlimited feeds.'));
                 return;
             }
             saveFeed(name, url, "Uncategorized");

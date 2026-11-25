@@ -1121,3 +1121,54 @@ validation, payload trimming, the app-only token exchange and refresh, the
 listing cache, error mapping, the per-uid bucket and the global budget. It
 stubs `firebase-admin` (via `Module._load`) and `fetch`, so it needs no Reddit
 credentials and never calls the network.
+
+## 📡 RSS Reader (`rssreader.html`)
+
+### Adding a source: one tap, one write (2026-11-25)
+
+`createRssFeed` (Cloud Function, `firebase-functions/index.js`) is only called
+for **free** users — Pro accounts write `users/{uid}/rss_feeds` directly, and
+`firestore.rules` allows creates only for `isProUser()`. Free accounts are
+capped at 2 feeds by the function (HTTP 429 / `resource-exhausted`).
+
+**Symptom that started this:** adding a feed 409'd in the console several
+times. The callable's pro check used to run three *sequential* reads
+(`auth.getUser` + `users/{uid}` + `config/supporters`), so the tile took seconds
+to appear; people tapped again, and each retry hit the duplicate-URL check and
+came back `409 ALREADY_EXISTS` with an "Already subscribed to this feed." modal
+for a feed they had just added.
+
+**Fix (client, `rssreader.html`):**
+- `saveFeed()` pushes the new `{ id, name, url, category }` straight into
+  `feeds` and re-renders (`renderSources()`, `renderPresetFeeds()`) instead of
+  waiting for the `onSnapshot` round trip. The snapshot still reconciles.
+- `feedSaveInFlight` ignores extra taps while a write is pending, and
+  `#status-bar` shows "Adding source...".
+- `findExistingFeed()` compares `normalizeFeedUrl()` (trim, lower-case host,
+  drop `http`/`https` and a leading `www.`, trailing slashes) so
+  `http://x/feed/` and `https://www.x/feed` are the same source.
+- `loadCloudFeeds()` now has an `onSnapshot` error callback that falls back to
+  a single `.get()`, so a dead listener can never leave an empty Sources list
+  (the other half of the "nothing happened, tap again" loop).
+- A 409 (`functions/already-exists`) refreshes the list and shows the friendly
+  modal instead of logging an error.
+
+**Fix (server):** the two pro reads run in parallel, `auth.getUser()` is gone
+(the token already carries the email), the URL is trimmed, the duplicate check
+runs **before** the 2-feed cap, and a duplicate now returns
+`{ success: true, id: <existing>, duplicate: true }` (HTTP 200) instead of
+409 — the call is idempotent by URL. Keep the client's 409 branch: it covers a
+client that ships before the function does.
+
+### Subscribed feeds use the preset tile (2026-11-25)
+
+`.source-item` rows are the same 2px-border + hard-shadow tile as
+`.preset-feed` (icon box, bold name, one-line URL at 0.66rem, Edit/Remove on
+the right). `presetIconFor()` reuses the matched preset's icon and falls back
+to the new `rss` glyph in `RSS_PRESET_ICONS`. A preset that is already followed
+is rendered with `.is-subscribed` (grey, no shadow) and reads "Subscribed"
+(`rss.preset.subscribed`), so re-tapping it hits the "Already subscribed"
+guard instead of firing another create.
+
+Verified with `scripts/shot-webkit.sh` at 800×1100 and 600×900 (tiles align,
+long names wrap, long URLs ellipsis).
