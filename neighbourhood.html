@@ -1011,6 +1011,17 @@
                             </div>
                         </div>
 
+                        <!-- DISPLAY NAME (case only) -->
+                        <div class="form-group" style="max-width: 300px; margin: 0 auto 0;">
+                            <label class="form-label" for="input-display-name"
+                                data-i18n="neighbourhood.lbl.display_name">Display Name</label>
+                            <input type="text" id="input-display-name" class="input-field" maxlength="64"
+                                autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="YourUsername">
+                            <div style="font-size:0.7rem; color:#444; margin-top:4px; line-height:1.35;"
+                                data-i18n="neighbourhood.desc.display_name">Same username, different capitals - the
+                                letters cannot change.</div>
+                        </div>
+
                         <div style="margin-top: 15px; display: flex; justify-content: center">
                             <button class="sys-btn" onclick="toggleEditMode(false)"
                                 data-i18n="status.cancel">Cancel</button>
@@ -1661,7 +1672,43 @@
         }
 
         // SAVE PROFILE
-        function saveProfile() {
+        // Client-side mirrors only write displayName when it matches the RTDB
+        // rules charset and reserved-name block; anything else (e.g. an OAuth
+        // handle with +) is written by the Admin callable instead.
+        function isStorableDisplayName(name) {
+            return typeof name === 'string' && name.length >= 1 && name.length <= 40 &&
+                /^[a-zA-Z0-9_.-]+$/.test(name) &&
+                !/(ukiyo|rekindle|wantban|root|system|admin|mod|support)/i.test(name);
+        }
+
+        function isCaseOnlyUsernameChange(name, handle) {
+            if (typeof name !== 'string' || typeof handle !== 'string' || name.length !== handle.length) return false;
+            for (var i = 0; i < name.length; i++) {
+                var a = name.charCodeAt(i);
+                var b = handle.charCodeAt(i);
+                if (a === b) continue;
+                var aUpper = a >= 65 && a <= 90;
+                var aLower = a >= 97 && a <= 122;
+                if (aUpper && b === a + 32) continue;
+                if (aLower && b === a - 32) continue;
+                return false;
+            }
+            return true;
+        }
+
+        function usernameHandle() {
+            if (!currentUser) return '';
+            return String(currentUser.email || currentUser.uid || '').split('@')[0];
+        }
+
+        function populateDisplayNameInput() {
+            const input = document.getElementById('input-display-name');
+            if (!input || !currentUser) return;
+            const named = currentUser.displayName ? String(currentUser.displayName).trim() : '';
+            input.value = named || usernameHandle();
+        }
+
+        async function saveProfile() {
             if (!currentUser) return;
 
             const bio = document.getElementById('input-bio').value.trim();
@@ -1670,6 +1717,25 @@
             const interests = getSelectedInterests();
 
             const statusEl = document.getElementById('save-status');
+            const handle = usernameHandle();
+            const displayNameInput = document.getElementById('input-display-name');
+            const requestedDisplayName = displayNameInput
+                ? displayNameInput.value.trim()
+                : (currentUser.displayName || handle);
+
+            const previousDisplayName = currentUser.displayName ? String(currentUser.displayName).trim() : '';
+            const effectiveDisplayName = previousDisplayName || handle;
+            const nameChanged = requestedDisplayName !== effectiveDisplayName;
+
+            // Only validate when the field actually changes. Non-letter
+            // characters must match exactly, so an OAuth handle containing + or
+            // another symbol never blocks an ordinary profile save.
+            if (nameChanged && !isCaseOnlyUsernameChange(requestedDisplayName, handle)) {
+                statusEl.innerText = window.t('neighbourhood.msg.display_name_case', "Your username must stay the same - only capitalisation can change.");
+                statusEl.style.color = '#cc0000';
+                return;
+            }
+
             statusEl.innerText = window.t('neighbourhood.msg.saving', "Saving...");
             statusEl.style.color = '';
 
@@ -1757,17 +1823,45 @@
                 }
             }
 
+            if (nameChanged) {
+                try {
+                    // The callable re-checks the case-only rule server-side and
+                    // writes Auth, user_cards and both users_public profiles.
+                    const setDisplayName = firebase.functions().httpsCallable('setDisplayName');
+                    await setDisplayName({ name: requestedDisplayName });
+                    myProfile.displayName = requestedDisplayName;
+                    if (typeof currentUser.reload === 'function') {
+                        try { await currentUser.reload(); } catch (e) { /* server write already succeeded */ }
+                    }
+                } catch (e) {
+                    var nameError = (e && e.message) ? e.message : '';
+                    // An undeployed/absent callable reports the generic "internal".
+                    if (!nameError || nameError === 'internal' || nameError === 'not-found') {
+                        nameError = 'Could not save your name right now. Try again.';
+                    }
+                    statusEl.innerText = nameError;
+                    statusEl.style.color = '#cc0000';
+                    return;
+                }
+            }
+
+            // The display name itself is written by the setDisplayName callable
+            // above (Auth + user_cards + users_public), so this save only handles
+            // the profile fields. user_cards.username stays the lowercase handle.
+
             // Write to /users_public/{uid}
             // Use update to avoid overwriting other nodes
             socialRtdb.ref('users_public/' + currentUser.uid).update(profileData)
                 .then(() => {
-                    // Also update user_cards mirror for fast avatar lookups
-                    const username = (currentUser.email || currentUser.uid).split('@')[0];
-                    db.ref('user_cards/' + currentUser.uid).update({
-                        username: username,
+                    // Also update user_cards mirror for fast avatar lookups. Do
+                    // not rewrite `username` here: it is the stable identity, and
+                    // rebuilding it from the lowercase email used to flatten any
+                    // capitalisation the user picked at registration.
+                    const cardUpdate = {
                         avatarSeed: myProfile.avatarSeed,
                         customAvatar: myProfile.customAvatar || null
-                    });
+                    };
+                    db.ref('user_cards/' + currentUser.uid).update(cardUpdate);
                     window.rekindleInvalidateHomeAvatar && window.rekindleInvalidateHomeAvatar(currentUser.uid);
                     window.rekindleInvalidateUserCard && window.rekindleInvalidateUserCard(currentUser.uid);
                     statusEl.innerText = window.t('neighbourhood.msg.saved', "Profile Saved!");
@@ -1794,6 +1888,8 @@
                     var data = publicSnap.val();
                     var card = cardSnap.val();
                     var fallbackName = (currentUser.email || currentUser.uid).split('@')[0];
+                    var authDisplay = currentUser.displayName ? String(currentUser.displayName).trim() : '';
+                    var hasAuthDisplay = !!(authDisplay && authDisplay.indexOf('@') === -1 && isStorableDisplayName(authDisplay));
 
                     if (!data) {
                         // Create basic profile if it doesn't exist (KindleChat style)
@@ -1803,14 +1899,16 @@
                             createdAt: firebase.database.ServerValue.TIMESTAMP,
                             lastActive: firebase.database.ServerValue.TIMESTAMP
                         };
+                        if (hasAuthDisplay) myProfile.displayName = authDisplay;
                         socialRtdb.ref('users_public/' + currentUser.uid).set(myProfile);
                         // Also create user_cards mirror
-                        const username = (currentUser.email || currentUser.uid).split('@')[0];
-                        db.ref('user_cards/' + currentUser.uid).set({
-                            username: username,
+                        const newCard = {
+                            username: fallbackName,
                             avatarSeed: myProfile.avatarSeed,
                             customAvatar: null
-                        });
+                        };
+                        if (hasAuthDisplay) newCard.displayName = authDisplay;
+                        db.ref('user_cards/' + currentUser.uid).set(newCard);
                         window.rekindleInvalidateHomeAvatar && window.rekindleInvalidateHomeAvatar(currentUser.uid);
                     } else {
                         myProfile = data;
@@ -1824,17 +1922,27 @@
                             myProfile.email = currentUser.email;
                             socialRtdb.ref('users_public/' + currentUser.uid).update({ email: currentUser.email });
                         }
-                        // Ensure user_cards mirror exists
-                        const username = (currentUser.email || currentUser.uid).split('@')[0];
-                        db.ref('user_cards/' + currentUser.uid).update({
-                            username: username,
+                        // Backfill the case-preserving name for accounts that
+                        // registered before display names existed.
+                        if (hasAuthDisplay && !myProfile.displayName) {
+                            myProfile.displayName = authDisplay;
+                            socialRtdb.ref('users_public/' + currentUser.uid).update({ displayName: authDisplay });
+                        }
+                        // Ensure user_cards mirror exists. `username` is only set
+                        // when the mirror is missing; never rebuilt from the
+                        // lowercase email, which would flatten the display case.
+                        const cardUpdate = {
                             avatarSeed: myProfile.avatarSeed,
                             customAvatar: myProfile.customAvatar || null
-                        });
+                        };
+                        if (!card) cardUpdate.username = fallbackName;
+                        if (hasAuthDisplay) cardUpdate.displayName = authDisplay;
+                        db.ref('user_cards/' + currentUser.uid).update(cardUpdate);
                         window.rekindleInvalidateHomeAvatar && window.rekindleInvalidateHomeAvatar(currentUser.uid);
                     }
                     // Populate Inputs
                     const p = myProfile;
+                    populateDisplayNameInput();
                     document.getElementById('input-bio').value = p.bio || '';
 
                     // Populate selectedInterests Set
@@ -1923,6 +2031,16 @@
         // KINDLE NAME HELPER
         function getKindleName(user) {
             if (!user) return 'Anonymous';
+            // Prefer the case-preserving display name. The email-backed handle
+            // is always lowercase (Firebase lowercases emails), so it is only
+            // the fallback. See docs/agent/display-names.md.
+            var named = '';
+            if (currentUser && user.uid === currentUser.uid && currentUser.displayName) {
+                named = String(currentUser.displayName).trim();
+            } else if (user.displayName) {
+                named = String(user.displayName).trim();
+            }
+            if (named && named.indexOf('@') === -1 && named.length <= 40) return named;
             // If it's the current user, prioritize their active Auth email
             if (currentUser && user.uid === currentUser.uid && currentUser.email) {
                 return currentUser.email.split('@')[0];
@@ -1965,6 +2083,7 @@
             if (showEdit) {
                 readOnlyEl.style.display = 'none';
                 editModeEl.style.display = 'block';
+                populateDisplayNameInput();
             } else {
                 readOnlyEl.style.display = 'block';
                 editModeEl.style.display = 'none';
@@ -3399,6 +3518,7 @@
                     translateBtnHtml = '';
                 }
                 const username = (card && card.username && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? card.username : (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
+                const shownName = (card && (card.displayName || card.username)) || username;
                 const isDev = (username === 'ukiyo');
                 const isPro = supporterUsers[username] || false;
 
@@ -3448,7 +3568,7 @@
                              <div style="display:flex; justify-content:space-between; align-items:center; min-width:0;">
                                 <div class="post-name-row" onclick="openUserProfile('${escapeHtml(post.uid)}')">
                                     ${nameBadge ? `<span style="margin-right:4px; display:flex; align-items:center; flex-shrink:0;">${nameBadge}</span>` : ''}
-                                    <strong style="font-size:0.95rem; margin-right:4px;">${escapeHtml(censorUsername(username))}</strong>
+                                    <strong style="font-size:0.95rem; margin-right:4px;">${escapeHtml(censorUsername(shownName))}</strong>
                                 </div>
                                 <div style="display:flex; align-items:center; flex-shrink:0; margin-left:5px; margin-right:${isAdminMode ? '100px' : '0'};">
                                     <small style="color:#666; font-size:0.75rem; white-space:nowrap;">${timeStr}</small>
@@ -3647,7 +3767,8 @@
                     commentTranslateHtml = '';
                 }
                 const username = (card && card.username && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? card.username : (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
-                const isDev = (username === 'ukiyo');
+                const shownName = (card && (card.displayName || card.username)) || username;
+                let isDev = (username === 'ukiyo');
                 if (!isDev && currentUser && comment.uid === currentUser.uid && currentUser.email === 'ukiyo@rekindle.ink') isDev = true;
                 const isPro = supporterUsers[username] || false;
 
@@ -3689,7 +3810,7 @@
                     <div style="display:flex; align-items:center; min-width:0;">
                         <div class="comment-name-row" onclick="openUserProfile('${escapeHtml(comment.uid)}')">
                             ${nameBadge ? '<span style="margin-right:3px; display:inline-flex; align-items:center; flex-shrink:0;">' + nameBadge + '</span>' : ''}
-                            <strong style="font-size:0.85rem;">${escapeHtml(censorUsername(username))}</strong>
+                            <strong style="font-size:0.85rem;">${escapeHtml(censorUsername(shownName))}</strong>
                         </div>
                         <small style="color:#666; font-size:0.7rem; white-space:nowrap; flex-shrink:0; margin-left:5px;">${timeStr}</small>
                         ${modCommentControls}${reportCommentControls}

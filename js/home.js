@@ -425,9 +425,18 @@
             if (user.email && user.email.endsWith('@rekindle.ink')) {
                 displayUser = user.email.replace('@rekindle.ink', '');
             }
+            // The email-backed handle is always lowercase (Firebase lowercases
+            // emails), so print the case-preserving Auth displayName instead.
+            // `rekindle_last_username` stays the handle: the login form needs
+            // the value that builds the sign-in email.
+            const authHandle = displayUser;
+            const namedUser = user.displayName ? String(user.displayName).trim() : '';
+            if (namedUser && namedUser.indexOf('@') === -1 && namedUser.length <= 40) {
+                displayUser = namedUser;
+            }
             // Remember the name so the "session ended unexpectedly" prompt can
             // pre-fill the login form (see handleGuestMode).
-            try { localStorage.setItem('rekindle_last_username', displayUser); } catch (e) { /* storage disabled */ }
+            try { localStorage.setItem('rekindle_last_username', authHandle); } catch (e) { /* storage disabled */ }
 
             const badge = document.getElementById('user-badge');
             if (badge) badge.onclick = function () { location.href = 'neighbourhood?uid=' + user.uid; };

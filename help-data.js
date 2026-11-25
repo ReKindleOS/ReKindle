@@ -143,8 +143,9 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
             </ol>
             <h2>Sign in and out</h2>
             <ul>
-                <li>Sign in with your <b>username</b>, not an email address. Entering an email also works if it is the full account address, but the normal flow is username only.</li>
-                <li>The top-right menu shows your username while signed in. Use <b>Log Out</b> there to return to guest mode.</li>
+                <li>Sign in with your <b>username</b>, not an email address. Entering an email also works if it is the full account address, but the normal flow is username only. Signing in ignores capitalisation.</li>
+                <li>The top-right menu shows your <b>display name</b> while signed in. Capitals you chose are kept there, but the login username itself is stored lowercase. Use <b>Log Out</b> to return to guest mode.</li>
+                <li>To change how your name is capitalised, open <b>Neighbourhood</b> &rarr; <b>Profile</b> &rarr; <b>Edit Profile</b> and edit <b>Display Name</b>. Only capitalisation can change - the letters must stay exactly the same as your username.</li>
                 <li>Signing out does not delete cloud data. Signing back in restores it.</li>
             </ul>
             <h2>Changing your password</h2>

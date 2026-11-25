@@ -3774,7 +3774,8 @@
                 return;
             }
             window.rekindleFetchUserCard(rtdb, uid, function (card) {
-                var name = (card && card.username && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? card.username : fallback;
+                var shownName = (card && (card.displayName || card.username)) || '';
+                var name = (shownName && !(window.rekindleIsDeletedUser && window.rekindleIsDeletedUser(card))) ? shownName : fallback;
                 dmNameCache[uid] = censorUsername(name);
                 callback(dmNameCache[uid]);
             });
@@ -5207,8 +5208,9 @@
                 var seed = card.customAvatar || card.avatarSeed || uid;
                 drawAvatar(avatarId, seed, uid);
                 var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
+                var shownName = card.displayName || username;
                 var nameEl = itemEl.querySelector('.gallery-author');
-                if (nameEl) nameEl.textContent = censorUsername(username);
+                if (nameEl) nameEl.textContent = censorUsername(shownName);
                 // Cache for other lookups
                 if (username && !usernameToProfile[username]) {
                     usernameToProfile[username] = { uid: uid, avatarSeed: seed };
@@ -5316,7 +5318,7 @@
                     drawAvatar('pixel-modal-avatar', seed);
                     var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
                     var nameEl = document.getElementById('pixel-modal-username');
-                    if (nameEl) nameEl.textContent = censorUsername(username);
+                    if (nameEl) nameEl.textContent = censorUsername(card.displayName || username);
                 });
             }
         }
@@ -5599,6 +5601,9 @@
                 var seed = card.customAvatar || card.avatarSeed || uid;
                 drawAvatar(avatarId, seed, uid);
                 var username = card.username || (window.rekindleDeletedUserName ? window.rekindleDeletedUserName() : 'Deleted User');
+                // `username` is the lowercase identity used for badges, lookups
+                // and profile links; `shownName` is what gets printed.
+                var shownName = card.displayName || username;
 
                 // Update name element with badges
                 var nameEl = msgEl.querySelector('.author-name-field');
@@ -5612,13 +5617,13 @@
                         var devBadge = '<span class="dev-badge">DEV</span>';
                         var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="black" stroke-width="2" fill="black"/></svg>';
                         var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
-                        nameContent = isSelf ? devBadge + crown + window.t('kindlechat.msg.you', 'You') : devBadge + crown + '<span style="font-weight:bold;">Ukiyo</span>';
+                        nameContent = isSelf ? devBadge + crown + window.t('kindlechat.msg.you', 'You') : devBadge + crown + '<span style="font-weight:bold;">' + escapeHtml(censorUsername(shownName)) + '</span>';
                     } else if (isPro) {
                         var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="black" stroke-width="2" fill="none"/></svg>';
                         var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
-                        nameContent = isSelf ? crown + window.t('kindlechat.msg.you', 'You') : crown + '<span style="font-weight:bold;">' + escapeHtml(censorUsername(username)) + '</span>';
+                        nameContent = isSelf ? crown + window.t('kindlechat.msg.you', 'You') : crown + '<span style="font-weight:bold;">' + escapeHtml(censorUsername(shownName)) + '</span>';
                     } else {
-                        nameContent = isSelf ? window.t('kindlechat.msg.you', 'You') : '<span style="font-weight:bold;">' + escapeHtml(censorUsername(username)) + '</span>';
+                        nameContent = isSelf ? window.t('kindlechat.msg.you', 'You') : '<span style="font-weight:bold;">' + escapeHtml(censorUsername(shownName)) + '</span>';
                     }
                     nameEl.innerHTML = nameContent;
                     nameEl.onclick = function () { openUserProfile(uid, username); };
@@ -5639,7 +5644,7 @@
                 // Update game link starter name (if present)
                 var gameStarterEl = msgEl.querySelector('.game-starter-name');
                 if (gameStarterEl) {
-                    gameStarterEl.textContent = censorUsername(username);
+                    gameStarterEl.textContent = censorUsername(shownName);
                 }
 
                 // Cache for username lookups
@@ -5704,17 +5709,19 @@
             // Try to resolve username from cache or fall back to fetching it
             var username = null;
             if (uid === currentUser.uid) {
-                username = currentUsername;
+                username = (currentUser.displayName && currentUser.displayName.indexOf('@') === -1)
+                    ? currentUser.displayName : currentUsername;
             } else if (window.rekindleCardCache && window.rekindleCardCache[uid] && window.rekindleCardCache[uid].card) {
-                username = window.rekindleCardCache[uid].card.username;
+                var cachedCard = window.rekindleCardCache[uid].card;
+                username = cachedCard.displayName || cachedCard.username;
             }
 
             if (username) {
                 startReply(msgId, uid, username, contextText, contextType);
             } else if (typeof window.rekindleFetchUserCard === 'function') {
                 window.rekindleFetchUserCard(rtdb, uid, function (card) {
-                    if (card && card.username) {
-                        startReply(msgId, uid, card.username, contextText, contextType);
+                    if (card && (card.displayName || card.username)) {
+                        startReply(msgId, uid, card.displayName || card.username, contextText, contextType);
                     } else {
                         startReply(msgId, uid, uid.substring(0, 8), contextText, contextType);
                     }
@@ -6918,7 +6925,8 @@
 
             var authorName = authorUid ? authorUid.substring(0, 8) : 'Unknown';
             if (authorUid && window.rekindleCardCache && window.rekindleCardCache[authorUid] && window.rekindleCardCache[authorUid].card) {
-                authorName = window.rekindleCardCache[authorUid].card.username || authorName;
+                var authorCard = window.rekindleCardCache[authorUid].card;
+                authorName = authorCard.displayName || authorCard.username || authorName;
             }
 
             var id = 'saved_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -7455,7 +7463,10 @@
                             var crownSvg = '<svg class="supporter-crown" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 4L5 18H19L22 4L15 11L12 4L9 11L2 4Z" stroke="black" stroke-width="2" fill="none"/></svg>';
                             var crown = '<a href="http://link.rekindle.ink/donate" target="_blank" style="text-decoration:none;" title="Supporter">' + crownSvg + '</a>';
                             var isSelf = currentUser && (user === currentUsername);
-                            nameMeta.innerHTML = crown + (isSelf ? window.t('kindlechat.msg.you', 'You') : user);
+                            var cardUid = msgEl.dataset.uid;
+                            var cachedCard = cardUid && window.rekindleCardCache && window.rekindleCardCache[cardUid] && window.rekindleCardCache[cardUid].card;
+                            var shownName = (cachedCard && (cachedCard.displayName || cachedCard.username)) || user;
+                            nameMeta.innerHTML = crown + (isSelf ? window.t('kindlechat.msg.you', 'You') : escapeHtml(censorUsername(shownName)));
                         }
                     }
                 }

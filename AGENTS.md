@@ -31,6 +31,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, owner-only console |
 | [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs), Reddit relay |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |
+| [display-names.md](docs/agent/display-names.md) | Usernames vs display names, case, handle lookups |
 | [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, visual review, System 7 checklist |
 | [dark-mode.md](docs/agent/dark-mode.md) | `theme.js` dark mode, scrims, `.keep-white`, dark-mode audits |
 | [i18n.md](docs/agent/i18n.md) | `window.t()` / `tFormat` calls, raw key or `${...}` text on screen, translated dropdown labels, the global `function t` trap |
@@ -710,7 +711,7 @@ Do **not** rely on the service worker's stale-while-revalidate branch to roll a 
 
 Shared-asset URL bumps still require `_deploy/` to be rebuilt (`npm run build`) before deploying — the deploy copies `_deploy/main`, so a stale build publishes old files even when the source is current.
 
-**2026-10-20 incident:** `theme.js` changed in `c5631c5` but pages still loaded `?v=18`, so edge/SW caches served the old file for up to 7 days. Fixed by bumping 137 pages to `?v=19`, `js/gamerules.js` to `?v=2`, `icons.js` to v3, and `sw.js` `CACHE_NAME` to `rekindle-cache-v25`.
+**2026-10-20 incident:** `theme.js` changed without a version bump, so edge/SW caches served the old file for up to 7 days. Fixed by bumping every page and `sw.js` `CACHE_NAME`.
 
 ## Local Testing Gotcha: Service Worker Forces Extensionless URLs
 

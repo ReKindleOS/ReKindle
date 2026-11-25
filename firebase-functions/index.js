@@ -1659,7 +1659,11 @@ exports.registerUser = onCall(callOptions, async (request) => {
     const email = `${username}@rekindle.ink`;
     let userRecord;
     try {
-        userRecord = await admin.auth().createUser({ email, password });
+        // displayName keeps the capitals the user typed. The Auth email (and so
+        // the login handle) is always lowercased by Firebase, so the handle
+        // stays e.g. "ukiyo" while the profile can read "Ukiyo". See
+        // docs/agent/display-names.md.
+        userRecord = await admin.auth().createUser({ email, password, displayName: username });
     } catch (e) {
         if (e.code === 'auth/email-already-exists') {
             throw new HttpsError('already-exists', 'That username is already taken.');
@@ -1696,14 +1700,18 @@ exports.registerUser = onCall(callOptions, async (request) => {
         const avatarSeed = Math.floor(Math.random() * 10000);
         await admin.database().ref(`users_public/${userRecord.uid}`).set({
             username: username,
+            displayName: username,
             email: email,
             avatarSeed: avatarSeed,
             createdAt: admin.database.ServerValue.TIMESTAMP,
             lastActive: admin.database.ServerValue.TIMESTAMP
         });
-        // Also create user_cards mirror for fast avatar lookups
+        // Also create user_cards mirror for fast avatar lookups. `username` stays
+        // the identity other features look people up by; `displayName` is only
+        // what the UI prints, so changing its case never breaks a lookup.
         await admin.database().ref(`user_cards/${userRecord.uid}`).set({
             username: username,
+            displayName: username,
             avatarSeed: avatarSeed,
             customAvatar: null
         });
@@ -1716,6 +1724,82 @@ exports.registerUser = onCall(callOptions, async (request) => {
         logger.error('Post-registration error for uid:', userRecord.uid, e);
         throw new HttpsError('internal', 'Please log in with your username and password.');
     }
+});
+
+// True only when `name` is `handle` with ASCII letter case swapped. Any other
+// character (including OAuth handles with +, dots or underscores) must match
+// exactly, and Unicode look-alikes are rejected because they are not ASCII
+// case pairs.
+function isCaseOnlyVariant(name, handle) {
+    if (typeof name !== 'string' || typeof handle !== 'string' || name.length !== handle.length) return false;
+    for (let i = 0; i < name.length; i++) {
+        const a = name.charCodeAt(i);
+        const b = handle.charCodeAt(i);
+        if (a === b) continue;
+        const aUpper = a >= 65 && a <= 90;
+        const aLower = a >= 97 && a <= 122;
+        if (aUpper && b === a + 32) continue;
+        if (aLower && b === a - 32) continue;
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Change only the CAPITALISATION of an account's displayed name.
+ *
+ * The login handle is the lowercased Auth email (Firebase lowercases emails),
+ * so "Ukiyo" can never be the login username for ukiyo@rekindle.ink. The
+ * display name is the case-preserving layer used by the dashboard, settings,
+ * KindleChat and Neighbourhood, and this callable is its only writer outside
+ * registration. The request must be the same username, character for
+ * character, with only letter case changed - never a rename.
+ *
+ * Expects: { name: string }
+ * Returns: { displayName: string }
+ */
+exports.setDisplayName = onCall(callOptions, async (request) => {
+    const requestAuth = requireAuth(request);
+    const raw = request.data && typeof request.data.name === 'string' ? request.data.name.trim() : '';
+    const uid = requestAuth.uid;
+
+    let email = requestAuth.token.email || '';
+    if (!email) {
+        try { email = (await admin.auth().getUser(uid)).email || ''; } catch (e) { /* fall through */ }
+    }
+    const at = email.indexOf('@');
+    const handle = at > 0 ? email.slice(0, at) : '';
+    if (!handle) {
+        throw new HttpsError('failed-precondition', 'This account has no username to capitalise.');
+    }
+    // Same length, and every changed character is an ASCII letter case swap.
+    if (!isCaseOnlyVariant(raw, handle)) {
+        throw new HttpsError('invalid-argument', 'Your username must stay the same - only capitalisation can change.');
+    }
+
+    await admin.auth().updateUser(uid, { displayName: raw });
+    await admin.database().ref(`user_cards/${uid}/displayName`).set(raw);
+    // Only touch profile nodes that already exist; never create a partial one.
+    try {
+        const publicSnap = await admin.database().ref(`users_public/${uid}`).once('value');
+        if (publicSnap.exists()) {
+            await admin.database().ref(`users_public/${uid}/displayName`).set(raw);
+        }
+    } catch (e) {
+        logger.warn('setDisplayName: primary profile sync failed:', e.message);
+    }
+    if (socialAdminApp) {
+        try {
+            const socialDb = socialAdminApp.database();
+            const socialSnap = await socialDb.ref(`users_public/${uid}`).once('value');
+            if (socialSnap.exists()) {
+                await socialDb.ref(`users_public/${uid}/displayName`).set(raw);
+            }
+        } catch (e) {
+            logger.warn('setDisplayName: social profile sync failed:', e.message);
+        }
+    }
+    return { displayName: raw };
 });
 
 /**
