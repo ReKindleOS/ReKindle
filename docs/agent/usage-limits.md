@@ -235,6 +235,29 @@ worker call must send those headers too, or it re-creates the double-invocation 
 Check the quota any morning with the GraphQL queries below; a 429 + `error code: 1027`
 from any worker means the account is out for the UTC day.
 
+### Alternate address must be in every Worker allowlist (2026-11-26)
+
+`help-data.js` tells users whose network blocks `rekindle.ink` (the Spanish La Liga
+court-order block) to use **`rekindle.pages.dev`**. The Workers' CORS allowlists only
+listed the four `rekindle.ink` hosts, so on the alternate address the preflight got
+`Access-Control-Allow-Origin: null` and every cross-origin call failed. Reads worked
+(RTDB is origin-independent) but chat, neighbourhood posts, topics, DMs and reports all
+showed *"temporarily unavailable"*, on every account — the 2026-11-26 Suggestions report
+"i still cant chat" (open for over a month, alts did not help). The reporter could still
+file the suggestion because Suggestions writes to RTDB directly, which is the giveaway
+that only Worker calls were failing.
+
+`https://rekindle.pages.dev` is now in every browser-facing Worker allowlist and in the
+callable `allowedOrigins` list in `firebase-functions/index.js` (Cloud Functions CORS is
+configured separately; without it the alternate address cannot call `getSocialToken`).
+`scripts/test-worker-cors.js` scans every `workers/*/worker.js` list and the callable list
+for it, so adding a Worker later without the alternate origin fails `npm test`. Re-deploy
+every changed Worker (`npm run deploy:workers:social` covers moderate + translate; the
+rest deploy individually) **and** the Functions — the client cannot do anything about a
+preflight rejection. Also check the Firebase Auth **authorized domains** list includes
+`rekindle.pages.dev`; email/password sign-in works without it, but Google sign-in and
+email action links need it.
+
 ### 2026-10-25 blackout actually hit payments too (recorded 2026-10-26)
 
 The incident notes above understate the window. Cloudflare GraphQL

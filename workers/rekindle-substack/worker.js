@@ -12,6 +12,7 @@ export default {
         // --- CORS Handle ---
         const allowedOrigins = [
             "https://beta.rekindle.ink",
+            "https://rekindle.pages.dev",
             "https://rekindle.ink",
             "https://lite.rekindle.ink",
             "https://legacy.rekindle.ink",

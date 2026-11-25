@@ -64,6 +64,42 @@ const MIN_MAX_AGE = 600; // Safari clamps Access-Control-Max-Age to 600s
     assert.ok(/['"]Vary['"]\s*:/.test(translateSrc),
         'rekindle-translate must Vary on Origin');
 
+    /* 5. The documented alternate address must work from every Worker. */
+    // help tells users whose network blocks rekindle.ink (the Spanish La Liga
+    // block) to use rekindle.pages.dev. A Worker that omits that origin fails
+    // the CORS preflight, and chat/posts/reports show the "temporarily
+    // unavailable" message forever (2026-11-26 report: "i still cant chat").
+    assert.strictEqual(corsHeaders('https://rekindle.pages.dev')['Access-Control-Allow-Origin'],
+        'https://rekindle.pages.dev',
+        'rekindle.pages.dev must be an allowed origin');
+    const workersDir = path.join(__dirname, '..', 'workers');
+    const checkedWorkers = [];
+    fs.readdirSync(workersDir).forEach(function (dir) {
+        const file = path.join(workersDir, dir, 'worker.js');
+        if (!fs.existsSync(file)) return;
+        const src = fs.readFileSync(file, 'utf8');
+        const list = src.match(/(?:ALLOWED_ORIGINS|allowedOrigins)\s*=\s*\[([\s\S]*?)\]/);
+        if (!list) return;
+        // Public read-only workers reflect "*" and do not need the list.
+        if (/"Access-Control-Allow-Origin":\s*"\*"/.test(src)) return;
+        assert.ok(list[1].indexOf('rekindle.pages.dev') !== -1,
+            path.relative(path.join(__dirname, '..'), file) + ' must allow rekindle.pages.dev');
+        checkedWorkers.push(dir);
+    });
+    assert.ok(checkedWorkers.length >= 8,
+        'expected at least 8 origin-gated Workers, got ' + checkedWorkers.length);
+
+    /* 6. The same origin must be allowed on the callables the social pages use. */
+    // getSocialToken runs on Cloud Functions, whose `cors` list is separate from
+    // the Workers. Without it the alternate address cannot even sign in to the
+    // social project, so the Workers change alone would not help.
+    const functionsSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'firebase-functions', 'index.js'), 'utf8');
+    const callableList = functionsSrc.match(/const allowedOrigins = \[([\s\S]*?)\];/);
+    assert.ok(callableList, 'firebase-functions/index.js must define allowedOrigins');
+    assert.ok(callableList[1].indexOf('rekindle.pages.dev') !== -1,
+        'the callable allowedOrigins list must include rekindle.pages.dev');
+
     console.log('worker CORS preflight checks passed');
 })().catch(function (err) {
     console.error('worker CORS preflight checks failed:', err && err.stack ? err.stack : err);

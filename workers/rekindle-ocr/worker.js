@@ -8,6 +8,7 @@
 
 const ALLOWED_ORIGINS = [
   "https://beta.rekindle.ink",
+  "https://rekindle.pages.dev",
   "https://rekindle.ink",
   "https://lite.rekindle.ink",
   "https://legacy.rekindle.ink"
