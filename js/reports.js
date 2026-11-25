@@ -124,6 +124,19 @@
             }
 
             if (!tokenSource) {
+                // Last resort: the default Firebase app. Pages that declare
+                // auth inside a block (suggestions.html's init try/catch)
+                // cannot expose `currentUser`/`auth` to this script, which
+                // made a signed-in reporter see "You must be signed in to
+                // submit a report." (2026-11-26).
+                try {
+                    if (window.firebase && typeof window.firebase.auth === 'function') {
+                        tokenSource = window.firebase.auth().currentUser;
+                    }
+                } catch (e) { /* no default Firebase app yet */ }
+            }
+
+            if (!tokenSource) {
                 reject(new Error('You must be signed in to submit a report.'));
                 return;
             }

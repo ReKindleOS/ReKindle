@@ -161,6 +161,110 @@ const root = path.join(__dirname, '..');
     assert.ok(/else if \(!reportContentResolved\)/.test(workerSource),
         'an unresolvable report must be held, not auto-deleted');
 
+    /* ------------------------------------------------------------------ */
+    /* 8. Signed-in reporters are found even when the page block-scopes    */
+    /*    auth (2026-11-26)                                               */
+    /* ------------------------------------------------------------------ */
+    // suggestions.html wraps its whole bootstrap in try/catch, so its
+    // `const auth` / `let currentUser` are block-scoped and invisible here.
+    // A signed-in user got "You must be signed in to submit a report."
+    const suggestionsSource = fs.readFileSync(path.join(root, 'suggestions.html'), 'utf8');
+    assert.ok(/window\.currentUser = user;/.test(suggestionsSource),
+        'suggestions.html must mirror the signed-in user on window');
+    assert.ok(/window\.currentUser = null;/.test(suggestionsSource),
+        'suggestions.html must clear the mirrored user on sign-out');
+
+    // Drive the real modal in a tiny fake DOM. No `currentUser` or `auth`
+    // global is defined, exactly like suggestions.html from reports.js's
+    // point of view; only `window.firebase` can supply the reporter.
+    function makeFakeDocument() {
+        function makeNode(tag) {
+            return {
+                tagName: tag,
+                id: '',
+                className: '',
+                style: {},
+                children: [],
+                parentNode: null,
+                appendChild: function (child) {
+                    child.parentNode = this;
+                    this.children.push(child);
+                    return child;
+                },
+                setAttribute: function (key, value) { this[key] = value; },
+                removeAttribute: function (key) { delete this[key]; }
+            };
+        }
+        var doc = {
+            body: makeNode('body'),
+            createElement: makeNode,
+            querySelector: function () { return null; },
+            getElementById: function (id) {
+                var found = null;
+                function walk(node) {
+                    if (node.id === id) { found = node; return true; }
+                    for (var i = 0; i < node.children.length; i++) {
+                        if (walk(node.children[i])) return true;
+                    }
+                    return false;
+                }
+                walk(doc.body);
+                return found;
+            }
+        };
+        return doc;
+    }
+
+    async function submitViaModal(user) {
+        var doc = makeFakeDocument();
+        var fetchCalls = [];
+        var sandbox = {
+            // The signed-out case logs its expected failure; keep the test
+            // output clean.
+            console: { log: console.log, warn: console.warn, error: function () { } },
+            document: doc,
+            setTimeout: setTimeout,
+            fetch: function (url, init) {
+                fetchCalls.push({ url: url, init: init });
+                return Promise.resolve({ json: function () { return Promise.resolve({ success: true }); } });
+            }
+        };
+        sandbox.window = sandbox;
+        if (user) {
+            sandbox.firebase = { auth: function () { return { currentUser: user }; } };
+        }
+        vm.createContext(sandbox);
+        vm.runInContext(clientSource, sandbox);
+        sandbox.rekindleOpenReportModal({ contentType: 'suggestion', contentId: 'sugg-1' });
+        doc.getElementById('report-reason-select').value = 'spam';
+        doc.getElementById('report-comment-input').value = 'spam';
+        doc.getElementById('report-submit-btn').onclick();
+
+        var errorEl = doc.getElementById('report-error');
+        var started = Date.now();
+        while (!fetchCalls.length && !(errorEl && errorEl.textContent) && Date.now() - started < 200) {
+            await new Promise(function (resolve) { setTimeout(resolve, 5); });
+        }
+        return { fetchCalls: fetchCalls, errorText: errorEl ? errorEl.textContent : '' };
+    }
+
+    var signedIn = await submitViaModal({
+        uid: 'test-uid',
+        getIdToken: function () { return Promise.resolve('test-token'); }
+    });
+    assert.strictEqual(signedIn.fetchCalls.length, 1,
+        'a signed-in reporter must submit even with block-scoped page auth');
+    assert.strictEqual(signedIn.fetchCalls[0].init.headers.Authorization, 'Bearer test-token',
+        'the report must carry the fetched ID token');
+    assert.ok(signedIn.fetchCalls[0].init.body.indexOf('"contentType":"suggestion"') !== -1,
+        'the report body must reach the moderation worker');
+
+    var signedOut = await submitViaModal(null);
+    assert.strictEqual(signedOut.fetchCalls.length, 0,
+        'a signed-out visitor must not send a report');
+    assert.ok(/signed in/i.test(signedOut.errorText),
+        'a signed-out visitor must still see the sign-in message');
+
     console.log('PASS - report comments');
     console.log('  rejected samples: ' + rejected.length);
     console.log('  accepted samples: ' + accepted.length);

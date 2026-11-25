@@ -54,6 +54,29 @@ Every report must include a comment with **at least one real word** — 2+ lette
 1. Include `<script src="js/reports.js"></script>` in the HTML `<head>`
 2. Call `rekindleOpenReportModal({contentType, contentId, contentPath, reportedUserId, contentSnapshot})`
 
+### Auth discovery (2026-11-26)
+`getAuthToken()` in `js/reports.js` resolves the reporter in this order:
+`socialAuth.currentUser` → `currentUser` → `auth` → `firebase.auth().currentUser`
+(default Firebase app).
+
+The last fallback exists because `suggestions.html` declares `auth` and
+`currentUser` **inside its init `try` block**. Block-scoped bindings never become
+window properties, so a shared classic script cannot see them: every signed-in
+reporter got "You must be signed in to submit a report." (report from karicolass on
+a PW gen 12, 2026-11-26). The page now also mirrors `window.auth` /
+`window.currentUser` in its auth listener — keep that in sync if the app script is
+ever unwrapped. Any new page that wraps its bootstrap in a block needs the same
+mirror (or the Firebase fallback covers it). Bump `js/reports.js?v=` in every page
+that includes it after editing the file.
+
+Audited the other report pages with a scope pass (2026-11-26): `kindlechat.html`
+and `topics.html` declare `var auth` / `var socialAuth` / `var currentUser`, and
+`neighbourhood.html` declares them at the **top level** of its script (`const` /
+`let`). Program-scoped `const`/`let` live in the shared global lexical
+environment, so a later classic script can read them; only Suggestions wrapped
+its bootstrap in a block. Keep new report pages in the same shape — a `const`
+auth inside `try {}` or an IIFE is invisible to `reports.js`.
+
 ### Files Modified
 - `js/reports.js` (new)
 - `workers/rekindle-moderate/worker.js` — added report handler + Discord notification
