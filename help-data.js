@@ -1858,23 +1858,15 @@ HELP_ARTICLES = HELP_ARTICLES.concat([
         id: 'reddit',
         cat: 'lifestyle',
         title: 'Reddit',
-        summary: 'A text-first Reddit browser for saved subreddits, with automatic retry when rate-limited.',
-        tags: 'reddit subreddits saved posts comments browse rate limit offline retry',
+        summary: 'A text-first Reddit browser, temporarily unavailable.',
+        tags: 'reddit subreddits saved posts comments browse unavailable third party',
         appHref: 'reddit',
         appName: 'Reddit',
         related: ['news', 'rssreader', 'browser'],
         body: `
-            <p>Reddit reads public subreddits in a text-first layout. It is for browsing and reading, not for posting or voting.</p>
-            <h2>Using it</h2>
-            <ol>
-                <li>Type a subreddit name (for example <code>books</code> or <code>eink</code>) and tap <b>Go</b>, then tap the star to save it.</li>
-                <li>Choose it from the sidebar to load its posts.</li>
-                <li>Tap a post to read the text and comments.</li>
-                <li><b>Remove Subreddit</b> deletes it from your list.</li>
-            </ol>
-            <h2>Rate limiting</h2>
-            <p>Reddit aggressively limits requests from shared cloud addresses. When that happens, ReKindle says it is retrying and keeps the window open. It backs off and tries again rather than failing immediately. If it cannot recover, wait several minutes; this is Reddit's limit, not a ReKindle setting.</p>
-            <div class="note"><b>Saved subreddits</b> are stored on the device and sync to your account when signed in. Posts and comments need a connection; there is no offline archive of old threads. NSFW and quarantined communities may not load.</div>
+            <div class="note"><b>Temporarily unavailable.</b> Reddit has stopped supporting third-party apps. The ReKindle Reddit app is disabled for now while alternatives are evaluated.</div>
+            <p>Your saved subreddits are still stored on this device, and they sync to your account when you are signed in. Nothing has been deleted.</p>
+            <p>To read Reddit in the meantime, open <a href="https://www.reddit.com">reddit.com</a> in the Browser app.</p>
         `
     },
     {

@@ -363,6 +363,8 @@ const APPS = [
         id: 'reddit',
         name: 'Reddit',
         cat: 'lifestyle',
+        disabled: true,
+        disabledMessage: 'Reddit has stopped supporting third-party apps. The ReKindle Reddit app is temporarily disabled.',
         icon: '<circle cx="16" cy="16" r="14"/><ellipse cx="16" cy="18" rx="10" ry="7"/><circle cx="12" cy="17" r="2" fill="black"/><circle cx="20" cy="17" r="2" fill="black"/><path d="M16 11 L20 6"/>'
     },
     {

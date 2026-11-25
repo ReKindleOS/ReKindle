@@ -966,3 +966,158 @@ Consequences, which the code now reflects:
 6. The client path needs no deploy beyond the Pages build. `workers/rekindle-translate` still exists on
    the social account and still serves `reprocess`/`translateOnly` requests from the admin "Rp" buttons,
    but no user-facing page calls it now.
+
+## 🔴 Reddit now requires OAuth (reddit.html, 2026-11-25)
+
+### Symptom
+The Reddit app failed on every subreddit: after a few retries it showed
+"Connection Failed: All proxies blocked. (last status 403)". Subreddit lists
+were empty, threads never opened, and the old cached-XML fallback only helped
+for subs visited before the outage.
+
+### What actually changed on Reddit's side
+Measured 2026-11-25 from Cloudflare egress (the Pages Function at
+`/api/reddit`), from a residential IP, and through an independent reader
+service — all three see the same thing, so this is **not** an egress-IP block
+and no proxy can work around it:
+
+| Request | Result |
+| :--- | :--- |
+| `https://www.reddit.com/r/kindle/.rss` (also `/new/.rss`, `/rss.reddit.com/...`) | **404** — RSS support ended 2026-11-13 |
+| `https://old.reddit.com/r/kindle/.rss` | 302 to `/login/?reason=lor2&dest=...`, then a 200 login page |
+| `https://www.reddit.com/r/kindle/.json`, `old.reddit.com`, `api.reddit.com` | **403** HTML: "You've been blocked by network security. To continue, log in to your Reddit account or use your developer token." |
+| `https://oauth.reddit.com/r/kindle/hot` without a token | 403, same message |
+| `https://i.redd.it/<image>` (and through `/api/reddit`) | still 200 |
+
+The Data API wiki confirms the new contract: *"Clients must authenticate with a
+registered OAuth token. We can and will freely throttle or block unidentified
+Data API users."* Free access is **100 QPM per OAuth client id**, averaged over
+10 minutes, and is scoped to non-commercial use.
+
+### The fix: an app-only OAuth relay
+`firebase-functions/reddit.js` (exported as `redditFeed`) holds the OAuth
+client id/secret and exchanges them for an app-only token
+(`grant_type=client_credentials`). `reddit.html` only ever sends a Firebase ID
+token; the Reddit secret never reaches the browser.
+
+Contract:
+
+```
+GET https://us-central1-rekindle-dd1fa.cloudfunctions.net/redditFeed
+      ?path=/r/kindle/hot&limit=25&after=t3_abc123&raw_json=1
+Authorization: Bearer <Firebase ID token>
+```
+
+- `path` is a Reddit *path only* (`/r/<sub>[/<sort>]`,
+  `/r/<sub>/comments/<id>[/<slug>]`, `/comments/<id>`). Hosts, `//`, `..`,
+  `%2e`/`%2f`, whitespace, query strings and unknown sorts are rejected before
+  any outbound fetch — same SSRF posture as `substack.js`.
+- Only `limit` (1–100), `after` (`t3_`/`t1_` base36), `t` (top windows) and
+  `comment sort` are forwarded. `raw_json=1` is forced.
+- Responses are trimmed to the fields the page renders (listing: title, author,
+  subreddit, permalink, name, score/comment counts; thread: the self post plus
+  top-level comments). The relay is not a Reddit content mirror.
+- **Cache:** 5 min per listing, 10 min per thread, in-process, max 300 entries.
+  This is what makes a shared 100 QPM budget usable across all users. The
+  function runs as **one instance** (`maxInstances: 1`) so the cache and the
+  80/min budget are global; raising that without a shared counter multiplies
+  upstream traffic past Reddit's 100 QPM.
+- **Limits:** per-uid bucket 30 burst / 12 per min; per-instance global budget
+  80/min; Reddit's `x-ratelimit-remaining` triggers a cooldown. 429 surfaces
+  `Retry-After`.
+- **Auth:** every request needs a Firebase ID token (`admin.auth().verifyIdToken`).
+  The endpoint is therefore not an open proxy from the project's GCP egress.
+- `REDDIT_ACCESS=pro` (default `free`) gates the relay to ReKindle+. **Do not
+  turn it on without a Reddit commercial agreement** — Reddit's free tier is
+  non-commercial and its policy counts a paid/upsell-gated feature as
+  commercial use. Caching, not a paywall, is the scaling lever.
+- Missing credentials return 503 `not_configured`; the page shows an honest
+  "Reddit is temporarily unavailable" panel instead of "all proxies blocked".
+
+### One-time setup (owner)
+1. Create an app at <https://www.reddit.com/prefs/apps> — choose **web app**,
+   not **script**. ReKindle is a public multi-user service; the script type is
+   labelled "for personal use / only access to the developer's accounts"
+   (that label is about user-context access, but it is the wrong registration
+   for a public app). Reddit's OAuth2 docs list the app-only
+   `client_credentials` grant for "confidential clients (web apps / scripts)",
+   so a web app can mint the same token. Form values (2026-11-25):
+   - **about url:** `https://rekindle.ink/reddit`
+   - **redirect uri:** `https://rekindle.ink/reddit`
+
+   The redirect URI is only exercised by the authorization-code flow, which the
+   relay never uses: `client_credentials` has no user context and no redirect.
+   Keep the value in case a future per-user Reddit login is added (it must then
+   match exactly).
+   **"Max clients have been reached":** the account already holds its client-id
+   quota (Reddit now caps this per account). Open
+   <https://www.reddit.com/prefs/apps>, reuse the existing app (edit its
+   redirect URI to the value above), or delete an unused one to free the slot.
+   Reuse is fine for `client_credentials` whether the app is **web** or
+   **script**. An existing **installed app** has no secret; the relay supports
+   it through the `installed_client` grant, so put only its client id in
+   `.env`. Creating a second Reddit account to get another slot violates the
+   Responsible Builder Policy.
+   New API access requests closed 2026-10-31; if the app form is unavailable,
+   request access through Reddit's Developer Platform contact form. Existing
+   apps must register by 2027-01-12; public API access ends for unregistered
+   apps in March 2027.
+2. Put the credentials in `firebase-functions/.env` (never commit it):
+   ```
+   REDDIT_CLIENT_ID=...
+   REDDIT_CLIENT_SECRET=...   # omit for an installed app (it has no secret)
+   REDDIT_USER_AGENT=web:ink.rekindle.reddit:v1.0 (by /u/<your-reddit-username>)
+   ```
+   The User-Agent must be unique and honest; Reddit blocks generic ones. With
+   no secret the relay sends `grant_type=https://oauth.reddit.com/grants/installed_client`
+   and `device_id=DO_NOT_TRACK_THIS_DEVICE`.
+3. `firebase deploy --only functions:redditFeed` (functions before the page).
+4. Verify: open `/reddit` signed in. The network panel should show
+   `POST https://www.reddit.com/api/v1/access_token` → 200 and
+   `GET .../redditFeed?path=/r/kindle/hot` → 200 with
+   `x-rekindle-cache: miss` then `hit`.
+
+### Temporary shutdown (2026-11-25)
+Reddit's approval gate (new public API requests closed 2026-10-31) left the
+relay unusable, so the app is parked:
+
+- `reddit.html` sets `const REDDIT_DISABLED = true`. `ui.init()` returns after
+  rendering the "Reddit is temporarily unavailable / Reddit has stopped
+  supporting third-party apps" panel; the sidebar is hidden, the toolbar is
+  disabled, and Firebase/auth is never initialised, so the page makes no
+  network calls.
+- `icons.js` marks the dashboard tile `disabled: true` with a
+  `disabledMessage`; `js/home.js` renders the CLOSED badge and opens the
+  message modal instead of navigating. Rebuild `js/home-deps.js` and bump
+  `?v=` on the bundle (and on `icons.js` for `index_old.html`) after editing.
+- Help content and the SEO description also say temporarily unavailable.
+
+To restore: set `REDDIT_DISABLED = false`, remove `disabled`/`disabledMessage`
+from `icons.js`, rebuild the home bundle, bump the versions, then deploy the
+function and page as above.
+
+### Client changes (reddit.html)
+- All reads go through `REDDIT_RELAY`; the old `.rss` → `.json` fallback chain
+  and the `PROXIES` list are gone.
+- The first auth state is awaited before the first load, so a signed-in user
+  does not flash the sign-in panel while Firebase restores the session.
+- Signed out → a System 7 sign-in panel linking to `index?login=true`. The
+  relay rejects anonymous calls by design.
+- Error states are explicit: `needs_sign_in`, `not_configured`,
+  `pro_required`, `rate_limited`, `not_found`, `forbidden`, `invalid_sub`.
+  A saved listing is still shown when the network/rate limit fails, with a
+  "saved copy, up to 6 hours old" banner.
+- Cache is now JSON (`reddit_feed_json_<sub>`), LRU-capped at 5 subs and
+  **6-hour TTL**. `purgeLegacyFeedCache()` deletes the old
+  `reddit_feed_xml_*` keys on load. Reddit's terms ask apps not to retain
+  content (48-hour guidance), so do not raise this TTL casually.
+- `/api/reddit` remains the **image** proxy only (`i.redd.it` /
+  `preview.redd.it` still serve Cloudflare egress); it is no longer used for
+  feeds. `processCommentHtml()` still rewrites image links through it.
+
+### Tests
+`scripts/test-reddit.js` (in `npm test`) pins the path allowlist, query
+validation, payload trimming, the app-only token exchange and refresh, the
+listing cache, error mapping, the per-uid bucket and the global budget. It
+stubs `firebase-admin` (via `Module._load`) and `fetch`, so it needs no Reddit
+credentials and never calls the network.

@@ -1,3 +1,12 @@
+// Reddit IMAGE proxy for reddit.html (`i.redd.it`, `preview.redd.it`, imgur).
+//
+// Data reads moved off this function on 2026-11-25: Reddit ended subreddit RSS
+// on 2026-11-13 (`/.rss` is now 404) and answers every anonymous `.json` with
+// 403 "log in ... or use your developer token". No proxy can fix that, because
+// the block follows the request, not the egress IP. Listings and threads now go
+// through the app-only OAuth relay in `firebase-functions/reddit.js`
+// (`redditFeed`); see docs/agent/integrations.md. Image hosts still serve
+// Cloudflare egress, so this function stays for <img> sources only.
 export async function onRequest(context) {
     const url = new URL(context.request.url);
     const targetUrl = url.searchParams.get("url");
@@ -21,6 +30,21 @@ export async function onRequest(context) {
         }
     } catch (e) {
         return new Response("Invalid URL", { status: 400 });
+    }
+
+    // 2026-11-25: refuse non-image Reddit URLs instead of returning the login
+    // page with a 200 (old.reddit.com 302s `.rss` to /login and the old code
+    // passed that HTML through as success).
+    const imageHost = /^(i|preview|v)\.redd\.it$|^i\.imgur\.com$/.test(target.hostname);
+    const imagePath = /\.(jpe?g|png|gif|webp|avif|mp4)($|\?)/i.test(target.pathname + target.search);
+    if (!imageHost && !imagePath) {
+        return new Response(JSON.stringify({
+            error: "reddit_api_requires_oauth",
+            message: "Reddit data reads require OAuth; use the redditFeed function."
+        }), {
+            status: 410,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
     }
 
     if (context.request.method !== "GET" && context.request.method !== "HEAD") {

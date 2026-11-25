@@ -88,7 +88,9 @@ Applied in one batch; each is independently revertable.
   (was 1 s × 30 = 30 s).
 - **`index.html`**: the matchmaking badge listener now attaches only after auth resolves (RTDB
   rules require it) and detaches on `pagehide`.
-- **`sheetmusic.html`**: composer-image cache capped at 100 entries with an LRU index.
+- **`sheetmusic.html`**: composer-image cache capped at 100 entries with an LRU index;
+  `fetchComposerImage` returns `Promise<url|null>` on every path (a sync cache-hit return broke
+  the whole library render — see [backlog BL-20](backlog.md)).
 - **`stocks`/`price`** unchanged beyond batching; `functions/api/price.js` cache landed earlier.
 
 ### Neighbourhood comment counts are denormalised (2026-10-21)

@@ -29,7 +29,7 @@ Only this file is injected automatically. The docs below are **not** in the agen
 | [games.md](docs/agent/games.md) | Any game page, `js/gamerules.js`, canvas sizing |
 | [performance.md](docs/agent/performance.md) | Slow-device / e-ink optimisation: load path + caching, containment, dirty-flag rendering, feed pagination, rect caching, `commentCount` |
 | [moderation-reports.md](docs/agent/moderation-reports.md) | `js/reports.js`, report buttons, `/reports` data model, owner-only console |
-| [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs) |
+| [integrations.md](docs/agent/integrations.md) | Akinator, NRL scores, comics / Internet Archive, Gutenberg / Standard Ebooks (Reader tabs), Reddit relay |
 | [avatars.md](docs/agent/avatars.md) | `drawAvatar()`, `user_cards`, pixel-art avatars, grayscale values, ReKindle+ gradient gate |
 | [visual-audit.md](docs/agent/visual-audit.md) | No-focus WebKit screenshot harness, visual review, System 7 checklist |
 | [dark-mode.md](docs/agent/dark-mode.md) | `theme.js` dark mode, scrims, `.keep-white`, dark-mode audits |
@@ -661,14 +661,14 @@ Moderation is automated end to end: the Worker moderates every write and `/repor
 -   **Dark mode chrome (2026-10-26):** `theme.js` uses the global `invert(1) hue-rotate(180deg)` filter, but sets `color-scheme: light` so native inputs render light and invert to dark. `img`/`video`/`canvas`/`.no-invert` are re-inverted; `.keep-white` opts black-on-transparent images out (e.g. the dashboard `logo.svg`), while photos/QR codes must stay re-inverted. Scrims are the trap: `theme.js` marks full-screen fixed/absolute overlays with `.rk-dark-scrim` and feeds them `rgba(255,255,255,.55)` so they render as 55% black after inversion. Permanent black accent bars need a page-level `[data-theme="dark"]` override (Journal month header, Strands clue bar), and map tiles use `filter:none` to darken. `?theme=dark|light|auto` is a session preview that also skips the SW. Full details, page fixes and the verification method: [dark-mode.md](docs/agent/dark-mode.md).
 
 ## 🌐 External API Proxies (Rate-limiting)
-External APIs such as Reddit aggressively rate-limit shared cloud egress IPs (e.g., Cloudflare Pages/Workers). Any proxy under `functions/api/` or `workers/` that calls an external API should:
+External APIs aggressively rate-limit shared cloud egress IPs (e.g. Cloudflare Pages/Workers). Any proxy under `functions/api/` or `workers/` calling an external API should:
 
 - Cache successful GET responses using `caches.default` so all users share the same cached copy.
 - Retry on `429 Too Many Requests` and `5xx` errors with exponential backoff, respecting any `Retry-After` header.
 - Return stale cached data to the client when the upstream is rate-limiting, so the UI doesn't appear broken.
 - Use different cache TTLs by content type (e.g., 60 s for RSS feeds, 5 min for images).
 
-Example pattern: `functions/api/reddit.js`.
+Example: `functions/api/gutenberg.js`.
 
 **Worker quota + preflight (2026-10-25):** Workers Free is 100k requests/day shared with Pages Functions; over it every worker returns the CORS-less `error code: 1027` page (KindleChat showed "Load failed"). Cross-origin JSON POSTs cost 2 requests (OPTIONS + POST) unless the worker sends `Access-Control-Max-Age` + `Vary: Origin` — never remove them ([usage-limits.md](docs/agent/usage-limits.md), `scripts/test-worker-cors.js`). Socials: separate **ReKindle Social** account, URLs in `js/social-endpoints.js`.
 

@@ -2454,6 +2454,31 @@ exports.substack = onRequest(
 );
 
 // ---------------------------------------------------------------------------
+// Reddit relay (reddit.html)
+// Reddit ended anonymous RSS on 2026-11-13 and now 403s every unauthenticated
+// .json request, so the page has to go through an app-only OAuth token. The
+// secret stays in this function; the browser only sends a Firebase ID token.
+// See firebase-functions/reddit.js and docs/agent/integrations.md.
+// maxInstances stays low so the in-process listing cache is actually shared.
+// ---------------------------------------------------------------------------
+const { redditHandler } = require("./reddit");
+
+exports.redditFeed = onRequest(
+    {
+        region: "us-central1",
+        memory: "256MiB",
+        timeoutSeconds: 30,
+        // ONE instance on purpose: the listing cache and the 80/min budget live
+        // in process memory, and Reddit's free tier is 100 QPM for the whole
+        // OAuth client id (all users). Scaling out would multiply both the
+        // upstream traffic and the token cache. Move the budget to Firestore
+        // before raising this.
+        maxInstances: 1
+    },
+    redditHandler
+);
+
+// ---------------------------------------------------------------------------
 // Daily social-content retention (cleanupSocial)
 //
 // Deletes expired KindleChat messages/translations/art-index entries, topic

@@ -406,13 +406,21 @@ before adding anything else to it.
 - **Fix:** append only the new page's rows when `append` is set; keep the existing scroll offset.
 - **Effort:** small · **Risk:** low.
 
-### BL-20 · Sheet-music composer images grow `localStorage` without eviction
-- **Where:** `sheetmusic.html` `fetchComposerImage` (~`:1193–1231`) writes `rekindle_img_*` keys
-  forever. Search is now debounced; the cache is still unbounded (64 MB global limit → OS wipes
-  the whole cache).
-- **Fix:** cap at ~100 keys with an LRU index (same shape as `reddit.html`'s
-  `reddit_feed_xml_lru`), and skip the fetch for cards already rendered.
-- **Effort:** small · **Risk:** low.
+### BL-20 · Sheet-music composer images grow `localStorage` without eviction — SHIPPED 2026-11-25
+- **Where:** `sheetmusic.html` `fetchComposerImage` (~`:1229`) writes `rekindle_img_*` keys.
+- **Done:** capped at 100 keys with an LRU index (`rekindle_img_lru`, same shape as
+  `reddit.html`'s `reddit_feed_xml_lru`), and the store search is debounced at 250 ms.
+- **2026-11-25 library crash:** `fetchComposerImage` returned a bare string/null on a
+  memory/localStorage cache hit but a Promise on a miss, while `displayScores` chained
+  `.then()` unconditionally. Any second Library render (memory hit) or a localStorage hit
+  threw `fetchComposerImage(...).then is not a function`, and `loadLibrary`'s catch replaced
+  the whole list with "Error loading library.". The helper now always returns
+  `Promise<url|null>`, the caller adds `Promise.resolve(...).catch(...)`, `filterScores`
+  (`String(score.title || '')`) and `displayScores` tolerate legacy docs with no
+  title/composer, the library Remove button got a stable `remove-<docId>` id (the old
+  `button[onclick="..."]` lookup could never match a property handler), and
+  `openUploadModal` calls `window.rekindleRefreshCustomSelect()` so the replaced native
+  `<select>` repaints. Guarded by `scripts/test-sheetmusic.js` (in `npm test`).
 
 ---
 
