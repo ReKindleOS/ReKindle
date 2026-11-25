@@ -6406,6 +6406,15 @@
 
             // SPAM PROTECTION + MODERATION: Enforced via Cloudflare Worker
             var tokenSource = socialAuth.currentUser || currentUser;
+            if (!tokenSource) {
+                // A broken/cleared session must not surface as a transport
+                // failure: `null.getIdToken()` is a TypeError, which the outage
+                // handler treats as "chat unavailable" (2026-11-26 report:
+                // "i still cant chat").
+                resetSendState();
+                showModal('Please sign in to chat.', false);
+                return;
+            }
             // Cached token first; only force a refresh if the worker rejects it
             // (this used to cost an Identity Toolkit round trip per message).
             tokenSource.getIdToken().then(function (token) {
