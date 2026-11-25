@@ -678,3 +678,48 @@ Kid-safe social layer: no friends graph, no chat, no search, no notifications.
   on read and can be overwritten after expiry.
 - Only share codes with people you know. A code is not a content filter: the
   game's existing chat/guess surface (Pictionary) is unchanged.
+
+## Drag games must not select text (strands.html, wordsearch.html, 2026-11-25)
+
+**Symptom:** on WebKit engines (Safari, Kobo, older Kindle WebKit) dragging
+across the Strands board or the Word Search grid highlighted the letters and
+surrounding text instead of drawing a path. Chromium was unaffected, which hid
+the bug: both pages only declared the unprefixed `user-select: none` on `body`,
+and old WebKit only understands `-webkit-user-select`.
+
+**Fix:** declare both forms wherever a drag surface is defined, plus a final JS
+guard for engines that ignore `user-select` entirely:
+
+```css
+body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.cell { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+```
+
+```javascript
+function blockGameSelection(e) {
+    const el = e.target;
+    if (el && el.closest && el.closest('input, textarea, select, [contenteditable], dialog')) return;
+    e.preventDefault();
+}
+document.addEventListener('selectstart', blockGameSelection);
+document.addEventListener('dragstart', blockGameSelection);
+```
+
+Keep the editable/`dialog` exception: `selectstart` is document-wide, and the
+timezone/language prompt or any future prompt input must stay selectable.
+
+**Word Search status line clipped:** `wordsearch.html` had two `#status-msg`
+rules; the second set `height: 1.2em`, but the first sets `box-sizing:
+border-box` with `padding: 5px 8px` and `border: 2px`, so the content box was
+0 px and "Tap start letter, then tap end letter." rendered as a cut-off sliver.
+The rules are merged into one with `min-height: 1.2em`, `line-height: 1.35`
+and no fixed height, so longer translations wrap instead of clipping. Do not
+re-add a fixed height to a bordered status bar.
+
+**Verification (2026-11-25):** Playwright Chromium + WebKit, viewports
+1000x900 and 420x760, mouse-dragging across the status line and the grid:
+`window.getSelection()` stays empty and mid-drag cells still highlight
+(`.cell.selected` / `.cell.drag-preview`); wordsearch status reports
+`clientHeight >= scrollHeight` at 320/420/758 px, including a long instruction
+string. `scripts/test-compat.js`, `test-i18n.js`, `test-a11y.js` and
+`test-dialogs.js` pass.

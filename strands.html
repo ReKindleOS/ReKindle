@@ -51,6 +51,12 @@
             align-items: center;
             justify-content: center;
             user-select: none;
+            /* WebKit (Safari, Kobo, older Kindle) only understands the
+               prefixed property, so dragging across the board selected
+               the letters instead of drawing a path. */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -webkit-touch-callout: none;
             box-sizing: border-box;
         }
 
@@ -210,6 +216,8 @@
             margin-bottom: 10px;
             position: relative;
             touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         #path-overlay {
@@ -228,6 +236,8 @@
             justify-content: center;
             cursor: pointer;
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
             width: 100%;
             height: 0;
             padding-bottom: 100%;
@@ -561,6 +571,9 @@
                 document.addEventListener('pointermove', onPointerMove, { passive: true });
                 document.addEventListener('pointerup', endDrag);
                 document.addEventListener('pointercancel', endDrag);
+                // Final guard for engines that ignore user-select entirely.
+                document.addEventListener('selectstart', blockGameSelection);
+                document.addEventListener('dragstart', blockGameSelection);
             }
             // Sync tab visuals to restored mode
             document.getElementById('tab-daily').classList.toggle('active', currentMode === 'daily');
@@ -820,6 +833,16 @@
         }
 
         // --- INTERACTION ---
+
+        // Dragging a path must never start a native text selection. CSS
+        // user-select covers modern engines; this covers the rest and keeps
+        // any future editable UI (dialogs, inputs) selectable.
+        function blockGameSelection(e) {
+            const el = e.target;
+            if (el && el.closest && el.closest('input, textarea, select, [contenteditable], dialog')) return;
+            e.preventDefault();
+        }
+
         function cellIndexFromPoint(clientX, clientY) {
             const el = document.elementFromPoint(clientX, clientY);
             if (!el) return -1;

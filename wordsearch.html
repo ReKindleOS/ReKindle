@@ -54,6 +54,12 @@
             justify-content: center;
             /* FIX: Centers Vertically */
             user-select: none;
+            /* WebKit (Safari, Kobo, older Kindle) only understands the
+               prefixed property, so dragging across the grid selected the
+               letters instead of drawing a selection. */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -webkit-touch-callout: none;
             box-sizing: border-box;
         }
 
@@ -228,8 +234,13 @@
             padding: 5px 8px;
             text-align: center;
             font-size: 0.72rem;
+            font-style: italic;
             letter-spacing: 0.04em;
-            margin-bottom: 8px;
+            line-height: 1.35;
+            /* No fixed height: with border-box + padding a 1.2em height left
+               no room for the text, so the instruction line was clipped. */
+            min-height: 1.2em;
+            margin-bottom: 10px;
         }
 
         /* GAME GRID */
@@ -254,6 +265,8 @@
             font-size: 1.35rem;
             cursor: pointer;
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
             text-transform: uppercase;
             border: 1px solid #e0e0e0;
             /* Height/Width handled by Grid layout */
@@ -280,13 +293,6 @@
             color: black;
             font-weight: 900;
             border-color: #999;
-        }
-
-        #status-msg {
-            margin-bottom: 10px;
-            font-style: italic;
-            height: 1.2em;
-            text-align: center;
         }
     </style>
     <script src="theme.js?v=37"></script>
@@ -537,6 +543,15 @@
             }
         }
 
+        // Dragging a selection must never start a native text selection. CSS
+        // user-select covers modern engines; this covers the rest and keeps
+        // any future editable UI (dialogs, inputs) selectable.
+        function blockGameSelection(e) {
+            const el = e.target;
+            if (el && el.closest && el.closest('input, textarea, select, [contenteditable], dialog')) return;
+            e.preventDefault();
+        }
+
         function onPointerDown(e) {
             if (!e.isPrimary) return;
             const cell = cellFromPoint(e.clientX, e.clientY);
@@ -661,6 +676,9 @@
             document.addEventListener('pointermove', onPointerMove, { passive: true });
             document.addEventListener('pointerup', endPointerDrag);
             document.addEventListener('pointercancel', endPointerDrag);
+            // Final guard for engines that ignore user-select entirely.
+            document.addEventListener('selectstart', blockGameSelection);
+            document.addEventListener('dragstart', blockGameSelection);
         })();
     </script>
 
