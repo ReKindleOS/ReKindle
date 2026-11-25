@@ -28,7 +28,7 @@ per-account sweep and no special case in this job.
 
 The one exception is the social profile record: `deleteAccount` removes
 `users_public/{uid}`, `user_cards/{uid}` and `users_private/{uid}` so the social
-apps render a blank white avatar and "Deleted User". The cleanup job itself
+apps render the guest portrait icon and "Deleted User". The cleanup job itself
 never deletes profiles, timeouts or pending reports, for active or deleted
 accounts alike. See [account-deletion.md](account-deletion.md).
 

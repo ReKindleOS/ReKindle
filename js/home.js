@@ -2315,8 +2315,29 @@
             }
         }
 
-        // A neutral silhouette for guests. The old blank white canvas looked
-        // like an unchecked checkbox in the menu bar next to "Guest Mode".
+        // Guest portrait (guest16.png): outlined frame around a person. The old
+        // blank white canvas looked like an unchecked checkbox in the menu bar
+        // next to "Guest Mode". '#' is ink, '.' is white. KEEP IN SYNC with
+        // drawGuestAvatar() in js/deleted-user.js; scripts/test-avatars.js
+        // compares both renders.
+        const GUEST_ICON = [
+            '................',
+            '.....######.....',
+            '...##......##...',
+            '..#...####...#..',
+            '..#..#....#..#..',
+            '.#...#....#...#.',
+            '.#...#....#...#.',
+            '.#....####....#.',
+            '.#............#.',
+            '.#...######...#.',
+            '.#..#......#..#.',
+            '..##........##..',
+            '..##........##..',
+            '...##......##...',
+            '.....######.....',
+            '................'
+        ];
         function drawGuestAvatar(canvas) {
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
@@ -2324,11 +2345,17 @@
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#000';
-            ctx.fillRect(5 * u, 3 * u, 6 * u, 5 * u);
-            ctx.fillRect(4 * u, 9 * u, 8 * u, 2 * u);
-            ctx.fillRect(3 * u, 11 * u, 10 * u, 4 * u);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(7 * u, 9 * u, 2 * u, 2 * u);
+            for (let y = 0; y < 16; y++) {
+                const row = GUEST_ICON[y];
+                let x = 0;
+                while (x < 16) {
+                    if (row.charAt(x) === '.') { x++; continue; }
+                    const start = x;
+                    while (x < 16 && row.charAt(x) === '#') x++;
+                    // One rect per ink run: 37 fillRects instead of 66.
+                    ctx.fillRect(start * u, y * u, (x - start) * u, u);
+                }
+            }
         }
 
         // --- DASHBOARD WIDGETS LOGIC ---

@@ -270,7 +270,7 @@ const SHIPPED = [
     {
         id: '-P62sF8F9YAtFOe7MLlz',
         title: 'Fix it please',
-        why: 'Blank avatars are now representable: customAvatar "blank" is honoured by every drawAvatar() copy and the profile editor has a Blank action.'
+        why: 'White avatars are representable: customAvatar "blank" and a complete all-zero grid both render white in every drawAvatar() copy (2026-11-25), the profile editor has a Blank action, and deleted profiles now draw a person outline instead of white so the two are distinguishable. scripts/test-avatars.js pins it.'
     },
     {
         id: '-P59t4IcmOED_Bd9sTV7',

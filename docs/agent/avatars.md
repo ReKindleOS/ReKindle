@@ -17,18 +17,43 @@ How `customAvatar` float arrays render and where the gradient gate lives. Read b
 New findings for this area go here, not in `AGENTS.md` (65,536-byte budget).
 
 
-## Deliberately blank avatars (2026-11-24)
+## Pure white avatars & deleted profiles (2026-11-25)
 
-Board report `-P62sF8F9YAtFOe7MLlz`: a user with a blank profile picture could not keep it —
-`drawAvatar()` treats an all-zero `customAvatar` as malformed and falls back to a generated
-uid pattern, so "blank" was unrepresentable.
+White is a legitimate avatar choice, so a blank white canvas can never mean "this account is
+gone". Deleted profiles use a person outline instead.
 
-* The sentinel is the string **`'blank'`** stored in `customAvatar` (RTDB `user_cards` and
-  social `users_public`). Every `drawAvatar()` copy returns after painting the white canvas,
-  before the array/hash branches (`neighbourhood.html`, `kindlechat.html`, `topics.html`,
-  `index.html`, and the eight live-game pages).
-* `neighbourhood.html` profile editor has a **Blank** button (`useBlankAvatar()`); saving an
-  empty 16x16 canvas from the Draw Icon editor stores `'blank'` too (`hasInk` check).
-  Regenerate/Clear still restore the generated avatar (they set `customAvatar = null`).
-* All-zero **arrays** keep the old fallback behaviour: they are still treated as broken data
-  (the 2026-11-06 blank-avatar report), so only the explicit sentinel renders blank.
+* The canonical white avatar is the string **`'blank'`** in `customAvatar` (RTDB `user_cards`
+  and social `users_public`). Every `drawAvatar()` copy returns after painting the white
+  canvas, before the array/hash branches (`neighbourhood.html`, `kindlechat.html`,
+  `topics.html`, `index.html`/`js/home.js`, and the eight live-game pages).
+* A **complete all-zero 8x8/16x16 grid** is white too — not broken data. The pixel-art
+  picker returns zeros for an all-white drawing (`gridToAvatar()`), and clients before
+  2026-11-24 saved an erased Draw Icon canvas that way. In `neighbourhood.html`,
+  `kindlechat.html` and `topics.html` the array branch therefore **always returns** after a
+  valid 8/16 grid; it must not fall back to the uid pattern. That fallback (added for the
+  2026-11-06 "i cant see pfps" report) is why pure white pfps silently turned into a
+  generated pattern.
+* **Malformed** data still falls back to the pattern: a non-array `customAvatar` (e.g. `{}`),
+  or an array whose length is not 64/256. `avatarSeed` is unchanged.
+* `neighbourhood.html` has a **Blank** button (`useBlankAvatar()`); saving an empty 16x16
+  canvas from the Draw Icon editor stores `'blank'` too (`hasInk` check). Regenerate/Clear
+  still restore the generated avatar (they set `customAvatar = null`).
+* **Deleted profiles** (no `user_cards`/`users_public` record) are drawn by
+  `window.rekindleDrawDeletedAvatar()` from `js/deleted-user.js`: the **guest16.png**
+  portrait (a 16x16 outlined frame around a person) in black on white. The same art is the
+  dashboard guest badge (`drawGuestAvatar()` in `js/home.js`, which index loads separately),
+  so the two copies are marked KEEP IN SYNC and `scripts/test-avatars.js` renders both and
+  compares them. Callers pass the canvas (or id); it scales to any square canvas and draws
+  one `fillRect` per horizontal ink run (37 rects, not 66).
+  `drawAvatar(canvas, null)` stays the *loading* state (white) — do not overload `null`.
+  Covered call sites: KindleChat message/DM/gallery/pixel-art avatars, Topics message
+  avatars, Neighbourhood post avatars. Live-game pages do not render deleted profiles
+  distinctly (they fall back to the uid pattern).
+* Trade-off: an all-zero grid from genuinely broken data now renders white instead of a
+  pattern. That is intentional — it is the only way users can keep a pure white pfp, and the
+  guest portrait disambiguates deletion.
+* `scripts/test-avatars.js` (in `npm test`) extracts the three `drawAvatar()` copies and pins
+  these rules against a recording canvas: `'blank'`/all-zero are one white fill, a single ink
+  pixel still renders, malformed data falls back to the pattern, and the guest portrait
+  matches **guest16.png** pixel-for-pixel at 16px and matches `js/home.js` at 16/32/48/128px.
+  Update it when the avatar render path or the guest art changes.

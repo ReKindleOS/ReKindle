@@ -24,8 +24,9 @@ available for registration again.
 **profile records** are removed so social apps can show a neutral deleted-user
 identity. The deleted profile records are `users_public/{uid}`,
 `user_cards/{uid}` and `users_private/{uid}` in the social RTDB. A social page
-that looks one up gets `null`, draws a blank white avatar and displays
-"Deleted User".
+that looks one up gets `null`, draws the guest portrait icon
+(`js/deleted-user.js`, guest16.png) and displays "Deleted User". A blank white
+avatar is a real user choice, so it cannot mark a deleted account.
 
 Topics, comments, neighbourhood posts, KindleChat messages, DMs, reports and
 art index entries are history. They are retained and treated exactly like an
