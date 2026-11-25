@@ -1070,7 +1070,7 @@
         async function confirmRemoveAction() {
             if (!currentUser || !itemToRemoveId) return;
 
-            const btn = document.querySelector('button[onclick="promptRemoveFromLibrary(\'' + itemToRemoveId + '\')"]');
+            const btn = itemToRemoveId ? document.getElementById('remove-' + itemToRemoveId) : null;
             if (btn) btn.innerText = window.t ? window.t('sheetmusic.msg.removing', 'Removing...') : "Removing...";
 
             try {
@@ -1187,8 +1187,12 @@
             const query = document.getElementById('store-search').value.toLowerCase();
 
             const filtered = allLoadedScores.filter(score => {
-                const matchesSearch = score.title.toLowerCase().includes(query) ||
-                    score.composer.toLowerCase().includes(query);
+                // Older library/uploads docs can be missing title/composer;
+                // calling .toLowerCase() on undefined threw and broke search.
+                const title = String(score.title || '').toLowerCase();
+                const composer = String(score.composer || '').toLowerCase();
+                const matchesSearch = title.includes(query) ||
+                    composer.includes(query);
                 const matchesInst = (currentFilterInstrument === 'all' || currentFilterInstrument === 'All') ||
                     (score.instrument === currentFilterInstrument) ||
                     (!score.instrument && (currentFilterInstrument === 'Unknown' || currentFilterInstrument === 'unknown'));
@@ -1226,27 +1230,34 @@
             } catch (e) { /* quota: not fatal */ }
         }
 
-function fetchComposerImage(composer) {
-            if (!composer) return null;
+// Always returns Promise<url|null>. It used to return a bare string/null on a
+        // memory/localStorage cache hit and a Promise only on a miss; displayScores
+        // chains `.then()` unconditionally, so the second Library render (when the
+        // composer was already cached) threw "fetchComposerImage(...).then is not a
+        // function" and aborted the whole list with "Error loading library.".
+        function fetchComposerImage(composer) {
+            if (!composer || typeof composer !== 'string') return Promise.resolve(null);
             const lowerC = composer.toLowerCase();
 
             // 1. Check Hardcoded Cache (Exact or Partial)
-            if (composerImageCache.hasOwnProperty(lowerC)) return composerImageCache[lowerC];
+            if (composerImageCache.hasOwnProperty(lowerC)) return Promise.resolve(composerImageCache[lowerC] || null);
             for (const key in composerImageCache) {
-                if (lowerC.includes(key) && composerImageCache[key]) return composerImageCache[key];
+                if (lowerC.includes(key) && composerImageCache[key]) return Promise.resolve(composerImageCache[key]);
             }
 
             // 2. Check LocalStorage Cache (Persistent)
-            const cachedUrl = localStorage.getItem(`rekindle_img_${lowerC}`);
+            // getItem can throw when storage is disabled/evicted mid-session; a
+            // failing image lookup must never break the score list.
+            let cachedUrl = null;
+            try { cachedUrl = localStorage.getItem(`rekindle_img_${lowerC}`); } catch (e) { cachedUrl = null; }
             if (cachedUrl) {
-                if (cachedUrl === 'null') return null;
+                if (cachedUrl === 'null') return Promise.resolve(null);
                 composerImageCache[lowerC] = cachedUrl; // Sync to memory
-                return cachedUrl;
+                return Promise.resolve(cachedUrl);
             }
 
             // 3. Check Pending Requests (Deduplicate)
             if (pendingImageRequests[lowerC]) return pendingImageRequests[lowerC];
-
             // 4. Fetch from Wikipedia (Direct Title -> Search Fallback)
             const promise = new Promise(async (resolve) => {
                 try {
@@ -1337,8 +1348,10 @@ function fetchComposerImage(composer) {
                 imgContainer.appendChild(placeholder);
                 div.appendChild(imgContainer);
 
-                // Async Fetch Image
-                fetchComposerImage(score.composer).then(url => {
+                // Async Fetch Image. Promise.resolve + catch keep one failed
+                // image (or a future regression to a sync return) from aborting
+                // the whole list render.
+                Promise.resolve(fetchComposerImage(score.composer)).then(url => {
                     if (url) {
                         const img = document.createElement('img');
                         img.src = url;
@@ -1348,6 +1361,8 @@ function fetchComposerImage(composer) {
                         imgContainer.appendChild(img);
                     }
                     // Else keep placeholder
+                }).catch(function () {
+                    // Keep the placeholder; a missing photo is not fatal.
                 });
 
                 // 2. Info Stack (Title / Composer) - MOVED UP
@@ -1356,13 +1371,13 @@ function fetchComposerImage(composer) {
 
                 const titleLink = document.createElement('div');
                 titleLink.className = 'score-title';
-                titleLink.textContent = score.title;
+                titleLink.textContent = score.title || '';
                 titleLink.onclick = () => viewScore(score);
                 infoDiv.appendChild(titleLink);
 
                 const compText = document.createElement('div');
                 compText.className = 'score-composer';
-                compText.textContent = score.composer;
+                compText.textContent = score.composer || '';
                 infoDiv.appendChild(compText);
 
                 div.appendChild(infoDiv);
@@ -1400,6 +1415,10 @@ function fetchComposerImage(composer) {
                         const delBtn = document.createElement('button');
                         delBtn.className = 'list-btn';
                         delBtn.textContent = window.t ? window.t('sheetmusic.btn.remove', 'Remove') : 'Remove';
+                        // The click handler is a property, not an attribute, so
+                        // confirmRemoveAction cannot find this button by
+                        // button[onclick="..."]; give it a stable id instead.
+                        delBtn.id = 'remove-' + score.docId;
                         delBtn.onclick = () => promptRemoveFromLibrary(score.docId);
                         buttonWrapper.appendChild(delBtn);
                     }
@@ -1433,6 +1452,10 @@ function fetchComposerImage(composer) {
             document.getElementById('upload-composer').value = '';
             document.getElementById('upload-file').value = '';
             document.getElementById('upload-instrument').selectedIndex = 0;
+            // custom-select.js hides the native <select>; changing selectedIndex
+            // does not repaint the visible widget, so the previous upload's
+            // instrument stayed on screen.
+            if (window.rekindleRefreshCustomSelect) window.rekindleRefreshCustomSelect();
             document.getElementById('upload-modal').style.display = 'flex';
         }
 

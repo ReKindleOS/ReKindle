@@ -103,21 +103,12 @@ assert.ok(/original/i.test(sources), 'sources file must record original art');
 assert.ok(sources.indexOf('pixel-template-art.js') !== -1, 'sources file must point at the art source');
 assert.ok(!/Kenney/i.test(sources), 'sources file must not reference the retired icon pack');
 
-// pixel.html wiring. Bump ?v= when js/pixel-templates.js changes (edge/SW cache).
-assert.ok(pixel.indexOf('js/pixel-templates.js?v=2') !== -1, 'pixel.html must load the versioned template data');
-assert.ok(pixel.indexOf('id="templates-modal"') !== -1, 'pixel.html must contain the template picker');
-assert.ok(pixel.indexOf('function drawTemplateOverlay') !== -1, 'pixel.html must draw the overlay');
-assert.ok(pixel.indexOf('function setTemplateSize') !== -1, 'pixel.html must keep template size selection');
-[16, 32, 64].forEach(function (size) {
-    assert.ok(pixel.indexOf('data-template-size="' + size + '"') !== -1,
-        'pixel.html must offer the ' + size + 'x' + size + ' template size');
-});
-assert.ok(pixel.indexOf("item.templateId = templateId") !== -1, 'pixel.html must save the template id');
-assert.ok(pixel.indexOf("set({ grid: json, template: tmplId || null })") !== -1,
-    'cloud drawing save must persist the template id');
-assert.ok(pixel.indexOf("localStorage.setItem('pixel_template_' + id, tmplId)") !== -1,
-    'local drawing save must persist the template id');
-assert.ok(/if \(grid\[r\]\[c\] !== 0\) continue;/.test(pixel), 'overlay must skip drawn cells');
+// Pixel templates are intentionally disabled in the app for now. Keep the
+// generated data/source tests above so the feature can be restored later, but
+// do not require the picker/script to be wired into pixel.html.
+assert.ok(pixel.indexOf('js/pixel-templates.js') === -1, 'pixel.html must not load template data while disabled');
+assert.ok(pixel.indexOf('id="templates-modal"') === -1, 'pixel.html must not show the template picker while disabled');
+assert.ok(pixel.indexOf('onclick="openTemplates()"') === -1, 'pixel.html must not offer a Templates button while disabled');
 
 // The template must never be written into the grid payload: saveDrawingData
 // only receives grid + template id, and the grid comes from `grid`.
