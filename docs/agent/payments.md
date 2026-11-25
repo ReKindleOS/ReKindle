@@ -601,3 +601,55 @@ rules or functions changed.
   **Move all to cloud** action with quota/name-collision handling. The device
   IndexedDB is named `rekindle_files_device-<uid>`; the old unscoped database
   is copied only for the matching `rekindle_uid` and then deleted.
+
+## Client-side Pro status: verify once, cache per account (2026-11-25)
+
+The dashboard decided Pro from `users/{uid}.proExpiresAt` alone, in an
+`onSnapshot`, and painted from a global `rekindle_is_pro` flag first. That is
+why a paying user could still see the **ReKindle+ ribbon** ("Mail, files and 11
+more."), the `PLUS` labels and the preview gate: on a cold cache the ribbon
+rendered before the document arrived, and a failed read or a claim-only grant
+(no `proExpiresAt`) left `isPro` false for the whole session.
+
+**Sources of truth** (`js/home.js`, `applyResolvedProStatus()`), matching the
+server:
+
+1. `ukiyo@rekindle.ink` → always Pro (mirrors `firestore.rules isDeveloper()`).
+2. ID-token custom claim `pro` (what `storage.rules` trusts). Read locally with
+   `getIdTokenResult()` — no Firestore round trip, and it survives an outage.
+3. `users/{uid}.proExpiresAt > now` (what `firestore.rules isProUser()` checks).
+
+`config/supporters` is deliberately **not** read on the home screen (hottest
+page in the app). Audited 2026-11-25 across all 42,398 accounts: every one of
+the 376 active supporters also has a valid `proExpiresAt` **and** the `pro`
+claim, so the two cheap sources cover them. Grant Pro through the Stripe/admin
+path (or merge the claim) rather than editing `config/supporters` alone.
+
+**Cache** (written only with a verified answer):
+
+| Key | Value |
+| :--- | :--- |
+| `rekindle_is_pro` | `'true'` / `'false'` |
+| `rekindle_is_pro_uid` | the uid the flag belongs to (another account must not inherit it) |
+| `rekindle_is_pro_checked` | `Date.now()` of the verification |
+| `rekindle_pro_expiry` | the **real** `proExpiresAt` — shared with `pro-gate.js`, `mail.html`, `flipbook.html`, `airtype.html`, `kindlechat.html` |
+| `rekindle_pro_expiry_uid` | uid for the shared expiry |
+
+On sign-in the cached value paints immediately, then the claim and the document
+are read. **A missing answer never downgrades** — `applyResolvedProStatus()`
+returns early unless both `proClaimValue` and `proDocSnapshot` are known, so a
+Firestore failure keeps the cached Pro status instead of turning a payer into a
+free user. `armProResolveWatchdog()` (8 s) only exists so a genuine free user
+still gets the ribbon if verification never returns at all.
+
+`renderPlusNudge()` also requires `proStatusResolved`, so the ribbon cannot
+flash for a Pro user on a cold cache. `clearCachedPro()` runs on Log Out, in
+`handleGuestMode()` and in `initShell()` when there is no stored session.
+
+`rssreader.html` reads the shared expiry first (uid-matched, unexpired → Pro,
+skip its two reads), which also fixed the 2026-11-25 report where a Pro account
+was treated as free-tier there.
+
+Test: `scripts/test-pro-status.js` (in `npm test`) evals the helper block from
+`js/home.js` and pins the claim/doc resolution, the per-uid cache, the shared
+expiry, the "no downgrade on a missing read" rule and the logout/guest clears.

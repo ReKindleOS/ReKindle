@@ -1113,6 +1113,23 @@
 
             const now = Date.now();
 
+            // 0. Verified status cached by the home screen (or a previous Pro
+            // page) for this exact uid. The stored value is the real
+            // proExpiresAt, so trusting it cannot extend access past the paid
+            // period; it just skips two reads and stops a Pro user flashing the
+            // free-tier UI when Firestore is slow.
+            try {
+                if (localStorage.getItem('rekindle_pro_expiry_uid') === user.uid) {
+                    const cachedExpiry = parseInt(localStorage.getItem('rekindle_pro_expiry') || '0', 10);
+                    if (cachedExpiry > now) {
+                        isPro = true;
+                        proCheckDone = true;
+                        applyProUI();
+                        return true;
+                    }
+                }
+            } catch (e) { /* storage disabled */ }
+
             // 1. Check legacy proExpiresAt on user document
             try {
                 const userDoc = await db.collection('users').doc(user.uid).get();

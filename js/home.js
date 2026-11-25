@@ -29,7 +29,31 @@
 
         let isEditMode = false;
         let isFirebaseAvailable = false;
-        let isPro = (localStorage.getItem('rekindle_is_pro') === 'true');
+
+        // --- ReKindle+ status: verified, then cached per account -------------
+        // The ribbon, the PLUS labels and the featured section all key off
+        // `isPro`, so a Pro user must never see the ReKindle+ promo — not even
+        // on the first load after a cache wipe, and not when Firestore is slow
+        // or offline. The status is resolved once per session from the ID-token
+        // `pro` claim (same signal storage.rules trusts) plus the user
+        // document's proExpiresAt (what firestore.rules isProUser() checks),
+        // then cached against the uid so the next load paints correctly before
+        // any network call (2026-11-25).
+        const PRO_FLAG_KEY = 'rekindle_is_pro';
+        const PRO_FLAG_UID_KEY = 'rekindle_is_pro_uid';
+        const PRO_CHECKED_KEY = 'rekindle_is_pro_checked';
+        // Shared with pro-gate.js / mail.html / flipbook.html / airtype.html /
+        // kindlechat.html: the real pro expiry for this uid.
+        const PRO_EXPIRY_KEY = 'rekindle_pro_expiry';
+        const PRO_EXPIRY_UID_KEY = 'rekindle_pro_expiry_uid';
+        const PRO_RESOLVE_TIMEOUT = 8000; // how long a load waits on verification
+
+        let isPro = (localStorage.getItem(PRO_FLAG_KEY) === 'true');
+        let proStatusResolved = false;   // false = no trustworthy answer yet
+        let proDocSnapshot = null;       // users/{uid} data once the listener has it
+        let proClaimValue = null;        // ID-token `pro` claim: null = not read yet
+        let proResolveTimer = null;      // watchdog for a verification that never lands
+
         const ALLOWED_EXIT_AGENT = "MY_CUSTOM_AGENT";
 
         let auth = null;
@@ -421,6 +445,19 @@
             window._rekindleAuthedUid = user.uid;
             agendaMonthCache = {};
             try { localStorage.setItem('rekindle_uid', user.uid); } catch (e) { /* storage disabled */ }
+
+            // ReKindle+ first: paint the cached answer for THIS account, then
+            // verify (token claim + user document) in the background. Until it
+            // is resolved the ribbon stays hidden — a Pro user must never see
+            // the upgrade promo, not even for one frame on a cold cache.
+            const cachedPro = readCachedPro(user.uid);
+            proDocSnapshot = null;
+            proClaimValue = null;
+            if (cachedPro.known) { isPro = cachedPro.isPro; proStatusResolved = true; }
+            else { proStatusResolved = false; }
+            updateProUI();
+            if (!cachedPro.known) armProResolveWatchdog();
+            refreshProClaim(user);
             let displayUser = user.email ? user.email.split('@')[0] : 'Account';
             if (user.email && user.email.endsWith('@rekindle.ink')) {
                 displayUser = user.email.replace('@rekindle.ink', '');
@@ -600,7 +637,8 @@
             // account's cached Pro flag on screen while auth is not loaded.
             if (!hasStoredSession()) {
                 isPro = false;
-                try { localStorage.setItem('rekindle_is_pro', 'false'); } catch (e) { /* storage disabled */ }
+                proStatusResolved = true;
+                clearCachedPro();
             }
             updateProUI();
             updateNavVisibility();
@@ -702,7 +740,10 @@
             if (window._badgeDetach) window._badgeDetach();
             const wasPro = isPro;
             isPro = false;
-            localStorage.setItem('rekindle_is_pro', isPro.toString());
+            proStatusResolved = true;   // Guest Mode has nothing to verify
+            proDocSnapshot = null;
+            proClaimValue = null;
+            clearCachedPro();
 
             // If this browser knew a uid, we were signed in and something ended
             // the session (a reload that beat the auth write, a revoked token,
@@ -841,21 +882,133 @@
             }).catch(err => console.error("Error fetching general settings:", err));
         }
 
+        // --- ReKindle+ cache helpers -----------------------------------------
+
+        function readCachedPro(uid) {
+            try {
+                if (!uid) return { known: false, isPro: false };
+                if (localStorage.getItem(PRO_FLAG_UID_KEY) !== uid) {
+                    return { known: false, isPro: false };
+                }
+                return { known: true, isPro: localStorage.getItem(PRO_FLAG_KEY) === 'true' };
+            } catch (e) {
+                return { known: false, isPro: false };
+            }
+        }
+
+        // Only ever called with a verified answer. Writing the real expiry also
+        // unblocks pro-gate.js and the Pro apps on the next page, so they do not
+        // have to re-read the same document.
+        function cacheProStatus(uid, value, expiresMs) {
+            if (!uid) return;
+            try {
+                localStorage.setItem(PRO_FLAG_KEY, value ? 'true' : 'false');
+                localStorage.setItem(PRO_FLAG_UID_KEY, uid);
+                localStorage.setItem(PRO_CHECKED_KEY, String(Date.now()));
+                if (value) {
+                    const expiry = (expiresMs && expiresMs > Date.now())
+                        ? expiresMs
+                        : (Date.now() + 24 * 60 * 60 * 1000);
+                    localStorage.setItem(PRO_EXPIRY_KEY, String(expiry));
+                    localStorage.setItem(PRO_EXPIRY_UID_KEY, uid);
+                } else {
+                    localStorage.removeItem(PRO_EXPIRY_KEY);
+                    localStorage.removeItem(PRO_EXPIRY_UID_KEY);
+                }
+            } catch (e) { /* storage disabled */ }
+        }
+
+        function clearCachedPro() {
+            try {
+                // kindlechat/neighbourhood/suggestions read
+                // `rekindle_is_pro !== 'false'`, so the flag must stay present
+                // as 'false' for a signed-out device; the uid and the shared
+                // expiry are what make it account-scoped.
+                localStorage.setItem(PRO_FLAG_KEY, 'false');
+                [PRO_FLAG_UID_KEY, PRO_CHECKED_KEY, PRO_EXPIRY_KEY, PRO_EXPIRY_UID_KEY]
+                    .forEach(function (key) { localStorage.removeItem(key); });
+            } catch (e) { /* storage disabled */ }
+        }
+
+        function proExpiryFromData(data) {
+            if (!data || !data.proExpiresAt) return 0;
+            const value = data.proExpiresAt;
+            const ms = typeof value.toMillis === 'function' ? value.toMillis() : new Date(value).getTime();
+            return isNaN(ms) ? 0 : ms;
+        }
+
+        // Paint a verified status, cache it, and refresh whatever was keyed off
+        // the old value. `expiresMs` is the real pro expiry when known.
+        function applyProStatus(value, expiresMs) {
+            const wasPro = isPro;
+            isPro = !!value;
+            proStatusResolved = true;
+            if (proResolveTimer) { clearTimeout(proResolveTimer); proResolveTimer = null; }
+            if (currentUser && currentUser.uid) cacheProStatus(currentUser.uid, isPro, expiresMs || 0);
+            if (wasPro !== isPro) {
+                try {
+                    if (wasPro && !isPro) localStorage.setItem('rekindle_was_pro', 'true');
+                    else if (isPro) localStorage.removeItem('rekindle_was_pro');
+                } catch (e) { /* storage disabled */ }
+                renderAppGrid(currentFilter);
+                if (currentFilter === 'all') renderFeaturedSection();
+                renderFavoriteSection();
+            }
+            updateProUI();
+        }
+
+        // Needs both halves of the verification before it will downgrade
+        // someone: a missing answer must never turn a paying user into a free
+        // one (that is what showed them the ReKindle+ ribbon).
+        function applyResolvedProStatus() {
+            if (!currentUser) return;
+            if (proClaimValue === null || proDocSnapshot === null) return;
+            const expires = proExpiryFromData(proDocSnapshot);
+            const isDeveloper = currentUser.email === 'ukiyo@rekindle.ink';
+            // Mirrors the server: the `pro` claim (storage.rules) or
+            // proExpiresAt (firestore.rules isProUser()). config/supporters is
+            // not read here — every active supporter also carries both, checked
+            // 2026-11-25 (376/376), and the home screen is the hottest page.
+            applyProStatus(isDeveloper || proClaimValue === true || expires > Date.now(), expires);
+        }
+
+        function refreshProClaim(user) {
+            if (!user || typeof user.getIdTokenResult !== 'function') return;
+            user.getIdTokenResult().then(function (token) {
+                if (!currentUser || currentUser.uid !== user.uid) return;
+                proClaimValue = !!(token && token.claims && token.claims.pro === true);
+                applyResolvedProStatus();
+            }).catch(function () {
+                // Offline: keep the cached value instead of guessing "free".
+                console.warn('[pro] token claims unavailable; keeping cached status');
+            });
+        }
+
+        function armProResolveWatchdog() {
+            if (proResolveTimer) clearTimeout(proResolveTimer);
+            proResolveTimer = setTimeout(function () {
+                proResolveTimer = null;
+                if (proStatusResolved) return;
+                // Verification never came back (offline Kindle, Firestore
+                // quota): fall back to the cached value so the ribbon is not
+                // stuck hidden for genuine free users.
+                proStatusResolved = true;
+                updateProUI();
+            }, PRO_RESOLVE_TIMEOUT);
+        }
+
         function monitorUserProfile(uid) {
             if (!isFirebaseAvailable || !db) return;
             db.collection('users').doc(uid).onSnapshot(doc => {
-                const now = Date.now();
-                let expires = 0;
-                let newProStatus = false;
                 let serverFavTimestamp = 0;
                 let serverSettingsTimestamp = 0;
 
+                if (currentUser && currentUser.uid === uid) {
+                    proDocSnapshot = doc.exists ? doc.data() : {};
+                }
+
                 if (doc.exists) {
                     const data = doc.data();
-                    if (data.proExpiresAt) {
-                        expires = typeof data.proExpiresAt.toMillis === 'function' ? data.proExpiresAt.toMillis() : new Date(data.proExpiresAt).getTime();
-                    }
-                    newProStatus = (expires > now);
                     if (data.favoritesLastUpdated) {
                         serverFavTimestamp = typeof data.favoritesLastUpdated.toMillis === 'function' ? data.favoritesLastUpdated.toMillis() : new Date(data.favoritesLastUpdated).getTime();
                     }
@@ -864,20 +1017,10 @@
                     }
                 }
 
-                const wasPro = isPro;
-                isPro = newProStatus;
-                if (wasPro !== isPro) {
-                    localStorage.setItem('rekindle_is_pro', isPro.toString());
-                    if (wasPro && !isPro) {
-                        try { localStorage.setItem('rekindle_was_pro', 'true'); } catch (e) { }
-                    } else if (isPro) {
-                        try { localStorage.removeItem('rekindle_was_pro'); } catch (e) { }
-                    }
-                    renderAppGrid(currentFilter);
-                    if (currentFilter === 'all') renderFeaturedSection();
-                    renderFavoriteSection();
-                    updateProUI();
-                }
+                // The document is only half the answer (a claim-only grant has
+                // no proExpiresAt); applyResolvedProStatus() also needs the
+                // claim, and caches + repaints once both are in.
+                if (currentUser && currentUser.uid === uid) applyResolvedProStatus();
 
                 const localFavTimestamp = parseInt(localStorage.getItem('rekindle_fav_last_sync') || '0');
                 if (serverFavTimestamp > localFavTimestamp || localFavTimestamp === 0) {
@@ -1733,7 +1876,8 @@
         function renderPlusNudge() {
             var el = document.getElementById('plus-nudge');
             if (!el) return;
-            var show = !isPro && !plusNudgeDismissed() && !isEditMode && !appSearchQuery && currentFilter === 'all';
+            var show = proStatusResolved && !isPro && !plusNudgeDismissed() &&
+                !isEditMode && !appSearchQuery && currentFilter === 'all';
             if (!show) { el.style.display = 'none'; return; }
             var pick = plusPickForWeek();
             var weekEl = document.getElementById('plus-nudge-week');
@@ -2424,6 +2568,7 @@
             }
             localStorage.removeItem('rekindle_uid'); localStorage.removeItem('rekindle_favorites');
             localStorage.removeItem('rekindle_was_pro');
+            clearCachedPro();
             closeModal('logout-modal'); location.reload();
         }
         function autoDetectScale() { if (window.rekindleAutoDetectScale) window.rekindleAutoDetectScale(); }
