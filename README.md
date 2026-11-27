@@ -192,6 +192,22 @@ npm run build:kindle
 
 This writes `downloads/ReKindle-Fullscreen.zip`, the standalone `.sh` files and `SHA256SUMS.txt`. The `/kindle` page links to those files.
 
+### Private beta deployment
+
+`npm run deploy:beta` publishes a **gated** copy of the main build to the `beta` branch. The gate
+exists only in `_deploy/beta`; production (`_deploy/main`) is untouched. Set the passphrase for the
+deploy:
+
+```bash
+BETA_GATE_PASSPHRASE='<long passphrase>' npm run deploy:beta
+```
+
+Only a SHA-256 hash and a cookie-signing key derived from it are embedded in the beta Function.
+The gate covers `beta.rekindle.ink`, `beta.rekindle.pages.dev` and the deployment hash URL, and its
+sign-in page works without JavaScript on the Kindle browser. Rotating the passphrase and
+redeploying invalidates existing cookies. See [legacy-build.md](docs/agent/legacy-build.md) for the
+Wrangler `--cwd` gotcha that keeps the gate from being silently skipped.
+
 ---
 
 *Created by [Ukiyo](https://ukiyomusic.com)*

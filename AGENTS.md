@@ -681,11 +681,11 @@ Pages returns **`index.html` with HTTP 200 for any unknown URL unless a top-leve
 
 ## ⚠️ Deploying to Cloudflare Pages (do not deploy the repo root)
 
-`npx wrangler pages deploy .` uploads **everything, including `.gitignore`d files**. `service-account.json`, `service-account-social.json` and `firebase-functions/.env` (`OPENAI_API_KEY`) were public on `rekindle.ink` and `beta.rekindle.ink` until 2026-10-20 because the scripts deployed `.` and `ignoreList` omitted them.
+`npx wrangler pages deploy .` uploads **everything, including `.gitignore`d files** — the 2026-10-20 credentials leak ([legacy-build.md](docs/agent/legacy-build.md)).
 
 **Rules:**
-*   Deploy the build output, never the source tree: `npm run build && npx wrangler pages deploy _deploy/main --project-name=rekindle --branch=main` (prod) or `--branch=beta` (beta). `npm run deploy:prod` / `deploy:beta` run the guard.
-*   `_deploy/main` must contain `functions/` — Cloudflare Pages needs it at the deploy root, and `build-automation.js` copies it in.
+*   Deploy the build output, never the source tree: `npm run deploy:prod` (build + guard + `_deploy/main`). Beta is gated: `BETA_GATE_PASSPHRASE=… npm run deploy:beta`; never `--branch=beta` by hand.
+*   `wrangler pages deploy <dir>` bundles `./functions` from **cwd**, not `<dir>/functions` (Wrangler 4.168). `deploy:beta` runs `--cwd _deploy/beta`; see [legacy-build.md](docs/agent/legacy-build.md).
 *   Two gates share one scanner, `scripts/lib/deploy-secrets.js`: recursive filename check, **file contents** (PEM blocks, service-account JSON, `sk_live_`/`ghp_`/…), and symlinks. `assertNoSecretsInDeploy()` aborts the build if any reach `_deploy/*`; `scripts/deploy-guard.js` re-scans before wrangler and refuses targets outside `_deploy/`. Add new secret types there, never to a local list. `scripts/test-deploy-guard.js` (in `npm test`) pins the npm-script order.
 *   Pages caches non-HTML assets on the edge (`s-maxage=604800`). A file removed from a deployment can still be served from the custom-domain cache for up to 7 days — purge the cache (or rotate the credential) after any accidental publish.
 

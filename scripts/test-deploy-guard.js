@@ -2,7 +2,7 @@
 /**
  * Guards the deploy guards (2026-11-11).
  *
- * `npm run deploy:beta` publishes whatever is in _deploy/main, so two things
+ * `npm run deploy:beta` publishes the gated `_deploy/beta` build, so two things
  * must stay true:
  *   1. the npm script runs the build + deploy-guard BEFORE wrangler, and never
  *      points wrangler at the repo root (the 2026-10-19 credential leak);
@@ -69,13 +69,31 @@ for (const script of ['deploy:beta', 'deploy:prod']) {
         // The guard must be joined with && so a failure stops wrangler.
         const between = cmd.slice(0, wranglerAt);
         assert.ok(/deploy-guard\.js[^&]*&&/.test(between), 'guard must be &&-chained before wrangler');
-        // Never deploy the repo root; only _deploy/<target>.
+        // Never deploy the repo root; only _deploy/<target>. `pages deploy`
+        // resolves `./functions` from the process cwd, so the beta script runs
+        // wrangler with `--cwd _deploy/beta` and passes `.` as the directory;
+        // that still publishes the gated artifact, not the repo root.
         const targetMatch = cmd.match(/wrangler pages deploy\s+(\S+)/);
         assert.ok(targetMatch, 'cannot read wrangler target');
-        assert.ok(targetMatch[1].startsWith('_deploy/'), 'wrangler target must be under _deploy/, got ' + targetMatch[1]);
-        assert.ok(!/(^|\s)\.(\s|$)/.test(targetMatch[1]), 'must not deploy "."');
+        const target = targetMatch[1];
+        const cwdMatch = cmd.match(/--cwd\s+(\S+)/);
+        if (target === '.') {
+            assert.ok(cwdMatch, 'deploying "." requires --cwd pointing at the artefact');
+            assert.ok(cwdMatch[1].startsWith('_deploy/'), 'wrangler --cwd must be under _deploy/, got ' + cwdMatch[1]);
+        } else {
+            assert.ok(target.startsWith('_deploy/'), 'wrangler target must be under _deploy/, got ' + target);
+            assert.ok(!/(^|\s)\.(\s|$)/.test(target), 'must not deploy "."');
+        }
     });
 }
+
+test('beta deploys the gated artefact, not the plain main build', () => {
+    const cmd = pkg.scripts['deploy:beta'];
+    assert.ok(/scripts\/build-beta-gate\.js/.test(cmd), 'beta must build the gate before deploying');
+    assert.ok(/deploy-guard\.js _deploy\/beta\b/.test(cmd), 'the guard must scan the gated artefact');
+    assert.ok(/--cwd _deploy\/beta\b/.test(cmd),
+        'wrangler must run with _deploy/beta as cwd: pages deploy bundles ./functions from cwd, not from the deployed directory');
+});
 
 test('beta deploys the guarded build output with --branch=beta', () => {
     assert.ok(/--branch=beta\b/.test(pkg.scripts['deploy:beta']), 'beta script must pass --branch=beta');

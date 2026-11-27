@@ -309,3 +309,44 @@ would only move short windows to the top of the screen.
   `rtdb-social-rules.json` and `storage.rules`; the rules were live at
   `https://rekindle.ink/storage.rules` etc. until the next deploy. Pages caches
   non-HTML assets for up to 7 days, so purge the rekindle.ink cache after deploying.
+
+## Private beta access gate (2026-11-27)
+
+**Symptom:** `npm run deploy:beta` published the current build to `beta.rekindle.ink`,
+`beta.rekindle.pages.dev` and every `<hash>.rekindle.pages.dev` preview, so users could open
+the beta. The Pages "Enable access policy" setting protects only the random preview links —
+Cloudflare's own docs say it does not cover the branch alias or a custom domain — and the
+Cloudflare Access login page is a modern JS app, not something to rely on in the Kindle browser.
+
+**Files:**
+- `scripts/beta-gate/middleware.js` — Pages Function template. The gate page is plain
+  HTML/CSS with no JavaScript, so it can be unlocked on Kindle/WebKit. The passphrase hash
+  and cookie-signing key are injected at build time; the source template has no secret.
+- `scripts/build-beta-gate.js` — copies `_deploy/main` to `_deploy/beta`, injects the two
+  constants, writes `_routes.json` with `include: ["/*"]`, and fails closed if
+  `BETA_GATE_PASSPHRASE` is missing or shorter than 8 characters (it warns below 12 characters and for numeric-only codes).
+- `scripts/test-beta-gate.js` — in `npm test`; covers gate/asset/API responses, cookie
+  expiry/forgery, open redirects, `/sw.js` cache revocation and the fail-closed build.
+
+The gate deliberately exempts `/.well-known/acme-challenge/*` so Cloudflare can renew the
+custom-domain certificate; blocking it would eventually break HTTPS on `beta.rekindle.ink`.
+
+**Deploy:** `BETA_GATE_PASSPHRASE='…' npm run deploy:beta`. The passphrase is never committed
+or printed. Cookies last 90 days; rotating the passphrase and redeploying invalidates every
+existing cookie (the signing key is derived from it). Production is untouched — the gate only
+exists in `_deploy/beta`.
+
+**Wrangler `--cwd` gotcha (critical):** `wrangler pages deploy <dir>` bundles `./functions`
+from `process.cwd()`, **not** from `<dir>/functions` (Wrangler 4.168 `deploy2()` uses
+`path.join(process.cwd(), "functions")`). A normal `pages deploy _deploy/beta` therefore
+silently uploads the ungated source `functions/` directory. `deploy:beta` runs
+`npx wrangler pages deploy . --cwd _deploy/beta …`, and `scripts/test-deploy-guard.js` pins
+the `--cwd` plus the gated artefact path. Do not "simplify" that back to
+`pages deploy _deploy/beta`; it removes the gate without failing a build.
+
+**Residual exposure:** deployments created before the gate (for example
+`1439abef.rekindle.pages.dev`) are immutable copies and stay public. Delete them with
+`npx wrangler pages deployment delete <id> --project-name=rekindle --force` (keep the latest
+beta deployment, which the custom domain and branch alias use). The gate's `/sw.js`
+kill-switch clears service-worker caches for visitors who already opened the old beta, but it
+cannot reach a separate old preview origin.
