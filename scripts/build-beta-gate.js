@@ -90,6 +90,21 @@ fs.writeFileSync(
     JSON.stringify({ version: 1, include: ['/*'], exclude: [] }, null, 2) + '\n'
 );
 
+// A static asset fetched by an authenticated owner can otherwise be stored in
+// the Pages edge cache and then served to an unauthenticated visitor as a 200
+// (seen live on 2026-11-27: /js/home.js returned cf-cache-status HIT). The gate
+// only sees requests that reach the Function, so force every beta asset out of
+// the shared cache. The service worker still caches explicitly for the owner.
+const headersPath = path.join(BETA, '_headers');
+fs.appendFileSync(
+    headersPath,
+    '\n# Private beta: an authenticated asset must never be reused by the edge cache.\n' +
+    '/*\n  ! Cache-Control\n  Cache-Control: private, no-store\n'
+);
+if (fs.readFileSync(headersPath, 'utf8').indexOf('Cache-Control: private, no-store') === -1) {
+    fail('Failed to add the beta no-store header rule to _headers.');
+}
+
 console.log('Beta gate configured in _deploy/beta');
 console.log('  functions/_middleware.js  passphrase hash + cookie secret injected');
 console.log('  _routes.json              every request passes through the gate');

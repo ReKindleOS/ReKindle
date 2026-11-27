@@ -344,6 +344,15 @@ silently uploads the ungated source `functions/` directory. `deploy:beta` runs
 the `--cwd` plus the gated artefact path. Do not "simplify" that back to
 `pages deploy _deploy/beta`; it removes the gate without failing a build.
 
+**Edge-cache bypass (2026-11-27, fixed same day):** an authenticated fetch of
+`/js/home.js` populated the Pages edge cache with a 200; an unauthenticated request then got a
+`cf-cache-status: HIT` 200 instead of the gate's 401. HTML stayed gated (it revalidates), but the
+asset gate did not. `build-beta-gate.js` now appends a final `/*` rule to the beta `_headers`
+with `! Cache-Control` / `Cache-Control: private, no-store`, so an authenticated asset response
+can never be reused for an unauthenticated visitor. Pre-fix edge entries need a zone cache purge
+(the deploy workflow purges on push); the `*.pages.dev` alias can keep them for up to 7 days, but
+the HTML remains gated.
+
 **Residual exposure:** deployments created before the gate (for example
 `1439abef.rekindle.pages.dev`) are immutable copies and stay public. Delete them with
 `npx wrangler pages deployment delete <id> --project-name=rekindle --force` (keep the latest
